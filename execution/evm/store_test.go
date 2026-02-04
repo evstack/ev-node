@@ -17,7 +17,7 @@ func newTestDatastore(t *testing.T) ds.Batching {
 	return dssync.MutexWrap(ds.NewMapDatastore())
 }
 
-func TestPruneExecMeta_PrunesUpToTargetHeight(t *testing.T) {
+func TestPruneExec_PrunesUpToTargetHeight(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -39,7 +39,7 @@ func TestPruneExecMeta_PrunesUpToTargetHeight(t *testing.T) {
 	}
 
 	// Prune up to height 3
-	require.NoError(t, store.PruneExecMeta(ctx, 3))
+	require.NoError(t, store.PruneExec(ctx, 3))
 
 	// Heights 1..3 should be gone
 	for h := uint64(1); h <= 3; h++ {
@@ -56,10 +56,10 @@ func TestPruneExecMeta_PrunesUpToTargetHeight(t *testing.T) {
 	}
 
 	// Re-pruning with the same height should be a no-op
-	require.NoError(t, store.PruneExecMeta(ctx, 3))
+	require.NoError(t, store.PruneExec(ctx, 3))
 }
 
-func TestPruneExecMeta_TracksLastPrunedHeight(t *testing.T) {
+func TestPruneExec_TracksLastPrunedHeight(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -73,10 +73,10 @@ func TestPruneExecMeta_TracksLastPrunedHeight(t *testing.T) {
 	}
 
 	// First prune up to 2
-	require.NoError(t, store.PruneExecMeta(ctx, 2))
+	require.NoError(t, store.PruneExec(ctx, 2))
 
 	// Then prune up to 4; heights 3..4 should be deleted in this run
-	require.NoError(t, store.PruneExecMeta(ctx, 4))
+	require.NoError(t, store.PruneExec(ctx, 4))
 
 	// Verify all heights 1..4 are gone, 5 remains
 	for h := uint64(1); h <= 4; h++ {

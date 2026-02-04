@@ -385,8 +385,8 @@ func (s *Submitter) processDAInclusionLoop() {
 							s.logger.Error().Err(err).Uint64("target_height", targetHeight).Msg("failed to prune old block data")
 						}
 
-						if pruner, ok := s.exec.(coreexecutor.ExecMetaPruner); ok {
-							if err := pruner.PruneExecMeta(s.ctx, targetHeight); err != nil {
+						if pruner, ok := s.exec.(coreexecutor.ExecPruner); ok {
+							if err := pruner.PruneExec(s.ctx, targetHeight); err != nil {
 								s.logger.Error().Err(err).Uint64("target_height", targetHeight).Msg("failed to prune execution metadata")
 							}
 						}
