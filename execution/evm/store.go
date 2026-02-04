@@ -145,10 +145,10 @@ func (s *EVMStore) SaveExecMeta(ctx context.Context, meta *ExecMeta) error {
 	return nil
 }
 
-// PruneExecMeta removes ExecMeta entries up to and including the given height.
+// PruneExec removes ExecMeta entries up to and including the given height.
 // It is safe to call this multiple times with the same or increasing heights;
 // previously pruned ranges will be skipped based on the last-pruned marker.
-func (s *EVMStore) PruneExecMeta(ctx context.Context, height uint64) error {
+func (s *EVMStore) PruneExec(ctx context.Context, height uint64) error {
 	// Load last pruned height, if any.
 	var lastPruned uint64
 	data, err := s.db.Get(ctx, ds.NewKey(lastPrunedExecMetaKey))
