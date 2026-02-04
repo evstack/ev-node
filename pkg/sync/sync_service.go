@@ -441,7 +441,7 @@ func (syncService *SyncService[H]) fetchAndVerifyTrustedHeader(ctx context.Conte
 
 	// Verify the hash matches
 	actualHash := trusted.Hash().String()
-	if actualHash != syncService.trustedHeaderHash || actualHash != syncService.trustedDataHash {
+	if actualHash != syncService.trustedHeaderHash && actualHash != syncService.trustedDataHash {
 		return fmt.Errorf("trusted header hash mismatch at height %d: expected %s or %s, got %s",
 			syncService.trustedHeight, syncService.trustedHeaderHash, syncService.trustedDataHash, actualHash)
 	}
