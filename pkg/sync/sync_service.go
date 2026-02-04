@@ -59,6 +59,11 @@ type SyncService[H store.EntityWithDAHint[H]] struct {
 	topicSubscription header.Subscription[H]
 
 	storeInitialized atomic.Bool
+
+	// trustedHeight tracks the configured trusted height for sync initialization
+	trustedHeight uint64
+	// trustedHeaderHash is the expected hash of the trusted header
+	trustedHeaderHash string
 }
 
 // NewDataSyncService returns a new DataSyncService.
@@ -198,6 +203,10 @@ func (syncService *SyncService[H]) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to create syncer: %w", err)
 	}
 
+	// Initialize trusted height configuration
+	syncService.trustedHeight = syncService.conf.P2P.TrustedHeight
+	syncService.trustedHeaderHash = syncService.conf.P2P.TrustedHeaderHash
+
 	// initialize stores from P2P (blocking until genesis is fetched for followers)
 	// Aggregators (no peers configured) return immediately and initialize on first produced block.
 	if err := syncService.initFromP2PWithRetry(ctx, peerIDs); err != nil {
@@ -331,9 +340,17 @@ func (s *SyncService[H]) Height() uint64 {
 // It inspects the local store to determine the first height to request:
 //   - when the store already contains items, it reuses the latest height as the starting point;
 //   - otherwise, it falls back to the configured genesis height.
+//   - if trusted height is configured, it fetches from that height first and verifies the hash.
 func (syncService *SyncService[H]) initFromP2PWithRetry(ctx context.Context, peerIDs []peer.ID) error {
 	if len(peerIDs) == 0 {
 		return nil
+	}
+
+	// If trusted height is configured, fetch from that height first
+	if syncService.trustedHeight > 0 {
+		if err := syncService.fetchAndVerifyTrustedHeader(ctx, peerIDs); err != nil {
+			return fmt.Errorf("failed to fetch trusted header at height %d: %w", syncService.trustedHeight, err)
+		}
 	}
 
 	tryInit := func(ctx context.Context) (bool, error) {
@@ -346,7 +363,12 @@ func (syncService *SyncService[H]) initFromP2PWithRetry(ctx context.Context, pee
 		head, headErr := syncService.store.Head(ctx)
 		switch {
 		case errors.Is(headErr, header.ErrNotFound), errors.Is(headErr, header.ErrEmptyStore):
-			heightToQuery = syncService.genesis.InitialHeight
+			// If we have a trusted header, use its height as the starting point
+			if syncService.trustedHeight > 0 {
+				heightToQuery = syncService.trustedHeight
+			} else {
+				heightToQuery = syncService.genesis.InitialHeight
+			}
 		case headErr != nil:
 			return false, fmt.Errorf("failed to inspect local store head: %w", headErr)
 		default:
@@ -403,6 +425,38 @@ func (syncService *SyncService[H]) initFromP2PWithRetry(ctx context.Context, pee
 			backoff = maxBackoff
 		}
 	}
+}
+
+// fetchAndVerifyTrustedHeader fetches the header at the trusted height from P2P
+// and verifies it matches the trusted hash. If verification passes, it stores the header.
+func (syncService *SyncService[H]) fetchAndVerifyTrustedHeader(ctx context.Context, peerIDs []peer.ID) error {
+	syncService.logger.Info().Uint64("height", syncService.trustedHeight).Msg("fetching trusted header from P2P")
+
+	// Fetch the header from trusted height
+	trusted, err := syncService.ex.GetByHeight(ctx, syncService.trustedHeight)
+	if err != nil {
+		return fmt.Errorf("failed to fetch trusted header at height %d: %w", syncService.trustedHeight, err)
+	}
+
+	// Verify the hash matches
+	expectedHash := syncService.trustedHeaderHash
+	actualHash := trusted.Hash().String()
+	if actualHash != expectedHash {
+		return fmt.Errorf("trusted header hash mismatch at height %d: expected %s, got %s",
+			syncService.trustedHeight, expectedHash, actualHash)
+	}
+
+	syncService.logger.Info().Uint64("height", syncService.trustedHeight).
+		Str("hash", actualHash).
+		Msg("trusted header verified and stored")
+
+	if err := syncService.store.Append(ctx, trusted); err != nil {
+		return fmt.Errorf("failed to store trusted header: %w", err)
+	}
+
+	syncService.storeInitialized.Store(true)
+
+	return nil
 }
 
 // Stop is a part of Service interface.

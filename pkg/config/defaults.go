@@ -57,8 +57,10 @@ func DefaultConfig() Config {
 		RootDir: DefaultRootDir,
 		DBPath:  "data",
 		P2P: P2PConfig{
-			ListenAddress: "/ip4/0.0.0.0/tcp/7676",
-			Peers:         "",
+			ListenAddress:     "/ip4/0.0.0.0/tcp/7676",
+			Peers:             "",
+			TrustedHeight:     0,
+			TrustedHeaderHash: "",
 		},
 		Node: NodeConfig{
 			Aggregator:               false,

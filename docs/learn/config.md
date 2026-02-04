@@ -977,23 +977,46 @@ signer:
 `--rollkit.signer.signer_path <string>`
 _Example:_ `--rollkit.signer.signer_path ./config`
 _Default:_ (Depends on application)
-_Constant:_ `FlagSignerPath`
-
-### Signer Passphrase
-
-**Description:**
-The passphrase required to decrypt or access the signer key, particularly if using a `file` signer and the key is encrypted, or if the aggregator mode is enabled and requires it. This flag is not directly a field in the `SignerConfig` struct but is used in conjunction with it.
-
-**YAML:**
-This is typically not stored in the YAML file for security reasons but provided via flag or environment variable.
-
-**Command-line Flag:**
-`--rollkit.signer.passphrase <string>`
-_Example:_ `--rollkit.signer.passphrase "mysecretpassphrase"`
-_Default:_ `""` (empty)
-_Constant:_ `FlagSignerPassphrase`
-_Note:_ Be cautious with providing passphrases directly on the command line in shared environments due to history logging. Environment variables or secure input methods are often preferred.
 
 ---
 
-This reference should help you configure your Evolve node effectively. Always refer to the specific version of Evolve you are using, as options and defaults may change over time.
+## Sync Configuration (`sync`)
+
+The `sync` section contains options for controlling how the node synchronizes with the network.
+
+### Trusted Height
+
+**Description:**
+Trusted height allows a syncing node to start synchronization from a known, verified block height instead of from genesis. This can significantly speed up the initial sync process for new nodes. When using trusted height, you must also provide the corresponding header hash for security verification.
+
+This is particularly useful when:
+
+- Joining a long-running network and wanting to skip the history
+- Restoring from a backup at a specific height
+- Testing with a known good state
+
+**Security Consideration:** When using trusted height, you must provide the `trusted_header_hash` to prevent against history rewrites or malicious nodes trying to sync from an invalid state.
+
+**YAML:**
+
+```yaml
+sync:
+  trusted_height: 100000 # Block height to trust for sync initialization
+  trusted_header_hash: "a1b2c3d4e5f6..." # Hex-encoded hash of the header at trusted_height
+```
+
+**Command-line Flags:**
+
+- `--evnode.sync.trusted_height <uint64>` - Block height to trust for sync initialization
+- `--evnode.sync.trusted_header_hash <string>` - Hash of the trusted header for security verification (hex-encoded)
+
+**Example:**
+
+```bash
+testapp start \
+  --evnode.sync.trusted_height 100000 \
+  --evnode.sync.trusted_header_hash "abc123def456..."
+```
+
+_Default:_ `0` (disabled - sync from genesis)
+_Constant:_ `FlagTrustedHeight`, `FlagTrustedHeaderHash`

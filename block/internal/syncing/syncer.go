@@ -30,6 +30,33 @@ import (
 
 var _ BlockSyncer = (*Syncer)(nil)
 
+// getTrustedHeader loads and verifies the trusted header from the store
+func (s *Syncer) getTrustedHeader(ctx context.Context) (*types.SignedHeader, error) {
+	if s.config.P2P.TrustedHeight == 0 {
+		return nil, fmt.Errorf("trusted_height is not configured")
+	}
+
+	// Load the signed header from the store
+	header, err := s.store.GetHeader(ctx, s.config.P2P.TrustedHeight)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load trusted header at height %d: %w", s.config.P2P.TrustedHeight, err)
+	}
+
+	// Verify the header hash matches the trusted hash
+	expectedHash := s.config.P2P.TrustedHeaderHash
+	actualHash := header.Hash().String()
+	if actualHash != expectedHash {
+		return nil, fmt.Errorf("trusted header hash mismatch at height %d: expected %s, got %s",
+			s.config.P2P.TrustedHeight, expectedHash, actualHash)
+	}
+
+	s.logger.Info().Uint64("height", s.config.P2P.TrustedHeight).
+		Str("hash", actualHash).
+		Msg("trusted header loaded and verified")
+
+	return header, nil
+}
+
 // forcedInclusionGracePeriodConfig contains internal configuration for forced inclusion grace periods.
 type forcedInclusionGracePeriodConfig struct {
 	// basePeriod is the base number of additional epochs allowed for including forced inclusion transactions
@@ -304,25 +331,59 @@ func (s *Syncer) initializeState() error {
 	// Load state from store
 	state, err := s.store.GetState(s.ctx)
 	if err != nil {
-		// Initialize new chain state for a fresh full node (no prior state on disk)
-		// Mirror executor initialization to ensure AppHash matches headers produced by the sequencer.
-		stateRoot, initErr := s.exec.InitChain(
-			s.ctx,
-			s.genesis.StartTime,
-			s.genesis.InitialHeight,
-			s.genesis.ChainID,
-		)
-		if initErr != nil {
-			return fmt.Errorf("failed to initialize execution client: %w", initErr)
-		}
+		// initializeStateFromTrustedHeight initializes the sync state from a trusted height.
+		// This allows a syncing node to start from a known, verified block height instead of genesis.
+		if s.config.P2P.TrustedHeight > 0 {
+			s.logger.Info().Uint64("trusted_height", s.config.P2P.TrustedHeight).Msg("initializing state from trusted height")
 
-		state = types.State{
-			ChainID:         s.genesis.ChainID,
-			InitialHeight:   s.genesis.InitialHeight,
-			LastBlockHeight: s.genesis.InitialHeight - 1,
-			LastBlockTime:   s.genesis.StartTime,
-			DAHeight:        s.genesis.DAStartHeight,
-			AppHash:         stateRoot,
+			// Load and verify the trusted header
+			trustedHeader, err := s.getTrustedHeader(s.ctx)
+			if err != nil {
+				return fmt.Errorf("failed to load trusted header: %w", err)
+			}
+
+			// Initialize new chain state from the trusted header
+			stateRoot, initErr := s.exec.InitChain(
+				s.ctx,
+				trustedHeader.Time(),
+				trustedHeader.Height(),
+				trustedHeader.ChainID(),
+			)
+			if initErr != nil {
+				return fmt.Errorf("failed to initialize execution client: %w", initErr)
+			}
+
+			state = types.State{
+				Version:         types.InitStateVersion,
+				ChainID:         trustedHeader.ChainID(),
+				InitialHeight:   trustedHeader.Height(),
+				LastBlockHeight: trustedHeader.Height(),
+				LastBlockTime:   trustedHeader.Time(),
+				LastHeaderHash:  trustedHeader.Hash(), // Hash of the trusted header
+				DAHeight:        s.genesis.DAStartHeight,
+				AppHash:         stateRoot,
+			}
+		} else {
+			// Initialize new chain state for a fresh full node (no prior state on disk)
+			// Mirror executor initialization to ensure AppHash matches headers produced by the sequencer.
+			stateRoot, initErr := s.exec.InitChain(
+				s.ctx,
+				s.genesis.StartTime,
+				s.genesis.InitialHeight,
+				s.genesis.ChainID,
+			)
+			if initErr != nil {
+				return fmt.Errorf("failed to initialize execution client: %w", initErr)
+			}
+
+			state = types.State{
+				ChainID:         s.genesis.ChainID,
+				InitialHeight:   s.genesis.InitialHeight,
+				LastBlockHeight: s.genesis.InitialHeight - 1,
+				LastBlockTime:   s.genesis.StartTime,
+				DAHeight:        s.genesis.DAStartHeight,
+				AppHash:         stateRoot,
+			}
 		}
 	}
 	if state.DAHeight != 0 && state.DAHeight < s.genesis.DAStartHeight {

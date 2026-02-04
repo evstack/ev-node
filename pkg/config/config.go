@@ -97,6 +97,10 @@ const (
 	FlagP2PBlockedPeers = FlagPrefixEvnode + "p2p.blocked_peers"
 	// FlagP2PAllowedPeers is a flag for specifying the P2P allowed peers
 	FlagP2PAllowedPeers = FlagPrefixEvnode + "p2p.allowed_peers"
+	// FlagTrustedHeight is a flag for specifying the trusted block height to start sync from
+	FlagTrustedHeight = FlagPrefixEvnode + "p2p.trusted_height"
+	// FlagTrustedHeaderHash is a flag for specifying the trusted header hash for verification
+	FlagTrustedHeaderHash = FlagPrefixEvnode + "p2p.trusted_header_hash"
 
 	// Instrumentation configuration flags
 
@@ -272,10 +276,12 @@ type LogConfig struct {
 
 // P2PConfig contains all peer-to-peer networking configuration parameters
 type P2PConfig struct {
-	ListenAddress string `mapstructure:"listen_address" yaml:"listen_address" comment:"Address to listen for incoming connections (host:port)"`
-	Peers         string `mapstructure:"peers" yaml:"peers" comment:"Comma-separated list of peers to connect to"`
-	BlockedPeers  string `mapstructure:"blocked_peers" yaml:"blocked_peers" comment:"Comma-separated list of peer IDs to block from connecting"`
-	AllowedPeers  string `mapstructure:"allowed_peers" yaml:"allowed_peers" comment:"Comma-separated list of peer IDs to allow connections from"`
+	ListenAddress     string `mapstructure:"listen_address" yaml:"listen_address" comment:"Address to listen for incoming connections (host:port)"`
+	Peers             string `mapstructure:"peers" yaml:"peers" comment:"Comma-separated list of peers to connect to"`
+	BlockedPeers      string `mapstructure:"blocked_peers" yaml:"blocked_peers" comment:"Comma-separated list of peer IDs to block from connecting"`
+	AllowedPeers      string `mapstructure:"allowed_peers" yaml:"allowed_peers" comment:"Comma-separated list of peer IDs to allow connections from"`
+	TrustedHeight     uint64 `mapstructure:"trusted_height" yaml:"trusted_height" comment:"Block height to trust for sync initialization. When set, sync starts from this height instead of genesis. Must be accompanied by trusted_header_hash for security."`
+	TrustedHeaderHash string `mapstructure:"trusted_header_hash" yaml:"trusted_header_hash" comment:"Hash of the trusted header for security verification. This should be the hex-encoded hash of the header at trusted_height. Prevents against history rewrites during sync."`
 }
 
 // SignerConfig contains all signer configuration parameters
@@ -373,6 +379,13 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("LazyBlockInterval (%v) must be greater than BlockTime (%v) in lazy mode",
 			c.Node.LazyBlockInterval.Duration, c.Node.BlockTime.Duration)
 	}
+
+	// Validate trusted height configuration
+	if c.P2P.TrustedHeight > 0 && c.P2P.TrustedHeaderHash == "" {
+		return fmt.Errorf("trusted_height (%d) is set but trusted_header_hash is empty. When using trusted_height, trusted_header_hash must also be provided for security verification",
+			c.P2P.TrustedHeight)
+	}
+
 	if err := c.Raft.Validate(); err != nil {
 		return err
 	}
@@ -459,6 +472,8 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().String(FlagP2PPeers, def.P2P.Peers, "Comma separated list of seed nodes to connect to")
 	cmd.Flags().String(FlagP2PBlockedPeers, def.P2P.BlockedPeers, "Comma separated list of nodes to ignore")
 	cmd.Flags().String(FlagP2PAllowedPeers, def.P2P.AllowedPeers, "Comma separated list of nodes to whitelist")
+	cmd.Flags().Uint64(FlagTrustedHeight, def.P2P.TrustedHeight, "block height to trust for sync initialization (0 = start from genesis)")
+	cmd.Flags().String(FlagTrustedHeaderHash, def.P2P.TrustedHeaderHash, "hash of the trusted header for security verification (hex-encoded)")
 
 	// RPC configuration flags
 	cmd.Flags().String(FlagRPCAddress, def.RPC.Address, "RPC server address (host:port)")

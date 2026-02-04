@@ -112,7 +112,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagRPCEnableDAVisualization, DefaultConfig().RPC.EnableDAVisualization)
 
 	// Count the number of flags we're explicitly checking
-	expectedFlagCount := 63 // Update this number if you add more flag checks above
+	expectedFlagCount := 65 // Update this number if you add more flag checks above
 
 	// Get the actual number of flags (both regular and persistent)
 	actualFlagCount := 0
@@ -501,6 +501,60 @@ func TestBasedSequencerValidation(t *testing.T) {
 			cfg.RootDir = t.TempDir()
 			cfg.Node.Aggregator = tt.aggregator
 			cfg.Node.BasedSequencer = tt.basedSeq
+
+			err := cfg.Validate()
+
+			if tt.expectError {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorMsg)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestTrustedHeightValidation(t *testing.T) {
+	tests := []struct {
+		name          string
+		trustedHeight uint64
+		trustedHash   string
+		expectError   bool
+		errorMsg      string
+	}{
+		{
+			name:          "trusted height with empty hash should fail",
+			trustedHeight: 100,
+			trustedHash:   "",
+			expectError:   true,
+			errorMsg:      "trusted_height (100) is set but trusted_header_hash is empty",
+		},
+		{
+			name:          "trusted height with valid hash should pass",
+			trustedHeight: 100,
+			trustedHash:   "abc123",
+			expectError:   false,
+		},
+		{
+			name:          "zero trusted height with empty hash should pass",
+			trustedHeight: 0,
+			trustedHash:   "",
+			expectError:   false,
+		},
+		{
+			name:          "zero trusted height with hash should pass (not validated)",
+			trustedHeight: 0,
+			trustedHash:   "abc123",
+			expectError:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.RootDir = t.TempDir()
+			cfg.P2P.TrustedHeight = tt.trustedHeight
+			cfg.P2P.TrustedHeaderHash = tt.trustedHash
 
 			err := cfg.Validate()
 
