@@ -61,6 +61,7 @@ packages:
           dir: ./block/internal/syncing
           pkgname: syncing
           filename: syncer_mock.go
+
   github.com/evstack/ev-node/block/internal/common:
     interfaces:
       Broadcaster:

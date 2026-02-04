@@ -152,7 +152,7 @@ func (s *DefaultStore) GetStateAtHeight(ctx context.Context, height uint64) (typ
 	blob, err := s.db.Get(ctx, ds.NewKey(getStateAtHeightKey(height)))
 	if err != nil {
 		if errors.Is(err, ds.ErrNotFound) {
-			return types.State{}, fmt.Errorf("no state found at height %d", height)
+			return types.State{}, fmt.Errorf("get state at height %d: %w", height, ds.ErrNotFound)
 		}
 		return types.State{}, fmt.Errorf("failed to retrieve state at height %d: %w", height, err)
 	}
@@ -188,6 +188,15 @@ func (s *DefaultStore) GetMetadata(ctx context.Context, key string) ([]byte, err
 		return nil, fmt.Errorf("failed to get metadata for key '%s': %w", key, err)
 	}
 	return data, nil
+}
+
+// DeleteMetadata removes a metadata key from the store.
+func (s *DefaultStore) DeleteMetadata(ctx context.Context, key string) error {
+	err := s.db.Delete(ctx, ds.NewKey(getMetaKey(key)))
+	if err != nil {
+		return fmt.Errorf("failed to delete metadata for key '%s': %w", key, err)
+	}
+	return nil
 }
 
 // Sync flushes the store state to disk.

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/celestiaorg/go-header"
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block/internal/cache"
@@ -20,6 +21,7 @@ import (
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
+	"github.com/evstack/ev-node/pkg/sync"
 	"github.com/evstack/ev-node/pkg/telemetry"
 	"github.com/evstack/ev-node/types"
 )
@@ -110,7 +112,7 @@ func (bc *Components) Stop() error {
 		}
 	}
 	if bc.Cache != nil {
-		if err := bc.Cache.SaveToDisk(); err != nil {
+		if err := bc.Cache.SaveToStore(); err != nil {
 			errs = errors.Join(errs, fmt.Errorf("failed to save caches: %w", err))
 		}
 	}
@@ -127,8 +129,10 @@ func NewSyncComponents(
 	store store.Store,
 	exec coreexecutor.Executor,
 	daClient da.Client,
-	headerStore common.Broadcaster[*types.SignedHeader],
-	dataStore common.Broadcaster[*types.Data],
+	headerStore header.Store[*types.P2PSignedHeader],
+	dataStore header.Store[*types.P2PData],
+	headerDAHintAppender submitting.DAHintAppender,
+	dataDAHintAppender submitting.DAHintAppender,
 	logger zerolog.Logger,
 	metrics *Metrics,
 	blockOpts BlockOptions,
@@ -163,7 +167,7 @@ func NewSyncComponents(
 	}
 
 	// Create submitter for sync nodes (no signer, only DA inclusion processing)
-	var daSubmitter submitting.DASubmitterAPI = submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger)
+	var daSubmitter submitting.DASubmitterAPI = submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger, headerDAHintAppender, dataDAHintAppender)
 	if config.Instrumentation.IsTracingEnabled() {
 		daSubmitter = submitting.WithTracingDASubmitter(daSubmitter)
 	}
@@ -200,8 +204,8 @@ func NewAggregatorComponents(
 	sequencer coresequencer.Sequencer,
 	daClient da.Client,
 	signer signer.Signer,
-	headerBroadcaster common.Broadcaster[*types.SignedHeader],
-	dataBroadcaster common.Broadcaster[*types.Data],
+	headerSyncService *sync.HeaderSyncService,
+	dataSyncService *sync.DataSyncService,
 	logger zerolog.Logger,
 	metrics *Metrics,
 	blockOpts BlockOptions,
@@ -229,8 +233,8 @@ func NewAggregatorComponents(
 		metrics,
 		config,
 		genesis,
-		headerBroadcaster,
-		dataBroadcaster,
+		headerSyncService,
+		dataSyncService,
 		logger,
 		blockOpts,
 		errorCh,
@@ -266,7 +270,7 @@ func NewAggregatorComponents(
 		}, nil
 	}
 
-	var daSubmitter submitting.DASubmitterAPI = submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger)
+	var daSubmitter submitting.DASubmitterAPI = submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger, headerSyncService, dataSyncService)
 	if config.Instrumentation.IsTracingEnabled() {
 		daSubmitter = submitting.WithTracingDASubmitter(daSubmitter)
 	}
