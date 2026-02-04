@@ -410,7 +410,7 @@ func (a *StoreAdapter[H]) Tail(ctx context.Context) (H, error) {
 	// genesis initial height, but if pruning metadata is available we can
 	// skip directly past fully-pruned ranges.
 	startHeight := a.genesisInitialHeight
-	if getter, ok := any(a.getter).(lastPrunedHeightGetter); ok {
+	if getter, ok := a.getter.(lastPrunedHeightGetter); ok {
 		if lastPruned, ok := getter.LastPrunedHeight(ctx); ok {
 			if lastPruned < ^uint64(0) {
 				startHeight = lastPruned + 1
@@ -819,22 +819,6 @@ func (g *HeaderStoreGetter) Height(ctx context.Context) (uint64, error) {
 func (g *HeaderStoreGetter) HasAt(ctx context.Context, height uint64) bool {
 	_, err := g.store.GetHeader(ctx, height)
 	return err == nil
-}
-
-// LastPrunedHeight implements lastPrunedHeightGetter for HeaderStoreGetter by
-// reading the pruning metadata from the underlying store.
-func (g *HeaderStoreGetter) LastPrunedHeight(ctx context.Context) (uint64, bool) {
-	meta, err := g.store.GetMetadata(ctx, LastPrunedBlockHeightKey)
-	if err != nil || len(meta) != heightLength {
-		return 0, false
-	}
-
-	height, err := decodeHeight(meta)
-	if err != nil {
-		return 0, false
-	}
-
-	return height, true
 }
 
 // DataStoreGetter implements StoreGetter for *types.Data.
