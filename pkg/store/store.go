@@ -6,8 +6,10 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"strings"
 
 	ds "github.com/ipfs/go-datastore"
+	dsq "github.com/ipfs/go-datastore/query"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/evstack/ev-node/types"
@@ -188,6 +190,40 @@ func (s *DefaultStore) GetMetadata(ctx context.Context, key string) ([]byte, err
 		return nil, fmt.Errorf("failed to get metadata for key '%s': %w", key, err)
 	}
 	return data, nil
+}
+
+// GetMetadataByPrefix returns all metadata entries whose keys have the given prefix.
+// This is more efficient than iterating through known keys when the set of keys is unknown.
+func (s *DefaultStore) GetMetadataByPrefix(ctx context.Context, prefix string) ([]MetadataEntry, error) {
+	// The full key in the datastore includes the meta prefix
+	fullPrefix := getMetaKey(prefix)
+
+	results, err := s.db.Query(ctx, dsq.Query{Prefix: fullPrefix})
+	if err != nil {
+		return nil, fmt.Errorf("failed to query metadata with prefix '%s': %w", prefix, err)
+	}
+	defer results.Close()
+
+	var entries []MetadataEntry
+	for result := range results.Next() {
+		if result.Error != nil {
+			return nil, fmt.Errorf("error iterating metadata results: %w", result.Error)
+		}
+
+		// Extract the original key by removing the meta prefix
+		// The key from datastore is like "/m/cache/header-da-included/hash"
+		// We want to return "cache/header-da-included/hash"
+		metaKeyPrefix := getMetaKey("")
+		key := strings.TrimPrefix(result.Key, metaKeyPrefix)
+		key = strings.TrimPrefix(key, "/") // Remove leading slash for consistency
+
+		entries = append(entries, MetadataEntry{
+			Key:   key,
+			Value: result.Value,
+		})
+	}
+
+	return entries, nil
 }
 
 // DeleteMetadata removes a metadata key from the store.

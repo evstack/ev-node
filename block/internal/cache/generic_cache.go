@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"strings"
 	"sync"
 
 	"sync/atomic"
 
 	lru "github.com/hashicorp/golang-lru/v2"
+	"github.com/rs/zerolog/log"
 
 	"github.com/evstack/ev-node/pkg/store"
 )
@@ -215,32 +217,40 @@ func (c *Cache[T]) deleteAllForHeight(height uint64) {
 
 // RestoreFromStore loads DA inclusion data from the store into the in-memory cache.
 // This should be called during initialization to restore persisted state.
-// It iterates through store metadata keys with the cache's prefix and populates the LRU cache.
-func (c *Cache[T]) RestoreFromStore(ctx context.Context, hashes []string) error {
-	if c.store == nil {
-		return nil // No store configured, nothing to restore
+// It directly queries store metadata keys with the cache's prefix, avoiding iteration through all blocks.
+func (c *Cache[T]) RestoreFromStore(ctx context.Context) error {
+	if c.store == nil || c.storeKeyPrefix == "" {
+		return nil // No store configured or no prefix, nothing to restore
 	}
 
-	for _, hash := range hashes {
-		value, err := c.store.GetMetadata(ctx, c.storeKey(hash))
-		if err != nil {
-			// Key not found is not an error - the hash may not have been DA included yet
+	// Query all metadata entries with our prefix directly
+	entries, err := c.store.GetMetadataByPrefix(ctx, c.storeKeyPrefix)
+	if err != nil {
+		return fmt.Errorf("failed to query metadata by prefix %q: %w", c.storeKeyPrefix, err)
+	}
+
+	for _, entry := range entries {
+		// Extract the hash from the key by removing the prefix
+		hash := strings.TrimPrefix(entry.Key, c.storeKeyPrefix)
+		if hash == entry.Key || hash == "" {
+			// Prefix not found or empty hash - skip invalid entry
 			continue
 		}
 
-		daHeight, blockHeight, ok := decodeDAInclusion(value)
+		daHeight, blockHeight, ok := decodeDAInclusion(entry.Value)
 		if !ok {
-			continue // Invalid data, skip
+			log.Warn().
+				Str("key", entry.Key).
+				Int("value_len", len(entry.Value)).
+				Msg("skipping invalid DA inclusion entry during cache restore")
+			continue
 		}
 
 		c.daIncluded.Add(hash, daHeight)
 		c.hashByHeight.Add(blockHeight, hash)
 
 		// Update max DA height
-		current := c.maxDAHeight.Load()
-		if daHeight > current {
-			c.maxDAHeight.Store(daHeight)
-		}
+		c.setMaxDAHeight(daHeight)
 	}
 
 	return nil
