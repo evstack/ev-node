@@ -4,7 +4,7 @@ go 1.25.6
 
 require (
 	github.com/ethereum/go-ethereum v1.16.8
-	github.com/evstack/ev-node v1.0.0-rc.2
+	github.com/evstack/ev-node v1.0.0-rc.3
 	github.com/evstack/ev-node/core v1.0.0-rc.1
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/ipfs/go-datastore v0.9.0
@@ -91,7 +91,7 @@ require (
 	go.opentelemetry.io/proto/otlp v1.9.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/crypto v0.47.0 // indirect
-	golang.org/x/exp v0.0.0-20251209150349-8475f28825e9 // indirect
+	golang.org/x/exp v0.0.0-20260112195511-716be5621a96 // indirect
 	golang.org/x/net v0.49.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.40.0 // indirect
