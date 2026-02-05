@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 
 	lru "github.com/hashicorp/golang-lru/v2"
+	"github.com/rs/zerolog/log"
 
 	"github.com/evstack/ev-node/pkg/store"
 )
@@ -238,17 +239,18 @@ func (c *Cache[T]) RestoreFromStore(ctx context.Context) error {
 
 		daHeight, blockHeight, ok := decodeDAInclusion(entry.Value)
 		if !ok {
-			continue // Invalid data, skip
+			log.Warn().
+				Str("key", entry.Key).
+				Int("value_len", len(entry.Value)).
+				Msg("skipping invalid DA inclusion entry during cache restore")
+			continue
 		}
 
 		c.daIncluded.Add(hash, daHeight)
 		c.hashByHeight.Add(blockHeight, hash)
 
 		// Update max DA height
-		current := c.maxDAHeight.Load()
-		if daHeight > current {
-			c.maxDAHeight.Store(daHeight)
-		}
+		c.setMaxDAHeight(daHeight)
 	}
 
 	return nil
