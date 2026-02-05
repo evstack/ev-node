@@ -215,6 +215,7 @@ func (s *DefaultStore) GetMetadataByPrefix(ctx context.Context, prefix string) (
 		// We want to return "cache/header-da-included/hash"
 		metaKeyPrefix := getMetaKey("")
 		key := strings.TrimPrefix(result.Key, metaKeyPrefix)
+		key = strings.TrimPrefix(key, "/") // Remove leading slash for consistency
 
 		entries = append(entries, MetadataEntry{
 			Key:   key,

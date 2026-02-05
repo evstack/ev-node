@@ -230,14 +230,10 @@ func (c *Cache[T]) RestoreFromStore(ctx context.Context) error {
 
 	for _, entry := range entries {
 		// Extract the hash from the key by removing the prefix
-		// The key may have a leading "/" so we try both formats
 		hash := strings.TrimPrefix(entry.Key, c.storeKeyPrefix)
-		if hash == entry.Key {
-			// Try with leading slash
-			hash = strings.TrimPrefix(entry.Key, "/"+c.storeKeyPrefix)
-		}
-		if hash == "" || hash == entry.Key {
-			continue // Invalid key format
+		if hash == entry.Key || hash == "" {
+			// Prefix not found or empty hash - skip invalid entry
+			continue
 		}
 
 		daHeight, blockHeight, ok := decodeDAInclusion(entry.Value)
