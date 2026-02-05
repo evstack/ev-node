@@ -342,45 +342,17 @@ func (m *implementation) SaveToStore() error {
 }
 
 // RestoreFromStore restores the DA inclusion cache from the store.
-// This iterates through blocks in the store and checks for persisted DA inclusion data.
+// This uses prefix-based queries to directly load persisted DA inclusion data,
+// avoiding expensive iteration through all blocks.
 func (m *implementation) RestoreFromStore() error {
 	ctx := context.Background()
 
-	// Get current store height to know how many blocks to check
-	height, err := m.store.Height(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get store height: %w", err)
-	}
-
-	if height == 0 {
-		return nil // No blocks to restore
-	}
-
-	// Collect hashes from stored blocks
-	var headerHashes []string
-	var dataHashes []string
-
-	for h := uint64(1); h <= height; h++ {
-		header, data, err := m.store.GetBlockData(ctx, h)
-		if err != nil {
-			m.logger.Warn().Uint64("height", h).Err(err).Msg("failed to get block data during cache restore")
-			continue
-		}
-
-		if header != nil {
-			headerHashes = append(headerHashes, header.Hash().String())
-		}
-		if data != nil {
-			dataHashes = append(dataHashes, data.DACommitment().String())
-		}
-	}
-
 	// Restore DA inclusion data from store
-	if err := m.headerCache.RestoreFromStore(ctx, headerHashes); err != nil {
+	if err := m.headerCache.RestoreFromStore(ctx); err != nil {
 		return fmt.Errorf("failed to restore header cache from store: %w", err)
 	}
 
-	if err := m.dataCache.RestoreFromStore(ctx, dataHashes); err != nil {
+	if err := m.dataCache.RestoreFromStore(ctx); err != nil {
 		return fmt.Errorf("failed to restore data cache from store: %w", err)
 	}
 
@@ -388,8 +360,8 @@ func (m *implementation) RestoreFromStore() error {
 	m.initDAHeightFromStore(ctx)
 
 	m.logger.Info().
-		Int("header_hashes", len(headerHashes)).
-		Int("data_hashes", len(dataHashes)).
+		Int("header_entries", m.headerCache.daIncluded.Len()).
+		Int("data_entries", m.dataCache.daIncluded.Len()).
 		Uint64("da_height", m.DaHeight()).
 		Msg("restored DA inclusion cache from store")
 
