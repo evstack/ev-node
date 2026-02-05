@@ -65,6 +65,10 @@ var _ execution.HeightProvider = (*EngineClient)(nil)
 // Ensure EngineClient implements the execution.Rollbackable interface
 var _ execution.Rollbackable = (*EngineClient)(nil)
 
+// Ensure EngineClient implements optional pruning interface when used with
+// ev-node's height-based pruning.
+var _ execution.ExecPruner = (*EngineClient)(nil)
+
 // validatePayloadStatus checks the payload status and returns appropriate errors.
 // It implements the Engine API specification's status handling:
 //   - VALID: Operation succeeded, return nil
@@ -263,6 +267,13 @@ func NewEngineExecutionClient(
 		blockHashCache:            make(map[uint64]common.Hash),
 		logger:                    zerolog.Nop(),
 	}, nil
+}
+
+// PruneExec implements execution.ExecPruner by delegating to the
+// underlying EVMStore. It is safe to call this multiple times with the same
+// or increasing heights; the store tracks its own last-pruned height.
+func (c *EngineClient) PruneExec(ctx context.Context, height uint64) error {
+	return c.store.PruneExec(ctx, height)
 }
 
 // SetLogger allows callers to attach a structured logger.

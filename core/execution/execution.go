@@ -161,3 +161,13 @@ type Rollbackable interface {
 	// Rollback resets the execution layer head to the specified height.
 	Rollback(ctx context.Context, targetHeight uint64) error
 }
+
+// ExecPruner is an optional interface that execution clients can implement
+// to support height-based pruning of their execution metadata.
+type ExecPruner interface {
+	// PruneExec should delete execution metadata for all heights up to and
+	// including the given height. Implementations should be idempotent and track
+	// their own progress so that repeated calls with the same or decreasing
+	// heights are cheap no-ops.
+	PruneExec(ctx context.Context, height uint64) error
+}
