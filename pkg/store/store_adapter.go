@@ -23,9 +23,6 @@ const (
 	// When this limit is reached, Append will block until items are pruned.
 	maxPendingCacheSize = 10_000
 
-	// pruneThreshold is the number of appends before we trigger a prune of already-persisted items.
-	pruneThreshold = 100
-
 	// pruneRetryInterval is how long to wait between prune attempts when cache is full.
 	pruneRetryInterval = 50 * time.Millisecond
 )
@@ -302,9 +299,6 @@ type StoreAdapter[H EntityWithDAHint[H]] struct {
 	// pending holds items received via Append that haven't been written to the store yet.
 	// Bounded by maxPendingCacheSize with backpressure when full.
 	pending *pendingCache[H]
-
-	// appendCount tracks appends to trigger periodic pruning
-	appendCount atomic.Uint64
 
 	// onDeleteFn is called when items are deleted (for rollback scenarios)
 	onDeleteFn func(context.Context, uint64) error
@@ -642,11 +636,6 @@ func (a *StoreAdapter[H]) Append(ctx context.Context, items ...H) error {
 		}
 	}
 
-	// Periodically prune items that have been persisted to the store
-	if a.appendCount.Add(1)%pruneThreshold == 0 {
-		a.prunePersisted(ctx)
-	}
-
 	return nil
 }
 
@@ -677,8 +666,13 @@ func (a *StoreAdapter[H]) waitForSpace(ctx context.Context) error {
 
 // prunePersisted removes items that have already been persisted to the underlying store.
 func (a *StoreAdapter[H]) prunePersisted(ctx context.Context) {
+	storeHeight, err := a.getter.Height(ctx)
+	if err != nil || storeHeight == 0 {
+		return
+	}
+	// Items at or below store height are definitely persisted
 	a.pending.pruneIf(func(height uint64) bool {
-		return a.getter.HasAt(ctx, height)
+		return height <= storeHeight
 	})
 }
 
