@@ -245,7 +245,9 @@ func (a *StoreAdapter[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (
 		return pendingHead, nil
 	}
 
-	return zero, header.ErrNotFound
+	// Return ErrEmptyStore (not ErrNotFound) when store is empty.
+	// The go-header syncer specifically checks for ErrEmptyStore to trigger initialization.
+	return zero, header.ErrEmptyStore
 }
 
 // Tail returns the lowest item in the store.
@@ -260,7 +262,9 @@ func (a *StoreAdapter[H]) Tail(ctx context.Context) (H, error) {
 		// Check store
 		h, err := a.getter.Height(ctx)
 		if err != nil || h == 0 {
-			return zero, header.ErrNotFound
+			// Return ErrEmptyStore (not ErrNotFound) when store is empty.
+			// The go-header syncer specifically checks for ErrEmptyStore to handle empty stores.
+			return zero, header.ErrEmptyStore
 		}
 		height = h
 	}
