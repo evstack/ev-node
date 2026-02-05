@@ -80,6 +80,16 @@ func TestReplayer_SyncToHeight_ExecutorBehind(t *testing.T) {
 		},
 		nil,
 	)
+	// Setup state at height 100 for app hash verification
+	mockStore.EXPECT().GetStateAtHeight(mock.Anything, uint64(100)).Return(
+		types.State{
+			ChainID:         gen.ChainID,
+			InitialHeight:   gen.InitialHeight,
+			LastBlockHeight: 100,
+			AppHash:         []byte("app-hash-100"),
+		},
+		nil,
+	)
 
 	// Expect ExecuteTxs to be called for height 100
 	mockExec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, []byte("app-hash-99")).
@@ -293,6 +303,16 @@ func TestReplayer_SyncToHeight_MultipleBlocks(t *testing.T) {
 			},
 			nil,
 		).Once()
+		// State at current height for app hash verification
+		mockStore.EXPECT().GetStateAtHeight(mock.Anything, height).Return(
+			types.State{
+				ChainID:         gen.ChainID,
+				InitialHeight:   gen.InitialHeight,
+				LastBlockHeight: height,
+				AppHash:         []byte("app-hash-" + string(rune('0'+height))),
+			},
+			nil,
+		).Once()
 
 		// ExecuteTxs for current block
 		mockExec.On("ExecuteTxs", mock.Anything, mock.Anything, height, mock.Anything, mock.Anything).
@@ -363,6 +383,17 @@ func TestReplayer_ReplayBlock_FirstBlock(t *testing.T) {
 	mockBatch.EXPECT().UpdateState(mock.Anything).Return(nil)
 	mockBatch.EXPECT().Commit().Return(nil)
 
+	// Setup state at height 1 for app hash verification
+	mockStore.EXPECT().GetStateAtHeight(mock.Anything, uint64(1)).Return(
+		types.State{
+			ChainID:         gen.ChainID,
+			InitialHeight:   gen.InitialHeight,
+			LastBlockHeight: 1,
+			AppHash:         []byte("app-hash-1"),
+		},
+		nil,
+	)
+
 	err := syncer.SyncToHeight(ctx, 1)
 	require.NoError(t, err)
 
@@ -429,6 +460,15 @@ func TestReplayer_AppHashMismatch(t *testing.T) {
 			InitialHeight:   gen.InitialHeight,
 			LastBlockHeight: 99,
 			AppHash:         []byte("app-hash-99"),
+		},
+		nil,
+	)
+	mockStore.EXPECT().GetStateAtHeight(mock.Anything, uint64(100)).Return(
+		types.State{
+			ChainID:         gen.ChainID,
+			InitialHeight:   gen.InitialHeight,
+			LastBlockHeight: 100,
+			AppHash:         []byte("expected-app-hash"),
 		},
 		nil,
 	)

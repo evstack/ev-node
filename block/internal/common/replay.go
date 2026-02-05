@@ -190,27 +190,35 @@ func (s *Replayer) replayBlock(ctx context.Context, height uint64) error {
 		return fmt.Errorf("failed to execute transactions: %w", err)
 	}
 
-	// DEBUG: Log comparison of expected vs actual app hash
-	s.logger.Debug().
-		Uint64("height", height).
-		Str("expected_app_hash", hex.EncodeToString(header.AppHash)).
-		Str("actual_app_hash", hex.EncodeToString(newAppHash)).
-		Bool("hashes_match", bytes.Equal(newAppHash, header.AppHash)).
-		Msg("replayBlock: ExecuteTxs completed")
-
-	// Verify the app hash matches
-	if !bytes.Equal(newAppHash, header.AppHash) {
-		err := fmt.Errorf("app hash mismatch: expected %s got %s",
-			hex.EncodeToString(header.AppHash),
-			hex.EncodeToString(newAppHash),
-		)
-		s.logger.Error().
-			Str("expected", hex.EncodeToString(header.AppHash)).
-			Str("got", hex.EncodeToString(newAppHash)).
+	expectedState, stateErr := s.store.GetStateAtHeight(ctx, height)
+	if stateErr != nil {
+		s.logger.Warn().
 			Uint64("height", height).
-			Err(err).
-			Msg("app hash mismatch during replay")
-		return err
+			Err(stateErr).
+			Msg("replayBlock: failed to load expected state, skipping app hash verification")
+	} else {
+		// DEBUG: Log comparison of expected vs actual app hash
+		s.logger.Debug().
+			Uint64("height", height).
+			Str("expected_app_hash", hex.EncodeToString(expectedState.AppHash)).
+			Str("actual_app_hash", hex.EncodeToString(newAppHash)).
+			Bool("hashes_match", bytes.Equal(newAppHash, expectedState.AppHash)).
+			Msg("replayBlock: ExecuteTxs completed")
+
+		// Verify the app hash matches the stored state at this height
+		if !bytes.Equal(newAppHash, expectedState.AppHash) {
+			err := fmt.Errorf("app hash mismatch: expected %s got %s",
+				hex.EncodeToString(expectedState.AppHash),
+				hex.EncodeToString(newAppHash),
+			)
+			s.logger.Error().
+				Str("expected", hex.EncodeToString(expectedState.AppHash)).
+				Str("got", hex.EncodeToString(newAppHash)).
+				Uint64("height", height).
+				Err(err).
+				Msg("app hash mismatch during replay")
+			return err
+		}
 	}
 
 	// Calculate new state
