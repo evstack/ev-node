@@ -309,11 +309,14 @@ func (s *Syncer) initializeState() error {
 		if s.config.P2P.TrustedHeight > 0 {
 			s.logger.Info().Uint64("trusted_height", s.config.P2P.TrustedHeight).Msg("initializing state from trusted height")
 
-			// Load and verify the trusted header
-			trustedHeader, err := s.store.GetHeader(s.ctx, s.config.P2P.TrustedHeight)
+			// Load and verify the trusted header from the P2P header store.
+			// The header is fetched via P2P and stored in the StoreAdapter's pending cache,
+			// so we must use headerStore.GetByHeight() which checks both the main store and pending cache.
+			p2pHeader, err := s.headerStore.GetByHeight(s.ctx, s.config.P2P.TrustedHeight)
 			if err != nil {
 				return fmt.Errorf("failed to load trusted header at height %d: %w", s.config.P2P.TrustedHeight, err)
 			}
+			trustedHeader := p2pHeader.SignedHeader
 
 			// Initialize new chain state from the trusted header
 			stateRoot, initErr := s.exec.InitChain(
