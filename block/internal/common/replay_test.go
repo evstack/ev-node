@@ -2,6 +2,7 @@ package common
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -37,6 +38,7 @@ func TestReplayer_SyncToHeight_ExecutorBehind(t *testing.T) {
 	now := uint64(time.Now().UnixNano())
 
 	// Setup store to return block data for height 100
+	// header.AppHash is the PREVIOUS state's app hash (input to execution)
 	mockStore.EXPECT().GetBlockData(mock.Anything, uint64(100)).Return(
 		&types.SignedHeader{
 			Header: types.Header{
@@ -45,7 +47,7 @@ func TestReplayer_SyncToHeight_ExecutorBehind(t *testing.T) {
 					Time:    now,
 					ChainID: "test-chain",
 				},
-				AppHash: []byte("app-hash-100"),
+				AppHash: []byte("app-hash-99"), // This is the input app hash (from state 99)
 			},
 		},
 		&types.Data{
@@ -54,36 +56,32 @@ func TestReplayer_SyncToHeight_ExecutorBehind(t *testing.T) {
 		nil,
 	)
 
-	// Setup store to return previous block for state
-	mockStore.EXPECT().GetBlockData(mock.Anything, uint64(99)).Return(
-		&types.SignedHeader{
-			Header: types.Header{
-				BaseHeader: types.BaseHeader{
-					Height:  99,
-					Time:    now - 1000000000,
-					ChainID: "test-chain",
-				},
-				AppHash: []byte("app-hash-99"),
-			},
-		},
-		&types.Data{},
-		nil,
-	)
-
-	// Setup state at height 99
+	// Setup state at height 99 - this provides the input app hash for ExecuteTxs
 	mockStore.EXPECT().GetStateAtHeight(mock.Anything, uint64(99)).Return(
 		types.State{
 			ChainID:         gen.ChainID,
 			InitialHeight:   gen.InitialHeight,
 			LastBlockHeight: 99,
-			AppHash:         []byte("app-hash-99"),
+			AppHash:         []byte("app-hash-99"), // Result of executing block 99
 		},
 		nil,
 	)
 
-	// Expect ExecuteTxs to be called for height 100
+	// Expect ExecuteTxs to be called with the previous state's app hash
+	// and return the new app hash (result of executing block 100)
 	mockExec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, []byte("app-hash-99")).
 		Return([]byte("app-hash-100"), nil)
+
+	// Setup state at height 100 for verification (optional - may not exist during replay)
+	mockStore.EXPECT().GetStateAtHeight(mock.Anything, uint64(100)).Return(
+		types.State{
+			ChainID:         gen.ChainID,
+			InitialHeight:   gen.InitialHeight,
+			LastBlockHeight: 100,
+			AppHash:         []byte("app-hash-100"), // Expected result
+		},
+		nil,
+	)
 
 	// Setup batch for state persistence
 	mockBatch := mocks.NewMockBatch(t)
@@ -227,7 +225,7 @@ func TestReplayer_SyncToHeight_MultipleBlocks(t *testing.T) {
 
 	now := uint64(time.Now().UnixNano())
 
-	// First, the sync checks that the target block exists in the store (line 100 in replay.go)
+	// First, the sync checks that the target block exists in the store
 	mockStore.EXPECT().GetBlockData(mock.Anything, targetHeight).Return(
 		&types.SignedHeader{
 			Header: types.Header{
@@ -236,7 +234,7 @@ func TestReplayer_SyncToHeight_MultipleBlocks(t *testing.T) {
 					Time:    now + (100 * 1000000000),
 					ChainID: "test-chain",
 				},
-				AppHash: []byte("app-hash-100"),
+				AppHash: []byte("app-hash-99"), // Input app hash
 			},
 		},
 		&types.Data{
@@ -258,7 +256,7 @@ func TestReplayer_SyncToHeight_MultipleBlocks(t *testing.T) {
 						Time:    now + (height * 1000000000),
 						ChainID: "test-chain",
 					},
-					AppHash: []byte("app-hash-" + string(rune('0'+height))),
+					AppHash: []byte("app-hash-" + string(rune('0'+prevHeight))), // Input = previous state's result
 				},
 			},
 			&types.Data{
@@ -267,23 +265,7 @@ func TestReplayer_SyncToHeight_MultipleBlocks(t *testing.T) {
 			nil,
 		).Once()
 
-		// Previous block data (for getting previous app hash)
-		mockStore.EXPECT().GetBlockData(mock.Anything, prevHeight).Return(
-			&types.SignedHeader{
-				Header: types.Header{
-					BaseHeader: types.BaseHeader{
-						Height:  prevHeight,
-						Time:    now + (prevHeight * 1000000000),
-						ChainID: "test-chain",
-					},
-					AppHash: []byte("app-hash-" + string(rune('0'+prevHeight))),
-				},
-			},
-			&types.Data{},
-			nil,
-		).Once()
-
-		// State at previous height
+		// State at previous height (provides input app hash)
 		mockStore.EXPECT().GetStateAtHeight(mock.Anything, prevHeight).Return(
 			types.State{
 				ChainID:         gen.ChainID,
@@ -295,8 +277,20 @@ func TestReplayer_SyncToHeight_MultipleBlocks(t *testing.T) {
 		).Once()
 
 		// ExecuteTxs for current block
-		mockExec.On("ExecuteTxs", mock.Anything, mock.Anything, height, mock.Anything, mock.Anything).
+		mockExec.On("ExecuteTxs", mock.Anything, mock.Anything, height, mock.Anything,
+			[]byte("app-hash-"+string(rune('0'+prevHeight)))).
 			Return([]byte("app-hash-"+string(rune('0'+height))), nil).Once()
+
+		// State at current height for verification (may or may not exist)
+		mockStore.EXPECT().GetStateAtHeight(mock.Anything, height).Return(
+			types.State{
+				ChainID:         gen.ChainID,
+				InitialHeight:   gen.InitialHeight,
+				LastBlockHeight: height,
+				AppHash:         []byte("app-hash-" + string(rune('0'+height))),
+			},
+			nil,
+		).Once()
 
 		// Setup batch for state persistence
 		mockBatch := mocks.NewMockBatch(t)
@@ -332,7 +326,10 @@ func TestReplayer_ReplayBlock_FirstBlock(t *testing.T) {
 
 	now := uint64(time.Now().UnixNano())
 
+	mockExec.On("GetLatestHeight", mock.Anything).Return(uint64(0), nil)
+
 	// Setup store to return first block (at initial height)
+	// For genesis block, header.AppHash is the genesis app hash
 	mockStore.EXPECT().GetBlockData(mock.Anything, uint64(1)).Return(
 		&types.SignedHeader{
 			Header: types.Header{
@@ -341,7 +338,7 @@ func TestReplayer_ReplayBlock_FirstBlock(t *testing.T) {
 					Time:    now,
 					ChainID: "test-chain",
 				},
-				AppHash: []byte("app-hash-1"),
+				AppHash: []byte("genesis-app-hash"), // Genesis app hash (input)
 			},
 		},
 		&types.Data{
@@ -350,12 +347,15 @@ func TestReplayer_ReplayBlock_FirstBlock(t *testing.T) {
 		nil,
 	)
 
-	// For first block, ExecuteTxs should be called with genesis app hash
-	mockExec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(1), mock.Anything, []byte("app-hash-1")).
+	// For first block, ExecuteTxs should be called with genesis app hash (from header.AppHash)
+	mockExec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(1), mock.Anything, []byte("genesis-app-hash")).
 		Return([]byte("app-hash-1"), nil)
 
-	// Call replayBlock directly (this is a private method, so we test it through SyncToHeight)
-	mockExec.On("GetLatestHeight", mock.Anything).Return(uint64(0), nil)
+	// State at height 1 for verification (may not exist during fresh replay)
+	mockStore.EXPECT().GetStateAtHeight(mock.Anything, uint64(1)).Return(
+		types.State{},
+		errors.New("not found"),
+	)
 
 	// Setup batch for state persistence
 	mockBatch := mocks.NewMockBatch(t)
@@ -399,27 +399,12 @@ func TestReplayer_AppHashMismatch(t *testing.T) {
 					Time:    now,
 					ChainID: "test-chain",
 				},
-				AppHash: []byte("expected-app-hash"),
+				AppHash: []byte("app-hash-99"), // Input app hash
 			},
 		},
 		&types.Data{
 			Txs: []types.Tx{[]byte("tx1")},
 		},
-		nil,
-	)
-
-	mockStore.EXPECT().GetBlockData(mock.Anything, uint64(99)).Return(
-		&types.SignedHeader{
-			Header: types.Header{
-				BaseHeader: types.BaseHeader{
-					Height:  99,
-					Time:    now - 1000000000,
-					ChainID: "test-chain",
-				},
-				AppHash: []byte("app-hash-99"),
-			},
-		},
-		&types.Data{},
 		nil,
 	)
 
@@ -437,10 +422,94 @@ func TestReplayer_AppHashMismatch(t *testing.T) {
 	mockExec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, []byte("app-hash-99")).
 		Return([]byte("different-app-hash"), nil)
 
+	// State at height 100 exists and has the expected app hash
+	mockStore.EXPECT().GetStateAtHeight(mock.Anything, uint64(100)).Return(
+		types.State{
+			ChainID:         gen.ChainID,
+			InitialHeight:   gen.InitialHeight,
+			LastBlockHeight: 100,
+			AppHash:         []byte("expected-app-hash-100"), // Expected result doesn't match
+		},
+		nil,
+	)
+
 	// Should fail with mismatch error
 	err := syncer.SyncToHeight(ctx, targetHeight)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "app hash mismatch")
+
+	mockExec.AssertExpectations(t)
+	mockStore.AssertExpectations(t)
+}
+
+func TestReplayer_AppHashMismatch_NoStoredState(t *testing.T) {
+	// When there's no stored state at the target height, we can't verify
+	// and should proceed without error (trust the execution)
+	ctx := context.Background()
+	mockExec := mocks.NewMockHeightAwareExecutor(t)
+	mockStore := mocks.NewMockStore(t)
+	logger := zerolog.Nop()
+
+	gen := genesis.Genesis{
+		ChainID:       "test-chain",
+		InitialHeight: 1,
+		StartTime:     time.Now().UTC(),
+	}
+
+	syncer := NewReplayer(mockStore, mockExec, gen, logger)
+
+	targetHeight := uint64(100)
+	execHeight := uint64(99)
+
+	mockExec.On("GetLatestHeight", mock.Anything).Return(execHeight, nil)
+
+	now := uint64(time.Now().UnixNano())
+
+	mockStore.EXPECT().GetBlockData(mock.Anything, uint64(100)).Return(
+		&types.SignedHeader{
+			Header: types.Header{
+				BaseHeader: types.BaseHeader{
+					Height:  100,
+					Time:    now,
+					ChainID: "test-chain",
+				},
+				AppHash: []byte("app-hash-99"),
+			},
+		},
+		&types.Data{
+			Txs: []types.Tx{[]byte("tx1")},
+		},
+		nil,
+	)
+
+	mockStore.EXPECT().GetStateAtHeight(mock.Anything, uint64(99)).Return(
+		types.State{
+			ChainID:         gen.ChainID,
+			InitialHeight:   gen.InitialHeight,
+			LastBlockHeight: 99,
+			AppHash:         []byte("app-hash-99"),
+		},
+		nil,
+	)
+
+	mockExec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, []byte("app-hash-99")).
+		Return([]byte("app-hash-100"), nil)
+
+	// State at height 100 doesn't exist - skip verification
+	mockStore.EXPECT().GetStateAtHeight(mock.Anything, uint64(100)).Return(
+		types.State{},
+		errors.New("not found"),
+	)
+
+	// Setup batch for state persistence
+	mockBatch := mocks.NewMockBatch(t)
+	mockStore.EXPECT().NewBatch(mock.Anything).Return(mockBatch, nil)
+	mockBatch.EXPECT().UpdateState(mock.Anything).Return(nil)
+	mockBatch.EXPECT().Commit().Return(nil)
+
+	// Should succeed even without verification
+	err := syncer.SyncToHeight(ctx, targetHeight)
+	require.NoError(t, err)
 
 	mockExec.AssertExpectations(t)
 	mockStore.AssertExpectations(t)
