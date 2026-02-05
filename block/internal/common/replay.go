@@ -151,8 +151,6 @@ func (s *Replayer) replayBlock(ctx context.Context, height uint64) error {
 	var prevState types.State
 	if height == s.genesis.InitialHeight {
 		// For the first block, use genesis state.
-		// The header.AppHash contains the previous state's app hash (i.e., the genesis app hash).
-		// This is what ExecuteTxs needs as input.
 		prevState = types.State{
 			ChainID:         s.genesis.ChainID,
 			InitialHeight:   s.genesis.InitialHeight,
@@ -161,15 +159,12 @@ func (s *Replayer) replayBlock(ctx context.Context, height uint64) error {
 			AppHash:         header.AppHash, // Genesis app hash (input to first block execution)
 		}
 	} else {
-		// Get previous state from store.
 		// GetStateAtHeight(height-1) returns the state AFTER block height-1 was executed,
 		// which contains the correct AppHash to use as input for executing block at 'height'.
 		prevState, err = s.store.GetStateAtHeight(ctx, height-1)
 		if err != nil {
 			return fmt.Errorf("failed to get previous state: %w", err)
 		}
-		// Note: prevState.AppHash is already correct - it's the result of executing block height-1,
-		// which is what we need as input for executing block at 'height'.
 	}
 
 	// Prepare transactions
@@ -217,8 +212,7 @@ func (s *Replayer) replayBlock(ctx context.Context, height uint64) error {
 			Str("app_hash", hex.EncodeToString(newAppHash)).
 			Msg("replayBlock: app hash verified against stored state")
 	} else {
-		// State doesn't exist yet - this is expected during replay.
-		// We trust the execution result since we're replaying validated blocks.
+		// State doesn't exist yet, we trust the execution result since we're replaying validated blocks.
 		s.logger.Debug().
 			Uint64("height", height).
 			Str("app_hash", hex.EncodeToString(newAppHash)).
