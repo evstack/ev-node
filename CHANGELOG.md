@@ -31,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Added OpenTelemetry tracing support with OTLP export for distributed tracing across ev-node components including block production, syncing, DA submission/retrieval, sequencer, store operations, and RPC layer. Configurable via `instrumentation.tracing`, `instrumentation.tracing_endpoint`, `tracing_service_name`, and `instrumentation.tracing_sample_rate` settings. ([#2956](https://github.com/evstack/ev-node/issues/2956))
+- Added OpenTelemetry tracing support with OTLP export for distributed tracing across ev-node components including block production, syncing, DA submission/retrieval, sequencer, store operations, and RPC layer. Configurable via `instrumentation.tracing`, `instrumentation.tracing_endpoint`, `instrumentation.tracing_service_name`, and `instrumentation.tracing_sample_rate` settings. ([#2956](https://github.com/evstack/ev-node/issues/2956))
 - **BREAKING:** Implement forced inclusion and batch sequencing ([#2797](https://github.com/evstack/ev-node/pull/2797))
   **This change requires adding a `da_epoch_forced_inclusion` field to the node's `genesis.json` file.** The recommended value is `100`.
   Full support for this feature will be available in a future release.
