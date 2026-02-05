@@ -54,22 +54,6 @@ func TestReplayer_SyncToHeight_ExecutorBehind(t *testing.T) {
 		nil,
 	)
 
-	// Setup store to return previous block for state
-	mockStore.EXPECT().GetBlockData(mock.Anything, uint64(99)).Return(
-		&types.SignedHeader{
-			Header: types.Header{
-				BaseHeader: types.BaseHeader{
-					Height:  99,
-					Time:    now - 1000000000,
-					ChainID: "test-chain",
-				},
-				AppHash: []byte("app-hash-99"),
-			},
-		},
-		&types.Data{},
-		nil,
-	)
-
 	// Setup state at height 99
 	mockStore.EXPECT().GetStateAtHeight(mock.Anything, uint64(99)).Return(
 		types.State{
@@ -277,22 +261,6 @@ func TestReplayer_SyncToHeight_MultipleBlocks(t *testing.T) {
 			nil,
 		).Once()
 
-		// Previous block data (for getting previous app hash)
-		mockStore.EXPECT().GetBlockData(mock.Anything, prevHeight).Return(
-			&types.SignedHeader{
-				Header: types.Header{
-					BaseHeader: types.BaseHeader{
-						Height:  prevHeight,
-						Time:    now + (prevHeight * 1000000000),
-						ChainID: "test-chain",
-					},
-					AppHash: []byte("app-hash-" + string(rune('0'+prevHeight))),
-				},
-			},
-			&types.Data{},
-			nil,
-		).Once()
-
 		// State at previous height
 		mockStore.EXPECT().GetStateAtHeight(mock.Anything, prevHeight).Return(
 			types.State{
@@ -436,21 +404,6 @@ func TestReplayer_AppHashMismatch(t *testing.T) {
 		&types.Data{
 			Txs: []types.Tx{[]byte("tx1")},
 		},
-		nil,
-	)
-
-	mockStore.EXPECT().GetBlockData(mock.Anything, uint64(99)).Return(
-		&types.SignedHeader{
-			Header: types.Header{
-				BaseHeader: types.BaseHeader{
-					Height:  99,
-					Time:    now - 1000000000,
-					ChainID: "test-chain",
-				},
-				AppHash: []byte("app-hash-99"),
-			},
-		},
-		&types.Data{},
 		nil,
 	)
 

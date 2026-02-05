@@ -164,13 +164,6 @@ func (s *Replayer) replayBlock(ctx context.Context, height uint64) error {
 		if err != nil {
 			return fmt.Errorf("failed to get previous state: %w", err)
 		}
-		// We need the state at height-1, so load that block's app hash
-		prevHeader, _, err := s.store.GetBlockData(ctx, height-1)
-		if err != nil {
-			return fmt.Errorf("failed to get previous block header: %w", err)
-		}
-		prevState.AppHash = prevHeader.AppHash
-		prevState.LastBlockHeight = height - 1
 	}
 
 	// Prepare transactions
