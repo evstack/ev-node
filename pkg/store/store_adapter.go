@@ -245,8 +245,6 @@ func (a *StoreAdapter[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (
 		return pendingHead, nil
 	}
 
-	// Return ErrEmptyStore (not ErrNotFound) when store is empty.
-	// The go-header syncer specifically checks for ErrEmptyStore to trigger initialization.
 	return zero, header.ErrEmptyStore
 }
 
@@ -262,8 +260,6 @@ func (a *StoreAdapter[H]) Tail(ctx context.Context) (H, error) {
 		// Check store
 		h, err := a.getter.Height(ctx)
 		if err != nil || h == 0 {
-			// Return ErrEmptyStore (not ErrNotFound) when store is empty.
-			// The go-header syncer specifically checks for ErrEmptyStore to handle empty stores.
 			return zero, header.ErrEmptyStore
 		}
 		height = h
@@ -291,7 +287,8 @@ func (a *StoreAdapter[H]) Tail(ctx context.Context) (H, error) {
 		}
 	}
 
-	return zero, header.ErrNotFound
+	// shoud never happen
+	return zero, header.ErrEmptyStore
 }
 
 // Get returns an item by its hash.
