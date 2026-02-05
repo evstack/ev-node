@@ -67,8 +67,7 @@ func TestCache_MaxDAHeight_WithStore(t *testing.T) {
 	// Create new cache and restore from store
 	c2 := NewCache[testItem](st, "test/da-included/")
 
-	// Restore with the known hashes
-	err = c2.RestoreFromStore(ctx, []string{"hash1", "hash2", "hash3"})
+	err = c2.RestoreFromStore(ctx)
 	require.NoError(t, err)
 
 	if got := c2.daHeight(); got != 200 {
@@ -106,7 +105,7 @@ func TestCache_WithStorePersistence(t *testing.T) {
 	// Create new cache with same store and restore
 	c2 := NewCache[testItem](st, "test/")
 
-	err = c2.RestoreFromStore(ctx, []string{"hash1", "hash2", "hash3"})
+	err = c2.RestoreFromStore(ctx)
 	require.NoError(t, err)
 
 	// hash1 and hash2 should be restored, hash3 should not exist
@@ -263,7 +262,7 @@ func TestCache_SaveToStore(t *testing.T) {
 	// Verify data is in store by creating new cache and restoring
 	c2 := NewCache[testItem](st, "save-test/")
 
-	err = c2.RestoreFromStore(ctx, []string{"hash1", "hash2"})
+	err = c2.RestoreFromStore(ctx)
 	require.NoError(t, err)
 
 	daHeight, ok := c2.getDAIncluded("hash1")

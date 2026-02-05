@@ -174,6 +174,23 @@ func (t *tracedStore) GetMetadata(ctx context.Context, key string) ([]byte, erro
 	return data, nil
 }
 
+func (t *tracedStore) GetMetadataByPrefix(ctx context.Context, prefix string) ([]MetadataEntry, error) {
+	ctx, span := t.tracer.Start(ctx, "Store.GetMetadataByPrefix",
+		trace.WithAttributes(attribute.String("prefix", prefix)),
+	)
+	defer span.End()
+
+	entries, err := t.inner.GetMetadataByPrefix(ctx, prefix)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return entries, err
+	}
+
+	span.SetAttributes(attribute.Int("entries.count", len(entries)))
+	return entries, nil
+}
+
 func (t *tracedStore) SetMetadata(ctx context.Context, key string, value []byte) error {
 	ctx, span := t.tracer.Start(ctx, "Store.SetMetadata",
 		trace.WithAttributes(
