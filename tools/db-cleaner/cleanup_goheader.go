@@ -6,7 +6,8 @@ import (
 	"os"
 
 	ds "github.com/ipfs/go-datastore"
-	dsq "github.com/ipfs/go-datastore/query"
+	"github.com/ipfs/go-datastore/namespace"
+	"github.com/ipfs/go-datastore/query"
 	"github.com/spf13/cobra"
 
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
@@ -81,14 +82,15 @@ This operation is irreversible.`,
 				}
 			}()
 
+			evDB := store.NewEvNodeKVStore(rawDB)
 			// Delete headerSync prefix
-			headerCount, err := deletePrefix(goCtx, rawDB, headerSyncPrefix, dryRun)
+			headerCount, err := deletePrefix(goCtx, evDB, headerSyncPrefix, dryRun)
 			if err != nil {
 				return fmt.Errorf("failed to delete headerSync data: %w", err)
 			}
 
 			// Delete dataSync prefix
-			dataCount, err := deletePrefix(goCtx, rawDB, dataSyncPrefix, dryRun)
+			dataCount, err := deletePrefix(goCtx, evDB, dataSyncPrefix, dryRun)
 			if err != nil {
 				return fmt.Errorf("failed to delete dataSync data: %w", err)
 			}
@@ -119,17 +121,17 @@ This operation is irreversible.`,
 // deletePrefix deletes all keys with the given prefix from the datastore.
 // Returns the number of keys deleted.
 func deletePrefix(ctx context.Context, db ds.Batching, prefix string, dryRun bool) (int, error) {
-	results, err := db.Query(ctx, dsq.Query{
-		Prefix:   prefix,
+	count := 0
+
+	pdb := namespace.Wrap(db, ds.NewKey(prefix))
+	results, err := pdb.Query(ctx, query.Query{
 		KeysOnly: true,
 	})
 	if err != nil {
 		return 0, fmt.Errorf("failed to query keys with prefix %s: %w", prefix, err)
 	}
-	defer results.Close()
 
-	count := 0
-	batch, err := db.Batch(ctx)
+	batch, err := pdb.Batch(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create batch: %w", err)
 	}
