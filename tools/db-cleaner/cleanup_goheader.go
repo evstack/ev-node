@@ -1,22 +1,45 @@
-package cmd
+package main
 
 import (
 	"context"
 	"fmt"
+	"os"
 
 	ds "github.com/ipfs/go-datastore"
 	dsq "github.com/ipfs/go-datastore/query"
 	"github.com/spf13/cobra"
 
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
+	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/store"
 )
+
+const evmDbName = "evm-single"
 
 const (
 	// go-header store prefixes used prior to the unified store migration
 	headerSyncPrefix = "/headerSync"
 	dataSyncPrefix   = "/dataSync"
 )
+
+func main() {
+	// Initiate the root command
+	rootCmd := &cobra.Command{
+		Use: "db-cleaner",
+	}
+
+	config.AddGlobalFlags(rootCmd, "evm")
+
+	rootCmd.AddCommand(
+		NewCleanupGoHeaderCmd(),
+	)
+
+	if err := rootCmd.Execute(); err != nil {
+		// Print to stderr and exit with error
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
 
 // NewCleanupGoHeaderCmd creates a command to delete the legacy go-header store data.
 // This data is no longer needed after the migration to the unified store approach
@@ -25,7 +48,7 @@ func NewCleanupGoHeaderCmd() *cobra.Command {
 	var dryRun bool
 
 	cmd := &cobra.Command{
-		Use:   "cleanup-goheader",
+		Use:   "clean-evm",
 		Short: "Delete legacy go-header store data from disk",
 		Long: `Delete the legacy go-header store data (headerSync and dataSync prefixes) from the database.
 
