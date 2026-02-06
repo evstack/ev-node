@@ -740,7 +740,7 @@ func (c *EngineClient) reconcileExecutionAtHeight(ctx context.Context, height ui
 					Uint64("height", height).
 					Bool("block_exists", existingBlockHash != common.Hash{}).
 					Err(elErr).
-					Msg("ExecuteTxs: ExecMeta shows promoted but block not found in EL, will re-execute")
+					Msg("ExecuteTxs: ExecMeta shows promoted but block not found in EL (EL in behind), will re-execute")
 				// Fall through to fresh execution
 			} else {
 				// Timestamp mismatch - ExecMeta is stale from an old block that was replaced.
