@@ -2,9 +2,7 @@ module github.com/evstack/ev-node/apps/testapp
 
 go 1.25.6
 
-//replace (
-//	github.com/evstack/ev-node => ../../
-//)
+replace github.com/evstack/ev-node => ../../
 
 require (
 	github.com/evstack/ev-node v1.0.0-rc.3

@@ -740,16 +740,17 @@ func (c *EngineClient) reconcileExecutionAtHeight(ctx context.Context, height ui
 					Uint64("height", height).
 					Bool("block_exists", existingBlockHash != common.Hash{}).
 					Err(elErr).
-					Msg("ExecuteTxs: ExecMeta shows promoted but block not found in EL, will re-execute")
+					Msg("ExecuteTxs: ExecMeta shows promoted but block not found in EL (EL in behind), will re-execute")
 				// Fall through to fresh execution
+			} else {
+				// Timestamp mismatch - ExecMeta is stale from an old block that was replaced.
+				// Ignore it and proceed to EL check which will handle rollback if needed.
+				c.logger.Warn().
+					Uint64("height", height).
+					Int64("execmeta_timestamp", execMeta.Timestamp).
+					Int64("requested_timestamp", timestamp.Unix()).
+					Msg("ExecuteTxs: ExecMeta timestamp mismatch, ignoring stale promoted record")
 			}
-			// Timestamp mismatch - ExecMeta is stale from an old block that was replaced.
-			// Ignore it and proceed to EL check which will handle rollback if needed.
-			c.logger.Warn().
-				Uint64("height", height).
-				Int64("execmeta_timestamp", execMeta.Timestamp).
-				Int64("requested_timestamp", timestamp.Unix()).
-				Msg("ExecuteTxs: ExecMeta timestamp mismatch, ignoring stale promoted record")
 		}
 
 		// If we have a started execution with a payloadID, validate it still exists before resuming.
@@ -767,7 +768,7 @@ func (c *EngineClient) reconcileExecutionAtHeight(ctx context.Context, height ui
 				return nil, &pid, true, nil
 			}
 			// Payload is stale (expired or node restarted) - proceed with fresh execution
-			c.logger.Warn().
+			c.logger.Debug().
 				Uint64("height", height).
 				Str("payloadID", pid.String()).
 				Err(err).
