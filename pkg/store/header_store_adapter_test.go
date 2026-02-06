@@ -56,9 +56,9 @@ func TestHeaderStoreAdapter_NewHeaderStoreAdapter(t *testing.T) {
 	// Initially, height should be 0
 	assert.Equal(t, uint64(0), adapter.Height())
 
-	// Head should return ErrNotFound when empty
+	// Head should return ErrEmptyStore when empty
 	_, err = adapter.Head(ctx)
-	assert.ErrorIs(t, err, header.ErrNotFound)
+	assert.ErrorIs(t, err, header.ErrEmptyStore)
 }
 
 func TestHeaderStoreAdapter_AppendAndRetrieve(t *testing.T) {
@@ -287,9 +287,9 @@ func TestHeaderStoreAdapter_Tail(t *testing.T) {
 	store := New(ds)
 	adapter := NewHeaderStoreAdapter(store, testGenesis())
 
-	// Tail on empty store should return ErrNotFound
+	// Tail on empty store should return ErrEmptyStore
 	_, err = adapter.Tail(ctx)
-	assert.ErrorIs(t, err, header.ErrNotFound)
+	assert.ErrorIs(t, err, header.ErrEmptyStore)
 
 	h1, _ := types.GetRandomBlock(1, 1, "test-chain")
 	h2, _ := types.GetRandomBlock(2, 1, "test-chain")
@@ -510,9 +510,9 @@ func TestHeaderStoreAdapter_InitWithNil(t *testing.T) {
 	err = adapter.Init(ctx, nil)
 	require.NoError(t, err)
 
-	// Should still return ErrNotFound
+	// Should still return ErrEmptyStore
 	_, err = adapter.Head(ctx)
-	assert.ErrorIs(t, err, header.ErrNotFound)
+	assert.ErrorIs(t, err, header.ErrEmptyStore)
 }
 
 func TestHeaderStoreAdapter_ContextTimeout(t *testing.T) {

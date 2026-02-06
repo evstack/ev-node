@@ -338,6 +338,61 @@ func TestMetadata(t *testing.T) {
 	require.Nil(v)
 }
 
+func TestGetMetadataByPrefix(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	kv, err := NewTestInMemoryKVStore()
+	require.NoError(err)
+	s := New(kv)
+
+	// Set metadata with a common prefix
+	prefix := "cache/test-prefix/"
+	require.NoError(s.SetMetadata(t.Context(), prefix+"hash1", []byte("value1")))
+	require.NoError(s.SetMetadata(t.Context(), prefix+"hash2", []byte("value2")))
+	require.NoError(s.SetMetadata(t.Context(), prefix+"hash3", []byte("value3")))
+	// Set one with different prefix
+	require.NoError(s.SetMetadata(t.Context(), "other/prefix/key", []byte("other")))
+
+	// Query by prefix
+	entries, err := s.GetMetadataByPrefix(t.Context(), prefix)
+	require.NoError(err)
+	require.Len(entries, 3)
+
+	// Verify keys have consistent format (no leading slash)
+	keyMap := make(map[string][]byte)
+	for _, entry := range entries {
+		// Key should start with the prefix, not "/prefix"
+		require.True(len(entry.Key) > 0, "key should not be empty")
+		require.NotEqual("/", string(entry.Key[0]), "key should not have leading slash: %s", entry.Key)
+		require.Contains(entry.Key, prefix, "key should contain prefix")
+		keyMap[entry.Key] = entry.Value
+	}
+
+	// Verify all expected entries are present
+	require.Equal([]byte("value1"), keyMap[prefix+"hash1"])
+	require.Equal([]byte("value2"), keyMap[prefix+"hash2"])
+	require.Equal([]byte("value3"), keyMap[prefix+"hash3"])
+
+	// Other prefix should not be included
+	_, hasOther := keyMap["other/prefix/key"]
+	require.False(hasOther)
+}
+
+func TestGetMetadataByPrefix_EmptyResult(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	kv, err := NewTestInMemoryKVStore()
+	require.NoError(err)
+	s := New(kv)
+
+	// Query non-existent prefix
+	entries, err := s.GetMetadataByPrefix(t.Context(), "nonexistent/prefix/")
+	require.NoError(err)
+	require.Len(entries, 0)
+}
+
 func TestGetBlockDataErrors(t *testing.T) {
 	t.Parallel()
 	chainID := "TestGetBlockDataErrors"
