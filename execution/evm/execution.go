@@ -768,7 +768,7 @@ func (c *EngineClient) reconcileExecutionAtHeight(ctx context.Context, height ui
 				return nil, &pid, true, nil
 			}
 			// Payload is stale (expired or node restarted) - proceed with fresh execution
-			c.logger.Warn().
+			c.logger.Debug().
 				Uint64("height", height).
 				Str("payloadID", pid.String()).
 				Err(err).
