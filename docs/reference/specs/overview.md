@@ -11,7 +11,7 @@ Each file in this folder covers a specific aspect of the system, from block mana
 - [Block Components](./block-manager.md): Explains the modular component architecture for block processing in Evolve.
 - [Block Validity](./block-validity.md): Details the rules and checks for block validity within the protocol.
 - [Data Availability (DA)](./da.md): Describes how Evolve ensures data availability and integrates with DA layers.
-- [Full Node](./full_node.md): Outlines the architecture and operation of a full node in Evolve.
+- [Full Node](./full-node.md): Outlines the architecture and operation of a full node in Evolve.
 - [Header Sync](./header-sync.md): Covers the process and protocol for synchronizing block headers.
 - [P2P](./p2p.md): Documents the peer-to-peer networking layer and its protocols.
 - [Store](./store.md): Provides information about the storage subsystem and data management.

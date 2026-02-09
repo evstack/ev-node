@@ -54,7 +54,7 @@ User → DA Layer → All Nodes Derive Same Order
 
 **Disadvantages:**
 
-- **Higher latency** — Block times are bounded by DA layer block times (e.g., ~12s for Ethereum)
+- **Higher latency** — Block times are bounded by DA layer block times (e.g., ~12s for Ethereum, ~6s for Celestia)
 - **MEV leakage** — MEV flows to DA layer validators rather than the rollup
 - **Complexity** — Requires deterministic derivation rules that all nodes must follow
 

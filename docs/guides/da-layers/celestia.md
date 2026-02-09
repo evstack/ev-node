@@ -11,19 +11,9 @@ This guide covers connecting your Evolve chain to Celestia for production data a
 
 Before starting your Evolve chain, you need a Celestia light node running and synced.
 
-### Version Compatibility
-
-Ensure compatible versions between ev-node and celestia-node:
-
-| Network | celestia-node |
-|---------|---------------|
-| Arabica | v0.20.x |
-| Mocha | v0.20.x |
-| Mainnet | v0.20.x |
-
 ### Installation
 
-Follow the [Celestia documentation](https://docs.celestia.org/how-to-guides/light-node) to install and run a light node.
+Follow the [Celestia documentation](https://docs.celestia.org/how-to-guides/light-node) to install and run a light node. Refer to the Celestia docs for the latest version compatibility information.
 
 **Quick start:**
 
@@ -147,13 +137,13 @@ Search by your namespace or account address to see submitted blobs.
 
 ### Gas Price
 
-Set the gas price for DA submissions:
+By default, ev-node uses automatic gas price detection. You can override this with a manual value if needed:
 
 ```bash
 --evnode.da.gas_price 0.01
 ```
 
-Higher gas prices result in faster inclusion during congestion.
+Higher gas prices result in faster inclusion during congestion. Omit this flag to use the automatic default.
 
 ### Block Time
 

@@ -187,7 +187,7 @@ func main() {
 		Use:   "start",
 		Short: "Run the full node with ev-abci",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return server.Start(cmd, evabci_server.StartHandler())
+			return evabci_server.StartHandler(cmd, app.New)
 		},
 	}
 
@@ -270,17 +270,3 @@ Verify that the node starts successfully:
 
 Your node is now running with `ev-abci` instead of CometBFT. The chain continues from the same state but with the new consensus engine.
 
----
-
-## Summary
-
-The migration process follows these key phases:
-
-1. **Code Preparation:** Modify your chain code to add the migration manager module and staking wrapper
-2. **Create Upgrade Handler:** Define the upgrade logic that will be triggered by governance
-3. **Governance Proposal:** Submit and pass a software upgrade proposal
-4. **Wire Start Handler:** Update your node's entrypoint to use the `ev-abci` start command
-5. **Execute Migration:** Run `appd evolve-migrate` to transform the exported state
-6. **Restart Chain:** Start the new `ev-abci` node with the migrated state
-
-This approach ensures a smooth migration with minimal downtime and preserves all chain state and history.

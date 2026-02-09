@@ -28,7 +28,7 @@ The [peer-to-peer client] is used to gossip transactions between full nodes in t
 
 ### Store
 
-The [Store] is initialized with `DefaultStore`, an implementation of the [store interface] which is used for storing and retrieving blocks, commits, and state. |
+The [Store] is initialized with `DefaultStore`, an implementation of the [store interface] which is used for storing and retrieving blocks, commits, and state.
 
 ### blockComponents
 

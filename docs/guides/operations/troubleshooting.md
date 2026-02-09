@@ -17,12 +17,10 @@ curl http://localhost:26657/status
 
 ### View Logs
 
-```bash
-# Follow logs in real-time
-journalctl -u evnode -f
+If running ev-node as a systemd service:
 
-# Search for errors
-journalctl -u evnode | grep -i error
+```bash
+journalctl -u evnode -f
 ```
 
 ## Common Issues
@@ -232,31 +230,6 @@ systemctl start ev-reth evnode
 ```
 
 ## Log Analysis
-
-### Important Log Messages
-
-**Healthy operation:**
-
-```
-INF Creating and publishing block height=100 module=BlockManager
-INF block marked as DA included blockHeight=100 module=BlockManager
-INF indexed block events height=100 module=txindex
-```
-
-**Warning signs:**
-
-```
-WRN block production slowed due to pending DA submissions
-WRN peer connection failed, retrying
-```
-
-**Errors requiring action:**
-
-```
-ERR DA layer submission failed
-ERR failed to execute block
-ERR P2P network unavailable
-```
 
 ### Enable Debug Logging
 

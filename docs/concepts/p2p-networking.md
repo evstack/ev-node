@@ -1,6 +1,6 @@
 # P2P
 
-Every  node (both full and light) runs a P2P client using [go-libp2p][go-libp2p] P2P networking stack for gossiping transactions in the chain's P2P network. The same P2P client is also used by the header and block sync services for gossiping headers and blocks.
+Every node (both full and light) runs a P2P client using [go-libp2p][go-libp2p] P2P networking stack for gossiping transactions in the chain's P2P network. The same P2P client is also used by the header and block sync services for gossiping headers and blocks.
 
 Following parameters are required for creating a new instance of a P2P client:
 

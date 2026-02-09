@@ -81,6 +81,6 @@ mychaind tx bank send mykey mychain1... 1000stake --keyring-backend test --chain
 
 ## Next Steps
 
-- [Integrate ev-abci](/getting-started/cosmos/integrate-ev-abci) — Manual integration without Ignite
-- [Migration Guide](/getting-started/cosmos/migration-guide) — Migrate existing CometBFT chain
+- [Integrate ev-abci](/ev-abci/integration-guide) — Manual integration without Ignite
+- [Migrate from CometBFT](/ev-abci/migration-from-cometbft) — Migrate an existing chain with state
 - [Connect to Celestia](/guides/da-layers/celestia) — Production DA layer

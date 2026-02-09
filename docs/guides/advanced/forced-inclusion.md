@@ -1,6 +1,6 @@
-# Single Sequencer
+# Forced Inclusion
 
-A single sequencer is the simplest sequencing architecture for an Evolve-based chain. In this model, one node (the sequencer) is responsible for ordering transactions, producing blocks, and submitting data to the data availability (DA) layer.
+Forced inclusion is a censorship-resistance mechanism that allows users to submit transactions directly to the DA layer when the sequencer refuses to include them. This ensures users always have an escape hatch in a single sequencer model.
 
 ## How the Single Sequencer Model Works
 

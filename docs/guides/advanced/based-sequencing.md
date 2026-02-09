@@ -1,6 +1,6 @@
 # Based Sequencing
 
-Based sequencing is a decentralized sequencing model where transaction ordering is determined by the base layer (Celestia) rather than a centralized sequencer. In this model, **every full node acts as its own proposer** by independently and deterministically deriving the next batch of transactions directly from the base layer.
+Based sequencing is a decentralized sequencing model where transaction ordering is determined by the base layer (Celestia) rather than a centralized sequencer. In this model, the sequencer derives the next batch of transactions deterministically from the base layer, removing its ability to censor or reorder transactions.
 
 ## How Based Sequencing Works
 

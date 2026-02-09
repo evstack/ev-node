@@ -22,7 +22,7 @@ Evolve implements two separate sync services:
 - Used by all node types (sequencer, full, and light)
 - Essential for maintaining the canonical view of the chain
 
-### Data Sync Service  
+### Data Sync Service
 
 - Synchronizes `Data` structures containing transaction data
 - Used only by full nodes and sequencers
