@@ -337,13 +337,9 @@ flowchart TD
 
 - **Centralized State Management**: The `retryStrategy` struct manages attempt counts, backoff timing, and gas price adjustments
 - **Multiple Backoff Types**:
-  - Exponential backoff for general failures (doubles each attempt, capped at `BlockTime`)
+  - Exponential backoff for general failures (doubles each attempt, capped at `DABlockTime`)
   - Mempool-specific backoff (waits `MempoolTTL * BlockTime` for stuck transactions)
   - Success-based backoff reset with gas price reduction
-- **Gas Price Management**:
-  - Increases gas price by `GasMultiplier` on mempool failures
-  - Decreases gas price after successful submissions (bounded by initial price)
-  - Supports automatic gas price detection (`-1` value)
 - **Intelligent Batch Splitting**:
   - Recursively splits batches that exceed DA blob size limits
   - Handles partial submissions within split batches
@@ -438,11 +434,6 @@ For more details on DA integration, see the [Data Availability specification](./
 
 Evolve should support blocks arriving out-of-order on DA, like so:
 ![out-of-order blocks](./out-of-order-blocks.png)
-
-#### Termination Condition
-
-If the sequencer double-signs two blocks at the same height, evidence of the fault should be posted to DA. Evolve full nodes should process the longest valid chain up to the height of the fault evidence, and terminate. See diagram:
-![termination condition](./termination.png)
 
 ### Block Sync Service (Syncer Component)
 
@@ -661,12 +652,6 @@ The components communicate through well-defined interfaces:
 
 - Block sync over the P2P network works only when a full node is connected to the P2P network by specifying the initial seeds to connect to via `P2PConfig.Seeds` configuration parameter when starting the full node
 - Node's context is passed down to all components to support graceful shutdown and cancellation
-
-### Architecture Design Decisions
-
-- The Executor supports custom signature payload providers for headers, enabling flexible signing schemes
-- The component architecture supports the separation of header and data structures in Evolve. This allows for expanding the sequencing scheme beyond single sequencing and enables the use of a decentralized sequencer mode. For detailed information on this architecture, see the [Header and Data Separation ADR](../../adr/adr-014-header-and-data-separation.md)
-- Components process blocks with a minimal header format, which is designed to eliminate dependency on CometBFT's header format and can be used to produce an execution layer tailored header if needed. For details on this header structure, see the [Evolve Minimal Header](../../adr/adr-015-rollkit-minimal-header.md) specification
 
 ## Metrics
 
