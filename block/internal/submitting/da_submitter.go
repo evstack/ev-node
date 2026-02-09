@@ -103,14 +103,20 @@ func clamp(v, min, max time.Duration) time.Duration {
 	return v
 }
 
+type DAHintAppender interface {
+	AppendDAHint(ctx context.Context, daHeight uint64, heights ...uint64) error
+}
+
 // DASubmitter handles DA submission operations
 type DASubmitter struct {
-	client  da.Client
-	config  config.Config
-	genesis genesis.Genesis
-	options common.BlockOptions
-	logger  zerolog.Logger
-	metrics *common.Metrics
+	client               da.Client
+	config               config.Config
+	genesis              genesis.Genesis
+	options              common.BlockOptions
+	logger               zerolog.Logger
+	metrics              *common.Metrics
+	headerDAHintAppender DAHintAppender
+	dataDAHintAppender   DAHintAppender
 
 	// address selector for multi-account support
 	addressSelector pkgda.AddressSelector
@@ -135,6 +141,8 @@ func NewDASubmitter(
 	options common.BlockOptions,
 	metrics *common.Metrics,
 	logger zerolog.Logger,
+	headerDAHintAppender DAHintAppender,
+	dataDAHintAppender DAHintAppender,
 ) *DASubmitter {
 	daSubmitterLogger := logger.With().Str("component", "da_submitter").Logger()
 
@@ -172,15 +180,17 @@ func NewDASubmitter(
 	}
 
 	return &DASubmitter{
-		client:          client,
-		config:          config,
-		genesis:         genesis,
-		options:         options,
-		metrics:         metrics,
-		logger:          daSubmitterLogger,
-		addressSelector: addressSelector,
-		envelopeCache:   envelopeCache,
-		signingWorkers:  workers,
+		client:               client,
+		config:               config,
+		genesis:              genesis,
+		options:              options,
+		metrics:              metrics,
+		logger:               daSubmitterLogger,
+		addressSelector:      addressSelector,
+		envelopeCache:        envelopeCache,
+		signingWorkers:       workers,
+		headerDAHintAppender: headerDAHintAppender,
+		dataDAHintAppender:   dataDAHintAppender,
 	}
 }
 
@@ -222,8 +232,14 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, headers []*types.Signed
 
 	return submitToDA(s, ctx, headers, envelopes,
 		func(submitted []*types.SignedHeader, res *datypes.ResultSubmit) {
-			for _, header := range submitted {
+			heights := make([]uint64, len(submitted))
+			for i, header := range submitted {
 				cache.SetHeaderDAIncluded(header.Hash().String(), res.Height, header.Height())
+				heights[i] = header.Height()
+			}
+			if err := s.headerDAHintAppender.AppendDAHint(ctx, res.Height, heights...); err != nil {
+				s.logger.Error().Err(err).Msg("failed to append da height hint in header p2p store")
+				// ignoring error here, since we don't want to block the block submission'
 			}
 			if l := len(submitted); l > 0 {
 				lastHeight := submitted[l-1].Height()
@@ -423,8 +439,14 @@ func (s *DASubmitter) SubmitData(ctx context.Context, unsignedDataList []*types.
 
 	return submitToDA(s, ctx, signedDataList, signedDataListBz,
 		func(submitted []*types.SignedData, res *datypes.ResultSubmit) {
-			for _, sd := range submitted {
+			heights := make([]uint64, len(submitted))
+			for i, sd := range submitted {
 				cache.SetDataDAIncluded(sd.Data.DACommitment().String(), res.Height, sd.Height())
+				heights[i] = sd.Height()
+			}
+			if err := s.dataDAHintAppender.AppendDAHint(ctx, res.Height, heights...); err != nil {
+				s.logger.Error().Err(err).Msg("failed to append da height hint in data p2p store")
+				// ignoring error here, since we don't want to block the block submission'
 			}
 			if l := len(submitted); l > 0 {
 				lastHeight := submitted[l-1].Height()

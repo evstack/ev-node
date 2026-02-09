@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	ds "github.com/ipfs/go-datastore"
+	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
@@ -19,6 +21,7 @@ import (
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	signerpkg "github.com/evstack/ev-node/pkg/signer"
+	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/test/mocks"
 	"github.com/evstack/ev-node/types"
 )
@@ -33,7 +36,11 @@ func newTestDARetriever(t *testing.T, mockClient *mocks.MockClient, cfg config.C
 		cfg.DA.DataNamespace = "test-data-ns"
 	}
 
-	cm, err := cache.NewCacheManager(cfg, zerolog.Nop())
+	// Create an in-memory store for the cache
+	memDS := dssync.MutexWrap(ds.NewMapDatastore())
+	st := store.New(memDS)
+
+	cm, err := cache.NewManager(cfg, st, zerolog.Nop())
 	require.NoError(t, err)
 
 	if mockClient == nil {

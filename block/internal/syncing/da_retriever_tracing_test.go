@@ -27,6 +27,10 @@ func (m *mockDARetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) (
 	return nil, nil
 }
 
+func (m *mockDARetriever) QueuePriorityHeight(daHeight uint64) {}
+
+func (m *mockDARetriever) PopPriorityHeight() uint64 { return 0 }
+
 func setupDARetrieverTrace(t *testing.T, inner DARetriever) (DARetriever, *tracetest.SpanRecorder) {
 	t.Helper()
 	sr := tracetest.NewSpanRecorder()

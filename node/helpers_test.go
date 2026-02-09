@@ -89,8 +89,7 @@ func getTestConfig(t *testing.T, n int) evconfig.Config {
 	// Use a higher base port to reduce chances of conflicts with system services
 	startPort := 40000 // Spread port ranges further apart
 	return evconfig.Config{
-		RootDir:    t.TempDir(),
-		ClearCache: true, // Clear cache between tests to avoid interference with other tests and slow shutdown on serialization
+		RootDir: t.TempDir(),
 		Node: evconfig.NodeConfig{
 			Aggregator:               true,
 			BlockTime:                evconfig.DurationWrapper{Duration: 100 * time.Millisecond},

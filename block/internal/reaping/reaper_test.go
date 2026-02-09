@@ -70,10 +70,14 @@ func newTestCache(t *testing.T) cache.CacheManager {
 	t.Helper()
 
 	cfg := config.Config{
-		RootDir:    t.TempDir(),
-		ClearCache: true,
+		RootDir: t.TempDir(),
 	}
-	cacheManager, err := cache.NewCacheManager(cfg, zerolog.Nop())
+
+	// Create an in-memory store for the cache
+	memDS := dssync.MutexWrap(ds.NewMapDatastore())
+	st := store.New(memDS)
+
+	cacheManager, err := cache.NewManager(cfg, st, zerolog.Nop())
 	require.NoError(t, err)
 
 	return cacheManager
@@ -208,47 +212,4 @@ func TestReaper_SubmitTxs_SequencerError_NoPersistence_NoNotify(t *testing.T) {
 	if e.HasPendingTxNotification() {
 		t.Fatal("did not expect notification on sequencer error")
 	}
-}
-
-func TestReaper_CachePersistence(t *testing.T) {
-	// Test that transaction seen status persists to disk and can be loaded
-	mockExec := testmocks.NewMockExecutor(t)
-	mockSeq := testmocks.NewMockSequencer(t)
-
-	tx1 := []byte("persistent-tx")
-
-	// Create cache with real store
-	tempDir := t.TempDir()
-	dataStore := dssync.MutexWrap(ds.NewMapDatastore())
-	st := store.New(dataStore)
-	cfg := config.Config{
-		RootDir:    tempDir,
-		ClearCache: false, // Don't clear cache
-	}
-	cm, err := cache.NewManager(cfg, st, zerolog.Nop())
-	require.NoError(t, err)
-
-	e := newTestExecutor(t)
-	r := newTestReaper(t, "chain-persist", mockExec, mockSeq, e, cm)
-
-	mockExec.EXPECT().GetTxs(mock.Anything).Return([][]byte{tx1}, nil).Once()
-	mockSeq.EXPECT().SubmitBatchTxs(mock.Anything, mock.AnythingOfType("sequencer.SubmitBatchTxsRequest")).
-		Return(&coresequencer.SubmitBatchTxsResponse{}, nil).Once()
-
-	require.NoError(t, r.SubmitTxs())
-
-	// Verify tx is marked as seen
-	assert.True(t, cm.IsTxSeen(hashTx(tx1)))
-
-	// Save to disk
-	require.NoError(t, cm.SaveToDisk())
-
-	// Create new cache manager and load from disk
-	dataStore2 := dssync.MutexWrap(ds.NewMapDatastore())
-	st2 := store.New(dataStore2)
-	cm2, err := cache.NewManager(cfg, st2, zerolog.Nop())
-	require.NoError(t, err)
-
-	// Verify the seen status was persisted
-	assert.True(t, cm2.IsTxSeen(hashTx(tx1)))
 }

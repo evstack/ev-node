@@ -38,6 +38,12 @@ const (
 	celestiaChainID = "test"
 	// celestiaAppVersion specifies the tag of the celestia-app image to deploy in tests.
 	celestiaAppVersion = "v5.0.2"
+
+	// EVM test constants shared across EVM-related tests.
+	evmTestChainID    = "1234"
+	evmTestPrivateKey = "cece4f25ac74deb1468965160c7185e07dff413f23fcadb611b05ca37ab0a52e"
+	evmTestToAddress  = "0x944fDcD1c868E3cC566C78023CcB38A32cDA836E"
+	evmTestGasLimit   = uint64(22000)
 )
 
 func init() {
@@ -251,8 +257,8 @@ func getEvNodeImage() container.Image {
 	return container.NewImage(repo, tag, "10001:10001")
 }
 
-// RethSetup holds the configuration returned after setting up a Reth node.
-type RethSetup struct {
+// RethSetupConfig holds the configuration returned after setting up a Reth node.
+type RethSetupConfig struct {
 	Node           *reth.Node
 	EngineURL      string // internal container-to-container URL
 	EthURL         string // internal container-to-container URL
@@ -262,8 +268,9 @@ type RethSetup struct {
 }
 
 // SetupRethNode creates and starts a Reth node, waiting for it to be ready.
-func (s *DockerTestSuite) SetupRethNode(ctx context.Context) RethSetup {
+func (s *DockerTestSuite) SetupRethNode(ctx context.Context, name string) RethSetupConfig {
 	rethNode, err := reth.NewNodeBuilder(s.T()).
+		WithName(name).
 		WithGenesis([]byte(reth.DefaultEvolveGenesisJSON())).
 		WithDockerClient(s.dockerClient).
 		WithDockerNetworkID(s.dockerNetworkID).
@@ -271,7 +278,7 @@ func (s *DockerTestSuite) SetupRethNode(ctx context.Context) RethSetup {
 	s.Require().NoError(err)
 	s.Require().NoError(rethNode.Start(ctx))
 
-	var setup RethSetup
+	var setup RethSetupConfig
 	s.Require().Eventually(func() bool {
 		networkInfo, err := rethNode.GetNetworkInfo(ctx)
 		if err != nil {
@@ -359,4 +366,29 @@ func (s *DockerTestSuite) WaitForTxIncluded(ctx context.Context, client *ethclie
 		}
 		return receipt.Status == 1
 	}, 30*time.Second, time.Second, "transaction %s was not included", txHash.Hex())
+}
+
+// EVMSingleSetupConfig holds the configuration returned after setting up an EVM single node.
+type EVMSingleSetupConfig struct {
+	Chain *evmsingle.Chain
+	Node  *evmsingle.Node
+}
+
+// SetupEVMSingle creates and starts an evm single node with the specified image and node config.
+func (s *DockerTestSuite) SetupEVMSingle(ctx context.Context, image container.Image, nodeConfig evmsingle.NodeConfig) EVMSingleSetupConfig {
+	chain, err := evmsingle.NewChainBuilder(s.T()).
+		WithDockerClient(s.dockerClient).
+		WithDockerNetworkID(s.dockerNetworkID).
+		WithImage(image).
+		WithBinary("evm").
+		WithNode(nodeConfig).
+		Build(ctx)
+	s.Require().NoError(err)
+	s.Require().Len(chain.Nodes(), 1)
+
+	node := chain.Nodes()[0]
+	s.Require().NoError(node.Start(ctx))
+	s.WaitForEVMHealthy(ctx, node)
+
+	return EVMSingleSetupConfig{Chain: chain, Node: node}
 }

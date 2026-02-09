@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -14,16 +13,17 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/celestiaorg/go-header"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
-	datypes "github.com/evstack/ev-node/pkg/da/types"
-	"github.com/evstack/ev-node/pkg/raft"
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
 	"github.com/evstack/ev-node/pkg/config"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/raft"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
 )
@@ -95,8 +95,8 @@ type Syncer struct {
 	daRetrieverHeight *atomic.Uint64
 
 	// P2P stores
-	headerStore common.Broadcaster[*types.SignedHeader]
-	dataStore   common.Broadcaster[*types.Data]
+	headerStore header.Store[*types.P2PSignedHeader]
+	dataStore   header.Store[*types.P2PData]
 
 	// Channels for coordination
 	heightInCh chan common.DAHeightEvent
@@ -144,8 +144,8 @@ func NewSyncer(
 	metrics *common.Metrics,
 	config config.Config,
 	genesis genesis.Genesis,
-	headerStore common.Broadcaster[*types.SignedHeader],
-	dataStore common.Broadcaster[*types.Data],
+	headerStore header.Store[*types.P2PSignedHeader],
+	dataStore header.Store[*types.P2PData],
 	logger zerolog.Logger,
 	options common.BlockOptions,
 	errorCh chan<- error,
@@ -215,8 +215,9 @@ func (s *Syncer) Start(ctx context.Context) error {
 	if s.config.Instrumentation.IsTracingEnabled() {
 		s.daRetriever = WithTracingDARetriever(s.daRetriever)
 	}
+
 	s.fiRetriever = da.NewForcedInclusionRetriever(s.daClient, s.logger, s.config, s.genesis.DAStartHeight, s.genesis.DAEpochForcedInclusion)
-	s.p2pHandler = NewP2PHandler(s.headerStore.Store(), s.dataStore.Store(), s.cache, s.genesis, s.logger)
+	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.cache, s.genesis, s.logger)
 	if currentHeight, err := s.store.Height(s.ctx); err != nil {
 		s.logger.Error().Err(err).Msg("failed to set initial processed height for p2p handler")
 	} else {
@@ -234,11 +235,7 @@ func (s *Syncer) Start(ctx context.Context) error {
 	}
 
 	// Start main processing loop
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		s.processLoop()
-	}()
+	s.wg.Go(s.processLoop)
 
 	// Start dedicated workers for DA, and pending processing
 	s.startSyncWorkers()
@@ -348,9 +345,9 @@ func (s *Syncer) initializeState() error {
 	}
 	s.SetLastState(state)
 
-	// Set DA height to the maximum of the genesis start height, the state's DA height, the cached DA height, and the highest stored included DA height.
-	// This ensures we resume from the highest known DA height, even if the cache is cleared on restart. If the DA height is too high because of a user error, reset it with --evnode.clear_cache. The DA height will be back to the last highest known executed DA height for a height.
-	s.daRetrieverHeight.Store(max(s.genesis.DAStartHeight, s.cache.DaHeight(), state.DAHeight, s.getHighestStoredDAHeight()))
+	// Set DA height to the maximum of the genesis start height, the state's DA height, and the cached DA height.
+	// The cache's DaHeight() is initialized from store metadata, so it's always correct even after cache clear.
+	s.daRetrieverHeight.Store(max(s.genesis.DAStartHeight, s.cache.DaHeight(), state.DAHeight))
 
 	s.logger.Info().
 		Uint64("height", state.LastBlockHeight).
@@ -428,7 +425,19 @@ func (s *Syncer) fetchDAUntilCaughtUp() error {
 		default:
 		}
 
-		daHeight := max(s.daRetrieverHeight.Load(), s.cache.DaHeight())
+		// Check for priority heights from P2P hints first
+		var daHeight uint64
+		if priorityHeight := s.daRetriever.PopPriorityHeight(); priorityHeight > 0 {
+			// Skip if we've already fetched past this height
+			currentHeight := s.daRetrieverHeight.Load()
+			if priorityHeight < currentHeight {
+				continue
+			}
+			daHeight = priorityHeight
+			s.logger.Debug().Uint64("da_height", daHeight).Msg("fetching priority DA height from P2P hint")
+		} else {
+			daHeight = max(s.daRetrieverHeight.Load(), s.cache.DaHeight())
+		}
 
 		events, err := s.daRetriever.RetrieveFromDA(s.ctx, daHeight)
 		if err != nil {
@@ -457,8 +466,19 @@ func (s *Syncer) fetchDAUntilCaughtUp() error {
 			}
 		}
 
-		// increment DA retrieval height on successful retrieval
-		s.daRetrieverHeight.Store(daHeight + 1)
+		// Update DA retrieval height on successful retrieval
+		// For priority fetches, only update if the priority height is ahead of current
+		// For sequential fetches, always increment
+		newHeight := daHeight + 1
+		for {
+			current := s.daRetrieverHeight.Load()
+			if newHeight <= current {
+				break // Already at or past this height
+			}
+			if s.daRetrieverHeight.CompareAndSwap(current, newHeight) {
+				break
+			}
+		}
 	}
 }
 
@@ -591,6 +611,53 @@ func (s *Syncer) processHeightEvent(ctx context.Context, event *common.DAHeightE
 		return
 	}
 
+	// If this is a P2P event with a DA height hint, trigger targeted DA retrieval
+	// This allows us to fetch the block directly from the specified DA height instead of sequential scanning
+	if event.Source == common.SourceP2P {
+		var daHeightHints []uint64
+		switch {
+		case event.DaHeightHints == [2]uint64{0, 0}:
+		// empty, nothing to do
+		case event.DaHeightHints[0] == 0:
+			// check only data
+			if _, exists := s.cache.GetDataDAIncluded(event.Data.Hash().String()); !exists {
+				daHeightHints = []uint64{event.DaHeightHints[1]}
+			}
+		case event.DaHeightHints[1] == 0:
+			// check only header
+			if _, exists := s.cache.GetHeaderDAIncluded(event.Header.Hash().String()); !exists {
+				daHeightHints = []uint64{event.DaHeightHints[0]}
+			}
+		default:
+			// check both
+			if _, exists := s.cache.GetHeaderDAIncluded(event.Header.Hash().String()); !exists {
+				daHeightHints = []uint64{event.DaHeightHints[0]}
+			}
+			if _, exists := s.cache.GetDataDAIncluded(event.Data.Hash().String()); !exists {
+				daHeightHints = append(daHeightHints, event.DaHeightHints[1])
+			}
+			if len(daHeightHints) == 2 && daHeightHints[0] == daHeightHints[1] {
+				daHeightHints = daHeightHints[0:1]
+			}
+		}
+		if len(daHeightHints) > 0 {
+			for _, daHeightHint := range daHeightHints {
+				// Skip if we've already fetched past this height
+				if daHeightHint < s.daRetrieverHeight.Load() {
+					continue
+				}
+
+				s.logger.Debug().
+					Uint64("height", height).
+					Uint64("da_height_hint", daHeightHint).
+					Msg("P2P event with DA height hint, queuing priority DA retrieval")
+
+				// Queue priority DA retrieval - will be processed in fetchDAUntilCaughtUp
+				s.daRetriever.QueuePriorityHeight(daHeightHint)
+			}
+		}
+	}
+
 	// Last data must be got from store if the event comes from DA and the data hash is empty.
 	// When if the event comes from P2P, the sequencer and then all the full nodes contains the data.
 	if event.Source == common.SourceDA && bytes.Equal(event.Header.DataHash, common.DataHashForEmptyTxs) && currentHeight > 0 {
@@ -656,8 +723,10 @@ func (s *Syncer) TrySyncNextBlock(ctx context.Context, event *common.DAHeightEve
 	// here only the previous block needs to be applied to proceed to the verification.
 	// The header validation must be done before applying the block to avoid executing gibberish
 	if err := s.ValidateBlock(ctx, currentState, data, header); err != nil {
-		// remove header as da included (not per se needed, but keep cache clean)
+		// remove header as da included from cache
 		s.cache.RemoveHeaderDAIncluded(headerHash)
+		s.cache.RemoveDataDAIncluded(data.DACommitment().String())
+
 		if !errors.Is(err, errInvalidState) && !errors.Is(err, errInvalidBlock) {
 			return errors.Join(errInvalidBlock, err)
 		}
@@ -669,7 +738,10 @@ func (s *Syncer) TrySyncNextBlock(ctx context.Context, event *common.DAHeightEve
 		if err := s.VerifyForcedInclusionTxs(ctx, currentState, data); err != nil {
 			s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("forced inclusion verification failed")
 			if errors.Is(err, errMaliciousProposer) {
+				// remove header as da included from cache
 				s.cache.RemoveHeaderDAIncluded(headerHash)
+				s.cache.RemoveDataDAIncluded(data.DACommitment().String())
+
 				return err
 			}
 		}
@@ -1138,39 +1210,6 @@ func (s *Syncer) sleepOrDone(duration time.Duration) bool {
 	case <-timer.C:
 		return true
 	}
-}
-
-// getHighestStoredDAHeight retrieves the highest DA height from the store by checking
-// the DA heights stored for the last DA included height
-// this relies on the node syncing with DA and setting included heights.
-func (s *Syncer) getHighestStoredDAHeight() uint64 {
-	// Get the DA included height from store
-	daIncludedHeightBytes, err := s.store.GetMetadata(s.ctx, store.DAIncludedHeightKey)
-	if err != nil || len(daIncludedHeightBytes) != 8 {
-		return 0
-	}
-	daIncludedHeight := binary.LittleEndian.Uint64(daIncludedHeightBytes)
-	if daIncludedHeight == 0 {
-		return 0
-	}
-
-	var highestDAHeight uint64
-
-	// Get header DA height for the last included height
-	headerKey := store.GetHeightToDAHeightHeaderKey(daIncludedHeight)
-	if headerBytes, err := s.store.GetMetadata(s.ctx, headerKey); err == nil && len(headerBytes) == 8 {
-		headerDAHeight := binary.LittleEndian.Uint64(headerBytes)
-		highestDAHeight = max(highestDAHeight, headerDAHeight)
-	}
-
-	// Get data DA height for the last included height
-	dataKey := store.GetHeightToDAHeightDataKey(daIncludedHeight)
-	if dataBytes, err := s.store.GetMetadata(s.ctx, dataKey); err == nil && len(dataBytes) == 8 {
-		dataDAHeight := binary.LittleEndian.Uint64(dataBytes)
-		highestDAHeight = max(highestDAHeight, dataDAHeight)
-	}
-
-	return highestDAHeight
 }
 
 type p2pWaitState struct {

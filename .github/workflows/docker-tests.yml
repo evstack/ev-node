@@ -49,3 +49,22 @@ jobs:
         env:
           EVM_IMAGE_REPO: ghcr.io/${{ github.repository_owner }}/ev-node-evm
           EVM_NODE_IMAGE_TAG: ${{ inputs.image-tag }}
+
+  test-docker-compat:
+    name: Docker Compatibility E2E Tests
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: set up go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: ./test/docker-e2e/go.mod
+      - name: Run Docker Compat E2E Tests
+        run: make test-docker-compat
+        env:
+          SEQUENCER_EVM_IMAGE_REPO: ghcr.io/${{ github.repository_owner }}/ev-node-evm
+          SEQUENCER_EVM_IMAGE_TAG: main # TODO: set this to the last released tag
+          FULLNODE_EVM_IMAGE_REPO: ghcr.io/${{ github.repository_owner }}/ev-node-evm
+          FULLNODE_EVM_IMAGE_TAG: ${{ inputs.image-tag }}

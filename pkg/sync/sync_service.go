@@ -32,10 +32,16 @@ const (
 	dataSync   syncType = "dataSync"
 )
 
+// HeaderSyncService is the P2P Sync Service for headers.
+type HeaderSyncService = SyncService[*types.P2PSignedHeader]
+
+// DataSyncService is the P2P Sync Service for blocks.
+type DataSyncService = SyncService[*types.P2PData]
+
 // SyncService is the P2P Sync Service for blocks and headers.
 //
 // Uses the go-header library for handling all P2P logic.
-type SyncService[H header.Header[H]] struct {
+type SyncService[H store.EntityWithDAHint[H]] struct {
 	conf     config.Config
 	logger   zerolog.Logger
 	syncType syncType
@@ -54,12 +60,6 @@ type SyncService[H header.Header[H]] struct {
 
 	storeInitialized atomic.Bool
 }
-
-// DataSyncService is the P2P Sync Service for blocks.
-type DataSyncService = SyncService[*types.Data]
-
-// HeaderSyncService is the P2P Sync Service for headers.
-type HeaderSyncService = SyncService[*types.SignedHeader]
 
 // NewDataSyncService returns a new DataSyncService.
 func NewDataSyncService(
@@ -85,7 +85,7 @@ func NewHeaderSyncService(
 	return newSyncService(storeAdapter, headerSync, conf, genesis, p2p, logger)
 }
 
-func newSyncService[H header.Header[H]](
+func newSyncService[H store.EntityWithDAHint[H]](
 	storeAdapter header.Store[H],
 	syncType syncType,
 	conf config.Config,
@@ -161,6 +161,23 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 	}
 
 	return nil
+}
+
+func (s *SyncService[H]) AppendDAHint(ctx context.Context, daHeight uint64, heights ...uint64) error {
+	entries := make([]H, 0, len(heights))
+	for _, height := range heights {
+		v, err := s.store.GetByHeight(ctx, height)
+		if err != nil {
+			if errors.Is(err, header.ErrNotFound) {
+				s.logger.Debug().Uint64("height", height).Msg("cannot append DA height hint; header/data not found in store")
+				continue
+			}
+			return err
+		}
+		v.SetDAHint(daHeight)
+		entries = append(entries, v)
+	}
+	return s.store.Append(ctx, entries...)
 }
 
 // Start is a part of Service interface.

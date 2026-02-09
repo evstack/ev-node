@@ -9,17 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## v1.0.0-rc.3
+
+### Added
+
+- Add DA Hints for P2P transactions. This allows a catching up node to be on sync with both DA and P2P. ([#2891](https://github.com/evstack/ev-node/pull/2891))
+
+### Changes
+
+- Improve `cache.NumPendingData` to not return empty data. Automatically bumps `LastSubmittedHeight` to reflect that. ([#3046](https://github.com/evstack/ev-node/pull/3046))
+- **BREAKING** Make pending events cache and tx cache fully ephemeral. Those will be re-fetched on restart. DA Inclusion cache persists until cleared up after DA inclusion has been processed. Persist accross restart using store metadata. ([#3047](https://github.com/evstack/ev-node/pull/3047))
+- Replace LRU cache by standard mem cache with manual eviction in `store_adapter`. When P2P blocks were fetched too fast, they would be evicted before being executed [#3051](https://github.com/evstack/ev-node/pull/3051)
+- Fix replay logic leading to app hashes by verifying against the wrong block [#3053](https://github.com/evstack/ev-node/pull/3053).
+
+## v1.0.0-rc.2
+
 ### Changes
 
 - Improve cache handling when there is a significant backlog of pending headers and data. ([#3030](https://github.com/evstack/ev-node/pull/3030))
 - Decrease MaxBytesSize to `5MB` to increase compatibility with public nodes. ([#3030](https://github.com/evstack/ev-node/pull/3030))
 - Proper counting of `DASubmitterPendingBlobs` metrics. [#3038](https://github.com/evstack/ev-node/pull/3038)
-- Replace `go-header` store by `ev-node` store. This avoid duplication of all blocks in `go-header` and `ev-node` store. Thanks to the cached store from #3030, this should improve p2p performance as well.
+- Replace `go-header` store by `ev-node` store. This avoid duplication of all blocks in `go-header` and `ev-node` store. Thanks to the cached store from #3030, this should improve p2p performance as well. [#3036](https://github.com/evstack/ev-node/pull/3036)
 
 ## v1.0.0-rc.1
 
 ### Added
 
+- Added OpenTelemetry tracing support with OTLP export for distributed tracing across ev-node components including block production, syncing, DA submission/retrieval, sequencer, store operations, and RPC layer. Configurable via `instrumentation.tracing`, `instrumentation.tracing_endpoint`, `instrumentation.tracing_service_name`, and `instrumentation.tracing_sample_rate` settings. ([#2956](https://github.com/evstack/ev-node/issues/2956))
 - **BREAKING:** Implement forced inclusion and batch sequencing ([#2797](https://github.com/evstack/ev-node/pull/2797))
   **This change requires adding a `da_epoch_forced_inclusion` field to the node's `genesis.json` file.** The recommended value is `100`.
   Full support for this feature will be available in a future release.

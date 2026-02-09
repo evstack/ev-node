@@ -655,6 +655,136 @@ func (x *Vote) GetValidatorAddress() []byte {
 	return nil
 }
 
+// P2PSignedHeader
+type P2PSignedHeader struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Header        *Header                `protobuf:"bytes,1,opt,name=header,proto3" json:"header,omitempty"`
+	Signature     []byte                 `protobuf:"bytes,2,opt,name=signature,proto3" json:"signature,omitempty"`
+	Signer        *Signer                `protobuf:"bytes,3,opt,name=signer,proto3" json:"signer,omitempty"`
+	DaHeightHint  *uint64                `protobuf:"varint,4,opt,name=da_height_hint,json=daHeightHint,proto3,oneof" json:"da_height_hint,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *P2PSignedHeader) Reset() {
+	*x = P2PSignedHeader{}
+	mi := &file_evnode_v1_evnode_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *P2PSignedHeader) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*P2PSignedHeader) ProtoMessage() {}
+
+func (x *P2PSignedHeader) ProtoReflect() protoreflect.Message {
+	mi := &file_evnode_v1_evnode_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use P2PSignedHeader.ProtoReflect.Descriptor instead.
+func (*P2PSignedHeader) Descriptor() ([]byte, []int) {
+	return file_evnode_v1_evnode_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *P2PSignedHeader) GetHeader() *Header {
+	if x != nil {
+		return x.Header
+	}
+	return nil
+}
+
+func (x *P2PSignedHeader) GetSignature() []byte {
+	if x != nil {
+		return x.Signature
+	}
+	return nil
+}
+
+func (x *P2PSignedHeader) GetSigner() *Signer {
+	if x != nil {
+		return x.Signer
+	}
+	return nil
+}
+
+func (x *P2PSignedHeader) GetDaHeightHint() uint64 {
+	if x != nil && x.DaHeightHint != nil {
+		return *x.DaHeightHint
+	}
+	return 0
+}
+
+// P2PData
+type P2PData struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Metadata      *Metadata              `protobuf:"bytes,1,opt,name=metadata,proto3" json:"metadata,omitempty"`
+	Txs           [][]byte               `protobuf:"bytes,2,rep,name=txs,proto3" json:"txs,omitempty"`
+	DaHeightHint  *uint64                `protobuf:"varint,3,opt,name=da_height_hint,json=daHeightHint,proto3,oneof" json:"da_height_hint,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *P2PData) Reset() {
+	*x = P2PData{}
+	mi := &file_evnode_v1_evnode_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *P2PData) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*P2PData) ProtoMessage() {}
+
+func (x *P2PData) ProtoReflect() protoreflect.Message {
+	mi := &file_evnode_v1_evnode_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use P2PData.ProtoReflect.Descriptor instead.
+func (*P2PData) Descriptor() ([]byte, []int) {
+	return file_evnode_v1_evnode_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *P2PData) GetMetadata() *Metadata {
+	if x != nil {
+		return x.Metadata
+	}
+	return nil
+}
+
+func (x *P2PData) GetTxs() [][]byte {
+	if x != nil {
+		return x.Txs
+	}
+	return nil
+}
+
+func (x *P2PData) GetDaHeightHint() uint64 {
+	if x != nil && x.DaHeightHint != nil {
+		return *x.DaHeightHint
+	}
+	return 0
+}
+
 var File_evnode_v1_evnode_proto protoreflect.FileDescriptor
 
 const file_evnode_v1_evnode_proto_rawDesc = "" +
@@ -705,7 +835,18 @@ const file_evnode_v1_evnode_proto_rawDesc = "" +
 	"\x06height\x18\x02 \x01(\x04R\x06height\x128\n" +
 	"\ttimestamp\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12\"\n" +
 	"\rblock_id_hash\x18\x04 \x01(\fR\vblockIdHash\x12+\n" +
-	"\x11validator_address\x18\x05 \x01(\fR\x10validatorAddressB/Z-github.com/evstack/ev-node/types/pb/evnode/v1b\x06proto3"
+	"\x11validator_address\x18\x05 \x01(\fR\x10validatorAddress\"\xc3\x01\n" +
+	"\x0fP2PSignedHeader\x12)\n" +
+	"\x06header\x18\x01 \x01(\v2\x11.evnode.v1.HeaderR\x06header\x12\x1c\n" +
+	"\tsignature\x18\x02 \x01(\fR\tsignature\x12)\n" +
+	"\x06signer\x18\x03 \x01(\v2\x11.evnode.v1.SignerR\x06signer\x12)\n" +
+	"\x0eda_height_hint\x18\x04 \x01(\x04H\x00R\fdaHeightHint\x88\x01\x01B\x11\n" +
+	"\x0f_da_height_hint\"\x8a\x01\n" +
+	"\aP2PData\x12/\n" +
+	"\bmetadata\x18\x01 \x01(\v2\x13.evnode.v1.MetadataR\bmetadata\x12\x10\n" +
+	"\x03txs\x18\x02 \x03(\fR\x03txs\x12)\n" +
+	"\x0eda_height_hint\x18\x03 \x01(\x04H\x00R\fdaHeightHint\x88\x01\x01B\x11\n" +
+	"\x0f_da_height_hintB/Z-github.com/evstack/ev-node/types/pb/evnode/v1b\x06proto3"
 
 var (
 	file_evnode_v1_evnode_proto_rawDescOnce sync.Once
@@ -719,7 +860,7 @@ func file_evnode_v1_evnode_proto_rawDescGZIP() []byte {
 	return file_evnode_v1_evnode_proto_rawDescData
 }
 
-var file_evnode_v1_evnode_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_evnode_v1_evnode_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_evnode_v1_evnode_proto_goTypes = []any{
 	(*Version)(nil),               // 0: evnode.v1.Version
 	(*Header)(nil),                // 1: evnode.v1.Header
@@ -730,23 +871,28 @@ var file_evnode_v1_evnode_proto_goTypes = []any{
 	(*Data)(nil),                  // 6: evnode.v1.Data
 	(*SignedData)(nil),            // 7: evnode.v1.SignedData
 	(*Vote)(nil),                  // 8: evnode.v1.Vote
-	(*timestamppb.Timestamp)(nil), // 9: google.protobuf.Timestamp
+	(*P2PSignedHeader)(nil),       // 9: evnode.v1.P2PSignedHeader
+	(*P2PData)(nil),               // 10: evnode.v1.P2PData
+	(*timestamppb.Timestamp)(nil), // 11: google.protobuf.Timestamp
 }
 var file_evnode_v1_evnode_proto_depIdxs = []int32{
-	0, // 0: evnode.v1.Header.version:type_name -> evnode.v1.Version
-	1, // 1: evnode.v1.SignedHeader.header:type_name -> evnode.v1.Header
-	4, // 2: evnode.v1.SignedHeader.signer:type_name -> evnode.v1.Signer
-	1, // 3: evnode.v1.DAHeaderEnvelope.header:type_name -> evnode.v1.Header
-	4, // 4: evnode.v1.DAHeaderEnvelope.signer:type_name -> evnode.v1.Signer
-	5, // 5: evnode.v1.Data.metadata:type_name -> evnode.v1.Metadata
-	6, // 6: evnode.v1.SignedData.data:type_name -> evnode.v1.Data
-	4, // 7: evnode.v1.SignedData.signer:type_name -> evnode.v1.Signer
-	9, // 8: evnode.v1.Vote.timestamp:type_name -> google.protobuf.Timestamp
-	9, // [9:9] is the sub-list for method output_type
-	9, // [9:9] is the sub-list for method input_type
-	9, // [9:9] is the sub-list for extension type_name
-	9, // [9:9] is the sub-list for extension extendee
-	0, // [0:9] is the sub-list for field type_name
+	0,  // 0: evnode.v1.Header.version:type_name -> evnode.v1.Version
+	1,  // 1: evnode.v1.SignedHeader.header:type_name -> evnode.v1.Header
+	4,  // 2: evnode.v1.SignedHeader.signer:type_name -> evnode.v1.Signer
+	1,  // 3: evnode.v1.DAHeaderEnvelope.header:type_name -> evnode.v1.Header
+	4,  // 4: evnode.v1.DAHeaderEnvelope.signer:type_name -> evnode.v1.Signer
+	5,  // 5: evnode.v1.Data.metadata:type_name -> evnode.v1.Metadata
+	6,  // 6: evnode.v1.SignedData.data:type_name -> evnode.v1.Data
+	4,  // 7: evnode.v1.SignedData.signer:type_name -> evnode.v1.Signer
+	11, // 8: evnode.v1.Vote.timestamp:type_name -> google.protobuf.Timestamp
+	1,  // 9: evnode.v1.P2PSignedHeader.header:type_name -> evnode.v1.Header
+	4,  // 10: evnode.v1.P2PSignedHeader.signer:type_name -> evnode.v1.Signer
+	5,  // 11: evnode.v1.P2PData.metadata:type_name -> evnode.v1.Metadata
+	12, // [12:12] is the sub-list for method output_type
+	12, // [12:12] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_evnode_v1_evnode_proto_init() }
@@ -754,13 +900,15 @@ func file_evnode_v1_evnode_proto_init() {
 	if File_evnode_v1_evnode_proto != nil {
 		return
 	}
+	file_evnode_v1_evnode_proto_msgTypes[9].OneofWrappers = []any{}
+	file_evnode_v1_evnode_proto_msgTypes[10].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_evnode_v1_evnode_proto_rawDesc), len(file_evnode_v1_evnode_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   9,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

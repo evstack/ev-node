@@ -106,3 +106,18 @@ message Vote {
   // Validator address
   bytes validator_address = 5;
 }
+
+// P2PSignedHeader
+message P2PSignedHeader {
+  Header header = 1;
+  bytes signature = 2;
+  Signer signer = 3;
+  optional uint64 da_height_hint = 4;
+}
+
+// P2PData
+message P2PData {
+  Metadata metadata = 1;
+  repeated bytes txs = 2;
+  optional uint64 da_height_hint = 3;
+}

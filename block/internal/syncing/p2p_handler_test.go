@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	ds "github.com/ipfs/go-datastore"
+	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/mock"
@@ -18,6 +20,7 @@ import (
 	"github.com/evstack/ev-node/pkg/genesis"
 	signerpkg "github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/signer/noop"
+	"github.com/evstack/ev-node/pkg/store"
 	extmocks "github.com/evstack/ev-node/test/mocks/external"
 	"github.com/evstack/ev-node/types"
 )
@@ -37,7 +40,7 @@ func buildTestSigner(t *testing.T) ([]byte, crypto.PubKey, signerpkg.Signer) {
 }
 
 // p2pMakeSignedHeader creates a minimally valid SignedHeader for P2P tests.
-func p2pMakeSignedHeader(t *testing.T, chainID string, height uint64, proposer []byte, pub crypto.PubKey, signer signerpkg.Signer) *types.SignedHeader {
+func p2pMakeSignedHeader(t *testing.T, chainID string, height uint64, proposer []byte, pub crypto.PubKey, signer signerpkg.Signer) *types.P2PSignedHeader {
 	t.Helper()
 	hdr := &types.SignedHeader{
 		Header: types.Header{
@@ -51,14 +54,14 @@ func p2pMakeSignedHeader(t *testing.T, chainID string, height uint64, proposer [
 	sig, err := signer.Sign(bz)
 	require.NoError(t, err, "failed to sign header bytes")
 	hdr.Signature = sig
-	return hdr
+	return &types.P2PSignedHeader{SignedHeader: hdr}
 }
 
 // P2PTestData aggregates dependencies used by P2P handler tests.
 type P2PTestData struct {
 	Handler      *P2PHandler
-	HeaderStore  *extmocks.MockStore[*types.SignedHeader]
-	DataStore    *extmocks.MockStore[*types.Data]
+	HeaderStore  *extmocks.MockStore[*types.P2PSignedHeader]
+	DataStore    *extmocks.MockStore[*types.P2PData]
 	Cache        cache.CacheManager
 	Genesis      genesis.Genesis
 	ProposerAddr []byte
@@ -73,14 +76,18 @@ func setupP2P(t *testing.T) *P2PTestData {
 
 	gen := genesis.Genesis{ChainID: "p2p-test", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: proposerAddr}
 
-	headerStoreMock := extmocks.NewMockStore[*types.SignedHeader](t)
-	dataStoreMock := extmocks.NewMockStore[*types.Data](t)
+	headerStoreMock := extmocks.NewMockStore[*types.P2PSignedHeader](t)
+	dataStoreMock := extmocks.NewMockStore[*types.P2PData](t)
 
 	cfg := config.Config{
-		RootDir:    t.TempDir(),
-		ClearCache: true,
+		RootDir: t.TempDir(),
 	}
-	cacheManager, err := cache.NewCacheManager(cfg, zerolog.Nop())
+
+	// Create an in-memory store for the cache
+	memDS := dssync.MutexWrap(ds.NewMapDatastore())
+	st := store.New(memDS)
+
+	cacheManager, err := cache.NewManager(cfg, st, zerolog.Nop())
 	require.NoError(t, err, "failed to create cache manager")
 
 	handler := NewP2PHandler(headerStoreMock, dataStoreMock, cacheManager, gen, zerolog.Nop())
@@ -129,7 +136,7 @@ func TestP2PHandler_ProcessHeight_EmitsEventWhenHeaderAndDataPresent(t *testing.
 	require.Equal(t, string(p.Genesis.ProposerAddress), string(p.ProposerAddr))
 
 	header := p2pMakeSignedHeader(t, p.Genesis.ChainID, 5, p.ProposerAddr, p.ProposerPub, p.Signer)
-	data := makeData(p.Genesis.ChainID, 5, 1)
+	data := &types.P2PData{Data: makeData(p.Genesis.ChainID, 5, 1)}
 	header.DataHash = data.DACommitment()
 	bz, err := types.DefaultAggregatorNodeSignatureBytesProvider(&header.Header)
 	require.NoError(t, err)
@@ -155,7 +162,7 @@ func TestP2PHandler_ProcessHeight_SkipsWhenDataMissing(t *testing.T) {
 	ctx := context.Background()
 
 	header := p2pMakeSignedHeader(t, p.Genesis.ChainID, 7, p.ProposerAddr, p.ProposerPub, p.Signer)
-	data := makeData(p.Genesis.ChainID, 7, 1)
+	data := &types.P2PData{Data: makeData(p.Genesis.ChainID, 7, 1)}
 	header.DataHash = data.DACommitment()
 	bz, err := types.DefaultAggregatorNodeSignatureBytesProvider(&header.Header)
 	require.NoError(t, err)
@@ -225,7 +232,7 @@ func TestP2PHandler_ProcessedHeightSkipsPreviouslyHandledBlocks(t *testing.T) {
 
 	// Height 6 should be fetched normally.
 	header := p2pMakeSignedHeader(t, p.Genesis.ChainID, 6, p.ProposerAddr, p.ProposerPub, p.Signer)
-	data := makeData(p.Genesis.ChainID, 6, 1)
+	data := &types.P2PData{Data: makeData(p.Genesis.ChainID, 6, 1)}
 	header.DataHash = data.DACommitment()
 	bz, err := types.DefaultAggregatorNodeSignatureBytesProvider(&header.Header)
 	require.NoError(t, err)
@@ -248,7 +255,7 @@ func TestP2PHandler_SetProcessedHeightPreventsDuplicates(t *testing.T) {
 	ctx := context.Background()
 
 	header := p2pMakeSignedHeader(t, p.Genesis.ChainID, 8, p.ProposerAddr, p.ProposerPub, p.Signer)
-	data := makeData(p.Genesis.ChainID, 8, 0)
+	data := &types.P2PData{Data: makeData(p.Genesis.ChainID, 8, 0)}
 	header.DataHash = data.DACommitment()
 	bz, err := types.DefaultAggregatorNodeSignatureBytesProvider(&header.Header)
 	require.NoError(t, err)
