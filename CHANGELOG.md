@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changes
+
+- Skip draining when exec client unavailable. [#3060](https://github.com/evstack/ev-node/pull/3060)
+
 ## v1.0.0-rc.3
 
 ### Added
