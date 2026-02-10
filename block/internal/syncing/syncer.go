@@ -685,7 +685,7 @@ func (s *Syncer) processHeightEvent(ctx context.Context, event *common.DAHeightE
 			Msg("failed to sync next block")
 		// If the error is not due to a validation error, re-store the event as pending
 		switch {
-		case errors.Is(err, errInvalidBlock) || errors.Is(err, errExecutionClientFailure):
+		case errors.Is(err, errInvalidBlock) || s.hasCriticalError.Load():
 			// do not reschedule
 		case errors.Is(err, errMaliciousProposer):
 			s.sendCriticalError(fmt.Errorf("sequencer malicious. Restart the node with --node.aggregator --node.based_sequencer or keep the chain halted: %w", err))
@@ -705,10 +705,6 @@ var (
 	errInvalidBlock = errors.New("invalid block")
 	// errInvalidState is returned when the state has diverged from the DA blocks
 	errInvalidState = errors.New("invalid state")
-	// errExecutionClientFailure is returned when the execution client is unavailable
-	// and **all retries** have been exhausted.
-	// This is useful to avoid draining the heightInCh with retry attempts on shutdown.
-	errExecutionClientFailure = errors.New("execution client failure")
 )
 
 // TrySyncNextBlock attempts to sync the next available block
@@ -819,9 +815,8 @@ func (s *Syncer) ApplyBlock(ctx context.Context, header types.Header, data *type
 	ctx = context.WithValue(ctx, types.HeaderContextKey, header)
 	newAppHash, err := s.executeTxsWithRetry(ctx, rawTxs, header, currentState)
 	if err != nil {
-		wrappedErr := errors.Join(errExecutionClientFailure, err)
-		s.sendCriticalError(wrappedErr)
-		return types.State{}, wrappedErr
+		s.sendCriticalError(fmt.Errorf("failed to execute transactions: %w", err))
+		return types.State{}, fmt.Errorf("failed to execute transactions: %w", err)
 	}
 
 	// Create new state

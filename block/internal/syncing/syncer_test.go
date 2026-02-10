@@ -852,7 +852,7 @@ func TestProcessHeightEvent_ExecutionFailure_DoesNotReschedule(t *testing.T) {
 		// A critical error must have been sent
 		select {
 		case critErr := <-errChan:
-			assert.ErrorIs(t, critErr, errExecutionClientFailure)
+			assert.ErrorContains(t, critErr, "failed to execute transactions")
 		default:
 			t.Fatal("expected a critical error on errorCh, got none")
 		}
