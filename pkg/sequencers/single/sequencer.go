@@ -363,11 +363,14 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 	batchTxs = append(batchTxs, validMempoolTxs...)
 
 	// During catch-up, use the DA epoch end timestamp to match based sequencing behavior.
-	// This ensures blocks produced during catch-up have timestamps consistent with
-	// what base sequencing nodes would have produced.
+	// Replicates based sequencing nodes' behavior of timestamping blocks during catchingUp.
 	timestamp := time.Now()
 	if c.catchingUp && !c.currentDAEndTime.IsZero() {
-		timestamp = c.currentDAEndTime
+		var remainingForcedTxs uint64
+		if len(c.cachedForcedInclusionTxs) > 0 {
+			remainingForcedTxs = uint64(len(c.cachedForcedInclusionTxs)) - c.checkpoint.TxIndex
+		}
+		timestamp = c.currentDAEndTime.Add(-time.Duration(remainingForcedTxs) * time.Millisecond)
 	}
 
 	return &coresequencer.GetNextBatchResponse{
