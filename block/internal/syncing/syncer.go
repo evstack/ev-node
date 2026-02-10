@@ -122,6 +122,9 @@ type Syncer struct {
 	// P2P wait coordination
 	p2pWaitState atomic.Value // stores p2pWaitState
 
+	// DA head-reached signal for recovery mode (stays true once DA head is seen)
+	daHeadReached atomic.Bool
+
 	// blockSyncer is the interface used for block sync operations.
 	// defaults to self, but can be wrapped with tracing.
 	blockSyncer BlockSyncer
@@ -400,6 +403,7 @@ func (s *Syncer) daWorkerLoop() {
 		var backoff time.Duration
 		if err == nil {
 			// No error, means we are caught up.
+			s.daHeadReached.Store(true)
 			backoff = s.config.DA.BlockTime.Duration
 		} else {
 			// Error, back off for a shorter duration.
@@ -415,6 +419,12 @@ func (s *Syncer) daWorkerLoop() {
 		case <-time.After(backoff):
 		}
 	}
+}
+
+// HasReachedDAHead returns true once the DA worker has reached the DA head.
+// Once set, it stays true.
+func (s *Syncer) HasReachedDAHead() bool {
+	return s.daHeadReached.Load()
 }
 
 func (s *Syncer) fetchDAUntilCaughtUp() error {

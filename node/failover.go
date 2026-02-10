@@ -286,3 +286,180 @@ func (a *singleRoleElector) state() *failoverState {
 	}
 	return nil
 }
+
+var _ leaderElection = &sequencerRecoveryElector{}
+var _ testSupportElection = &sequencerRecoveryElector{}
+
+// sequencerRecoveryElector implements leaderElection for disaster recovery.
+// It starts in sync mode (follower), catches up from DA and P2P, then switches to aggregator (leader) mode.
+// This is for single-sequencer setups that don't use raft.
+type sequencerRecoveryElector struct {
+	running         atomic.Bool
+	logger          zerolog.Logger
+	followerFactory func() (raft.Runnable, error)
+	leaderFactory   func() (raft.Runnable, error)
+	store           store.Store
+	daBlockTime     time.Duration
+	p2pTimeout      time.Duration
+
+	// activeState tracks the current failoverState for test access
+	activeState atomic.Pointer[failoverState]
+}
+
+func newSequencerRecoveryElector(
+	logger zerolog.Logger,
+	leaderFactory func() (raft.Runnable, error),
+	followerFactory func() (raft.Runnable, error),
+	store store.Store,
+	daBlockTime time.Duration,
+	p2pTimeout time.Duration,
+) (*sequencerRecoveryElector, error) {
+	return &sequencerRecoveryElector{
+		logger:          logger.With().Str("component", "sequencer-recovery").Logger(),
+		followerFactory: followerFactory,
+		leaderFactory:   leaderFactory,
+		store:           store,
+		daBlockTime:     daBlockTime,
+		p2pTimeout:      p2pTimeout,
+	}, nil
+}
+
+func (s *sequencerRecoveryElector) Run(pCtx context.Context) error {
+	s.running.Store(true)
+	defer s.running.Store(false)
+
+	syncCtx, cancel := context.WithCancel(pCtx)
+	defer cancel()
+	syncState, syncErrCh, err := s.startSyncPhase(syncCtx)
+	if err != nil {
+		return err
+	}
+
+	s.logger.Info().Msg("monitoring catchup status from DA and P2P")
+	caughtUp, err := s.waitForCatchup(syncCtx, syncState, syncErrCh)
+	if err != nil {
+		return err
+	}
+	if !caughtUp {
+		return <-syncErrCh
+	}
+	s.logger.Info().Msg("caught up with DA and P2P, stopping sync mode")
+	cancel()
+
+	if err := <-syncErrCh; err != nil && !errors.Is(err, context.Canceled) {
+		return fmt.Errorf("sync mode stopped with error during recovery switchover: %w", err)
+	}
+
+	return s.startAggregatorPhase(pCtx)
+}
+
+func (s *sequencerRecoveryElector) startSyncPhase(ctx context.Context) (*failoverState, <-chan error, error) {
+	s.logger.Info().Msg("starting sequencer recovery: syncing from DA and P2P")
+
+	syncRunnable, err := s.followerFactory()
+	if err != nil {
+		return nil, nil, fmt.Errorf("create sync mode: %w", err)
+	}
+
+	syncState, ok := syncRunnable.(*failoverState)
+	if !ok {
+		return nil, nil, fmt.Errorf("unexpected runnable type from follower factory")
+	}
+
+	s.activeState.Store(syncState)
+
+	syncErrCh := make(chan error, 1)
+	go func() {
+		syncErrCh <- syncState.Run(ctx)
+	}()
+
+	return syncState, syncErrCh, nil
+}
+
+func (s *sequencerRecoveryElector) startAggregatorPhase(ctx context.Context) error {
+	s.logger.Info().Msg("starting aggregator mode after recovery")
+
+	aggRunnable, err := s.leaderFactory()
+	if err != nil {
+		return fmt.Errorf("create aggregator mode after recovery: %w", err)
+	}
+
+	if aggState, ok := aggRunnable.(*failoverState); ok {
+		s.activeState.Store(aggState)
+	}
+
+	return aggRunnable.Run(ctx)
+}
+
+// waitForCatchup polls DA and P2P catchup status until both sources indicate the node is caught up.
+// Returns (true, nil) when caught up, (false, nil) if context cancelled, or (false, err) on error.
+func (s *sequencerRecoveryElector) waitForCatchup(ctx context.Context, syncState *failoverState, syncErrCh <-chan error) (bool, error) {
+	pollInterval := s.daBlockTime
+	if pollInterval <= 0 {
+		pollInterval = 2 * time.Second
+	}
+
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+
+	var timeoutCh <-chan time.Time
+	if s.p2pTimeout > 0 {
+		timeoutCh = time.After(s.p2pTimeout)
+	}
+	ignoreP2P := false
+
+	for {
+		select {
+		case <-ctx.Done():
+			return false, nil
+		case err := <-syncErrCh:
+			return false, fmt.Errorf("sync mode exited during recovery: %w", err)
+		case <-timeoutCh:
+			s.logger.Info().Msg("sequencer recovery: P2P catchup timeout reached, ignoring P2P status")
+			ignoreP2P = true
+			timeoutCh = nil
+		case <-ticker.C:
+			// Check DA caught up
+			daCaughtUp := syncState.bc.Syncer != nil && syncState.bc.Syncer.HasReachedDAHead()
+
+			// Check P2P caught up: store height >= best known height from P2P
+			storeHeight, err := s.store.Height(ctx)
+			if err != nil {
+				s.logger.Warn().Err(err).Msg("failed to get store height during recovery")
+				continue
+			}
+
+			maxP2PHeight := max(
+				syncState.headerSyncService.Store().Height(),
+				syncState.dataSyncService.Store().Height(),
+			)
+
+			p2pCaughtUp := ignoreP2P || (maxP2PHeight == 0 || storeHeight >= maxP2PHeight)
+
+			s.logger.Debug().
+				Bool("da_caught_up", daCaughtUp).
+				Bool("p2p_caught_up", p2pCaughtUp).
+				Bool("ignore_p2p", ignoreP2P).
+				Uint64("store_height", storeHeight).
+				Uint64("max_p2p_height", maxP2PHeight).
+				Msg("recovery catchup status")
+
+			if daCaughtUp && p2pCaughtUp && storeHeight > 0 {
+				s.logger.Info().
+					Uint64("store_height", storeHeight).
+					Uint64("max_p2p_height", maxP2PHeight).
+					Msg("sequencer recovery: fully caught up")
+				return true, nil
+			}
+		}
+	}
+}
+
+func (s *sequencerRecoveryElector) IsRunning() bool {
+	return s.running.Load()
+}
+
+// for testing purposes only
+func (s *sequencerRecoveryElector) state() *failoverState {
+	return s.activeState.Load()
+}
