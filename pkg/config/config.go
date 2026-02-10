@@ -386,13 +386,9 @@ func (c *Config) Validate() error {
 
 	// Validate pruning configuration
 	if c.Node.PruningEnabled {
-		// When pruning is enabled, pruning_interval must be >= 1
 		if c.Node.PruningInterval == 0 {
 			return fmt.Errorf("pruning_interval must be >= 1 when pruning is enabled")
 		}
-
-		// When pruning is enabled, keeping 0 blocks is contradictory; use pruning_enabled=false
-		// for archive mode instead.
 		if c.Node.PruningKeepRecent == 0 {
 			return fmt.Errorf("pruning_keep_recent must be > 0 when pruning is enabled; use pruning_enabled=false to keep all blocks")
 		}
