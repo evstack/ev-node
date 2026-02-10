@@ -347,7 +347,7 @@ func (s *sequencerRecoveryElector) Run(pCtx context.Context) error {
 	cancel()
 
 	if err := <-syncErrCh; err != nil && !errors.Is(err, context.Canceled) {
-		return fmt.Errorf("sync mode stopped with error during recovery switchover: %w", err)
+		return fmt.Errorf("sync mode failed before switchover completed: %w", err)
 	}
 
 	return s.startAggregatorPhase(pCtx)
@@ -404,7 +404,10 @@ func (s *sequencerRecoveryElector) waitForCatchup(ctx context.Context, syncState
 
 	var timeoutCh <-chan time.Time
 	if s.p2pTimeout > 0 {
+		s.logger.Debug().Dur("p2p_timeout", s.p2pTimeout).Msg("P2P catchup timeout configured")
 		timeoutCh = time.After(s.p2pTimeout)
+	} else {
+		s.logger.Debug().Msg("P2P catchup timeout disabled, relying on DA only")
 	}
 	ignoreP2P := false
 
@@ -435,14 +438,6 @@ func (s *sequencerRecoveryElector) waitForCatchup(ctx context.Context, syncState
 			)
 
 			p2pCaughtUp := ignoreP2P || (maxP2PHeight == 0 || storeHeight >= maxP2PHeight)
-
-			s.logger.Debug().
-				Bool("da_caught_up", daCaughtUp).
-				Bool("p2p_caught_up", p2pCaughtUp).
-				Bool("ignore_p2p", ignoreP2P).
-				Uint64("store_height", storeHeight).
-				Uint64("max_p2p_height", maxP2PHeight).
-				Msg("recovery catchup status")
 
 			if daCaughtUp && p2pCaughtUp && storeHeight > 0 {
 				s.logger.Info().
