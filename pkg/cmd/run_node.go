@@ -216,18 +216,17 @@ func StartNode(
 		logger.Info().Msg("shutting down node...")
 		cancel()
 	case err := <-errCh:
-		logger.Error().Err(err).Msg("node error")
+		if err != nil && !errors.Is(err, context.Canceled) {
+			logger.Error().Err(err).Msg("node error")
+		}
 		cancel()
 		return err
 	}
 
-	// Wait for node to finish shutting down
-	select {
-	case err := <-errCh:
-		if err != nil && !errors.Is(err, context.Canceled) {
-			logger.Error().Err(err).Msg("Error during shutdown")
-			return err
-		}
+	// Wait for node to finish shutting down after signal
+	if err := <-errCh; err != nil && !errors.Is(err, context.Canceled) {
+		logger.Error().Err(err).Msg("error during shutdown")
+		return err
 	}
 
 	return nil
