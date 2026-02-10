@@ -366,42 +366,48 @@ func (s *Submitter) processDAInclusionLoop() {
 			}
 
 			// Run height-based pruning if enabled.
-			if s.config.Node.PruningEnabled && s.config.Node.PruningKeepRecent > 0 && s.config.Node.PruningInterval > 0 {
-				currentDAIncluded = s.GetDAIncludedHeight()
+			s.pruneBlocks()
+		}
+	}
+}
 
-				var lastPruned uint64
-				if bz, err := s.store.GetMetadata(s.ctx, store.LastPrunedBlockHeightKey); err == nil && len(bz) == 8 {
-					lastPruned = binary.LittleEndian.Uint64(bz)
-				}
+func (s *Submitter) pruneBlocks() {
+	if !s.config.Node.PruningEnabled || s.config.Node.PruningKeepRecent == 0 || s.config.Node.PruningInterval == 0 {
+		return
+	}
 
-				storeHeight, err := s.store.Height(s.ctx)
-				if err != nil {
-					s.logger.Error().Err(err).Msg("failed to get store height for pruning")
-					continue
-				}
-				if storeHeight <= lastPruned+s.config.Node.PruningInterval {
-					continue
-				}
+	currentDAIncluded := s.GetDAIncludedHeight()
 
-				// Never prune blocks that are not DA included
-				upperBound := min(storeHeight, currentDAIncluded)
-				if upperBound <= s.config.Node.PruningKeepRecent {
-					// Not enough fully included blocks to prune
-					continue
-				}
+	var lastPruned uint64
+	if bz, err := s.store.GetMetadata(s.ctx, store.LastPrunedBlockHeightKey); err == nil && len(bz) == 8 {
+		lastPruned = binary.LittleEndian.Uint64(bz)
+	}
 
-				targetHeight := upperBound - s.config.Node.PruningKeepRecent
+	storeHeight, err := s.store.Height(s.ctx)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("failed to get store height for pruning")
+		return
+	}
+	if storeHeight <= lastPruned+s.config.Node.PruningInterval {
+		return
+	}
 
-				if err := s.store.PruneBlocks(s.ctx, targetHeight); err != nil {
-					s.logger.Error().Err(err).Uint64("target_height", targetHeight).Msg("failed to prune old block data")
-				}
+	// Never prune blocks that are not DA included
+	upperBound := min(storeHeight, currentDAIncluded)
+	if upperBound <= s.config.Node.PruningKeepRecent {
+		// Not enough fully included blocks to prune
+		return
+	}
 
-				if pruner, ok := s.exec.(coreexecutor.ExecPruner); ok {
-					if err := pruner.PruneExec(s.ctx, targetHeight); err != nil {
-						s.logger.Error().Err(err).Uint64("target_height", targetHeight).Msg("failed to prune execution metadata")
-					}
-				}
-			}
+	targetHeight := upperBound - s.config.Node.PruningKeepRecent
+
+	if err := s.store.PruneBlocks(s.ctx, targetHeight); err != nil {
+		s.logger.Error().Err(err).Uint64("target_height", targetHeight).Msg("failed to prune old block data")
+	}
+
+	if pruner, ok := s.exec.(coreexecutor.ExecPruner); ok {
+		if err := pruner.PruneExec(s.ctx, targetHeight); err != nil {
+			s.logger.Error().Err(err).Uint64("target_height", targetHeight).Msg("failed to prune execution metadata")
 		}
 	}
 }
