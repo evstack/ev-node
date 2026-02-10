@@ -224,9 +224,14 @@ func StartNode(
 	}
 
 	// Wait for node to finish shutting down after signal
-	if err := <-errCh; err != nil && !errors.Is(err, context.Canceled) {
-		logger.Error().Err(err).Msg("error during shutdown")
-		return err
+	select {
+	case err := <-errCh:
+		if err != nil && !errors.Is(err, context.Canceled) {
+			logger.Error().Err(err).Msg("Error during shutdown")
+			return err
+		}
+	case <-time.After(10 * time.Second):
+		return fmt.Errorf("shutdown timeout exceeded")
 	}
 
 	return nil
