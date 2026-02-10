@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/ipfs/go-datastore"
@@ -77,29 +78,30 @@ func TestSubmitter_setFinalWithRetry(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+			synctest.Test(t, func(t *testing.T) {
+				ctx := context.Background()
+				exec := testmocks.NewMockExecutor(t)
+				tt.setupMock(exec)
 
-			ctx := context.Background()
-			exec := testmocks.NewMockExecutor(t)
-			tt.setupMock(exec)
-
-			s := &Submitter{
-				exec:   exec,
-				ctx:    ctx,
-				logger: zerolog.Nop(),
-			}
-
-			err := s.setFinalWithRetry(100)
-
-			if tt.expectSuccess {
-				require.NoError(t, err)
-			} else {
-				require.Error(t, err)
-				if tt.expectError != "" {
-					assert.Contains(t, err.Error(), tt.expectError)
+				s := &Submitter{
+					exec:   exec,
+					ctx:    ctx,
+					logger: zerolog.Nop(),
 				}
-			}
 
-			exec.AssertExpectations(t)
+				err := s.setFinalWithRetry(100)
+
+				if tt.expectSuccess {
+					require.NoError(t, err)
+				} else {
+					require.Error(t, err)
+					if tt.expectError != "" {
+						assert.Contains(t, err.Error(), tt.expectError)
+					}
+				}
+
+				exec.AssertExpectations(t)
+			})
 		})
 	}
 }
