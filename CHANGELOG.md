@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add disaster recovery for sequencer
+  - Catch up possible DA-only blocks when restarting. [#3057](https://github.com/evstack/ev-node/pull/3057)
+  - Verify DA and P2P state on restart (prevent double-signing). [#3061](https://github.com/evstack/ev-node/pull/3061)
+
 ## v1.0.0-rc.4
 
 ### Changes
