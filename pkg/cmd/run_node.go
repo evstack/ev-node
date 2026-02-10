@@ -223,8 +223,6 @@ func StartNode(
 
 	// Wait for node to finish shutting down
 	select {
-	case <-time.After(5 * time.Second):
-		logger.Info().Msg("Node shutdown timed out")
 	case err := <-errCh:
 		if err != nil && !errors.Is(err, context.Canceled) {
 			logger.Error().Err(err).Msg("Error during shutdown")
