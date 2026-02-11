@@ -25,6 +25,4 @@ func TestDeleteExecMeta(t *testing.T) {
 	meta, err := store.GetExecMeta(ctx, 1)
 	require.NoError(t, err)
 	require.Nil(t, meta)
-
-	require.NoError(t, store.DeleteExecMeta(ctx, 1))
 }

@@ -41,7 +41,7 @@ type Pruner struct {
 }
 
 // New creates a new Pruner instance.
-func New(store store.Store, execPruner ExecMetaPruner, retention uint64, interval time.Duration, logger zerolog.Logger) *Pruner {
+func New(store store.Store, execMetaPruner ExecMetaPruner, retention uint64, interval time.Duration, logger zerolog.Logger) *Pruner {
 	if interval <= 0 {
 		interval = DefaultPruneInterval
 	}
@@ -56,7 +56,7 @@ func New(store store.Store, execPruner ExecMetaPruner, retention uint64, interva
 	return &Pruner{
 		store:        store,
 		stateDeleter: deleter,
-		execPruner:   execPruner,
+		execPruner:   execMetaPruner,
 		retention:    retention,
 		interval:     interval,
 		logger:       logger,
@@ -126,7 +126,7 @@ func (p *Pruner) pruneOnce(ctx context.Context) error {
 
 	target := height - p.retention
 	if target < p.lastPruned {
-		p.lastPruned = target
+		p.lastPruned = 0
 		return nil
 	}
 	if target == p.lastPruned {
