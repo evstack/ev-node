@@ -18,7 +18,8 @@ import (
 
 // DefaultStore is a default store implementation.
 type DefaultStore struct {
-	db ds.Batching
+	db                    ds.Batching
+	stateHistoryRetention uint64
 }
 
 var _ Store = &DefaultStore{}
@@ -28,6 +29,12 @@ func New(ds ds.Batching) Store {
 	return &DefaultStore{
 		db: ds,
 	}
+}
+
+// SetStateHistoryRetention sets the number of recent state entries to keep.
+// A value of 0 keeps all state history.
+func (s *DefaultStore) SetStateHistoryRetention(limit uint64) {
+	s.stateHistoryRetention = limit
 }
 
 // Close safely closes underlying data storage, to ensure that data is actually saved.

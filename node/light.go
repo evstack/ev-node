@@ -50,6 +50,9 @@ func newLightNode(
 
 	componentLogger := logger.With().Str("component", "HeaderSyncService").Logger()
 	baseStore := store.New(database)
+	if defaultStore, ok := baseStore.(*store.DefaultStore); ok {
+		defaultStore.SetStateHistoryRetention(conf.Node.StateHistoryRetention)
+	}
 
 	// Wrap with cached store for LRU caching of headers
 	cachedStore, err := store.NewCachedStore(baseStore)

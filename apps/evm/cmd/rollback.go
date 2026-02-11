@@ -73,6 +73,7 @@ func NewRollbackCmd() *cobra.Command {
 			if err != nil {
 				cmd.Printf("Warning: failed to create engine client, skipping EL rollback: %v\n", err)
 			} else {
+				engineClient.SetExecMetaRetention(nodeConfig.Node.StateHistoryRetention)
 				if err := engineClient.Rollback(goCtx, height); err != nil {
 					return fmt.Errorf("failed to rollback execution layer: %w", err)
 				}

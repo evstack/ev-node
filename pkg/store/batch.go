@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 
 	ds "github.com/ipfs/go-datastore"
@@ -93,7 +94,18 @@ func (b *DefaultBatch) UpdateState(state types.State) error {
 		return fmt.Errorf("failed to marshal state to protobuf: %w", err)
 	}
 
-	return b.batch.Put(b.ctx, ds.NewKey(getStateAtHeightKey(height)), data)
+	if err := b.batch.Put(b.ctx, ds.NewKey(getStateAtHeightKey(height)), data); err != nil {
+		return err
+	}
+
+	if b.store.stateHistoryRetention > 0 && height > b.store.stateHistoryRetention {
+		pruneHeight := height - b.store.stateHistoryRetention
+		if err := b.batch.Delete(b.ctx, ds.NewKey(getStateAtHeightKey(pruneHeight))); err != nil && !errors.Is(err, ds.ErrNotFound) {
+			return fmt.Errorf("failed to prune state at height %d: %w", pruneHeight, err)
+		}
+	}
+
+	return nil
 }
 
 // Commit commits all batched operations atomically

@@ -270,6 +270,15 @@ func (c *EngineClient) SetLogger(l zerolog.Logger) {
 	c.logger = l
 }
 
+// SetExecMetaRetention configures how many recent execution metadata entries are retained.
+// A value of 0 keeps all entries.
+func (c *EngineClient) SetExecMetaRetention(limit uint64) {
+	if c.store == nil {
+		return
+	}
+	c.store.SetExecMetaRetention(limit)
+}
+
 // InitChain initializes the blockchain with the given genesis parameters
 func (c *EngineClient) InitChain(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, error) {
 	if initialHeight != 1 {

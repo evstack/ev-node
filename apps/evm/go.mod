@@ -222,3 +222,7 @@ replace (
 	google.golang.org/genproto/googleapis/api => google.golang.org/genproto/googleapis/api v0.0.0-20240213162025-012b6fc9bca9
 	google.golang.org/genproto/googleapis/rpc => google.golang.org/genproto/googleapis/rpc v0.0.0-20240213162025-012b6fc9bca9
 )
+
+replace github.com/evstack/ev-node => ../../
+
+replace github.com/evstack/ev-node/execution/evm => ../../execution/evm

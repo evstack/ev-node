@@ -85,12 +85,19 @@ func (em *ExecMeta) FromProto(other *pb.ExecMeta) error {
 // EVMStore wraps a ds.Batching datastore with a prefix for EVM execution data.
 // This keeps EVM-specific data isolated from other ev-node data.
 type EVMStore struct {
-	db ds.Batching
+	db                ds.Batching
+	execMetaRetention uint64
 }
 
 // NewEVMStore creates a new EVMStore wrapping the given datastore.
 func NewEVMStore(db ds.Batching) *EVMStore {
 	return &EVMStore{db: db}
+}
+
+// SetExecMetaRetention sets the number of recent exec meta entries to keep.
+// A value of 0 keeps all exec meta history.
+func (s *EVMStore) SetExecMetaRetention(limit uint64) {
+	s.execMetaRetention = limit
 }
 
 // execMetaKey returns the datastore key for ExecMeta at a given height.
@@ -135,6 +142,13 @@ func (s *EVMStore) SaveExecMeta(ctx context.Context, meta *ExecMeta) error {
 
 	if err := s.db.Put(ctx, key, data); err != nil {
 		return fmt.Errorf("failed to save exec meta: %w", err)
+	}
+
+	if s.execMetaRetention > 0 && meta.Height > s.execMetaRetention {
+		pruneHeight := meta.Height - s.execMetaRetention
+		if err := s.db.Delete(ctx, execMetaKey(pruneHeight)); err != nil && !errors.Is(err, ds.ErrNotFound) {
+			return fmt.Errorf("failed to prune exec meta at height %d: %w", pruneHeight, err)
+		}
 	}
 
 	return nil

@@ -69,6 +69,7 @@ var RunCmd = &cobra.Command{
 
 		// Attach logger to the EVM engine client if available
 		if ec, ok := executor.(*evm.EngineClient); ok {
+			ec.SetExecMetaRetention(nodeConfig.Node.StateHistoryRetention)
 			ec.SetLogger(logger.With().Str("module", "engine_client").Logger())
 		}
 
