@@ -591,7 +591,7 @@ func TestUpdateStateError(t *testing.T) {
 	require.Contains(err.Error(), mockErrPut.Error())
 }
 
-func TestUpdateStatePrunesHistory(t *testing.T) {
+func TestDeleteStateAtHeight(t *testing.T) {
 	t.Parallel()
 	require := require.New(t)
 
@@ -599,26 +599,17 @@ func TestUpdateStatePrunesHistory(t *testing.T) {
 	require.NoError(err)
 
 	store := New(kv)
-	store.(*DefaultStore).SetStateHistoryRetention(2)
 
-	for height := uint64(1); height <= 3; height++ {
-		batch, err := store.NewBatch(t.Context())
-		require.NoError(err)
-		require.NoError(batch.SetHeight(height))
-		require.NoError(batch.UpdateState(types.State{LastBlockHeight: height}))
-		require.NoError(batch.Commit())
-	}
+	batch, err := store.NewBatch(t.Context())
+	require.NoError(err)
+	require.NoError(batch.SetHeight(1))
+	require.NoError(batch.UpdateState(types.State{LastBlockHeight: 1}))
+	require.NoError(batch.Commit())
+
+	require.NoError(store.(*DefaultStore).DeleteStateAtHeight(t.Context(), 1))
 
 	_, err = store.GetStateAtHeight(t.Context(), 1)
 	require.ErrorIs(err, ds.ErrNotFound)
-
-	state, err := store.GetStateAtHeight(t.Context(), 2)
-	require.NoError(err)
-	require.Equal(uint64(2), state.LastBlockHeight)
-
-	state, err = store.GetStateAtHeight(t.Context(), 3)
-	require.NoError(err)
-	require.Equal(uint64(3), state.LastBlockHeight)
 }
 
 func TestGetStateError(t *testing.T) {

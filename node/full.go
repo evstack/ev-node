@@ -83,9 +83,6 @@ func newFullNode(
 
 	mainKV := store.NewEvNodeKVStore(database)
 	baseStore := store.New(mainKV)
-	if defaultStore, ok := baseStore.(*store.DefaultStore); ok {
-		defaultStore.SetStateHistoryRetention(nodeConfig.Node.StateHistoryRetention)
-	}
 
 	// Wrap with cached store for LRU caching of headers and block data
 	cachedStore, err := store.NewCachedStore(baseStore)

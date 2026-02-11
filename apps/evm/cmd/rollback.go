@@ -8,6 +8,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	ds "github.com/ipfs/go-datastore"
+	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 
 	"github.com/evstack/ev-node/execution/evm"
@@ -30,6 +31,7 @@ func NewRollbackCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			logger := rollcmd.SetupLogger(nodeConfig.Log)
 
 			goCtx := cmd.Context()
 			if goCtx == nil {
@@ -69,11 +71,10 @@ func NewRollbackCmd() *cobra.Command {
 			}
 
 			// rollback execution layer via EngineClient
-			engineClient, err := createRollbackEngineClient(cmd, rawEvolveDB)
+			engineClient, err := createRollbackEngineClient(cmd, rawEvolveDB, logger.With().Str("module", "engine_client").Logger())
 			if err != nil {
 				cmd.Printf("Warning: failed to create engine client, skipping EL rollback: %v\n", err)
 			} else {
-				engineClient.SetExecMetaRetention(nodeConfig.Node.StateHistoryRetention)
 				if err := engineClient.Rollback(goCtx, height); err != nil {
 					return fmt.Errorf("failed to rollback execution layer: %w", err)
 				}
@@ -100,7 +101,7 @@ func NewRollbackCmd() *cobra.Command {
 	return cmd
 }
 
-func createRollbackEngineClient(cmd *cobra.Command, db ds.Batching) (*evm.EngineClient, error) {
+func createRollbackEngineClient(cmd *cobra.Command, db ds.Batching, logger zerolog.Logger) (*evm.EngineClient, error) {
 	ethURL, err := cmd.Flags().GetString(evm.FlagEvmEthURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get '%s' flag: %w", evm.FlagEvmEthURL, err)
@@ -129,5 +130,5 @@ func createRollbackEngineClient(cmd *cobra.Command, db ds.Batching) (*evm.Engine
 		return nil, fmt.Errorf("JWT secret file '%s' is empty", jwtSecretFile)
 	}
 
-	return evm.NewEngineExecutionClient(ethURL, engineURL, jwtSecret, common.Hash{}, common.Address{}, db, false)
+	return evm.NewEngineExecutionClient(ethURL, engineURL, jwtSecret, common.Hash{}, common.Address{}, db, false, logger)
 }

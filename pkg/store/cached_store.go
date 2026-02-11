@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 
 	lru "github.com/hashicorp/golang-lru/v2"
 
@@ -155,6 +156,18 @@ func (cs *CachedStore) Rollback(ctx context.Context, height uint64, aggregator b
 	cs.InvalidateRange(height+1, currentHeight)
 
 	return nil
+}
+
+// DeleteStateAtHeight removes the state entry at the given height from the underlying store.
+func (cs *CachedStore) DeleteStateAtHeight(ctx context.Context, height uint64) error {
+	deleter, ok := cs.Store.(interface {
+		DeleteStateAtHeight(ctx context.Context, height uint64) error
+	})
+	if !ok {
+		return fmt.Errorf("underlying store does not support state deletion")
+	}
+
+	return deleter.DeleteStateAtHeight(ctx, height)
 }
 
 // Close closes the underlying store.

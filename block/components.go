@@ -12,6 +12,7 @@ import (
 	"github.com/evstack/ev-node/block/internal/common"
 	da "github.com/evstack/ev-node/block/internal/da"
 	"github.com/evstack/ev-node/block/internal/executing"
+	"github.com/evstack/ev-node/block/internal/pruner"
 	"github.com/evstack/ev-node/block/internal/reaping"
 	"github.com/evstack/ev-node/block/internal/submitting"
 	"github.com/evstack/ev-node/block/internal/syncing"
@@ -29,6 +30,7 @@ import (
 // Components represents the block-related components
 type Components struct {
 	Executor  *executing.Executor
+	Pruner    *pruner.Pruner
 	Reaper    *reaping.Reaper
 	Syncer    *syncing.Syncer
 	Submitter *submitting.Submitter
@@ -58,6 +60,11 @@ func (bc *Components) Start(ctx context.Context) error {
 	if bc.Executor != nil {
 		if err := bc.Executor.Start(ctxWithCancel); err != nil {
 			return fmt.Errorf("failed to start executor: %w", err)
+		}
+	}
+	if bc.Pruner != nil {
+		if err := bc.Pruner.Start(ctxWithCancel); err != nil {
+			return fmt.Errorf("failed to start pruner: %w", err)
 		}
 	}
 	if bc.Reaper != nil {
@@ -94,6 +101,11 @@ func (bc *Components) Stop() error {
 	if bc.Executor != nil {
 		if err := bc.Executor.Stop(); err != nil {
 			errs = errors.Join(errs, fmt.Errorf("failed to stop executor: %w", err))
+		}
+	}
+	if bc.Pruner != nil {
+		if err := bc.Pruner.Stop(); err != nil {
+			errs = errors.Join(errs, fmt.Errorf("failed to stop pruner: %w", err))
 		}
 	}
 	if bc.Reaper != nil {
@@ -166,6 +178,14 @@ func NewSyncComponents(
 		syncer.SetBlockSyncer(syncing.WithTracingBlockSyncer(syncer))
 	}
 
+	var execPruner pruner.ExecMetaPruner
+	if exec != nil {
+		if candidate, ok := exec.(pruner.ExecMetaPruner); ok {
+			execPruner = candidate
+		}
+	}
+	recoveryPruner := pruner.New(store, execPruner, config.Node.StateHistoryRetention, pruner.DefaultPruneInterval, logger.With().Str("component", "Pruner").Logger())
+
 	// Create submitter for sync nodes (no signer, only DA inclusion processing)
 	var daSubmitter submitting.DASubmitterAPI = submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger, headerDAHintAppender, dataDAHintAppender)
 	if config.Instrumentation.IsTracingEnabled() {
@@ -189,6 +209,7 @@ func NewSyncComponents(
 		Syncer:    syncer,
 		Submitter: submitter,
 		Cache:     cacheManager,
+		Pruner:    recoveryPruner,
 		errorCh:   errorCh,
 	}, nil
 }
@@ -248,6 +269,14 @@ func NewAggregatorComponents(
 		executor.SetBlockProducer(executing.WithTracingBlockProducer(executor))
 	}
 
+	var execPruner pruner.ExecMetaPruner
+	if exec != nil {
+		if candidate, ok := exec.(pruner.ExecMetaPruner); ok {
+			execPruner = candidate
+		}
+	}
+	recoveryPruner := pruner.New(store, execPruner, config.Node.StateHistoryRetention, pruner.DefaultPruneInterval, logger.With().Str("component", "Pruner").Logger())
+
 	reaper, err := reaping.NewReaper(
 		exec,
 		sequencer,
@@ -264,6 +293,7 @@ func NewAggregatorComponents(
 	if config.Node.BasedSequencer { // no submissions needed for bases sequencer
 		return &Components{
 			Executor: executor,
+			Pruner:   recoveryPruner,
 			Reaper:   reaper,
 			Cache:    cacheManager,
 			errorCh:  errorCh,
@@ -290,6 +320,7 @@ func NewAggregatorComponents(
 
 	return &Components{
 		Executor:  executor,
+		Pruner:    recoveryPruner,
 		Reaper:    reaper,
 		Submitter: submitter,
 		Cache:     cacheManager,

@@ -198,6 +198,7 @@ func NewEngineExecutionClient(
 	feeRecipient common.Address,
 	db ds.Batching,
 	tracingEnabled bool,
+	logger zerolog.Logger,
 ) (*EngineClient, error) {
 	if db == nil {
 		return nil, errors.New("db is required for EVM execution client")
@@ -261,22 +262,16 @@ func NewEngineExecutionClient(
 		currentSafeBlockHash:      genesisHash,
 		currentFinalizedBlockHash: genesisHash,
 		blockHashCache:            make(map[uint64]common.Hash),
-		logger:                    zerolog.Nop(),
+		logger:                    logger,
 	}, nil
 }
 
-// SetLogger allows callers to attach a structured logger.
-func (c *EngineClient) SetLogger(l zerolog.Logger) {
-	c.logger = l
-}
-
-// SetExecMetaRetention configures how many recent execution metadata entries are retained.
-// A value of 0 keeps all entries.
-func (c *EngineClient) SetExecMetaRetention(limit uint64) {
+// PruneExecMeta removes execution metadata at the given height.
+func (c *EngineClient) PruneExecMeta(ctx context.Context, height uint64) error {
 	if c.store == nil {
-		return
+		return nil
 	}
-	c.store.SetExecMetaRetention(limit)
+	return c.store.DeleteExecMeta(ctx, height)
 }
 
 // InitChain initializes the blockchain with the given genesis parameters
