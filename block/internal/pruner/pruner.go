@@ -125,10 +125,7 @@ func (p *Pruner) pruneOnce(ctx context.Context) error {
 	}
 
 	target := height - p.retention
-	if target < p.lastPruned {
-		return nil
-	}
-	if target == p.lastPruned {
+	if target <= p.lastPruned {
 		return nil
 	}
 
