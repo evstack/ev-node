@@ -267,6 +267,7 @@ func NewEngineExecutionClient(
 }
 
 // PruneExecMeta removes execution metadata at the given height.
+// It is used by the block pruner to delete historical exec meta entries.
 func (c *EngineClient) PruneExecMeta(ctx context.Context, height uint64) error {
 	if c.store == nil {
 		return nil
