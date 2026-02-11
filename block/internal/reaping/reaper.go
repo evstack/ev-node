@@ -78,11 +78,7 @@ func (r *Reaper) Start(ctx context.Context) error {
 	r.ctx, r.cancel = context.WithCancel(ctx)
 
 	// Start reaper loop
-	r.wg.Add(1)
-	go func() {
-		defer r.wg.Done()
-		r.reaperLoop()
-	}()
+	r.wg.Go(r.reaperLoop)
 
 	r.logger.Info().Dur("interval", r.interval).Msg("reaper started")
 	return nil

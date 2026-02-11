@@ -154,11 +154,7 @@ func (e *Executor) Start(ctx context.Context) error {
 	}
 
 	// Start execution loop
-	e.wg.Add(1)
-	go func() {
-		defer e.wg.Done()
-		e.executionLoop()
-	}()
+	e.wg.Go(e.executionLoop)
 
 	e.logger.Info().Msg("executor started")
 	return nil

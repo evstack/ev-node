@@ -71,11 +71,9 @@ func (r *raftRetriever) Start(ctx context.Context) error {
 	applyCh := make(chan raft.RaftApplyMsg, 100)
 	r.raftNode.SetApplyCallback(applyCh)
 
-	r.wg.Add(1)
-	go func() {
-		defer r.wg.Done()
+	r.wg.Go(func() {
 		r.raftApplyLoop(ctx, applyCh)
-	}()
+	})
 	return nil
 }
 
