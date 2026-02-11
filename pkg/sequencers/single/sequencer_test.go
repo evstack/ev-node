@@ -365,7 +365,7 @@ func TestSequencer_GetNextBatch_BeforeDASubmission(t *testing.T) {
 
 func TestSequencer_GetNextBatch_ForcedInclusionAndBatch_MaxBytes(t *testing.T) {
 	ctx := context.Background()
-	logger := zerolog.New(zerolog.NewConsoleWriter())
+	logger := zerolog.New(zerolog.NewTestWriter(t))
 
 	// Create in-memory datastore
 	db := ds.NewMapDatastore()
@@ -458,7 +458,7 @@ func TestSequencer_GetNextBatch_ForcedInclusionAndBatch_MaxBytes(t *testing.T) {
 
 func TestSequencer_GetNextBatch_ForcedInclusion_ExceedsMaxBytes(t *testing.T) {
 	ctx := context.Background()
-	logger := zerolog.New(zerolog.NewConsoleWriter())
+	logger := zerolog.New(zerolog.NewTestWriter(t))
 
 	db := ds.NewMapDatastore()
 	defer db.Close()
@@ -541,7 +541,7 @@ func TestSequencer_GetNextBatch_ForcedInclusion_ExceedsMaxBytes(t *testing.T) {
 
 func TestSequencer_GetNextBatch_AlwaysCheckPendingForcedInclusion(t *testing.T) {
 	ctx := context.Background()
-	logger := zerolog.New(zerolog.NewConsoleWriter())
+	logger := zerolog.New(zerolog.NewTestWriter(t))
 
 	db := ds.NewMapDatastore()
 	defer db.Close()
@@ -882,7 +882,7 @@ func TestSequencer_DAFailureAndQueueThrottling_Integration(t *testing.T) {
 
 func TestSequencer_CheckpointPersistence_CrashRecovery(t *testing.T) {
 	ctx := context.Background()
-	logger := zerolog.New(zerolog.NewConsoleWriter())
+	logger := zerolog.New(zerolog.NewTestWriter(t))
 
 	db := ds.NewMapDatastore()
 	defer db.Close()
@@ -1242,7 +1242,7 @@ func TestSequencer_GetNextBatch_GasFilterError(t *testing.T) {
 // This test uses maxBytes to limit how many txs are fetched, triggering the unprocessed txs scenario.
 func TestSequencer_CatchUp_DetectsOldEpoch(t *testing.T) {
 	ctx := context.Background()
-	logger := zerolog.New(zerolog.NewConsoleWriter())
+	logger := zerolog.New(zerolog.NewTestWriter(t))
 
 	db := ds.NewMapDatastore()
 	defer db.Close()
@@ -1312,7 +1312,7 @@ func TestSequencer_CatchUp_DetectsOldEpoch(t *testing.T) {
 
 func TestSequencer_CatchUp_SkipsMempoolDuringCatchUp(t *testing.T) {
 	ctx := context.Background()
-	logger := zerolog.New(zerolog.NewConsoleWriter())
+	logger := zerolog.New(zerolog.NewTestWriter(t))
 
 	db := ds.NewMapDatastore()
 	defer db.Close()
@@ -1463,7 +1463,7 @@ func TestSequencer_CatchUp_UsesDATimestamp(t *testing.T) {
 
 func TestSequencer_CatchUp_ExitsCatchUpAtDAHead(t *testing.T) {
 	ctx := context.Background()
-	logger := zerolog.New(zerolog.NewConsoleWriter())
+	logger := zerolog.New(zerolog.NewTestWriter(t))
 
 	db := ds.NewMapDatastore()
 	defer db.Close()
@@ -1676,7 +1676,7 @@ func TestSequencer_CatchUp_MultiEpochReplay(t *testing.T) {
 	// Simulates a sequencer that missed 3 DA epochs and must replay them all
 	// before resuming normal operation.
 	ctx := context.Background()
-	logger := zerolog.New(zerolog.NewConsoleWriter())
+	logger := zerolog.New(zerolog.NewTestWriter(t))
 
 	db := ds.NewMapDatastore()
 	defer db.Close()
@@ -1915,7 +1915,7 @@ func TestSequencer_CatchUp_MonotonicTimestamps(t *testing.T) {
 	// resulting blocks.  This uses the same jitter scheme as the based
 	// sequencer: timestamp = DAEndTime - (remainingForcedTxs * 1ms).
 	ctx := context.Background()
-	logger := zerolog.New(zerolog.NewConsoleWriter())
+	logger := zerolog.New(zerolog.NewTestWriter(t))
 
 	db := ds.NewMapDatastore()
 	defer db.Close()
