@@ -3,6 +3,7 @@ package pruner
 import (
 	"context"
 	"testing"
+	"time"
 
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
@@ -40,7 +41,7 @@ func TestPrunerPrunesRecoveryHistory(t *testing.T) {
 
 	execAdapter := &execMetaAdapter{existing: map[uint64]struct{}{1: {}, 2: {}, 3: {}}}
 
-	recoveryPruner := New(zerolog.Nop(), stateStore, execAdapter, config.NodeConfig{RecoveryHistoryDepth: 2})
+	recoveryPruner := New(zerolog.Nop(), stateStore, execAdapter, config.NodeConfig{RecoveryHistoryDepth: 2, BlockTime: config.DurationWrapper{Duration: 10 * time.Second}})
 	require.NoError(t, recoveryPruner.pruneRecoveryHistory(ctx, recoveryPruner.cfg.RecoveryHistoryDepth))
 
 	_, err := stateStore.GetStateAtHeight(ctx, 1)

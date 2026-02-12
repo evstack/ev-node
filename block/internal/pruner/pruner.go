@@ -13,11 +13,7 @@ import (
 	"github.com/evstack/ev-node/pkg/store"
 )
 
-const (
-	defaultPruneInterval = 15 * time.Minute
-	// maxPruneBatch limits how many heights we prune per cycle to bound work.
-	maxPruneBatch = uint64(1000)
-)
+const defaultPruneInterval = 15 * time.Minute
 
 // ExecPruner removes execution metadata at a given height.
 type ExecPruner interface {
@@ -110,6 +106,10 @@ func (p *Pruner) pruneLoop() {
 // It does not prunes old blocks, as those are handled by the pruning logic.
 // Pruning old state does not lose history but limit the ability to recover (replay or rollback) to the last HEAD-N blocks, where N is the retention depth.
 func (p *Pruner) pruneRecoveryHistory(ctx context.Context, retention uint64) error {
+	if p.cfg.RecoveryHistoryDepth == 0 {
+		return nil
+	}
+
 	height, err := p.store.Height(ctx)
 	if err != nil {
 		return err
@@ -123,6 +123,15 @@ func (p *Pruner) pruneRecoveryHistory(ctx context.Context, retention uint64) err
 	if target <= p.lastPruned {
 		return nil
 	}
+
+	// maxPruneBatch limits how many heights we prune per cycle to bound work.
+	// it is callibrated to prune the last N blocks in one cycle, where N is the number of blocks produced in the defaultPruneInterval.
+	blockTime := p.cfg.BlockTime.Duration
+	if blockTime == 0 {
+		blockTime = 1
+	}
+
+	maxPruneBatch := max(uint64(defaultPruneInterval/blockTime), (target-p.lastPruned)/5)
 
 	start := p.lastPruned + 1
 	end := target
