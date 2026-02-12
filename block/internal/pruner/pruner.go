@@ -2,7 +2,9 @@ package pruner
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -79,11 +81,64 @@ func (p *Pruner) pruneLoop() {
 				p.logger.Error().Err(err).Msg("failed to prune recovery history")
 			}
 
+			if err := p.pruneBlocks(); err != nil {
+				p.logger.Error().Err(err).Msg("failed to prune old blocks")
+			}
+
 			// TODO: add pruning of old blocks // https://github.com/evstack/ev-node/pull/2984
 		case <-p.ctx.Done():
 			return
 		}
 	}
+}
+
+func (p *Pruner) pruneBlocks() error {
+	if !p.cfg.PruningEnabled || p.cfg.PruningKeepRecent == 0 || p.cfg.PruningInterval == 0 {
+		return nil
+	}
+
+	var currentDAIncluded uint64
+	currentDAIncludedBz, err := p.store.GetMetadata(p.ctx, store.DAIncludedHeightKey)
+	if err == nil && len(currentDAIncludedBz) == 8 {
+		currentDAIncluded = binary.LittleEndian.Uint64(currentDAIncludedBz)
+	} else {
+		// if we cannot get the current DA height, we cannot safely prune, so we skip pruning until we can get it.
+		return nil
+	}
+
+	var lastPruned uint64
+	if bz, err := p.store.GetMetadata(p.ctx, store.LastPrunedBlockHeightKey); err == nil && len(bz) == 8 {
+		lastPruned = binary.LittleEndian.Uint64(bz)
+	}
+
+	storeHeight, err := p.store.Height(p.ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get store height for pruning: %w", err)
+	}
+	if storeHeight <= lastPruned+p.cfg.PruningInterval {
+		return nil
+	}
+
+	// Never prune blocks that are not DA included
+	upperBound := min(storeHeight, currentDAIncluded)
+	if upperBound <= p.cfg.PruningKeepRecent {
+		// Not enough fully included blocks to prune
+		return nil
+	}
+
+	targetHeight := upperBound - p.cfg.PruningKeepRecent
+
+	if err := p.store.PruneBlocks(p.ctx, targetHeight); err != nil {
+		p.logger.Error().Err(err).Uint64("target_height", targetHeight).Msg("failed to prune old block data")
+	}
+
+	if p.execPruner != nil {
+		if err := p.execPruner.PruneExec(p.ctx, targetHeight); err != nil && !errors.Is(err, ds.ErrNotFound) {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // pruneRecoveryHistory prunes old state and execution metadata entries based on the configured retention depth.
