@@ -51,8 +51,8 @@ const (
 	FlagReadinessMaxBlocksBehind = FlagPrefixEvnode + "node.readiness_max_blocks_behind"
 	// FlagScrapeInterval is a flag for specifying the reaper scrape interval
 	FlagScrapeInterval = FlagPrefixEvnode + "node.scrape_interval"
-	// FlagStateHistoryRetention is a flag for specifying how much state/exec metadata history to keep
-	FlagStateHistoryRetention = FlagPrefixEvnode + "node.state_history_retention"
+	// FlagRecoveryHistoryDepth is a flag for specifying how much recovery history to keep
+	FlagRecoveryHistoryDepth = FlagPrefixEvnode + "node.recovery_history_depth"
 	// FlagClearCache is a flag for clearing the cache
 	FlagClearCache = FlagPrefixEvnode + "clear_cache"
 
@@ -259,7 +259,7 @@ type NodeConfig struct {
 	LazyMode                 bool            `mapstructure:"lazy_mode" yaml:"lazy_mode" comment:"Enables lazy aggregation mode, where blocks are only produced when transactions are available or after LazyBlockTime. Optimizes resources by avoiding empty block creation during periods of inactivity."`
 	LazyBlockInterval        DurationWrapper `mapstructure:"lazy_block_interval" yaml:"lazy_block_interval" comment:"Maximum interval between blocks in lazy aggregation mode (LazyAggregator). Ensures blocks are produced periodically even without transactions to keep the chain active. Generally larger than BlockTime."`
 	ScrapeInterval           DurationWrapper `mapstructure:"scrape_interval" yaml:"scrape_interval" comment:"Interval at which the reaper polls the execution layer for new transactions. Lower values reduce transaction detection latency but increase RPC load. Examples: \"250ms\", \"500ms\", \"1s\"."`
-	StateHistoryRetention    uint64          `mapstructure:"state_history_retention" yaml:"state_history_retention" comment:"Number of recent heights to keep state and execution metadata for recovery (0 keeps all)."`
+	RecoveryHistoryDepth     uint64          `mapstructure:"recovery_history_depth" yaml:"recovery_history_depth" comment:"Number of recent heights to keep state and execution metadata indexed for recovery (0 keeps all)."`
 
 	// Readiness / health configuration
 	ReadinessWindowSeconds   uint64 `mapstructure:"readiness_window_seconds" yaml:"readiness_window_seconds" comment:"Time window in seconds used to calculate ReadinessMaxBlocksBehind based on block time. Default: 15 seconds."`
@@ -439,7 +439,7 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().Uint64(FlagReadinessWindowSeconds, def.Node.ReadinessWindowSeconds, "time window in seconds for calculating readiness threshold based on block time (default: 15s)")
 	cmd.Flags().Uint64(FlagReadinessMaxBlocksBehind, def.Node.ReadinessMaxBlocksBehind, "how many blocks behind best-known head the node can be and still be considered ready (0 = must be at head)")
 	cmd.Flags().Duration(FlagScrapeInterval, def.Node.ScrapeInterval.Duration, "interval at which the reaper polls the execution layer for new transactions")
-	cmd.Flags().Uint64(FlagStateHistoryRetention, def.Node.StateHistoryRetention, "number of recent heights to keep state and execution metadata for recovery (0 keeps all)")
+	cmd.Flags().Uint64(FlagRecoveryHistoryDepth, def.Node.RecoveryHistoryDepth, "number of recent heights to keep state and execution metadata indexed for recovery (0 keeps all)")
 
 	// Data Availability configuration flags
 	cmd.Flags().String(FlagDAAddress, def.DA.Address, "DA address (host:port)")

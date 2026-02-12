@@ -33,7 +33,7 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, uint64(0), def.Node.MaxPendingHeadersAndData)
 	assert.Equal(t, false, def.Node.LazyMode)
 	assert.Equal(t, 60*time.Second, def.Node.LazyBlockInterval.Duration)
-	assert.Equal(t, uint64(5000), def.Node.StateHistoryRetention)
+	assert.Equal(t, uint64(5000), def.Node.RecoveryHistoryDepth)
 	assert.Equal(t, "file", def.Signer.SignerType)
 	assert.Equal(t, "config", def.Signer.SignerPath)
 	assert.Equal(t, "127.0.0.1:7331", def.RPC.Address)
@@ -65,7 +65,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagReadinessWindowSeconds, DefaultConfig().Node.ReadinessWindowSeconds)
 	assertFlagValue(t, flags, FlagReadinessMaxBlocksBehind, DefaultConfig().Node.ReadinessMaxBlocksBehind)
 	assertFlagValue(t, flags, FlagScrapeInterval, DefaultConfig().Node.ScrapeInterval)
-	assertFlagValue(t, flags, FlagStateHistoryRetention, DefaultConfig().Node.StateHistoryRetention)
+	assertFlagValue(t, flags, FlagRecoveryHistoryDepth, DefaultConfig().Node.RecoveryHistoryDepth)
 
 	// DA flags
 	assertFlagValue(t, flags, FlagDAAddress, DefaultConfig().DA.Address)

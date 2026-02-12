@@ -184,7 +184,7 @@ func NewSyncComponents(
 			execPruner = candidate
 		}
 	}
-	recoveryPruner := pruner.New(store, execPruner, config.Node.StateHistoryRetention, pruner.DefaultPruneInterval, logger.With().Str("component", "Pruner").Logger())
+	recoveryPruner := pruner.New(store, execPruner, config.Node.RecoveryHistoryDepth, pruner.DefaultPruneInterval, logger.With().Str("component", "Pruner").Logger())
 
 	// Create submitter for sync nodes (no signer, only DA inclusion processing)
 	var daSubmitter submitting.DASubmitterAPI = submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger, headerDAHintAppender, dataDAHintAppender)
@@ -275,7 +275,7 @@ func NewAggregatorComponents(
 			execPruner = candidate
 		}
 	}
-	recoveryPruner := pruner.New(store, execPruner, config.Node.StateHistoryRetention, pruner.DefaultPruneInterval, logger.With().Str("component", "Pruner").Logger())
+	recoveryPruner := pruner.New(store, execPruner, config.Node.RecoveryHistoryDepth, pruner.DefaultPruneInterval, logger.With().Str("component", "Pruner").Logger())
 
 	reaper, err := reaping.NewReaper(
 		exec,
