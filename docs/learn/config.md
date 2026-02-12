@@ -17,7 +17,7 @@ This document provides a comprehensive reference for all configuration options a
   - [Maximum Pending Blocks](#maximum-pending-blocks)
   - [Lazy Mode (Lazy Aggregator)](#lazy-mode-lazy-aggregator)
   - [Lazy Block Interval](#lazy-block-interval)
-  - [Pruning (Height-Based Pruning)](#pruning-height-based-pruning)
+- [Pruning Configuration (`pruning`)](#pruning-configuration-pruning)
 - [Data Availability Configuration (`da`)](#data-availability-configuration-da)
   - [DA Service Address](#da-service-address)
   - [DA Authentication Token](#da-authentication-token)
@@ -280,39 +280,71 @@ _Example:_ `--rollkit.node.lazy_block_interval 1m`
 _Default:_ `"30s"`
 _Constant:_ `FlagLazyBlockTime`
 
-### Pruning (Height-Based Pruning)
+### Pruning Configuration (`pruning`)
 
 **Description:**
-Controls height-based pruning of stored block data (headers, data, signatures, and index) from the local store. When pruning is enabled, the node periodically deletes old blocks while keeping a recent window of history. When disabled, the node keeps all blocks (archive mode).
+Controls automatic pruning of stored block data and metadata from the local store. Pruning helps manage disk space by periodically removing old blocks and their associated state, while keeping a recent window of history for validation and queries.
+
+**Pruning Modes:**
+
+- **`disabled`** (default): Archive mode - keeps all blocks and metadata indefinitely
+- **`metadata`**: Prunes only state metadata (execution state snapshots), keeps all blocks
+- **`all`**: Prunes both blocks (headers, data, signatures) and metadata
+
+**How Pruning Works:**
+
+When pruning is enabled, the pruner runs at the configured interval and removes data beyond the retention window (`pruning_keep_recent`). The system uses intelligent batching to avoid overwhelming the node:
+
+- **Batch sizes are automatically calculated** based on your `pruning_interval` and `block_time`
+- **Catch-up mode**: When first enabling pruning on an existing node, smaller batches (2× blocks per interval) are used to gradually catch up without impacting performance
+- **Normal mode**: Once caught up, larger batches (4× blocks per interval) are used for efficient maintenance
+- **Progress tracking**: Pruning progress is saved after each batch, so restarts don't lose progress
+
+**Batch Size Examples:**
+
+With default settings (15 minute interval, 1 second blocks):
+- Catch-up: ~1,800 blocks per run
+- Normal: ~3,600 blocks per run
+
+With high-throughput chain (15 minute interval, 100ms blocks):
+- Catch-up: ~18,000 blocks per run
+- Normal: ~36,000 blocks per run
 
 **YAML:**
 
 ```yaml
-node:
-  pruning_enabled: true
+pruning:
+  pruning_mode: "all"
   pruning_keep_recent: 100000
-  pruning_interval: 1000
+  pruning_interval: "15m"
 ```
 
 **Command-line Flags:**
 
-- `--evnode.node.pruning_enabled` (boolean)
-  - _Description:_ Enable height-based pruning of stored block data. When disabled, all blocks are kept (archive mode).
-- `--evnode.node.pruning_keep_recent <uint64>`
-  - _Description:_ Number of most recent blocks to retain when pruning is enabled. Must be > 0 when pruning is enabled; set `pruning_enabled=false` to keep all blocks.
-- `--evnode.node.pruning_interval <uint64>`
-  - _Description:_ Run pruning every N blocks. Must be >= 1 when pruning is enabled.
+- `--evnode.pruning.pruning_mode <string>`
+  - _Description:_ Pruning mode: 'disabled' (keep all), 'metadata' (prune state only), or 'all' (prune blocks and state)
+  - _Example:_ `--evnode.pruning.pruning_mode all`
+  - _Default:_ `"disabled"`
 
-_Defaults:_
+- `--evnode.pruning.pruning_keep_recent <uint64>`
+  - _Description:_ Number of most recent blocks/metadata to retain when pruning is enabled. Must be > 0 when pruning is enabled.
+  - _Example:_ `--evnode.pruning.pruning_keep_recent 100000`
+  - _Default:_ `0`
 
-```yaml
-node:
-  pruning_enabled: false
-  pruning_keep_recent: 0
-  pruning_interval: 0
-```
+- `--evnode.pruning.pruning_interval <duration>`
+  - _Description:_ How often to run the pruning process. Must be >= block_time when pruning is enabled. Larger intervals allow larger batch sizes.
+  - _Example:_ `--evnode.pruning.pruning_interval 15m`
+  - _Default:_ `0` (disabled)
 
-_Constants:_ `FlagNodePruningEnabled`, `FlagNodePruningKeepRecent`, `FlagNodePruningInterval`
+_Constants:_ `FlagPruningMode`, `FlagPruningKeepRecent`, `FlagPruningInterval`
+
+**Important Notes:**
+
+- Pruning only removes blocks that have been confirmed on the DA layer (for mode `all`)
+- The first pruning run after enabling may take several cycles to catch up, processing data in smaller batches
+- Pruning cannot be undone - ensure your retention window is sufficient for your use case
+- For production deployments, consider keeping at least 100,000 recent blocks
+- The pruning interval should be balanced with your disk space growth rate
 
 ## Data Availability Configuration (`da`)
 
