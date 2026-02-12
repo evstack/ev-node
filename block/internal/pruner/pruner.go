@@ -22,6 +22,7 @@ type Pruner struct {
 	store      store.Store
 	execPruner coreexecutor.ExecPruner
 	cfg        config.PruningConfig
+	blockTime  time.Duration
 	logger     zerolog.Logger
 
 	// Lifecycle
@@ -36,11 +37,13 @@ func New(
 	store store.Store,
 	execPruner coreexecutor.ExecPruner,
 	cfg config.PruningConfig,
+	blockTime time.Duration,
 ) *Pruner {
 	return &Pruner{
 		store:      store,
 		execPruner: execPruner,
 		cfg:        cfg,
+		blockTime:  blockTime,
 		logger:     logger.With().Str("component", "prune").Logger(),
 	}
 }
@@ -124,17 +127,62 @@ func (p *Pruner) pruneBlocks() error {
 
 	targetHeight := upperBound - p.cfg.KeepRecent
 
-	if err := p.store.PruneBlocks(p.ctx, targetHeight); err != nil {
-		p.logger.Error().Err(err).Uint64("target_height", targetHeight).Msg("failed to prune old block data")
+	// Get the last pruned height to determine batch size
+	lastPruned, err := p.getLastPrunedBlockHeight(p.ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get last pruned block height: %w", err)
+	}
+
+	catchUpBatchSize, normalBatchSize := p.calculateBatchSizes()
+
+	remainingToPrune := targetHeight - lastPruned
+	batchSize := normalBatchSize
+	if remainingToPrune > catchUpBatchSize {
+		batchSize = catchUpBatchSize
+	}
+
+	// prune in batches to avoid overwhelming the system
+	batchEnd := min(lastPruned+batchSize, targetHeight)
+
+	if err := p.store.PruneBlocks(p.ctx, batchEnd); err != nil {
+		p.logger.Error().Err(err).Uint64("target_height", batchEnd).Msg("failed to prune old block data")
+		return err
 	}
 
 	if p.execPruner != nil {
-		if err := p.execPruner.PruneExec(p.ctx, targetHeight); err != nil && !errors.Is(err, ds.ErrNotFound) {
+		if err := p.execPruner.PruneExec(p.ctx, batchEnd); err != nil && !errors.Is(err, ds.ErrNotFound) {
 			return err
 		}
 	}
 
 	return nil
+}
+
+// calculateBatchSizes returns appropriate batch sizes for catch-up and normal pruning operations.
+// The batch sizes are based on the pruning interval and block time to ensure reasonable progress
+// without overwhelming the node.
+// Catch-up mode is usually triggered when pruning is enabled for the first time ever, and there is a large backlog of blocks to prune.
+func (p *Pruner) calculateBatchSizes() (catchUpBatchSize, normalBatchSize uint64) {
+	// Calculate batch size based on pruning interval and block time.
+	// We use 2x the blocks produced during one pruning interval as the catch-up batch size,
+	// and 4x for normal operation. This ensures we make steady progress during catch-up
+	// without overwhelming the node.
+	// Example: With 100ms blocks and 15min interval: 15*60/0.1 = 9000 blocks/interval
+	//   - Catch-up batch: 18,000 blocks
+	//   - Normal batch: 36,000 blocks
+	blocksPerInterval := uint64(p.cfg.Interval.Duration / p.blockTime)
+	catchUpBatchSize = blocksPerInterval * 2
+	normalBatchSize = blocksPerInterval * 4
+
+	// Ensure reasonable minimums
+	if catchUpBatchSize < 1000 {
+		catchUpBatchSize = 1000
+	}
+	if normalBatchSize < 10000 {
+		normalBatchSize = 10000
+	}
+
+	return catchUpBatchSize, normalBatchSize
 }
 
 // pruneMetadata prunes old state and execution metadata entries based on the configured retention depth.
@@ -164,19 +212,30 @@ func (p *Pruner) pruneMetadata() error {
 		return nil
 	}
 
-	for h := lastPrunedState + 1; h <= target; h++ {
+	catchUpBatchSize, normalBatchSize := p.calculateBatchSizes()
+
+	remainingToPrune := target - lastPrunedState
+	batchSize := normalBatchSize
+	if remainingToPrune > catchUpBatchSize {
+		batchSize = catchUpBatchSize
+	}
+
+	// prune in batches to avoid overwhelming the system
+	batchEnd := min(lastPrunedState+batchSize, target)
+
+	for h := lastPrunedState + 1; h <= batchEnd; h++ {
 		if err := p.store.DeleteStateAtHeight(p.ctx, h); err != nil && !errors.Is(err, ds.ErrNotFound) {
 			return err
 		}
 	}
 
 	if p.execPruner != nil {
-		if err := p.execPruner.PruneExec(p.ctx, target); err != nil && !errors.Is(err, ds.ErrNotFound) {
+		if err := p.execPruner.PruneExec(p.ctx, batchEnd); err != nil && !errors.Is(err, ds.ErrNotFound) {
 			return err
 		}
 	}
 
-	if err := p.setLastPrunedStateHeight(p.ctx, target); err != nil {
+	if err := p.setLastPrunedStateHeight(p.ctx, batchEnd); err != nil {
 		return fmt.Errorf("failed to set last pruned block height: %w", err)
 	}
 

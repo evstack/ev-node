@@ -51,7 +51,7 @@ func TestPrunerPruneMetadata(t *testing.T) {
 		KeepRecent: 1,
 	}
 
-	pruner := New(zerolog.New(zerolog.NewTestWriter(t)), stateStore, execAdapter, cfg)
+	pruner := New(zerolog.New(zerolog.NewTestWriter(t)), stateStore, execAdapter, cfg, 100*time.Millisecond)
 	require.NoError(t, pruner.pruneMetadata())
 
 	_, err := stateStore.GetStateAtHeight(ctx, 1)
