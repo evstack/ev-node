@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	DefaultPruneInterval = time.Minute
-	maxPruneBatch        = uint64(1000)
+	DefaultPruneInterval = 15 * time.Minute
+	// maxPruneBatch limits how many heights we prune per cycle to bound work.
+	maxPruneBatch = uint64(1000)
 )
 
 // ExecMetaPruner removes execution metadata at a given height.
@@ -65,7 +66,7 @@ func New(store store.Store, execMetaPruner ExecMetaPruner, retention uint64, int
 
 // Start begins the pruning loop.
 func (p *Pruner) Start(ctx context.Context) error {
-	if p == nil || p.retention == 0 || (p.stateDeleter == nil && p.execPruner == nil) {
+	if p.retention == 0 {
 		return nil
 	}
 

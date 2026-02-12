@@ -17,7 +17,7 @@ const (
 	// AppConfigDir is the directory name for the app configuration.
 	AppConfigDir = "config"
 
-	defaultRecoveryHistoryDepth = uint64(5000)
+	defaultRecoveryHistoryDepth = uint64(0)
 )
 
 // DefaultRootDir returns the default root directory for evolve

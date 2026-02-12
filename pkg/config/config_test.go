@@ -33,7 +33,7 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, uint64(0), def.Node.MaxPendingHeadersAndData)
 	assert.Equal(t, false, def.Node.LazyMode)
 	assert.Equal(t, 60*time.Second, def.Node.LazyBlockInterval.Duration)
-	assert.Equal(t, uint64(5000), def.Node.RecoveryHistoryDepth)
+	assert.Equal(t, uint64(0), def.Node.RecoveryHistoryDepth)
 	assert.Equal(t, "file", def.Signer.SignerType)
 	assert.Equal(t, "config", def.Signer.SignerPath)
 	assert.Equal(t, "127.0.0.1:7331", def.RPC.Address)
