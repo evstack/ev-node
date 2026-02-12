@@ -28,6 +28,7 @@ const (
 	// LastPrunedBlockHeightKey is the metadata key used for persisting the last
 	// pruned block height in the store.
 	LastPrunedBlockHeightKey = "last-pruned-block-height"
+
 	// LastPrunedStateHeightKey is the metadata key used for persisting the last
 	// pruned state height in the store.
 	LastPrunedStateHeightKey = "last-pruned-state-height"

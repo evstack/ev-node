@@ -150,12 +150,12 @@ func (p *Pruner) pruneMetadata() error {
 		return nil
 	}
 
-	lastPrunedState, err := p.store.GetLastPrunedStateHeight(p.ctx)
+	lastPrunedState, err := p.getLastPrunedStateHeight(p.ctx)
 	if err != nil {
 		return nil
 	}
 
-	if lastPrunedBlock, err := p.store.GetLastPrunedBlockHeight(p.ctx); err == nil && lastPrunedBlock > lastPrunedState {
+	if lastPrunedBlock, err := p.getLastPrunedBlockHeight(p.ctx); err == nil && lastPrunedBlock > lastPrunedState {
 		lastPrunedState = lastPrunedBlock
 	}
 
@@ -177,13 +177,53 @@ func (p *Pruner) pruneMetadata() error {
 		if err := p.store.DeleteStateAtHeight(p.ctx, h); err != nil && !errors.Is(err, ds.ErrNotFound) {
 			return err
 		}
+	}
 
-		if p.execPruner != nil {
-			if err := p.execPruner.PruneExec(p.ctx, h); err != nil && !errors.Is(err, ds.ErrNotFound) {
-				return err
-			}
+	if p.execPruner != nil {
+		if err := p.execPruner.PruneExec(p.ctx, end); err != nil && !errors.Is(err, ds.ErrNotFound) {
+			return err
 		}
 	}
 
+	if err := p.setLastPrunedStateHeight(p.ctx, end); err != nil {
+		return fmt.Errorf("failed to set last pruned block height: %w", err)
+	}
+
 	return nil
+}
+
+// getLastPrunedBlockHeight returns the height of the last block that was pruned using PruneBlocks.
+func (p *Pruner) getLastPrunedBlockHeight(ctx context.Context) (uint64, error) {
+	lastPrunedBlockHeightBz, err := p.store.GetMetadata(ctx, store.LastPrunedBlockHeightKey)
+	if err != nil || len(lastPrunedBlockHeightBz) != 8 {
+		return 0, fmt.Errorf("failed to get last pruned block height or invalid format: %w", err)
+	}
+
+	lastPrunedBlockHeight := binary.LittleEndian.Uint64(lastPrunedBlockHeightBz)
+	if lastPrunedBlockHeight == 0 {
+		return 0, fmt.Errorf("invalid last pruned block height")
+	}
+
+	return lastPrunedBlockHeight, nil
+}
+
+// getLastPrunedStateHeight returns the height of the last state that was pruned using DeleteStateAtHeight.
+func (p *Pruner) getLastPrunedStateHeight(ctx context.Context) (uint64, error) {
+	lastPrunedStateHeightBz, err := p.store.GetMetadata(ctx, store.LastPrunedStateHeightKey)
+	if err != nil || len(lastPrunedStateHeightBz) != 8 {
+		return 0, fmt.Errorf("failed to get last pruned block height or invalid format: %w", err)
+	}
+
+	lastPrunedStateHeight := binary.LittleEndian.Uint64(lastPrunedStateHeightBz)
+	if lastPrunedStateHeight == 0 {
+		return 0, fmt.Errorf("invalid last pruned block height")
+	}
+
+	return lastPrunedStateHeight, nil
+}
+
+func (p *Pruner) setLastPrunedStateHeight(ctx context.Context, height uint64) error {
+	bz := make([]byte, 8)
+	binary.LittleEndian.PutUint64(bz, height)
+	return p.store.SetMetadata(ctx, store.LastPrunedStateHeightKey, bz)
 }

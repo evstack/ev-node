@@ -278,34 +278,6 @@ func (t *tracedStore) PruneBlocks(ctx context.Context, height uint64) error {
 	return nil
 }
 
-func (t *tracedStore) GetLastPrunedBlockHeight(ctx context.Context) (uint64, error) {
-	ctx, span := t.tracer.Start(ctx, "Store.GetLastPrunedBlockHeight")
-	defer span.End()
-
-	h, err := t.inner.GetLastPrunedBlockHeight(ctx)
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return 0, err
-	}
-
-	return h, nil
-}
-
-func (t *tracedStore) GetLastPrunedStateHeight(ctx context.Context) (uint64, error) {
-	ctx, span := t.tracer.Start(ctx, "Store.GetLastPrunedStateHeight")
-	defer span.End()
-
-	h, err := t.inner.GetLastPrunedStateHeight(ctx)
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return 0, err
-	}
-
-	return h, nil
-}
-
 func (t *tracedStore) Close() error {
 	return t.inner.Close()
 }
