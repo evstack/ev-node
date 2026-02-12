@@ -145,10 +145,49 @@ func (s *EVMStore) SaveExecMeta(ctx context.Context, meta *ExecMeta) error {
 	return nil
 }
 
-// DeleteExecMeta removes execution metadata for the given height.
-func (s *EVMStore) DeleteExecMeta(ctx context.Context, height uint64) error {
-	if err := s.db.Delete(ctx, execMetaKey(height)); err != nil && !errors.Is(err, ds.ErrNotFound) {
-		return fmt.Errorf("failed to delete exec meta at height %d: %w", height, err)
+// PruneExec removes ExecMeta entries up to and including the given height.
+// It is safe to call this multiple times with the same or increasing heights;
+// previously pruned ranges will be skipped based on the last-pruned marker.
+func (s *EVMStore) PruneExec(ctx context.Context, height uint64) error {
+	// Load last pruned height, if any.
+	var lastPruned uint64
+	data, err := s.db.Get(ctx, ds.NewKey(lastPrunedExecMetaKey))
+	if err != nil {
+		if !errors.Is(err, ds.ErrNotFound) {
+			return fmt.Errorf("failed to get last pruned execmeta height: %w", err)
+		}
+	} else if len(data) == 8 {
+		lastPruned = binary.BigEndian.Uint64(data)
+	}
+
+	// Nothing new to prune.
+	if height <= lastPruned {
+		return nil
+	}
+
+	batch, err := s.db.Batch(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create batch for execmeta pruning: %w", err)
+	}
+
+	for h := lastPruned + 1; h <= height; h++ {
+		key := execMetaKey(h)
+		if err := batch.Delete(ctx, key); err != nil {
+			if !errors.Is(err, ds.ErrNotFound) {
+				return fmt.Errorf("failed to delete exec meta at height %d: %w", h, err)
+			}
+		}
+	}
+
+	// Persist updated last pruned height.
+	buf := make([]byte, 8)
+	binary.BigEndian.PutUint64(buf, height)
+	if err := batch.Put(ctx, ds.NewKey(lastPrunedExecMetaKey), buf); err != nil {
+		return fmt.Errorf("failed to update last pruned execmeta height: %w", err)
+	}
+
+	if err := batch.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit execmeta pruning batch: %w", err)
 	}
 
 	return nil

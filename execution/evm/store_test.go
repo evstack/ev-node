@@ -10,24 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDeleteExecMeta(t *testing.T) {
-	t.Parallel()
-
-	store := NewEVMStore(dssync.MutexWrap(ds.NewMapDatastore()))
-
-	ctx := context.Background()
-	require.NoError(t, store.SaveExecMeta(ctx, &ExecMeta{
-		Height: 1,
-		Stage:  ExecStageStarted,
-	}))
-
-	require.NoError(t, store.DeleteExecMeta(ctx, 1))
-
-	meta, err := store.GetExecMeta(ctx, 1)
-	require.NoError(t, err)
-	require.Nil(t, meta)
-}
-
 // newTestDatastore creates an in-memory datastore for testing.
 func newTestDatastore(t *testing.T) ds.Batching {
 	t.Helper()

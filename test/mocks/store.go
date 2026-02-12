@@ -39,14 +39,6 @@ func (_m *MockStore) EXPECT() *MockStore_Expecter {
 	return &MockStore_Expecter{mock: &_m.Mock}
 }
 
-// PruneBlocks provides a mock implementation for the Store's pruning method.
-// Tests using MockStore currently do not exercise pruning behavior, so this
-// method simply satisfies the interface and can be extended with expectations
-// later if needed.
-func (_mock *MockStore) PruneBlocks(ctx context.Context, height uint64) error {
-	return nil
-}
-
 // Close provides a mock function for the type MockStore
 func (_mock *MockStore) Close() error {
 	ret := _mock.Called()
@@ -144,6 +136,63 @@ func (_c *MockStore_DeleteMetadata_Call) Return(err error) *MockStore_DeleteMeta
 }
 
 func (_c *MockStore_DeleteMetadata_Call) RunAndReturn(run func(ctx context.Context, key string) error) *MockStore_DeleteMetadata_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// DeleteStateAtHeight provides a mock function for the type MockStore
+func (_mock *MockStore) DeleteStateAtHeight(ctx context.Context, height uint64) error {
+	ret := _mock.Called(ctx, height)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteStateAtHeight")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64) error); ok {
+		r0 = returnFunc(ctx, height)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockStore_DeleteStateAtHeight_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteStateAtHeight'
+type MockStore_DeleteStateAtHeight_Call struct {
+	*mock.Call
+}
+
+// DeleteStateAtHeight is a helper method to define mock.On call
+//   - ctx context.Context
+//   - height uint64
+func (_e *MockStore_Expecter) DeleteStateAtHeight(ctx interface{}, height interface{}) *MockStore_DeleteStateAtHeight_Call {
+	return &MockStore_DeleteStateAtHeight_Call{Call: _e.mock.On("DeleteStateAtHeight", ctx, height)}
+}
+
+func (_c *MockStore_DeleteStateAtHeight_Call) Run(run func(ctx context.Context, height uint64)) *MockStore_DeleteStateAtHeight_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uint64
+		if args[1] != nil {
+			arg1 = args[1].(uint64)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockStore_DeleteStateAtHeight_Call) Return(err error) *MockStore_DeleteStateAtHeight_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockStore_DeleteStateAtHeight_Call) RunAndReturn(run func(ctx context.Context, height uint64) error) *MockStore_DeleteStateAtHeight_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -884,6 +933,63 @@ func (_c *MockStore_NewBatch_Call) Return(batch store.Batch, err error) *MockSto
 }
 
 func (_c *MockStore_NewBatch_Call) RunAndReturn(run func(ctx context.Context) (store.Batch, error)) *MockStore_NewBatch_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// PruneBlocks provides a mock function for the type MockStore
+func (_mock *MockStore) PruneBlocks(ctx context.Context, height uint64) error {
+	ret := _mock.Called(ctx, height)
+
+	if len(ret) == 0 {
+		panic("no return value specified for PruneBlocks")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64) error); ok {
+		r0 = returnFunc(ctx, height)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockStore_PruneBlocks_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PruneBlocks'
+type MockStore_PruneBlocks_Call struct {
+	*mock.Call
+}
+
+// PruneBlocks is a helper method to define mock.On call
+//   - ctx context.Context
+//   - height uint64
+func (_e *MockStore_Expecter) PruneBlocks(ctx interface{}, height interface{}) *MockStore_PruneBlocks_Call {
+	return &MockStore_PruneBlocks_Call{Call: _e.mock.On("PruneBlocks", ctx, height)}
+}
+
+func (_c *MockStore_PruneBlocks_Call) Run(run func(ctx context.Context, height uint64)) *MockStore_PruneBlocks_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uint64
+		if args[1] != nil {
+			arg1 = args[1].(uint64)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockStore_PruneBlocks_Call) Return(err error) *MockStore_PruneBlocks_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockStore_PruneBlocks_Call) RunAndReturn(run func(ctx context.Context, height uint64) error) *MockStore_PruneBlocks_Call {
 	_c.Call.Return(run)
 	return _c
 }

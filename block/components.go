@@ -178,8 +178,8 @@ func NewSyncComponents(
 		syncer.SetBlockSyncer(syncing.WithTracingBlockSyncer(syncer))
 	}
 
-	var execPruner pruner.ExecPruner
-	if p, ok := exec.(pruner.ExecPruner); ok {
+	var execPruner coreexecutor.ExecPruner
+	if p, ok := exec.(coreexecutor.ExecPruner); ok {
 		execPruner = p
 	}
 	pruner := pruner.New(logger, store, execPruner, config.Node)
@@ -267,8 +267,8 @@ func NewAggregatorComponents(
 		executor.SetBlockProducer(executing.WithTracingBlockProducer(executor))
 	}
 
-	var execPruner pruner.ExecPruner
-	if p, ok := exec.(pruner.ExecPruner); ok {
+	var execPruner coreexecutor.ExecPruner
+	if p, ok := exec.(coreexecutor.ExecPruner); ok {
 		execPruner = p
 	}
 	pruner := pruner.New(logger, store, execPruner, config.Node)

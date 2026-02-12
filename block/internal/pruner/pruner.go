@@ -9,29 +9,21 @@ import (
 	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 
+	coreexecutor "github.com/evstack/ev-node/core/execution"
+
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/store"
 )
 
 const defaultPruneInterval = 15 * time.Minute
 
-// ExecPruner removes execution metadata at a given height.
-type ExecPruner interface {
-	PruneExec(ctx context.Context, height uint64) error
-}
-
-type stateDeleter interface {
-	DeleteStateAtHeight(ctx context.Context, height uint64) error
-}
-
 // Pruner periodically removes old state and execution metadata entries.
 type Pruner struct {
-	store        store.Store
-	stateDeleter stateDeleter
-	execPruner   ExecPruner
-	cfg          config.NodeConfig
-	logger       zerolog.Logger
-	lastPruned   uint64
+	store      store.Store
+	execPruner coreexecutor.ExecPruner
+	cfg        config.NodeConfig
+	logger     zerolog.Logger
+	lastPruned uint64
 
 	// Lifecycle
 	ctx    context.Context
@@ -43,22 +35,14 @@ type Pruner struct {
 func New(
 	logger zerolog.Logger,
 	store store.Store,
-	execPruner ExecPruner,
+	execPruner coreexecutor.ExecPruner,
 	cfg config.NodeConfig,
 ) *Pruner {
-	var deleter stateDeleter
-	if store != nil {
-		if sd, ok := store.(stateDeleter); ok {
-			deleter = sd
-		}
-	}
-
 	return &Pruner{
-		store:        store,
-		stateDeleter: deleter,
-		execPruner:   execPruner,
-		cfg:          cfg,
-		logger:       logger.With().Str("component", "prune").Logger(),
+		store:      store,
+		execPruner: execPruner,
+		cfg:        cfg,
+		logger:     logger.With().Str("component", "prune").Logger(),
 	}
 }
 
@@ -140,11 +124,10 @@ func (p *Pruner) pruneRecoveryHistory(ctx context.Context, retention uint64) err
 	}
 
 	for h := start; h <= end; h++ {
-		if p.stateDeleter != nil {
-			if err := p.stateDeleter.DeleteStateAtHeight(ctx, h); err != nil && !errors.Is(err, ds.ErrNotFound) {
-				return err
-			}
+		if err := p.store.DeleteStateAtHeight(ctx, h); err != nil && !errors.Is(err, ds.ErrNotFound) {
+			return err
 		}
+
 		if p.execPruner != nil {
 			if err := p.execPruner.PruneExec(ctx, h); err != nil && !errors.Is(err, ds.ErrNotFound) {
 				return err

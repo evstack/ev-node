@@ -270,16 +270,6 @@ func NewEngineExecutionClient(
 	}, nil
 }
 
-// PruneExecMeta removes execution metadata at the given height.
-// It is used by the block pruner to delete historical exec meta entries.
-// Returns a nil error if no store is configured.
-func (c *EngineClient) PruneExecMeta(ctx context.Context, height uint64) error {
-	if c.store == nil {
-		return nil
-	}
-	return c.store.DeleteExecMeta(ctx, height)
-}
-
 // InitChain initializes the blockchain with the given genesis parameters
 func (c *EngineClient) InitChain(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, error) {
 	if initialHeight != 1 {
@@ -1100,6 +1090,13 @@ func (c *EngineClient) Rollback(ctx context.Context, targetHeight uint64) error 
 		Msg("execution layer rollback completed")
 
 	return nil
+}
+
+// PruneExec implements execution.ExecPruner by delegating to the
+// underlying EVMStore. It is safe to call this multiple times with the same
+// or increasing heights; the store tracks its own last-pruned height.
+func (c *EngineClient) PruneExec(ctx context.Context, height uint64) error {
+	return c.store.PruneExec(ctx, height)
 }
 
 // decodeSecret decodes a hex-encoded JWT secret string into a byte slice.

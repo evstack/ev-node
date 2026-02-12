@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"encoding/hex"
-	"fmt"
 
 	ds "github.com/ipfs/go-datastore"
 	"go.opentelemetry.io/otel"
@@ -236,17 +235,7 @@ func (t *tracedStore) DeleteStateAtHeight(ctx context.Context, height uint64) er
 	)
 	defer span.End()
 
-	deleter, ok := t.inner.(interface {
-		DeleteStateAtHeight(ctx context.Context, height uint64) error
-	})
-	if !ok {
-		err := fmt.Errorf("underlying store does not support state deletion")
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return err
-	}
-
-	if err := deleter.DeleteStateAtHeight(ctx, height); err != nil {
+	if err := t.inner.DeleteStateAtHeight(ctx, height); err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		return err
