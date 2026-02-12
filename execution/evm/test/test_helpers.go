@@ -66,6 +66,7 @@ func SetupTestRethNode(t *testing.T) *reth.Node {
 	dockerCli, dockerNetID := getTestScopedDockerSetup(t)
 
 	n, err := reth.NewNodeBuilderWithTestName(t, fmt.Sprintf("%s-%s", t.Name(), randomString(6))).
+		WithTag("pr-106").
 		WithDockerClient(dockerCli).
 		WithDockerNetworkID(dockerNetID).
 		WithGenesis([]byte(reth.DefaultEvolveGenesisJSON())).
