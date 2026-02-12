@@ -15,6 +15,11 @@ import (
 // Store prefix for execution/evm data - keeps it isolated from other ev-node data
 const evmStorePrefix = "evm/"
 
+// lastPrunedExecMetaKey is the datastore key used to track the highest
+// execution height for which ExecMeta has been pruned. All ExecMeta entries
+// for heights <= this value are considered pruned.
+const lastPrunedExecMetaKey = evmStorePrefix + "last-pruned-execmeta-height"
+
 // ExecMeta stages
 const (
 	ExecStageStarted   = "started"

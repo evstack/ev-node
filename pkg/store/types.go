@@ -31,9 +31,10 @@ type Batch interface {
 
 // Store is minimal interface for storing and retrieving blocks, commits and state.
 type Store interface {
-	Rollback
 	Reader
 	Metadata
+	Rollback
+	Pruner
 
 	// Close safely closes underlying data storage, to ensure that data is actually saved.
 	Close() error
@@ -90,4 +91,12 @@ type Rollback interface {
 	// Rollback deletes x height from the ev-node store.
 	// Aggregator is used to determine if the rollback is performed on the aggregator node.
 	Rollback(ctx context.Context, height uint64, aggregator bool) error
+}
+
+// Pruner provides long-term, height-based pruning of historical block data.
+type Pruner interface {
+	// PruneBlocks removes block data (header, data, signature, and hash index)
+	// up to and including the given height from the store, without modifying
+	// state snapshots or the current chain height.
+	PruneBlocks(ctx context.Context, height uint64) error
 }

@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"fmt"
 
 	lru "github.com/hashicorp/golang-lru/v2"
 
@@ -158,16 +157,21 @@ func (cs *CachedStore) Rollback(ctx context.Context, height uint64, aggregator b
 	return nil
 }
 
-// DeleteStateAtHeight removes the state entry at the given height from the underlying store.
-func (cs *CachedStore) DeleteStateAtHeight(ctx context.Context, height uint64) error {
-	deleter, ok := cs.Store.(interface {
-		DeleteStateAtHeight(ctx context.Context, height uint64) error
-	})
-	if !ok {
-		return fmt.Errorf("underlying store does not support state deletion")
+// PruneBlocks wraps the underlying store's PruneBlocks and invalidates caches
+// up to the heigh that we purne
+func (cs *CachedStore) PruneBlocks(ctx context.Context, height uint64) error {
+	if err := cs.Store.PruneBlocks(ctx, height); err != nil {
+		return err
 	}
 
-	return deleter.DeleteStateAtHeight(ctx, height)
+	// Invalidate cache for pruned heights
+	cs.InvalidateRange(1, height)
+	return nil
+}
+
+// DeleteStateAtHeight removes the state entry at the given height from the underlying store.
+func (cs *CachedStore) DeleteStateAtHeight(ctx context.Context, height uint64) error {
+	return cs.DeleteStateAtHeight(ctx, height)
 }
 
 // Close closes the underlying store.

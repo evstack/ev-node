@@ -72,6 +72,9 @@ func DefaultConfig() Config {
 			ReadinessWindowSeconds:   defaultReadinessWindowSeconds,
 			ReadinessMaxBlocksBehind: calculateReadinessMaxBlocksBehind(defaultBlockTime.Duration, defaultReadinessWindowSeconds),
 			ScrapeInterval:           DurationWrapper{1 * time.Second},
+			PruningEnabled:           false,
+			PruningKeepRecent:        0,
+			PruningInterval:          0,
 		},
 		DA: DAConfig{
 			Address:                  "http://localhost:7980",

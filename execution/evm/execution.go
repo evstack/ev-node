@@ -65,6 +65,10 @@ var _ execution.HeightProvider = (*EngineClient)(nil)
 // Ensure EngineClient implements the execution.Rollbackable interface
 var _ execution.Rollbackable = (*EngineClient)(nil)
 
+// Ensure EngineClient implements optional pruning interface when used with
+// ev-node's height-based pruning.
+var _ execution.ExecPruner = (*EngineClient)(nil)
+
 // validatePayloadStatus checks the payload status and returns appropriate errors.
 // It implements the Engine API specification's status handling:
 //   - VALID: Operation succeeded, return nil

@@ -114,7 +114,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagRPCEnableDAVisualization, DefaultConfig().RPC.EnableDAVisualization)
 
 	// Count the number of flags we're explicitly checking
-	expectedFlagCount := 64 // Update this number if you add more flag checks above
+	expectedFlagCount := 67 // Update this number if you add more flag checks above
 
 	// Get the actual number of flags (both regular and persistent)
 	actualFlagCount := 0

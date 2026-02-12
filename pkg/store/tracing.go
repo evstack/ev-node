@@ -274,6 +274,22 @@ func (t *tracedStore) Rollback(ctx context.Context, height uint64, aggregator bo
 	return nil
 }
 
+func (t *tracedStore) PruneBlocks(ctx context.Context, height uint64) error {
+	ctx, span := t.tracer.Start(ctx, "Store.PruneBlocks",
+		trace.WithAttributes(attribute.Int64("height", int64(height))),
+	)
+	defer span.End()
+
+	err := t.inner.PruneBlocks(ctx, height)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return err
+	}
+
+	return nil
+}
+
 func (t *tracedStore) Close() error {
 	return t.inner.Close()
 }

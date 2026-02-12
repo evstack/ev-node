@@ -259,11 +259,18 @@ type NodeConfig struct {
 	LazyMode                 bool            `mapstructure:"lazy_mode" yaml:"lazy_mode" comment:"Enables lazy aggregation mode, where blocks are only produced when transactions are available or after LazyBlockTime. Optimizes resources by avoiding empty block creation during periods of inactivity."`
 	LazyBlockInterval        DurationWrapper `mapstructure:"lazy_block_interval" yaml:"lazy_block_interval" comment:"Maximum interval between blocks in lazy aggregation mode (LazyAggregator). Ensures blocks are produced periodically even without transactions to keep the chain active. Generally larger than BlockTime."`
 	ScrapeInterval           DurationWrapper `mapstructure:"scrape_interval" yaml:"scrape_interval" comment:"Interval at which the reaper polls the execution layer for new transactions. Lower values reduce transaction detection latency but increase RPC load. Examples: \"250ms\", \"500ms\", \"1s\"."`
-	RecoveryHistoryDepth     uint64          `mapstructure:"recovery_history_depth" yaml:"recovery_history_depth" comment:"Number of recent heights to keep state and execution metadata indexed for recovery (0 keeps all)."`
 
 	// Readiness / health configuration
 	ReadinessWindowSeconds   uint64 `mapstructure:"readiness_window_seconds" yaml:"readiness_window_seconds" comment:"Time window in seconds used to calculate ReadinessMaxBlocksBehind based on block time. Default: 15 seconds."`
 	ReadinessMaxBlocksBehind uint64 `mapstructure:"readiness_max_blocks_behind" yaml:"readiness_max_blocks_behind" comment:"How many blocks behind best-known head the node can be and still be considered ready. 0 means must be exactly at head."`
+
+	// Pruning configuration
+	// When enabled, the node will periodically prune old block data (headers, data,
+	// signatures, and hash index) from the local store while keeping recent history.
+	PruningEnabled       bool   `mapstructure:"pruning_enabled" yaml:"pruning_enabled" comment:"Enable height-based pruning of stored block data. When disabled, all blocks are kept (archive mode)."`
+	PruningKeepRecent    uint64 `mapstructure:"pruning_keep_recent" yaml:"pruning_keep_recent" comment:"Number of most recent blocks to retain when pruning is enabled. Must be > 0 when pruning is enabled; set pruning_enabled=false to keep all blocks (archive mode)."`
+	PruningInterval      uint64 `mapstructure:"pruning_interval" yaml:"pruning_interval" comment:"Run pruning every N blocks. Must be >= 1 when pruning is enabled."`
+	RecoveryHistoryDepth uint64 `mapstructure:"recovery_history_depth" yaml:"recovery_history_depth" comment:"Number of recent heights to keep state and execution metadata indexed for recovery (0 keeps all)."`
 }
 
 // LogConfig contains all logging configuration parameters
@@ -379,6 +386,17 @@ func (c *Config) Validate() error {
 	if err := c.Raft.Validate(); err != nil {
 		return err
 	}
+
+	// Validate pruning configuration
+	if c.Node.PruningEnabled {
+		if c.Node.PruningInterval == 0 {
+			return fmt.Errorf("pruning_interval must be >= 1 when pruning is enabled")
+		}
+		if c.Node.PruningKeepRecent == 0 {
+			return fmt.Errorf("pruning_keep_recent must be > 0 when pruning is enabled; use pruning_enabled=false to keep all blocks")
+		}
+	}
+
 	return nil
 }
 
@@ -439,6 +457,10 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().Uint64(FlagReadinessWindowSeconds, def.Node.ReadinessWindowSeconds, "time window in seconds for calculating readiness threshold based on block time (default: 15s)")
 	cmd.Flags().Uint64(FlagReadinessMaxBlocksBehind, def.Node.ReadinessMaxBlocksBehind, "how many blocks behind best-known head the node can be and still be considered ready (0 = must be at head)")
 	cmd.Flags().Duration(FlagScrapeInterval, def.Node.ScrapeInterval.Duration, "interval at which the reaper polls the execution layer for new transactions")
+	// Pruning configuration flags
+	cmd.Flags().Bool(FlagPrefixEvnode+"node.pruning_enabled", def.Node.PruningEnabled, "enable height-based pruning of stored block data (headers, data, signatures, index)")
+	cmd.Flags().Uint64(FlagPrefixEvnode+"node.pruning_keep_recent", def.Node.PruningKeepRecent, "number of most recent blocks to retain when pruning is enabled (must be > 0; disable pruning to keep all blocks)")
+	cmd.Flags().Uint64(FlagPrefixEvnode+"node.pruning_interval", def.Node.PruningInterval, "run pruning every N blocks (must be >= 1 when pruning is enabled)")
 	cmd.Flags().Uint64(FlagRecoveryHistoryDepth, def.Node.RecoveryHistoryDepth, "number of recent heights to keep state and execution metadata indexed for recovery (0 keeps all)")
 
 	// Data Availability configuration flags

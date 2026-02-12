@@ -124,6 +124,12 @@ func (m *tracingMockStore) Rollback(ctx context.Context, height uint64, aggregat
 	return nil
 }
 
+func (m *tracingMockStore) PruneBlocks(ctx context.Context, height uint64) error {
+	// For tracing tests we don't need pruning behavior; just satisfy the Store
+	// interface. Specific pruning behavior is tested separately in store_test.go.
+	return nil
+}
+
 func (m *tracingMockStore) Close() error {
 	return nil
 }
