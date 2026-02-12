@@ -17,15 +17,12 @@ import (
 	"github.com/evstack/ev-node/pkg/store"
 )
 
-const defaultPruneInterval = 15 * time.Minute
-
 // Pruner periodically removes old state and execution metadata entries.
 type Pruner struct {
 	store      store.Store
 	execPruner coreexecutor.ExecPruner
-	cfg        config.NodeConfig
+	cfg        config.PruningConfig
 	logger     zerolog.Logger
-	lastPruned uint64
 
 	// Lifecycle
 	ctx    context.Context
@@ -38,7 +35,7 @@ func New(
 	logger zerolog.Logger,
 	store store.Store,
 	execPruner coreexecutor.ExecPruner,
-	cfg config.NodeConfig,
+	cfg config.PruningConfig,
 ) *Pruner {
 	return &Pruner{
 		store:      store,
@@ -50,6 +47,10 @@ func New(
 
 // Start begins the pruning loop.
 func (p *Pruner) Start(ctx context.Context) error {
+	if !p.cfg.IsPruningEnabled() {
+		return nil
+	}
+
 	p.ctx, p.cancel = context.WithCancel(ctx)
 
 	// Start pruner loop
@@ -61,9 +62,14 @@ func (p *Pruner) Start(ctx context.Context) error {
 
 // Stop stops the pruning loop.
 func (p *Pruner) Stop() error {
+	if !p.cfg.IsPruningEnabled() {
+		return nil
+	}
+
 	if p.cancel != nil {
 		p.cancel()
 	}
+
 	p.wg.Wait()
 
 	p.logger.Info().Msg("pruner stopped")
@@ -71,32 +77,30 @@ func (p *Pruner) Stop() error {
 }
 
 func (p *Pruner) pruneLoop() {
-	ticker := time.NewTicker(defaultPruneInterval)
+	ticker := time.NewTicker(p.cfg.Interval.Duration)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			if err := p.pruneRecoveryHistory(p.ctx, p.cfg.RecoveryHistoryDepth); err != nil {
-				p.logger.Error().Err(err).Msg("failed to prune recovery history")
+			switch p.cfg.Mode {
+			case config.PruningModeMetadata:
+				if err := p.pruneMetadata(); err != nil {
+					p.logger.Error().Err(err).Msg("failed to prune blocks metadata")
+				}
+			case config.PruningModeAll:
+				if err := p.pruneBlocks(); err != nil {
+					p.logger.Error().Err(err).Msg("failed to prune blocks")
+				}
 			}
-
-			if err := p.pruneBlocks(); err != nil {
-				p.logger.Error().Err(err).Msg("failed to prune old blocks")
-			}
-
-			// TODO: add pruning of old blocks // https://github.com/evstack/ev-node/pull/2984
 		case <-p.ctx.Done():
 			return
 		}
 	}
 }
 
+// pruneBlocks prunes blocks and their metadatas.
 func (p *Pruner) pruneBlocks() error {
-	if !p.cfg.PruningEnabled || p.cfg.PruningKeepRecent == 0 || p.cfg.PruningInterval == 0 {
-		return nil
-	}
-
 	var currentDAIncluded uint64
 	currentDAIncludedBz, err := p.store.GetMetadata(p.ctx, store.DAIncludedHeightKey)
 	if err == nil && len(currentDAIncludedBz) == 8 {
@@ -106,27 +110,19 @@ func (p *Pruner) pruneBlocks() error {
 		return nil
 	}
 
-	var lastPruned uint64
-	if bz, err := p.store.GetMetadata(p.ctx, store.LastPrunedBlockHeightKey); err == nil && len(bz) == 8 {
-		lastPruned = binary.LittleEndian.Uint64(bz)
-	}
-
 	storeHeight, err := p.store.Height(p.ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get store height for pruning: %w", err)
 	}
-	if storeHeight <= lastPruned+p.cfg.PruningInterval {
-		return nil
-	}
 
 	// Never prune blocks that are not DA included
 	upperBound := min(storeHeight, currentDAIncluded)
-	if upperBound <= p.cfg.PruningKeepRecent {
+	if upperBound <= p.cfg.KeepRecent {
 		// Not enough fully included blocks to prune
 		return nil
 	}
 
-	targetHeight := upperBound - p.cfg.PruningKeepRecent
+	targetHeight := upperBound - p.cfg.KeepRecent
 
 	if err := p.store.PruneBlocks(p.ctx, targetHeight); err != nil {
 		p.logger.Error().Err(err).Uint64("target_height", targetHeight).Msg("failed to prune old block data")
@@ -141,55 +137,53 @@ func (p *Pruner) pruneBlocks() error {
 	return nil
 }
 
-// pruneRecoveryHistory prunes old state and execution metadata entries based on the configured retention depth.
+// pruneMetadata prunes old state and execution metadata entries based on the configured retention depth.
 // It does not prunes old blocks, as those are handled by the pruning logic.
 // Pruning old state does not lose history but limit the ability to recover (replay or rollback) to the last HEAD-N blocks, where N is the retention depth.
-func (p *Pruner) pruneRecoveryHistory(ctx context.Context, retention uint64) error {
-	if p.cfg.RecoveryHistoryDepth == 0 {
-		return nil
-	}
-
-	height, err := p.store.Height(ctx)
+func (p *Pruner) pruneMetadata() error {
+	height, err := p.store.Height(p.ctx)
 	if err != nil {
 		return err
 	}
 
-	if height <= retention {
+	if height <= p.cfg.KeepRecent {
 		return nil
 	}
 
-	target := height - retention
-	if target <= p.lastPruned {
+	lastPrunedState, err := p.store.GetLastPrunedStateHeight(p.ctx)
+	if err != nil {
+		return nil
+	}
+
+	if lastPrunedBlock, err := p.store.GetLastPrunedBlockHeight(p.ctx); err == nil && lastPrunedBlock > lastPrunedState {
+		lastPrunedState = lastPrunedBlock
+	}
+
+	target := height - p.cfg.KeepRecent
+	if target <= lastPrunedState {
 		return nil
 	}
 
 	// maxPruneBatch limits how many heights we prune per cycle to bound work.
-	// it is callibrated to prune the last N blocks in one cycle, where N is the number of blocks produced in the defaultPruneInterval.
-	blockTime := p.cfg.BlockTime.Duration
-	if blockTime == 0 {
-		blockTime = 1
-	}
+	maxPruneBatch := (target - lastPrunedState) / 20
 
-	maxPruneBatch := max(uint64(defaultPruneInterval/blockTime), (target-p.lastPruned)/5)
-
-	start := p.lastPruned + 1
+	start := lastPrunedState + 1
 	end := target
 	if end-start+1 > maxPruneBatch {
 		end = start + maxPruneBatch - 1
 	}
 
 	for h := start; h <= end; h++ {
-		if err := p.store.DeleteStateAtHeight(ctx, h); err != nil && !errors.Is(err, ds.ErrNotFound) {
+		if err := p.store.DeleteStateAtHeight(p.ctx, h); err != nil && !errors.Is(err, ds.ErrNotFound) {
 			return err
 		}
 
 		if p.execPruner != nil {
-			if err := p.execPruner.PruneExec(ctx, h); err != nil && !errors.Is(err, ds.ErrNotFound) {
+			if err := p.execPruner.PruneExec(p.ctx, h); err != nil && !errors.Is(err, ds.ErrNotFound) {
 				return err
 			}
 		}
 	}
 
-	p.lastPruned = end
 	return nil
 }

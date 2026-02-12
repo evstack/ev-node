@@ -26,10 +26,11 @@ const (
 	LastSubmittedHeaderHeightKey = "last-submitted-header-height"
 
 	// LastPrunedBlockHeightKey is the metadata key used for persisting the last
-	// pruned block height in the store. All block data (header, data,
-	// signature, and hash index) for heights <= this value are considered
-	// pruned and may be missing from the store.
+	// pruned block height in the store.
 	LastPrunedBlockHeightKey = "last-pruned-block-height"
+	// LastPrunedStateHeightKey is the metadata key used for persisting the last
+	// pruned state height in the store.
+	LastPrunedStateHeightKey = "last-pruned-state-height"
 
 	headerPrefix    = "h"
 	dataPrefix      = "d"

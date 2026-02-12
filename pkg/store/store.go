@@ -433,6 +433,40 @@ func (s *DefaultStore) PruneBlocks(ctx context.Context, height uint64) error {
 	return nil
 }
 
+// GetLastPrunedBlockHeight returns the height of the last block that was pruned using PruneBlocks.
+func (s *DefaultStore) GetLastPrunedBlockHeight(ctx context.Context) (uint64, error) {
+	meta, err := s.GetMetadata(ctx, LastPrunedBlockHeightKey)
+	if err != nil {
+		if errors.Is(err, ds.ErrNotFound) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("failed to get last pruned block height: %w", err)
+	}
+
+	if len(meta) != heightLength {
+		return 0, fmt.Errorf("invalid last pruned block height length: %d (expected %d)", len(meta), heightLength)
+	}
+
+	return decodeHeight(meta)
+}
+
+// GetLastPrunedStateHeight returns the height of the last state that was pruned using DeleteStateAtHeight.
+func (s *DefaultStore) GetLastPrunedStateHeight(ctx context.Context) (uint64, error) {
+	meta, err := s.GetMetadata(ctx, LastPrunedStateHeightKey)
+	if err != nil {
+		if errors.Is(err, ds.ErrNotFound) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("failed to get last pruned state height: %w", err)
+	}
+
+	if len(meta) != heightLength {
+		return 0, fmt.Errorf("invalid last pruned state height length: %d (expected %d)", len(meta), heightLength)
+	}
+
+	return decodeHeight(meta)
+}
+
 const heightLength = 8
 
 func encodeHeight(height uint64) []byte {

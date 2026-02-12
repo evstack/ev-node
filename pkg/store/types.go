@@ -95,11 +95,15 @@ type Rollback interface {
 
 // Pruner provides long-term, height-based pruning of historical block data.
 type Pruner interface {
+	// GetLastPrunedBlockHeight returns the height of the last block that was pruned using PruneBlocks.
+	GetLastPrunedBlockHeight(ctx context.Context) (uint64, error)
+	// GetLastPrunedStateHeight returns the height of the last state that was pruned using DeleteStateAtHeight.
+	GetLastPrunedStateHeight(ctx context.Context) (uint64, error)
+
 	// PruneBlocks removes block data (header, data, signature, and hash index)
 	// up to and including the given height from the store, without modifying
 	// state snapshots or the current chain height.
 	PruneBlocks(ctx context.Context, height uint64) error
-
 	// DeleteStateAtHeight removes the state at the given height from the store.
 	// It does not affect the current state or any states at other heights, allowing for targeted pruning of historical state snapshots.
 	DeleteStateAtHeight(ctx context.Context, height uint64) error
