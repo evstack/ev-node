@@ -722,7 +722,7 @@ func (s *Syncer) TrySyncNextBlock(ctx context.Context, event *common.DAHeightEve
 	currentState := s.getLastState()
 	headerHash := header.Hash().String()
 
-	s.logger.Info().Uint64("height", nextHeight).Msg("syncing block")
+	s.logger.Info().Uint64("height", nextHeight).Msg("syncing block started")
 
 	// Compared to the executor logic where the current block needs to be applied first,
 	// here only the previous block needs to be applied to proceed to the verification.
@@ -731,6 +731,17 @@ func (s *Syncer) TrySyncNextBlock(ctx context.Context, event *common.DAHeightEve
 		// remove header as da included from cache
 		s.cache.RemoveHeaderDAIncluded(headerHash)
 		s.cache.RemoveDataDAIncluded(data.DACommitment().String())
+
+		s.logger.Warn().
+			Err(err).
+			Uint64("height", header.Height()).
+			Uint64("time", uint64(header.Time().Unix())).
+			Hex("proposer", header.ProposerAddress).
+			Str("data_hash", hex.EncodeToString(header.DataHash)).
+			Str("app_hash", hex.EncodeToString(header.AppHash)).
+			Hex("last_header_hash", header.LastHeaderHash).
+			Int("len signature", len(header.Signature)).
+			Msg("block validation failed")
 
 		if !errors.Is(err, errInvalidState) && !errors.Is(err, errInvalidBlock) {
 			return errors.Join(errInvalidBlock, err)
@@ -799,7 +810,7 @@ func (s *Syncer) TrySyncNextBlock(ctx context.Context, event *common.DAHeightEve
 	if s.p2pHandler != nil {
 		s.p2pHandler.SetProcessedHeight(newState.LastBlockHeight)
 	}
-
+	s.logger.Info().Uint64("height", nextHeight).Msg("syncing block completed")
 	return nil
 }
 
