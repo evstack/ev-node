@@ -28,9 +28,6 @@ type NodeOptions struct {
 // NewNode returns a new Full or Light Node based on the config.
 // This is the entry point for composing a node, when compiling a node, you need to provide an executor.
 // Example executors can be found in apps/
-//
-// The p2pClient owns the node identity (private key) and is shared across
-// mode switches. It supports in-place reconfiguration via Reconfigure().
 func NewNode(
 	conf config.Config,
 	exec coreexecutor.Executor,

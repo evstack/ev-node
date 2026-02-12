@@ -164,8 +164,6 @@ func StartNode(
 		executor = telemetry.WithTracingExecutor(executor)
 	}
 
-	// Create the P2P client. It is long-lived and reconfigured in-place
-	// on mode switches, avoiding costly teardown of the libp2p stack.
 	p2pClient, err := p2p.NewClient(nodeConfig.P2P, nodeKey.PrivKey, datastore, genesis.ChainID, logger, nil)
 	if err != nil {
 		return fmt.Errorf("create p2p client: %w", err)

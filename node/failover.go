@@ -189,23 +189,17 @@ func (f *failoverState) Run(pCtx context.Context) (multiErr error) {
 		return nil
 	})
 
-	// P2P client persists across mode switches (started/closed by FullNode.Run).
-	// Reconfigure() was already called in setupFailoverState to re-bootstrap DHT.
-
-	// Start header and data sync services concurrently. Each service's
-	// initFromP2PWithRetry can block up to 30s when peers have no blocks
-	// (e.g. lazy mode sequencer at height 0). Running them in parallel
-	// avoids a 60s cumulative startup delay.
+	// start header and data sync services concurrently to avoid cumulative startup delay.
 	syncWg, syncCtx := errgroup.WithContext(ctx)
 	syncWg.Go(func() error {
 		if err := f.headerSyncService.Start(syncCtx); err != nil {
-			return fmt.Errorf("error while starting header sync service: %w", err)
+			return fmt.Errorf("header sync service: %w", err)
 		}
 		return nil
 	})
 	syncWg.Go(func() error {
 		if err := f.dataSyncService.Start(syncCtx); err != nil {
-			return fmt.Errorf("error while starting data sync service: %w", err)
+			return fmt.Errorf("data sync service: %w", err)
 		}
 		return nil
 	})
