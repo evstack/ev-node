@@ -158,11 +158,8 @@ func TestExecutor_RestartUsesPendingHeader(t *testing.T) {
 	pendingHeader.DataHash = pendingData.DACommitment()
 
 	// Save pending block data (this is what would happen during a crash)
-	batch, err := memStore.NewBatch(context.Background())
-	require.NoError(t, err)
-	err = batch.SaveBlockData(pendingHeader, pendingData, &types.Signature{})
-	require.NoError(t, err)
-	err = batch.Commit()
+	// We use savePendingBlock directly which writes to the metadata keys expected by the executor on restart
+	err = exec1.savePendingBlock(context.Background(), pendingHeader, pendingData)
 	require.NoError(t, err)
 
 	// Stop first executor (simulating crash/restart)
