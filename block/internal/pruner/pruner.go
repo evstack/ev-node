@@ -152,7 +152,7 @@ func (p *Pruner) pruneMetadata() error {
 
 	lastPrunedState, err := p.getLastPrunedStateHeight(p.ctx)
 	if err != nil {
-		return nil
+		return fmt.Errorf("failed to get last pruned state height: %w", err)
 	}
 
 	if lastPrunedBlock, err := p.getLastPrunedBlockHeight(p.ctx); err == nil && lastPrunedBlock > lastPrunedState {
@@ -164,28 +164,19 @@ func (p *Pruner) pruneMetadata() error {
 		return nil
 	}
 
-	// maxPruneBatch limits how many heights we prune per cycle to bound work.
-	maxPruneBatch := (target - lastPrunedState) / 20
-
-	start := lastPrunedState + 1
-	end := target
-	if end-start+1 > maxPruneBatch {
-		end = start + maxPruneBatch - 1
-	}
-
-	for h := start; h <= end; h++ {
+	for h := lastPrunedState + 1; h <= target; h++ {
 		if err := p.store.DeleteStateAtHeight(p.ctx, h); err != nil && !errors.Is(err, ds.ErrNotFound) {
 			return err
 		}
 	}
 
 	if p.execPruner != nil {
-		if err := p.execPruner.PruneExec(p.ctx, end); err != nil && !errors.Is(err, ds.ErrNotFound) {
+		if err := p.execPruner.PruneExec(p.ctx, target); err != nil && !errors.Is(err, ds.ErrNotFound) {
 			return err
 		}
 	}
 
-	if err := p.setLastPrunedStateHeight(p.ctx, end); err != nil {
+	if err := p.setLastPrunedStateHeight(p.ctx, target); err != nil {
 		return fmt.Errorf("failed to set last pruned block height: %w", err)
 	}
 
@@ -195,6 +186,11 @@ func (p *Pruner) pruneMetadata() error {
 // getLastPrunedBlockHeight returns the height of the last block that was pruned using PruneBlocks.
 func (p *Pruner) getLastPrunedBlockHeight(ctx context.Context) (uint64, error) {
 	lastPrunedBlockHeightBz, err := p.store.GetMetadata(ctx, store.LastPrunedBlockHeightKey)
+	if errors.Is(err, ds.ErrNotFound) {
+		// If not found, it means we haven't pruned any blocks yet, so we return 0.
+		return 0, nil
+	}
+
 	if err != nil || len(lastPrunedBlockHeightBz) != 8 {
 		return 0, fmt.Errorf("failed to get last pruned block height or invalid format: %w", err)
 	}
@@ -210,6 +206,11 @@ func (p *Pruner) getLastPrunedBlockHeight(ctx context.Context) (uint64, error) {
 // getLastPrunedStateHeight returns the height of the last state that was pruned using DeleteStateAtHeight.
 func (p *Pruner) getLastPrunedStateHeight(ctx context.Context) (uint64, error) {
 	lastPrunedStateHeightBz, err := p.store.GetMetadata(ctx, store.LastPrunedStateHeightKey)
+	if errors.Is(err, ds.ErrNotFound) {
+		// If not found, it means we haven't pruned any state yet, so we return 0.
+		return 0, nil
+	}
+
 	if err != nil || len(lastPrunedStateHeightBz) != 8 {
 		return 0, fmt.Errorf("failed to get last pruned block height or invalid format: %w", err)
 	}

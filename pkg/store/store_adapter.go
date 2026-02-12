@@ -405,7 +405,6 @@ func (a *StoreAdapter[H]) Tail(ctx context.Context) (H, error) {
 	// genesis initial height, but if pruning metadata is available we can
 	// skip directly past fully-pruned ranges.
 	startHeight := a.genesisInitialHeight
-
 	if lastPrunedBlockHeightBz, err := a.store.GetMetadata(ctx, LastPrunedBlockHeightKey); err == nil && len(lastPrunedBlockHeightBz) == heightLength {
 		if lastPruned, err := decodeHeight(lastPrunedBlockHeightBz); err == nil {
 			if candidate := lastPruned + 1; candidate > startHeight {

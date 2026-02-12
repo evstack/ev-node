@@ -13,8 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Node pruning support. [#2984](https://github.com/evstack/ev-node/pull/2984)
   - Two different sort of pruning implemented:
-    _Classic pruning_: prunes given `HEAD-n` blocks from the databases, including store metadatas.
-    _Auto Storage Optimization_: prunes only the store metadatas, keep all blocks.
+    _Classic pruning_ (`all`): prunes given `HEAD-n` blocks from the databases, including store metadatas.
+    _Auto Storage Optimization_ (`metadata`): prunes only the state metadatas, keeps all blocks.
     By using one or the other, you are losing the ability to rollback or replay transactions earlier than `HEAD-n`.
     When using _classic pruning_, you aren't able to fetch blocks prior to `HEAD-n`.
 

@@ -20,18 +20,23 @@ type execMetaAdapter struct {
 }
 
 func (e *execMetaAdapter) PruneExec(ctx context.Context, height uint64) error {
-	delete(e.existing, height)
+	for h := range e.existing {
+		if h < height {
+			delete(e.existing, h)
+		}
+	}
+
 	return nil
 }
 
-func TestPrunerPrunesRecoveryHistory(t *testing.T) {
+func TestPrunerPruneMetadata(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
 	kv := dssync.MutexWrap(ds.NewMapDatastore())
 	stateStore := store.New(kv)
 
-	for height := uint64(1); height <= 3; height++ {
+	for height := uint64(1); height <= 5; height++ {
 		batch, err := stateStore.NewBatch(ctx)
 		require.NoError(t, err)
 		require.NoError(t, batch.SetHeight(height))
@@ -40,12 +45,20 @@ func TestPrunerPrunesRecoveryHistory(t *testing.T) {
 	}
 
 	execAdapter := &execMetaAdapter{existing: map[uint64]struct{}{1: {}, 2: {}, 3: {}}}
+	cfg := config.PruningConfig{
+		Mode:       config.PruningModeMetadata,
+		Interval:   config.DurationWrapper{Duration: 1 * time.Second},
+		KeepRecent: 1,
+	}
 
-	recoveryPruner := New(zerolog.Nop(), stateStore, execAdapter, config.NodeConfig{RecoveryHistoryDepth: 2, BlockTime: config.DurationWrapper{Duration: 10 * time.Second}})
-	require.NoError(t, recoveryPruner.pruneRecoveryHistory(ctx, recoveryPruner.cfg.RecoveryHistoryDepth))
+	pruner := New(zerolog.New(zerolog.NewTestWriter(t)), stateStore, execAdapter, cfg)
+	require.NoError(t, pruner.pruneMetadata())
 
 	_, err := stateStore.GetStateAtHeight(ctx, 1)
 	require.ErrorIs(t, err, ds.ErrNotFound)
+
+	_, err = stateStore.GetStateAtHeight(ctx, 5)
+	require.NoError(t, err)
 
 	_, exists := execAdapter.existing[1]
 	require.False(t, exists)
