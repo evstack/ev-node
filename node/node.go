@@ -9,7 +9,7 @@ import (
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
-	"github.com/evstack/ev-node/pkg/p2p/key"
+	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/service"
 	"github.com/evstack/ev-node/pkg/signer"
 )
@@ -25,16 +25,19 @@ type NodeOptions struct {
 	BlockOptions block.BlockOptions
 }
 
-// NewNode returns a new Full or Light Node based on the config
-// This is the entry point for composing a node, when compiling a node, you need to provide an executor
+// NewNode returns a new Full or Light Node based on the config.
+// This is the entry point for composing a node, when compiling a node, you need to provide an executor.
 // Example executors can be found in apps/
+//
+// The p2pClient owns the node identity (private key) and is shared across
+// mode switches. It supports in-place reconfiguration via Reconfigure().
 func NewNode(
 	conf config.Config,
 	exec coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
 	daClient block.DAClient,
 	signer signer.Signer,
-	nodeKey *key.NodeKey,
+	p2pClient *p2p.Client,
 	genesis genesis.Genesis,
 	database ds.Batching,
 	metricsProvider MetricsProvider,
@@ -42,7 +45,7 @@ func NewNode(
 	nodeOptions NodeOptions,
 ) (Node, error) {
 	if conf.Node.Light {
-		return newLightNode(conf, genesis, nodeKey, database, logger)
+		return newLightNode(conf, genesis, p2pClient, database, logger)
 	}
 
 	if err := nodeOptions.BlockOptions.Validate(); err != nil {
@@ -51,7 +54,7 @@ func NewNode(
 
 	return newFullNode(
 		conf,
-		nodeKey,
+		p2pClient,
 		signer,
 		genesis,
 		database,

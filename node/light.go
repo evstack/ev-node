@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/evstack/ev-node/pkg/p2p/key"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 
@@ -39,15 +38,10 @@ type LightNode struct {
 func newLightNode(
 	conf config.Config,
 	genesis genesis.Genesis,
-	nodeKey *key.NodeKey,
+	p2pClient *p2p.Client,
 	database ds.Batching,
 	logger zerolog.Logger,
 ) (ln *LightNode, err error) {
-	p2pClient, err := p2p.NewClient(conf.P2P, nodeKey.PrivKey, database, genesis.ChainID, logger, nil)
-	if err != nil {
-		return nil, err
-	}
-
 	componentLogger := logger.With().Str("component", "HeaderSyncService").Logger()
 	baseStore := store.New(database)
 
@@ -166,9 +160,8 @@ func (ln *LightNode) Run(parentCtx context.Context) error {
 	}
 
 	// Stop P2P Client
-	err = ln.P2P.Close()
-	if err != nil {
-		multiErr = errors.Join(multiErr, fmt.Errorf("closing P2P client: %w", err))
+	if err := ln.P2P.Close(); err != nil {
+		multiErr = errors.Join(multiErr, fmt.Errorf("closing p2p client: %w", err))
 	}
 
 	if err = ln.Store.Close(); err != nil {
