@@ -178,13 +178,11 @@ func NewSyncComponents(
 		syncer.SetBlockSyncer(syncing.WithTracingBlockSyncer(syncer))
 	}
 
-	var execPruner pruner.ExecMetaPruner
-	if exec != nil {
-		if candidate, ok := exec.(pruner.ExecMetaPruner); ok {
-			execPruner = candidate
-		}
+	var execPruner pruner.ExecPruner
+	if p, ok := exec.(pruner.ExecPruner); ok {
+		execPruner = p
 	}
-	recoveryPruner := pruner.New(store, execPruner, config.Node.RecoveryHistoryDepth, pruner.DefaultPruneInterval, logger.With().Str("component", "Pruner").Logger())
+	pruner := pruner.New(logger, store, execPruner, config.Node)
 
 	// Create submitter for sync nodes (no signer, only DA inclusion processing)
 	var daSubmitter submitting.DASubmitterAPI = submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger, headerDAHintAppender, dataDAHintAppender)
@@ -209,7 +207,7 @@ func NewSyncComponents(
 		Syncer:    syncer,
 		Submitter: submitter,
 		Cache:     cacheManager,
-		Pruner:    recoveryPruner,
+		Pruner:    pruner,
 		errorCh:   errorCh,
 	}, nil
 }
@@ -269,13 +267,11 @@ func NewAggregatorComponents(
 		executor.SetBlockProducer(executing.WithTracingBlockProducer(executor))
 	}
 
-	var execPruner pruner.ExecMetaPruner
-	if exec != nil {
-		if candidate, ok := exec.(pruner.ExecMetaPruner); ok {
-			execPruner = candidate
-		}
+	var execPruner pruner.ExecPruner
+	if p, ok := exec.(pruner.ExecPruner); ok {
+		execPruner = p
 	}
-	recoveryPruner := pruner.New(store, execPruner, config.Node.RecoveryHistoryDepth, pruner.DefaultPruneInterval, logger.With().Str("component", "Pruner").Logger())
+	pruner := pruner.New(logger, store, execPruner, config.Node)
 
 	reaper, err := reaping.NewReaper(
 		exec,
@@ -293,7 +289,7 @@ func NewAggregatorComponents(
 	if config.Node.BasedSequencer { // no submissions needed for bases sequencer
 		return &Components{
 			Executor: executor,
-			Pruner:   recoveryPruner,
+			Pruner:   pruner,
 			Reaper:   reaper,
 			Cache:    cacheManager,
 			errorCh:  errorCh,
@@ -320,7 +316,7 @@ func NewAggregatorComponents(
 
 	return &Components{
 		Executor:  executor,
-		Pruner:    recoveryPruner,
+		Pruner:    pruner,
 		Reaper:    reaper,
 		Submitter: submitter,
 		Cache:     cacheManager,

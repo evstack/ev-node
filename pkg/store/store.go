@@ -30,14 +30,6 @@ func New(ds ds.Batching) Store {
 	}
 }
 
-// DeleteStateAtHeight removes the state entry at the given height.
-func (s *DefaultStore) DeleteStateAtHeight(ctx context.Context, height uint64) error {
-	if err := s.db.Delete(ctx, ds.NewKey(getStateAtHeightKey(height))); err != nil && !errors.Is(err, ds.ErrNotFound) {
-		return fmt.Errorf("failed to delete state at height %d: %w", height, err)
-	}
-	return nil
-}
-
 // Close safely closes underlying data storage, to ensure that data is actually saved.
 func (s *DefaultStore) Close() error {
 	return s.db.Close()
@@ -178,6 +170,14 @@ func (s *DefaultStore) GetStateAtHeight(ctx context.Context, height uint64) (typ
 	}
 
 	return state, nil
+}
+
+// DeleteStateAtHeight removes the state entry at the given height.
+func (s *DefaultStore) DeleteStateAtHeight(ctx context.Context, height uint64) error {
+	if err := s.db.Delete(ctx, ds.NewKey(getStateAtHeightKey(height))); err != nil && !errors.Is(err, ds.ErrNotFound) {
+		return fmt.Errorf("failed to delete state at height %d: %w", height, err)
+	}
+	return nil
 }
 
 // SetMetadata saves arbitrary value in the store.

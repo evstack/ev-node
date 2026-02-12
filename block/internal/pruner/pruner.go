@@ -9,18 +9,19 @@ import (
 	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 
+	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/store"
 )
 
 const (
-	DefaultPruneInterval = 15 * time.Minute
+	defaultPruneInterval = 15 * time.Minute
 	// maxPruneBatch limits how many heights we prune per cycle to bound work.
 	maxPruneBatch = uint64(1000)
 )
 
-// ExecMetaPruner removes execution metadata at a given height.
-type ExecMetaPruner interface {
-	PruneExecMeta(ctx context.Context, height uint64) error
+// ExecPruner removes execution metadata at a given height.
+type ExecPruner interface {
+	PruneExec(ctx context.Context, height uint64) error
 }
 
 type stateDeleter interface {
@@ -31,22 +32,24 @@ type stateDeleter interface {
 type Pruner struct {
 	store        store.Store
 	stateDeleter stateDeleter
-	execPruner   ExecMetaPruner
-	retention    uint64
-	interval     time.Duration
+	execPruner   ExecPruner
+	cfg          config.NodeConfig
 	logger       zerolog.Logger
 	lastPruned   uint64
 
+	// Lifecycle
+	ctx    context.Context
 	wg     sync.WaitGroup
 	cancel context.CancelFunc
 }
 
 // New creates a new Pruner instance.
-func New(store store.Store, execMetaPruner ExecMetaPruner, retention uint64, interval time.Duration, logger zerolog.Logger) *Pruner {
-	if interval <= 0 {
-		interval = DefaultPruneInterval
-	}
-
+func New(
+	logger zerolog.Logger,
+	store store.Store,
+	execPruner ExecPruner,
+	cfg config.NodeConfig,
+) *Pruner {
 	var deleter stateDeleter
 	if store != nil {
 		if sd, ok := store.(stateDeleter); ok {
@@ -57,75 +60,66 @@ func New(store store.Store, execMetaPruner ExecMetaPruner, retention uint64, int
 	return &Pruner{
 		store:        store,
 		stateDeleter: deleter,
-		execPruner:   execMetaPruner,
-		retention:    retention,
-		interval:     interval,
-		logger:       logger,
+		execPruner:   execPruner,
+		cfg:          cfg,
+		logger:       logger.With().Str("component", "prune").Logger(),
 	}
 }
 
 // Start begins the pruning loop.
 func (p *Pruner) Start(ctx context.Context) error {
-	if p.retention == 0 {
-		return nil
-	}
+	p.ctx, p.cancel = context.WithCancel(ctx)
 
-	loopCtx, cancel := context.WithCancel(ctx)
-	p.cancel = cancel
+	// Start pruner loop
+	p.wg.Go(p.pruneLoop)
 
-	p.wg.Add(1)
-	go p.pruneLoop(loopCtx)
-
+	p.logger.Info().Msg("pruner started")
 	return nil
 }
 
 // Stop stops the pruning loop.
 func (p *Pruner) Stop() error {
-	if p == nil || p.cancel == nil {
-		return nil
+	if p.cancel != nil {
+		p.cancel()
 	}
-
-	p.cancel()
 	p.wg.Wait()
+
+	p.logger.Info().Msg("pruner stopped")
 	return nil
 }
 
-func (p *Pruner) pruneLoop(ctx context.Context) {
-	defer p.wg.Done()
-	ticker := time.NewTicker(p.interval)
+func (p *Pruner) pruneLoop() {
+	ticker := time.NewTicker(defaultPruneInterval)
 	defer ticker.Stop()
-
-	if err := p.pruneOnce(ctx); err != nil {
-		p.logger.Error().Err(err).Msg("failed to prune recovery history")
-	}
 
 	for {
 		select {
 		case <-ticker.C:
-			if err := p.pruneOnce(ctx); err != nil {
+			if err := p.pruneRecoveryHistory(p.ctx, p.cfg.RecoveryHistoryDepth); err != nil {
 				p.logger.Error().Err(err).Msg("failed to prune recovery history")
 			}
-		case <-ctx.Done():
+
+			// TODO: add pruning of old blocks // https://github.com/evstack/ev-node/pull/2984
+		case <-p.ctx.Done():
 			return
 		}
 	}
 }
 
-func (p *Pruner) pruneOnce(ctx context.Context) error {
-	if p.retention == 0 || p.store == nil {
-		return nil
-	}
-
+// pruneRecoveryHistory prunes old state and execution metadata entries based on the configured retention depth.
+// It does not prunes old blocks, as those are handled by the pruning logic.
+// Pruning old state does not lose history but limit the ability to recover (replay or rollback) to the last HEAD-N blocks, where N is the retention depth.
+func (p *Pruner) pruneRecoveryHistory(ctx context.Context, retention uint64) error {
 	height, err := p.store.Height(ctx)
 	if err != nil {
 		return err
 	}
 
-	if height <= p.retention {
+	if height <= retention {
 		return nil
 	}
 
-	target := height - p.retention
+	target := height - retention
 	if target <= p.lastPruned {
 		return nil
 	}
@@ -143,7 +137,7 @@ func (p *Pruner) pruneOnce(ctx context.Context) error {
 			}
 		}
 		if p.execPruner != nil {
-			if err := p.execPruner.PruneExecMeta(ctx, h); err != nil && !errors.Is(err, ds.ErrNotFound) {
+			if err := p.execPruner.PruneExec(ctx, h); err != nil && !errors.Is(err, ds.ErrNotFound) {
 				return err
 			}
 		}
