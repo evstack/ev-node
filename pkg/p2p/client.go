@@ -49,8 +49,7 @@ type Client struct {
 	chainID string
 	privKey crypto.PrivKey
 
-	rawHost host.Host // unwrapped libp2p host, stored to avoid double-wrapping via routedhost
-	host    host.Host // may be wrapped with routedhost after DHT setup
+	host    host.Host
 	dht     *dht.IpfsDHT
 	disc    *discovery.RoutingDiscovery
 	gater   *conngater.BasicConnectionGater
@@ -124,12 +123,11 @@ func NewClientWithHost(
 // 4. Use active peer discovery to look for peers from same ORU network.
 func (c *Client) Start(ctx context.Context) error {
 	if c.started {
-		return nil // already started — called from FullNode.Run()
+		return nil
 	}
 	c.logger.Debug().Msg("starting P2P client")
 
 	if c.host != nil {
-		c.rawHost = c.host
 		return c.startWithHost(ctx, c.host)
 	}
 
@@ -137,7 +135,6 @@ func (c *Client) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	c.rawHost = h
 	return c.startWithHost(ctx, h)
 }
 
@@ -185,19 +182,8 @@ func (c *Client) Close() error {
 	if c.host != nil {
 		err = errors.Join(err, c.host.Close())
 	}
+	c.started = false
 	return err
-}
-
-// PrivKey returns the node's private key.
-func (c *Client) PrivKey() crypto.PrivKey {
-	return c.privKey
-}
-
-// Reconfigure updates the mutable P2P configuration without tearing down
-// the libp2p host, PubSub, or DHT. Currently this only updates the
-// stored config; the sync service gates peer usage on conf.Node.Aggregator.
-func (c *Client) Reconfigure(conf config.P2PConfig) {
-	c.conf = conf
 }
 
 // Addrs returns listen addresses of Client.

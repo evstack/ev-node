@@ -104,8 +104,6 @@ func newFullNode(
 		}
 	}
 
-	// The p2p client is fully configured and started before leader election.
-	// SyncService.getPeerIDs() gates peer usage on conf.Node.Aggregator.
 	leaderFactory := func() (raftpkg.Runnable, error) {
 		logger.Info().Msg("Starting aggregator-MODE")
 		nodeConfig.Node.Aggregator = true
@@ -283,8 +281,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 		n.prometheusSrv, n.pprofSrv = n.startInstrumentationServer()
 	}
 
-	// Start the P2P client once. It persists across mode switches so that
-	// the host and PubSub (including externally registered topics) survive.
+	// Start the P2P client once. It persists across mode switches
 	if err := n.p2pClient.Start(ctx); err != nil {
 		return fmt.Errorf("start p2p: %w", err)
 	}
