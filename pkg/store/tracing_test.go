@@ -30,6 +30,8 @@ type tracingMockStore struct {
 	setMetadataFn         func(ctx context.Context, key string, value []byte) error
 	deleteMetadataFn      func(ctx context.Context, key string) error
 	rollbackFn            func(ctx context.Context, height uint64, aggregator bool) error
+	pruneBlocksFn         func(ctx context.Context, height uint64) error
+	deleteStateAtHeightFn func(ctx context.Context, height uint64) error
 	newBatchFn            func(ctx context.Context) (Batch, error)
 }
 
@@ -125,8 +127,16 @@ func (m *tracingMockStore) Rollback(ctx context.Context, height uint64, aggregat
 }
 
 func (m *tracingMockStore) PruneBlocks(ctx context.Context, height uint64) error {
-	// For tracing tests we don't need pruning behavior; just satisfy the Store
-	// interface. Specific pruning behavior is tested separately in store_test.go.
+	if m.pruneBlocksFn != nil {
+		return m.pruneBlocksFn(ctx, height)
+	}
+	return nil
+}
+
+func (m *tracingMockStore) DeleteStateAtHeight(ctx context.Context, height uint64) error {
+	if m.deleteStateAtHeightFn != nil {
+		return m.deleteStateAtHeightFn(ctx, height)
+	}
 	return nil
 }
 

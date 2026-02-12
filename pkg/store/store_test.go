@@ -591,6 +591,27 @@ func TestUpdateStateError(t *testing.T) {
 	require.Contains(err.Error(), mockErrPut.Error())
 }
 
+func TestDeleteStateAtHeight(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	kv, err := NewTestInMemoryKVStore()
+	require.NoError(err)
+
+	store := New(kv)
+
+	batch, err := store.NewBatch(t.Context())
+	require.NoError(err)
+	require.NoError(batch.SetHeight(1))
+	require.NoError(batch.UpdateState(types.State{LastBlockHeight: 1}))
+	require.NoError(batch.Commit())
+
+	require.NoError(store.(*DefaultStore).DeleteStateAtHeight(t.Context(), 1))
+
+	_, err = store.GetStateAtHeight(t.Context(), 1)
+	require.ErrorIs(err, ds.ErrNotFound)
+}
+
 func TestGetStateError(t *testing.T) {
 	t.Parallel()
 	require := require.New(t)

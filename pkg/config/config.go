@@ -51,6 +51,8 @@ const (
 	FlagReadinessMaxBlocksBehind = FlagPrefixEvnode + "node.readiness_max_blocks_behind"
 	// FlagScrapeInterval is a flag for specifying the reaper scrape interval
 	FlagScrapeInterval = FlagPrefixEvnode + "node.scrape_interval"
+	// FlagRecoveryHistoryDepth is a flag for specifying how much recovery history to keep
+	FlagRecoveryHistoryDepth = FlagPrefixEvnode + "node.recovery_history_depth"
 	// FlagClearCache is a flag for clearing the cache
 	FlagClearCache = FlagPrefixEvnode + "clear_cache"
 
@@ -265,9 +267,10 @@ type NodeConfig struct {
 	// Pruning configuration
 	// When enabled, the node will periodically prune old block data (headers, data,
 	// signatures, and hash index) from the local store while keeping recent history.
-	PruningEnabled    bool   `mapstructure:"pruning_enabled" yaml:"pruning_enabled" comment:"Enable height-based pruning of stored block data. When disabled, all blocks are kept (archive mode)."`
-	PruningKeepRecent uint64 `mapstructure:"pruning_keep_recent" yaml:"pruning_keep_recent" comment:"Number of most recent blocks to retain when pruning is enabled. Must be > 0 when pruning is enabled; set pruning_enabled=false to keep all blocks (archive mode)."`
-	PruningInterval   uint64 `mapstructure:"pruning_interval" yaml:"pruning_interval" comment:"Run pruning every N blocks. Must be >= 1 when pruning is enabled."`
+	PruningEnabled       bool   `mapstructure:"pruning_enabled" yaml:"pruning_enabled" comment:"Enable height-based pruning of stored block data. When disabled, all blocks are kept (archive mode)."`
+	PruningKeepRecent    uint64 `mapstructure:"pruning_keep_recent" yaml:"pruning_keep_recent" comment:"Number of most recent blocks to retain when pruning is enabled. Must be > 0 when pruning is enabled; set pruning_enabled=false to keep all blocks (archive mode)."`
+	PruningInterval      uint64 `mapstructure:"pruning_interval" yaml:"pruning_interval" comment:"Run pruning every N blocks. Must be >= 1 when pruning is enabled."`
+	RecoveryHistoryDepth uint64 `mapstructure:"recovery_history_depth" yaml:"recovery_history_depth" comment:"Number of recent heights to keep state and execution metadata indexed for recovery (0 keeps all)."`
 }
 
 // LogConfig contains all logging configuration parameters
@@ -458,6 +461,7 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(FlagPrefixEvnode+"node.pruning_enabled", def.Node.PruningEnabled, "enable height-based pruning of stored block data (headers, data, signatures, index)")
 	cmd.Flags().Uint64(FlagPrefixEvnode+"node.pruning_keep_recent", def.Node.PruningKeepRecent, "number of most recent blocks to retain when pruning is enabled (must be > 0; disable pruning to keep all blocks)")
 	cmd.Flags().Uint64(FlagPrefixEvnode+"node.pruning_interval", def.Node.PruningInterval, "run pruning every N blocks (must be >= 1 when pruning is enabled)")
+	cmd.Flags().Uint64(FlagRecoveryHistoryDepth, def.Node.RecoveryHistoryDepth, "number of recent heights to keep state and execution metadata indexed for recovery (0 keeps all)")
 
 	// Data Availability configuration flags
 	cmd.Flags().String(FlagDAAddress, def.DA.Address, "DA address (host:port)")

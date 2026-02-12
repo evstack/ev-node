@@ -202,6 +202,7 @@ func NewEngineExecutionClient(
 	feeRecipient common.Address,
 	db ds.Batching,
 	tracingEnabled bool,
+	logger zerolog.Logger,
 ) (*EngineClient, error) {
 	if db == nil {
 		return nil, errors.New("db is required for EVM execution client")
@@ -265,20 +266,8 @@ func NewEngineExecutionClient(
 		currentSafeBlockHash:      genesisHash,
 		currentFinalizedBlockHash: genesisHash,
 		blockHashCache:            make(map[uint64]common.Hash),
-		logger:                    zerolog.Nop(),
+		logger:                    logger,
 	}, nil
-}
-
-// PruneExec implements execution.ExecPruner by delegating to the
-// underlying EVMStore. It is safe to call this multiple times with the same
-// or increasing heights; the store tracks its own last-pruned height.
-func (c *EngineClient) PruneExec(ctx context.Context, height uint64) error {
-	return c.store.PruneExec(ctx, height)
-}
-
-// SetLogger allows callers to attach a structured logger.
-func (c *EngineClient) SetLogger(l zerolog.Logger) {
-	c.logger = l
 }
 
 // InitChain initializes the blockchain with the given genesis parameters
@@ -1101,6 +1090,13 @@ func (c *EngineClient) Rollback(ctx context.Context, targetHeight uint64) error 
 		Msg("execution layer rollback completed")
 
 	return nil
+}
+
+// PruneExec implements execution.ExecPruner by delegating to the
+// underlying EVMStore. It is safe to call this multiple times with the same
+// or increasing heights; the store tracks its own last-pruned height.
+func (c *EngineClient) PruneExec(ctx context.Context, height uint64) error {
+	return c.store.PruneExec(ctx, height)
 }
 
 // decodeSecret decodes a hex-encoded JWT secret string into a byte slice.

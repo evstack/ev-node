@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
 	"github.com/evstack/ev-node/execution/evm"
@@ -75,6 +76,7 @@ func TestEngineExecution(t *testing.T) {
 			common.Address{},
 			store,
 			false,
+			zerolog.Nop(),
 		)
 		require.NoError(tt, err)
 
@@ -172,6 +174,7 @@ func TestEngineExecution(t *testing.T) {
 			common.Address{},
 			store,
 			false,
+			zerolog.Nop(),
 		)
 		require.NoError(tt, err)
 

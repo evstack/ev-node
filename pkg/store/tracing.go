@@ -228,6 +228,22 @@ func (t *tracedStore) DeleteMetadata(ctx context.Context, key string) error {
 	return nil
 }
 
+// DeleteStateAtHeight removes the state entry at the given height from the underlying store.
+func (t *tracedStore) DeleteStateAtHeight(ctx context.Context, height uint64) error {
+	ctx, span := t.tracer.Start(ctx, "Store.DeleteStateAtHeight",
+		trace.WithAttributes(attribute.Int64("height", int64(height))),
+	)
+	defer span.End()
+
+	if err := t.inner.DeleteStateAtHeight(ctx, height); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return err
+	}
+
+	return nil
+}
+
 func (t *tracedStore) Rollback(ctx context.Context, height uint64, aggregator bool) error {
 	ctx, span := t.tracer.Start(ctx, "Store.Rollback",
 		trace.WithAttributes(

@@ -16,6 +16,8 @@ const (
 	ConfigName = ConfigFileName + "." + ConfigExtension
 	// AppConfigDir is the directory name for the app configuration.
 	AppConfigDir = "config"
+
+	defaultRecoveryHistoryDepth = uint64(0)
 )
 
 // DefaultRootDir returns the default root directory for evolve
@@ -66,6 +68,7 @@ func DefaultConfig() Config {
 			LazyMode:                 false,
 			LazyBlockInterval:        DurationWrapper{60 * time.Second},
 			Light:                    false,
+			RecoveryHistoryDepth:     defaultRecoveryHistoryDepth,
 			ReadinessWindowSeconds:   defaultReadinessWindowSeconds,
 			ReadinessMaxBlocksBehind: calculateReadinessMaxBlocksBehind(defaultBlockTime.Duration, defaultReadinessWindowSeconds),
 			ScrapeInterval:           DurationWrapper{1 * time.Second},

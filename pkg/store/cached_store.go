@@ -169,6 +169,12 @@ func (cs *CachedStore) PruneBlocks(ctx context.Context, height uint64) error {
 	return nil
 }
 
+// DeleteStateAtHeight removes the state entry at the given height from the underlying store.
+// This value is not cached, so nothing to invalidate.
+func (cs *CachedStore) DeleteStateAtHeight(ctx context.Context, height uint64) error {
+	return cs.DeleteStateAtHeight(ctx, height)
+}
+
 // Close closes the underlying store.
 func (cs *CachedStore) Close() error {
 	cs.ClearCache()
