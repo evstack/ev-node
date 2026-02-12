@@ -758,7 +758,15 @@ func NewHeaderStoreGetter(store Store) *HeaderStoreGetter {
 
 // GetByHeight implements StoreGetter.
 func (g *HeaderStoreGetter) GetByHeight(ctx context.Context, height uint64) (*types.P2PSignedHeader, error) {
-	header, err := g.store.GetHeader(ctx, height)
+	// Guard: only return headers at or below the committed store height.
+	// The executor's early save writes an unsigned header to the datastore
+	// before updating store.Height(), so without this check the P2P layer
+	// could serve an unsigned header to peers.
+	storeHeight, err := g.store.Height(ctx)
+	if err != nil || height > storeHeight {
+		return nil, header.ErrNotFound
+	}
+	hdr, err := g.store.GetHeader(ctx, height)
 	if err != nil {
 		return nil, err
 	}
@@ -766,7 +774,7 @@ func (g *HeaderStoreGetter) GetByHeight(ctx context.Context, height uint64) (*ty
 	daHint, _ := g.GetDAHint(ctx, height)
 
 	return &types.P2PSignedHeader{
-		SignedHeader: header,
+		SignedHeader: hdr,
 		DAHeightHint: daHint,
 	}, nil
 }
@@ -812,7 +820,11 @@ func (g *HeaderStoreGetter) Height(ctx context.Context) (uint64, error) {
 
 // HasAt implements StoreGetter.
 func (g *HeaderStoreGetter) HasAt(ctx context.Context, height uint64) bool {
-	_, err := g.store.GetHeader(ctx, height)
+	storeHeight, err := g.store.Height(ctx)
+	if err != nil || height > storeHeight {
+		return false
+	}
+	_, err = g.store.GetHeader(ctx, height)
 	return err == nil
 }
 
@@ -828,6 +840,11 @@ func NewDataStoreGetter(store Store) *DataStoreGetter {
 
 // GetByHeight implements StoreGetter.
 func (g *DataStoreGetter) GetByHeight(ctx context.Context, height uint64) (*types.P2PData, error) {
+	// Guard: only return data at or below the committed store height.
+	storeHeight, err := g.store.Height(ctx)
+	if err != nil || height > storeHeight {
+		return nil, header.ErrNotFound
+	}
 	_, data, err := g.store.GetBlockData(ctx, height)
 	if err != nil {
 		return nil, err
@@ -882,7 +899,11 @@ func (g *DataStoreGetter) Height(ctx context.Context) (uint64, error) {
 
 // HasAt implements StoreGetter.
 func (g *DataStoreGetter) HasAt(ctx context.Context, height uint64) bool {
-	_, _, err := g.store.GetBlockData(ctx, height)
+	storeHeight, err := g.store.Height(ctx)
+	if err != nil || height > storeHeight {
+		return false
+	}
+	_, _, err = g.store.GetBlockData(ctx, height)
 	return err == nil
 }
 

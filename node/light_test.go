@@ -13,6 +13,7 @@ import (
 
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/p2p"
 	p2p_key "github.com/evstack/ev-node/pkg/p2p/key"
 )
 
@@ -39,7 +40,10 @@ func TestLightNodeLifecycle(t *testing.T) {
 	logger := zerolog.Nop()
 	db := ds_sync.MutexWrap(ds.NewMapDatastore())
 
-	ln, err := newLightNode(conf, gen, p2pKey, db, logger)
+	p2pClient, err := p2p.NewClient(conf.P2P, p2pKey.PrivKey, db, gen.ChainID, logger, nil)
+	require.NoError(err)
+
+	ln, err := newLightNode(conf, gen, p2pClient, db, logger)
 	require.NoError(err)
 	require.NotNil(ln)
 

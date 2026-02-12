@@ -23,6 +23,7 @@ import (
 	rollconf "github.com/evstack/ev-node/pkg/config"
 	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/signer/file"
@@ -163,6 +164,13 @@ func StartNode(
 		executor = telemetry.WithTracingExecutor(executor)
 	}
 
+	// Create the P2P client. It is long-lived and reconfigured in-place
+	// on mode switches, avoiding costly teardown of the libp2p stack.
+	p2pClient, err := p2p.NewClient(nodeConfig.P2P, nodeKey.PrivKey, datastore, genesis.ChainID, logger, nil)
+	if err != nil {
+		return fmt.Errorf("create p2p client: %w", err)
+	}
+
 	// Create and start the node
 	rollnode, err := node.NewNode(
 		nodeConfig,
@@ -170,7 +178,7 @@ func StartNode(
 		sequencer,
 		daClient,
 		signer,
-		nodeKey,
+		p2pClient,
 		genesis,
 		datastore,
 		metrics,

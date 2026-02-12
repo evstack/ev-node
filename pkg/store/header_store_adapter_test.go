@@ -615,3 +615,87 @@ func TestHeaderStoreAdapter_GetFromPendingByHash(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, h1.Height(), retrieved.Height())
 }
+
+// TestHeaderStoreGetter_HeightGuard verifies that HeaderStoreGetter.GetByHeight
+// and HasAt respect the committed store height. Data written to the datastore
+// without updating store.Height() (like the executor's crash-recovery early save)
+// must NOT be visible through the getter.
+func TestHeaderStoreGetter_HeightGuard(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	ds, err := NewTestInMemoryKVStore()
+	require.NoError(t, err)
+	store := New(ds)
+	getter := NewHeaderStoreGetter(store)
+
+	h1, d1 := types.GetRandomBlock(1, 2, "test-chain")
+	h2, d2 := types.GetRandomBlock(2, 2, "test-chain")
+
+	specs := map[string]struct {
+		setup    func()
+		height   uint64
+		expFound bool
+		expHasAt bool
+	}{
+		"data at height without height update is invisible": {
+			setup: func() {
+				// Simulate the executor's early save: write data but do NOT call SetHeight.
+				batch, bErr := store.NewBatch(ctx)
+				require.NoError(t, bErr)
+				require.NoError(t, batch.SaveBlockData(h1, d1, &types.Signature{}))
+				require.NoError(t, batch.Commit())
+			},
+			height:   1,
+			expFound: false,
+			expHasAt: false,
+		},
+		"data becomes visible after height is updated": {
+			setup: func() {
+				// Now commit the signed version with SetHeight (the final save).
+				batch, bErr := store.NewBatch(ctx)
+				require.NoError(t, bErr)
+				require.NoError(t, batch.SaveBlockData(h1, d1, &h1.Signature))
+				require.NoError(t, batch.SetHeight(1))
+				require.NoError(t, batch.Commit())
+			},
+			height:   1,
+			expFound: true,
+			expHasAt: true,
+		},
+		"height above committed store height is invisible": {
+			setup: func() {
+				// Save h2 data but only set height to 1.
+				batch, bErr := store.NewBatch(ctx)
+				require.NoError(t, bErr)
+				require.NoError(t, batch.SaveBlockData(h2, d2, &types.Signature{}))
+				require.NoError(t, batch.Commit())
+			},
+			height:   2,
+			expFound: false,
+			expHasAt: false,
+		},
+	}
+
+	// Run in defined order since each step builds on the previous state.
+	for _, name := range []string{
+		"data at height without height update is invisible",
+		"data becomes visible after height is updated",
+		"height above committed store height is invisible",
+	} {
+		spec := specs[name]
+		t.Run(name, func(t *testing.T) {
+			spec.setup()
+
+			got, err := getter.GetByHeight(ctx, spec.height)
+			if spec.expFound {
+				require.NoError(t, err)
+				assert.Equal(t, spec.height, got.Height())
+			} else {
+				require.Error(t, err)
+			}
+
+			assert.Equal(t, spec.expHasAt, getter.HasAt(ctx, spec.height))
+		})
+	}
+}
