@@ -266,7 +266,7 @@ func NewEngineExecutionClient(
 		currentSafeBlockHash:      genesisHash,
 		currentFinalizedBlockHash: genesisHash,
 		blockHashCache:            make(map[uint64]common.Hash),
-		logger:                    logger,
+		logger:                    logger.With().Str("module", "engine_client").Logger(),
 	}, nil
 }
 

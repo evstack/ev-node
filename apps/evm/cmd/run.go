@@ -55,7 +55,7 @@ var RunCmd = &cobra.Command{
 		}
 
 		tracingEnabled := nodeConfig.Instrumentation.IsTracingEnabled()
-		executor, err := createExecutionClient(cmd, datastore, tracingEnabled, logger.With().Str("module", "engine_client").Logger())
+		executor, err := createExecutionClient(cmd, datastore, tracingEnabled, logger)
 		if err != nil {
 			return err
 		}

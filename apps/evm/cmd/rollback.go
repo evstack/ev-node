@@ -71,7 +71,7 @@ func NewRollbackCmd() *cobra.Command {
 			}
 
 			// rollback execution layer via EngineClient
-			engineClient, err := createRollbackEngineClient(cmd, rawEvolveDB, logger.With().Str("module", "engine_client").Logger())
+			engineClient, err := createRollbackEngineClient(cmd, rawEvolveDB, logger)
 			if err != nil {
 				cmd.Printf("Warning: failed to create engine client, skipping EL rollback: %v\n", err)
 			} else {
