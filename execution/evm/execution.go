@@ -65,6 +65,10 @@ var _ execution.HeightProvider = (*EngineClient)(nil)
 // Ensure EngineClient implements the execution.Rollbackable interface
 var _ execution.Rollbackable = (*EngineClient)(nil)
 
+// Ensure EngineClient implements optional pruning interface when used with
+// ev-node's height-based pruning.
+var _ execution.ExecPruner = (*EngineClient)(nil)
+
 // validatePayloadStatus checks the payload status and returns appropriate errors.
 // It implements the Engine API specification's status handling:
 //   - VALID: Operation succeeded, return nil
@@ -198,6 +202,7 @@ func NewEngineExecutionClient(
 	feeRecipient common.Address,
 	db ds.Batching,
 	tracingEnabled bool,
+	logger zerolog.Logger,
 ) (*EngineClient, error) {
 	if db == nil {
 		return nil, errors.New("db is required for EVM execution client")
@@ -261,13 +266,8 @@ func NewEngineExecutionClient(
 		currentSafeBlockHash:      genesisHash,
 		currentFinalizedBlockHash: genesisHash,
 		blockHashCache:            make(map[uint64]common.Hash),
-		logger:                    zerolog.Nop(),
+		logger:                    logger.With().Str("module", "engine_client").Logger(),
 	}, nil
-}
-
-// SetLogger allows callers to attach a structured logger.
-func (c *EngineClient) SetLogger(l zerolog.Logger) {
-	c.logger = l
 }
 
 // InitChain initializes the blockchain with the given genesis parameters
@@ -1090,6 +1090,13 @@ func (c *EngineClient) Rollback(ctx context.Context, targetHeight uint64) error 
 		Msg("execution layer rollback completed")
 
 	return nil
+}
+
+// PruneExec implements execution.ExecPruner by delegating to the
+// underlying EVMStore. It is safe to call this multiple times with the same
+// or increasing heights; the store tracks its own last-pruned height.
+func (c *EngineClient) PruneExec(ctx context.Context, height uint64) error {
+	return c.store.PruneExec(ctx, height)
 }
 
 // decodeSecret decodes a hex-encoded JWT secret string into a byte slice.
