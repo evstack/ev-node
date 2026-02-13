@@ -34,17 +34,23 @@ const (
 	heightPrefix    = "t"
 )
 
-func getHeaderKey(height uint64) string {
+func GetHeaderKey(height uint64) string {
 	return GenerateKey([]string{headerPrefix, strconv.FormatUint(height, 10)})
 }
 
-func getDataKey(height uint64) string {
+func getHeaderKey(height uint64) string { return GetHeaderKey(height) }
+
+func GetDataKey(height uint64) string {
 	return GenerateKey([]string{dataPrefix, strconv.FormatUint(height, 10)})
 }
 
-func getSignatureKey(height uint64) string {
+func getDataKey(height uint64) string { return GetDataKey(height) }
+
+func GetSignatureKey(height uint64) string {
 	return GenerateKey([]string{signaturePrefix, strconv.FormatUint(height, 10)})
 }
+
+func getSignatureKey(height uint64) string { return GetSignatureKey(height) }
 
 func getStateAtHeightKey(height uint64) string {
 	return GenerateKey([]string{statePrefix, strconv.FormatUint(height, 10)})
@@ -54,9 +60,11 @@ func GetMetaKey(key string) string {
 	return GenerateKey([]string{metaPrefix, key})
 }
 
-func getIndexKey(hash types.Hash) string {
+func GetIndexKey(hash types.Hash) string {
 	return GenerateKey([]string{indexPrefix, hash.String()})
 }
+
+func getIndexKey(hash types.Hash) string { return GetIndexKey(hash) }
 
 func getHeightKey() string {
 	return GenerateKey([]string{heightPrefix})

@@ -2,11 +2,13 @@ package executing
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
+	"github.com/ipfs/go-datastore"
 	ds "github.com/ipfs/go-datastore"
 )
 
@@ -85,5 +87,62 @@ func (e *Executor) deletePendingBlock(ctx context.Context, batch store.Batch) er
 	if err := batch.Delete(ds.NewKey(store.GetMetaKey(dataKey))); err != nil {
 		return fmt.Errorf("delete pending data: %w", err)
 	}
+	return nil
+}
+
+// migrateLegacyPendingBlock detects old-style pending blocks that were stored
+// at height N+1 via SaveBlockData with an empty signature (pre-upgrade format)
+// and migrates them to the new metadata-key format (m/pending_header, m/pending_data).
+//
+// This prevents double-signing when a node is upgraded: without migration the
+// new code would not find the pending block and would create+sign a new one at
+// the same height.
+func (e *Executor) migrateLegacyPendingBlock(ctx context.Context) error {
+	candidateHeight := e.getLastState().LastBlockHeight + 1
+	pendingHeader, pendingData, err := e.store.GetBlockData(ctx, candidateHeight)
+	if err != nil {
+		if !errors.Is(err, datastore.ErrNotFound) {
+			return fmt.Errorf("get block data: %w", err)
+		}
+		return nil
+	}
+	if len(pendingHeader.Signature) != 0 {
+		return errors.New("pending block with signatures found")
+	}
+	// Migrate: write header+data to the new metadata keys.
+	if err := e.savePendingBlock(ctx, pendingHeader, pendingData); err != nil {
+		return fmt.Errorf("save migrated pending block: %w", err)
+	}
+
+	// Clean up old-style keys.
+	batch, err := e.store.NewBatch(ctx)
+	if err != nil {
+		return fmt.Errorf("create cleanup batch: %w", err)
+	}
+
+	headerBytes, err := pendingHeader.MarshalBinary()
+	if err != nil {
+		return fmt.Errorf("marshal header for hash: %w", err)
+	}
+	headerHash := sha256.Sum256(headerBytes)
+
+	for _, key := range []string{
+		store.GetHeaderKey(candidateHeight),
+		store.GetDataKey(candidateHeight),
+		store.GetSignatureKey(candidateHeight),
+		store.GetIndexKey(headerHash[:]),
+	} {
+		if err := batch.Delete(ds.NewKey(key)); err != nil {
+			return fmt.Errorf("delete legacy key %s: %w", key, err)
+		}
+	}
+
+	if err := batch.Commit(); err != nil {
+		return fmt.Errorf("commit cleanup batch: %w", err)
+	}
+
+	e.logger.Info().
+		Uint64("height", candidateHeight).
+		Msg("migrated legacy pending block to metadata format")
 	return nil
 }

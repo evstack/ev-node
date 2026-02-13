@@ -270,6 +270,12 @@ func (e *Executor) initializeState() error {
 	e.logger.Info().Uint64("height", state.LastBlockHeight).
 		Str("chain_id", state.ChainID).Msg("initialized state")
 
+	// Migrate any old-style pending block (stored at height N+1 via SaveBlockData
+	// with empty signature) to the new metadata-key format.
+	if err := e.migrateLegacyPendingBlock(e.ctx); err != nil {
+		return fmt.Errorf("failed to migrate legacy pending block: %w", err)
+	}
+
 	// Determine sync target: use Raft height if node is behind Raft consensus
 	syncTargetHeight := state.LastBlockHeight
 	if e.raftNode != nil {
