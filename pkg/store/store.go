@@ -113,6 +113,7 @@ func (s *DefaultStore) GetHeader(ctx context.Context, height uint64) (*types.Sig
 	if err = header.UnmarshalBinary(headerBlob); err != nil {
 		return nil, fmt.Errorf("unmarshal block header: %w", err)
 	}
+
 	return header, nil
 }
 
@@ -176,7 +177,7 @@ func (s *DefaultStore) GetStateAtHeight(ctx context.Context, height uint64) (typ
 //
 // Metadata is separated from other data by using prefix in KV.
 func (s *DefaultStore) SetMetadata(ctx context.Context, key string, value []byte) error {
-	err := s.db.Put(ctx, ds.NewKey(getMetaKey(key)), value)
+	err := s.db.Put(ctx, ds.NewKey(GetMetaKey(key)), value)
 	if err != nil {
 		return fmt.Errorf("failed to set metadata for key '%s': %w", key, err)
 	}
@@ -185,7 +186,7 @@ func (s *DefaultStore) SetMetadata(ctx context.Context, key string, value []byte
 
 // GetMetadata returns values stored for given key with SetMetadata.
 func (s *DefaultStore) GetMetadata(ctx context.Context, key string) ([]byte, error) {
-	data, err := s.db.Get(ctx, ds.NewKey(getMetaKey(key)))
+	data, err := s.db.Get(ctx, ds.NewKey(GetMetaKey(key)))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get metadata for key '%s': %w", key, err)
 	}
@@ -196,7 +197,7 @@ func (s *DefaultStore) GetMetadata(ctx context.Context, key string) ([]byte, err
 // This is more efficient than iterating through known keys when the set of keys is unknown.
 func (s *DefaultStore) GetMetadataByPrefix(ctx context.Context, prefix string) ([]MetadataEntry, error) {
 	// The full key in the datastore includes the meta prefix
-	fullPrefix := getMetaKey(prefix)
+	fullPrefix := GetMetaKey(prefix)
 
 	results, err := s.db.Query(ctx, dsq.Query{Prefix: fullPrefix})
 	if err != nil {
@@ -213,7 +214,7 @@ func (s *DefaultStore) GetMetadataByPrefix(ctx context.Context, prefix string) (
 		// Extract the original key by removing the meta prefix
 		// The key from datastore is like "/m/cache/header-da-included/hash"
 		// We want to return "cache/header-da-included/hash"
-		metaKeyPrefix := getMetaKey("")
+		metaKeyPrefix := GetMetaKey("")
 		key := strings.TrimPrefix(result.Key, metaKeyPrefix)
 		key = strings.TrimPrefix(key, "/") // Remove leading slash for consistency
 
@@ -228,7 +229,7 @@ func (s *DefaultStore) GetMetadataByPrefix(ctx context.Context, prefix string) (
 
 // DeleteMetadata removes a metadata key from the store.
 func (s *DefaultStore) DeleteMetadata(ctx context.Context, key string) error {
-	err := s.db.Delete(ctx, ds.NewKey(getMetaKey(key)))
+	err := s.db.Delete(ctx, ds.NewKey(GetMetaKey(key)))
 	if err != nil {
 		return fmt.Errorf("failed to delete metadata for key '%s': %w", key, err)
 	}
@@ -279,7 +280,7 @@ func (s *DefaultStore) Rollback(ctx context.Context, height uint64, aggregator b
 			} else { // in case of syncing issues, rollback the included height is OK.
 				bz := make([]byte, 8)
 				binary.LittleEndian.PutUint64(bz, height)
-				if err := batch.Put(ctx, ds.NewKey(getMetaKey(DAIncludedHeightKey)), bz); err != nil {
+				if err := batch.Put(ctx, ds.NewKey(GetMetaKey(DAIncludedHeightKey)), bz); err != nil {
 					return fmt.Errorf("failed to update DA included height: %w", err)
 				}
 			}
