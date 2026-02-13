@@ -271,6 +271,7 @@ type RethSetupConfig struct {
 func (s *DockerTestSuite) SetupRethNode(ctx context.Context, name string) RethSetupConfig {
 	rethNode, err := reth.NewNodeBuilder(s.T()).
 		WithName(name).
+		WithTag("pr-106").
 		WithGenesis([]byte(reth.DefaultEvolveGenesisJSON())).
 		WithDockerClient(s.dockerClient).
 		WithDockerNetworkID(s.dockerNetworkID).
