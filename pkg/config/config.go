@@ -51,6 +51,8 @@ const (
 	FlagReadinessMaxBlocksBehind = FlagPrefixEvnode + "node.readiness_max_blocks_behind"
 	// FlagScrapeInterval is a flag for specifying the reaper scrape interval
 	FlagScrapeInterval = FlagPrefixEvnode + "node.scrape_interval"
+	// FlagSequencerRecovery is a flag for starting in sync mode first, then switching to aggregator after catchup
+	FlagSequencerRecovery = FlagPrefixEvnode + "node.sequencer_recovery"
 	// FlagClearCache is a flag for clearing the cache
 	FlagClearCache = FlagPrefixEvnode + "clear_cache"
 
@@ -257,6 +259,7 @@ type NodeConfig struct {
 	LazyMode                 bool            `mapstructure:"lazy_mode" yaml:"lazy_mode" comment:"Enables lazy aggregation mode, where blocks are only produced when transactions are available or after LazyBlockTime. Optimizes resources by avoiding empty block creation during periods of inactivity."`
 	LazyBlockInterval        DurationWrapper `mapstructure:"lazy_block_interval" yaml:"lazy_block_interval" comment:"Maximum interval between blocks in lazy aggregation mode (LazyAggregator). Ensures blocks are produced periodically even without transactions to keep the chain active. Generally larger than BlockTime."`
 	ScrapeInterval           DurationWrapper `mapstructure:"scrape_interval" yaml:"scrape_interval" comment:"Interval at which the reaper polls the execution layer for new transactions. Lower values reduce transaction detection latency but increase RPC load. Examples: \"250ms\", \"500ms\", \"1s\"."`
+	SequencerRecovery        DurationWrapper `mapstructure:"sequencer_recovery" yaml:"sequencer_recovery" comment:"Start in sync mode first, catch up from DA and P2P, then switch to aggregator mode. Requires aggregator mode. Value specifies time to wait for P2P reconnections. Use for disaster recovery of a sequencer that lost its data."`
 
 	// Readiness / health configuration
 	ReadinessWindowSeconds   uint64 `mapstructure:"readiness_window_seconds" yaml:"readiness_window_seconds" comment:"Time window in seconds used to calculate ReadinessMaxBlocksBehind based on block time. Default: 15 seconds."`
@@ -351,6 +354,11 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("based sequencer mode requires aggregator mode to be enabled")
 	}
 
+	// Validate sequencer recovery requires aggregator mode
+	if c.Node.SequencerRecovery.Duration > 0 && !c.Node.Aggregator {
+		return fmt.Errorf("sequencer recovery mode requires aggregator mode to be enabled")
+	}
+
 	// Validate namespaces
 	if err := validateNamespace(c.DA.GetNamespace()); err != nil {
 		return fmt.Errorf("could not validate namespace (%s): %w", c.DA.GetNamespace(), err)
@@ -436,6 +444,7 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().Uint64(FlagReadinessWindowSeconds, def.Node.ReadinessWindowSeconds, "time window in seconds for calculating readiness threshold based on block time (default: 15s)")
 	cmd.Flags().Uint64(FlagReadinessMaxBlocksBehind, def.Node.ReadinessMaxBlocksBehind, "how many blocks behind best-known head the node can be and still be considered ready (0 = must be at head)")
 	cmd.Flags().Duration(FlagScrapeInterval, def.Node.ScrapeInterval.Duration, "interval at which the reaper polls the execution layer for new transactions")
+	cmd.Flags().Duration(FlagSequencerRecovery, def.Node.SequencerRecovery.Duration, "start in sync mode first, catch up from DA/P2P, then switch to aggregator (disaster recovery). Value specifies time to wait for in-flight P2P blocks.")
 
 	// Data Availability configuration flags
 	cmd.Flags().String(FlagDAAddress, def.DA.Address, "DA address (host:port)")
