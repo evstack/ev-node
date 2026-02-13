@@ -155,6 +155,7 @@ func (p *Pruner) pruneBlocks() error {
 		}
 	}
 
+	p.logger.Debug().Uint64("pruned_up_to_height", batchEnd).Msg("pruned blocks up to height")
 	return nil
 }
 
@@ -239,6 +240,7 @@ func (p *Pruner) pruneMetadata() error {
 		return fmt.Errorf("failed to set last pruned block height: %w", err)
 	}
 
+	p.logger.Debug().Uint64("pruned_to", batchEnd).Msg("pruned state height metadata up to height")
 	return nil
 }
 
