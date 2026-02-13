@@ -44,13 +44,14 @@ func New(
 		execPruner: execPruner,
 		cfg:        cfg,
 		blockTime:  blockTime,
-		logger:     logger.With().Str("component", "prune").Logger(),
+		logger:     logger.With().Str("component", "pruner").Logger(),
 	}
 }
 
 // Start begins the pruning loop.
 func (p *Pruner) Start(ctx context.Context) error {
 	if !p.cfg.IsPruningEnabled() {
+		p.logger.Info().Msg("pruning is disabled, not starting pruner")
 		return nil
 	}
 
@@ -133,15 +134,8 @@ func (p *Pruner) pruneBlocks() error {
 		return fmt.Errorf("failed to get last pruned block height: %w", err)
 	}
 
-	catchUpBatchSize, normalBatchSize := p.calculateBatchSizes()
-
-	remainingToPrune := targetHeight - lastPruned
-	batchSize := normalBatchSize
-	if remainingToPrune > catchUpBatchSize {
-		batchSize = catchUpBatchSize
-	}
-
 	// prune in batches to avoid overwhelming the system
+	batchSize := p.calculateBatchSize()
 	batchEnd := min(lastPruned+batchSize, targetHeight)
 
 	if err := p.store.PruneBlocks(p.ctx, batchEnd); err != nil {
@@ -159,31 +153,19 @@ func (p *Pruner) pruneBlocks() error {
 	return nil
 }
 
-// calculateBatchSizes returns appropriate batch sizes for catch-up and normal pruning operations.
-// The batch sizes are based on the pruning interval and block time to ensure reasonable progress
+// calculateBatchSize returns the appropriate batch size for pruning operations.
+// The batch size is based on the pruning interval and block time to ensure reasonable progress
 // without overwhelming the node.
-// Catch-up mode is usually triggered when pruning is enabled for the first time ever, and there is a large backlog of blocks to prune.
-func (p *Pruner) calculateBatchSizes() (catchUpBatchSize, normalBatchSize uint64) {
+func (p *Pruner) calculateBatchSize() uint64 {
 	// Calculate batch size based on pruning interval and block time.
-	// We use 2x the blocks produced during one pruning interval as the catch-up batch size,
-	// and 4x for normal operation. This ensures we make steady progress during catch-up
-	// without overwhelming the node.
+	// We use 4x the blocks produced during one pruning interval as the batch size.
+	// This ensures we catch up at 3x the block production rate when there's a backlog.
 	// Example: With 100ms blocks and 15min interval: 15*60/0.1 = 9000 blocks/interval
-	//   - Catch-up batch: 18,000 blocks
-	//   - Normal batch: 36,000 blocks
+	//   - Batch size: 36,000 blocks (prunes 36k, chain grows 9k = net 27k catch-up per interval)
 	blocksPerInterval := uint64(p.cfg.Interval.Duration / p.blockTime)
-	catchUpBatchSize = blocksPerInterval * 2
-	normalBatchSize = blocksPerInterval * 4
 
-	// Ensure reasonable minimums
-	if catchUpBatchSize < 1000 {
-		catchUpBatchSize = 1000
-	}
-	if normalBatchSize < 10000 {
-		normalBatchSize = 10000
-	}
-
-	return catchUpBatchSize, normalBatchSize
+	// Ensure reasonable minimum
+	return min(blocksPerInterval*4, 10000)
 }
 
 // pruneMetadata prunes old state and execution metadata entries based on the configured retention depth.
@@ -213,13 +195,7 @@ func (p *Pruner) pruneMetadata() error {
 		return nil
 	}
 
-	catchUpBatchSize, normalBatchSize := p.calculateBatchSizes()
-
-	remainingToPrune := target - lastPrunedState
-	batchSize := normalBatchSize
-	if remainingToPrune > catchUpBatchSize {
-		batchSize = catchUpBatchSize
-	}
+	batchSize := p.calculateBatchSize()
 
 	// prune in batches to avoid overwhelming the system
 	batchEnd := min(lastPrunedState+batchSize, target)
