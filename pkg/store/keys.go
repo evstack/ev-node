@@ -19,11 +19,16 @@ const (
 	// DAIncludedHeightKey is the key used for persisting the da included height in store.
 	DAIncludedHeightKey = "d"
 
-	// LastBatchDataKey is the key used for persisting the last batch data in store.
-	LastBatchDataKey = "l"
-
 	// LastSubmittedHeaderHeightKey is the key used for persisting the last submitted header height in store.
 	LastSubmittedHeaderHeightKey = "last-submitted-header-height"
+
+	// LastPrunedBlockHeightKey is the metadata key used for persisting the last
+	// pruned block height in the store.
+	LastPrunedBlockHeightKey = "lst-prnd-b"
+
+	// LastPrunedStateHeightKey is the metadata key used for persisting the last
+	// pruned state height in the store.
+	LastPrunedStateHeightKey = "lst-prnd-s"
 
 	headerPrefix    = "h"
 	dataPrefix      = "d"

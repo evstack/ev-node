@@ -170,6 +170,11 @@ const (
 	FlagRaftHeartbeatTimeout = FlagPrefixEvnode + "raft.heartbeat_timeout"
 	// FlagRaftLeaderLeaseTimeout is a flag for specifying leader lease timeout
 	FlagRaftLeaderLeaseTimeout = FlagPrefixEvnode + "raft.leader_lease_timeout"
+
+	// Pruning configuration flags
+	FlagPruningMode       = FlagPrefixEvnode + "pruning.pruning_mode"
+	FlagPruningKeepRecent = FlagPrefixEvnode + "pruning.pruning_keep_recent"
+	FlagPruningInterval   = FlagPrefixEvnode + "pruning.pruning_interval"
 )
 
 // Config stores Rollkit configuration.
@@ -202,6 +207,9 @@ type Config struct {
 
 	// Raft consensus configuration
 	Raft RaftConfig `mapstructure:"raft" yaml:"raft"`
+
+	// Pruning configuration
+	Pruning PruningConfig `mapstructure:"pruning" yaml:"pruning"`
 }
 
 // DAConfig contains all Data Availability configuration parameters
@@ -290,6 +298,49 @@ type RPCConfig struct {
 	EnableDAVisualization bool   `mapstructure:"enable_da_visualization" yaml:"enable_da_visualization" comment:"Enable DA visualization endpoints for monitoring blob submissions. Default: false"`
 }
 
+const (
+	PruningModeDisabled = "disabled"
+	PruningModeAll      = "all"
+	PruningModeMetadata = "metadata"
+)
+
+// PruningConfig contains all pruning configuration parameters
+type PruningConfig struct {
+	Mode       string          `mapstructure:"pruning_mode" yaml:"pruning_mode" comment:"Pruning mode for stored block data and block metadata. Options: 'all' (prune all but recent blocks and their metatadas), 'metadata' (prune all but recent blocks metadatas), 'disabled' (keep all blocks and blocks metadata). Default: 'disabled'."`
+	KeepRecent uint64          `mapstructure:"pruning_keep_recent" yaml:"pruning_keep_recent" comment:"Number of most recent blocks/blocks metadata to retain when pruning is enabled. Must be > 0."`
+	Interval   DurationWrapper `mapstructure:"pruning_interval" yaml:"pruning_interval" comment:"Run pruning every N minutes. Examples: \"5m\", \"10m\", \"24h\"."`
+}
+
+// IsPruningEnabled returns true if pruning is enabled (i.e. pruning mode is not 'disabled')
+func (c PruningConfig) IsPruningEnabled() bool {
+	return c.Mode != PruningModeDisabled && len(c.Mode) > 0
+}
+
+// Validate pruning configuration
+func (c PruningConfig) Validate(blockTime time.Duration) error {
+	if c.Mode != PruningModeDisabled && c.Mode != PruningModeAll && c.Mode != PruningModeMetadata {
+		return fmt.Errorf("invalid pruning mode: %s; must be one of '%s', '%s', or '%s'", c.Mode, PruningModeDisabled, PruningModeAll, PruningModeMetadata)
+	}
+
+	if c.Mode == PruningModeDisabled {
+		return nil
+	}
+
+	if c.Interval.Duration == 0 {
+		return fmt.Errorf("pruning_interval must be >= 1s when pruning is enabled")
+	}
+
+	if c.Interval.Duration < blockTime {
+		return fmt.Errorf("pruning_interval (%v) must be greater than or equal to block time (%v)", c.Interval.Duration, blockTime)
+	}
+
+	if c.KeepRecent == 0 {
+		return fmt.Errorf("pruning_keep_recent must be > 0 when pruning is enabled; use pruning_enabled=false to keep all blocks")
+	}
+
+	return nil
+}
+
 // RaftConfig contains all Raft consensus configuration parameters
 type RaftConfig struct {
 	Enable             bool          `mapstructure:"enable" yaml:"enable" comment:"Enable Raft consensus for leader election and state replication"`
@@ -373,9 +424,15 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("LazyBlockInterval (%v) must be greater than BlockTime (%v) in lazy mode",
 			c.Node.LazyBlockInterval.Duration, c.Node.BlockTime.Duration)
 	}
+
 	if err := c.Raft.Validate(); err != nil {
 		return err
 	}
+
+	if err := c.Pruning.Validate(c.Node.BlockTime.Duration); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -495,6 +552,11 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().Duration(FlagRaftSendTimeout, def.Raft.SendTimeout, "max duration to wait for a message to be sent to a peer")
 	cmd.Flags().Duration(FlagRaftHeartbeatTimeout, def.Raft.HeartbeatTimeout, "time between leader heartbeats to followers")
 	cmd.Flags().Duration(FlagRaftLeaderLeaseTimeout, def.Raft.LeaderLeaseTimeout, "duration of the leader lease")
+
+	// Pruning configuration flags
+	cmd.Flags().String(FlagPruningMode, def.Pruning.Mode, "pruning mode for stored block data and metadata (disabled, all, metadata)")
+	cmd.Flags().Uint64(FlagPruningKeepRecent, def.Pruning.KeepRecent, "number of most recent blocks and their metadata to retain when pruning is enabled (must be > 0)")
+	cmd.Flags().Duration(FlagPruningInterval, def.Pruning.Interval.Duration, "interval at which pruning is performed when pruning is enabled")
 }
 
 // Load loads the node configuration in the following order of precedence:

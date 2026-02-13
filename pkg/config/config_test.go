@@ -36,6 +36,7 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, "file", def.Signer.SignerType)
 	assert.Equal(t, "config", def.Signer.SignerPath)
 	assert.Equal(t, "127.0.0.1:7331", def.RPC.Address)
+	assert.Equal(t, PruningModeDisabled, def.Pruning.Mode)
 	assert.NoError(t, def.Validate())
 }
 
@@ -111,8 +112,13 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagRPCAddress, DefaultConfig().RPC.Address)
 	assertFlagValue(t, flags, FlagRPCEnableDAVisualization, DefaultConfig().RPC.EnableDAVisualization)
 
+	// Pruning flags
+	assertFlagValue(t, flags, FlagPruningMode, DefaultConfig().Pruning.Mode)
+	assertFlagValue(t, flags, FlagPruningKeepRecent, DefaultConfig().Pruning.KeepRecent)
+	assertFlagValue(t, flags, FlagPruningInterval, DefaultConfig().Pruning.Interval.Duration)
+
 	// Count the number of flags we're explicitly checking
-	expectedFlagCount := 63 // Update this number if you add more flag checks above
+	expectedFlagCount := 66 // Update this number if you add more flag checks above
 
 	// Get the actual number of flags (both regular and persistent)
 	actualFlagCount := 0

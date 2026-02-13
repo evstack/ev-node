@@ -55,7 +55,7 @@ var RunCmd = &cobra.Command{
 		}
 
 		tracingEnabled := nodeConfig.Instrumentation.IsTracingEnabled()
-		executor, err := createExecutionClient(cmd, datastore, tracingEnabled)
+		executor, err := createExecutionClient(cmd, datastore, tracingEnabled, logger)
 		if err != nil {
 			return err
 		}
@@ -66,11 +66,6 @@ var RunCmd = &cobra.Command{
 		}
 
 		daClient := block.NewDAClient(blobClient, nodeConfig, logger)
-
-		// Attach logger to the EVM engine client if available
-		if ec, ok := executor.(*evm.EngineClient); ok {
-			ec.SetLogger(logger.With().Str("module", "engine_client").Logger())
-		}
 
 		headerNamespace := da.NamespaceFromString(nodeConfig.DA.GetNamespace())
 		dataNamespace := da.NamespaceFromString(nodeConfig.DA.GetDataNamespace())
@@ -192,7 +187,7 @@ func createSequencer(
 	return sequencer, nil
 }
 
-func createExecutionClient(cmd *cobra.Command, db datastore.Batching, tracingEnabled bool) (execution.Executor, error) {
+func createExecutionClient(cmd *cobra.Command, db datastore.Batching, tracingEnabled bool, logger zerolog.Logger) (execution.Executor, error) {
 	// Read execution client parameters from flags
 	ethURL, err := cmd.Flags().GetString(evm.FlagEvmEthURL)
 	if err != nil {
@@ -237,7 +232,7 @@ func createExecutionClient(cmd *cobra.Command, db datastore.Batching, tracingEna
 	genesisHash := common.HexToHash(genesisHashStr)
 	feeRecipient := common.HexToAddress(feeRecipientStr)
 
-	return evm.NewEngineExecutionClient(ethURL, engineURL, jwtSecret, genesisHash, feeRecipient, db, tracingEnabled)
+	return evm.NewEngineExecutionClient(ethURL, engineURL, jwtSecret, genesisHash, feeRecipient, db, tracingEnabled, logger)
 }
 
 // addFlags adds flags related to the EVM execution client

@@ -127,6 +127,7 @@ func TestNewSyncComponents_Creation(t *testing.T) {
 	assert.NotNil(t, components.Syncer)
 	assert.NotNil(t, components.Submitter)
 	assert.NotNil(t, components.Cache)
+	assert.NotNil(t, components.Pruner)
 	assert.NotNil(t, components.errorCh)
 	assert.Nil(t, components.Executor) // Sync nodes don't have executors
 }
@@ -183,6 +184,7 @@ func TestNewAggregatorComponents_Creation(t *testing.T) {
 	assert.NotNil(t, components.Executor)
 	assert.NotNil(t, components.Submitter)
 	assert.NotNil(t, components.Cache)
+	assert.NotNil(t, components.Pruner)
 	assert.NotNil(t, components.errorCh)
 	assert.Nil(t, components.Syncer) // Aggregator nodes currently don't create syncers in this constructor
 }

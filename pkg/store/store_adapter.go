@@ -286,6 +286,7 @@ func (c *pendingCache[H]) recalcMaxHeight() {
 // a block, it writes to the underlying store, and subsequent reads will come from the store.
 type StoreAdapter[H EntityWithDAHint[H]] struct {
 	getter               StoreGetter[H]
+	store                Store
 	genesisInitialHeight uint64
 
 	// heightSub tracks the current height and allows waiting for specific heights.
@@ -304,9 +305,9 @@ type StoreAdapter[H EntityWithDAHint[H]] struct {
 	onDeleteFn func(context.Context, uint64) error
 }
 
-// NewStoreAdapter creates a new StoreAdapter wrapping the given store getter.
+// NewStoreAdapter creates a new StoreAdapter wrapping the given store getter and backing Store.
 // The genesis is used to determine the initial height for efficient Tail lookups.
-func NewStoreAdapter[H EntityWithDAHint[H]](getter StoreGetter[H], gen genesis.Genesis) *StoreAdapter[H] {
+func NewStoreAdapter[H EntityWithDAHint[H]](getter StoreGetter[H], store Store, gen genesis.Genesis) *StoreAdapter[H] {
 	// Get actual current height from store (0 if empty)
 	var storeHeight uint64
 	if h, err := getter.Height(context.Background()); err == nil {
@@ -315,6 +316,7 @@ func NewStoreAdapter[H EntityWithDAHint[H]](getter StoreGetter[H], gen genesis.G
 
 	adapter := &StoreAdapter[H]{
 		getter:               getter,
+		store:                store,
 		genesisInitialHeight: max(gen.InitialHeight, 1),
 		pending:              newPendingCache[H](),
 		heightSub:            newHeightSub(storeHeight),
@@ -386,7 +388,6 @@ func (a *StoreAdapter[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (
 // Tail returns the lowest item in the store.
 // For ev-node, this is typically the genesis/initial height.
 // If pruning has occurred, it walks up from initialHeight to find the first available item.
-// TODO(@julienrbrt): Optimize this when pruning is enabled.
 func (a *StoreAdapter[H]) Tail(ctx context.Context) (H, error) {
 	var zero H
 
@@ -400,8 +401,19 @@ func (a *StoreAdapter[H]) Tail(ctx context.Context) (H, error) {
 		height = h
 	}
 
-	// Try genesisInitialHeight first (most common case - no pruning)
-	item, err := a.getter.GetByHeight(ctx, a.genesisInitialHeight)
+	// Determine the first candidate tail height. By default, this is the
+	// genesis initial height, but if pruning metadata is available we can
+	// skip directly past fully-pruned ranges.
+	startHeight := a.genesisInitialHeight
+	if lastPrunedBlockHeightBz, err := a.store.GetMetadata(ctx, LastPrunedBlockHeightKey); err == nil && len(lastPrunedBlockHeightBz) == heightLength {
+		if lastPruned, err := decodeHeight(lastPrunedBlockHeightBz); err == nil {
+			if candidate := lastPruned + 1; candidate > startHeight {
+				startHeight = candidate
+			}
+		}
+	}
+
+	item, err := a.getter.GetByHeight(ctx, startHeight)
 	if err == nil {
 		return item, nil
 	}
@@ -411,8 +423,8 @@ func (a *StoreAdapter[H]) Tail(ctx context.Context) (H, error) {
 		return pendingItem, nil
 	}
 
-	// Walk up from genesisInitialHeight to find the first available item (pruning case)
-	for h := a.genesisInitialHeight + 1; h <= height; h++ {
+	// Walk up from startHeight to find the first available item
+	for h := startHeight + 1; h <= height; h++ {
 		item, err = a.getter.GetByHeight(ctx, h)
 		if err == nil {
 			return item, nil
@@ -881,11 +893,11 @@ type DataStoreAdapter = StoreAdapter[*types.P2PData]
 // NewHeaderStoreAdapter creates a new StoreAdapter for headers.
 // The genesis is used to determine the initial height for efficient Tail lookups.
 func NewHeaderStoreAdapter(store Store, gen genesis.Genesis) *HeaderStoreAdapter {
-	return NewStoreAdapter(NewHeaderStoreGetter(store), gen)
+	return NewStoreAdapter(NewHeaderStoreGetter(store), store, gen)
 }
 
 // NewDataStoreAdapter creates a new StoreAdapter for data.
 // The genesis is used to determine the initial height for efficient Tail lookups.
 func NewDataStoreAdapter(store Store, gen genesis.Genesis) *DataStoreAdapter {
-	return NewStoreAdapter(NewDataStoreGetter(store), gen)
+	return NewStoreAdapter(NewDataStoreGetter(store), store, gen)
 }

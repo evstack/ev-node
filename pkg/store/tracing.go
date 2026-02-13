@@ -228,6 +228,21 @@ func (t *tracedStore) DeleteMetadata(ctx context.Context, key string) error {
 	return nil
 }
 
+func (t *tracedStore) DeleteStateAtHeight(ctx context.Context, height uint64) error {
+	ctx, span := t.tracer.Start(ctx, "Store.DeleteStateAtHeight",
+		trace.WithAttributes(attribute.Int64("height", int64(height))),
+	)
+	defer span.End()
+
+	if err := t.inner.DeleteStateAtHeight(ctx, height); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return err
+	}
+
+	return nil
+}
+
 func (t *tracedStore) Rollback(ctx context.Context, height uint64, aggregator bool) error {
 	ctx, span := t.tracer.Start(ctx, "Store.Rollback",
 		trace.WithAttributes(
@@ -238,6 +253,22 @@ func (t *tracedStore) Rollback(ctx context.Context, height uint64, aggregator bo
 	defer span.End()
 
 	err := t.inner.Rollback(ctx, height, aggregator)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return err
+	}
+
+	return nil
+}
+
+func (t *tracedStore) PruneBlocks(ctx context.Context, height uint64) error {
+	ctx, span := t.tracer.Start(ctx, "Store.PruneBlocks",
+		trace.WithAttributes(attribute.Int64("height", int64(height))),
+	)
+	defer span.End()
+
+	err := t.inner.PruneBlocks(ctx, height)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())

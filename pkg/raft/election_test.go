@@ -311,7 +311,6 @@ func TestDynamicLeaderElectionRun(t *testing.T) {
 	}
 
 	for name, spec := range specs {
-		name, spec := name, spec
 		t.Run(name, func(t *testing.T) {
 			d, runCtx, cancel := spec.setup(t)
 			defer cancel()
