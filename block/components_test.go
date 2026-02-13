@@ -175,7 +175,7 @@ func TestNewAggregatorComponents_Creation(t *testing.T) {
 		zerolog.Nop(),
 		NopMetrics(),
 		DefaultBlockOptions(),
-		nil,
+		nil, // raftNode
 	)
 
 	require.NoError(t, err)
@@ -258,7 +258,7 @@ func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
 			zerolog.Nop(),
 			NopMetrics(),
 			DefaultBlockOptions(),
-			nil,
+			nil, // raftNode
 		)
 		require.NoError(t, err)
 

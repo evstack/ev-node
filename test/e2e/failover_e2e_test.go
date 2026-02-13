@@ -384,6 +384,12 @@ func TestHASequencerRollingRestartE2E(t *testing.T) {
 		nodeJWT := getNodeJWT(nodeName)
 		p2pPeers := getP2PPeers(nodeName)
 
+		// Kill old process just in case
+		if nodeDetails.IsRunning() {
+			_ = nodeDetails.Kill()
+			time.Sleep(200 * time.Millisecond)
+		}
+
 		restartedProc := setupRaftSequencerNode(t, sut, workDir, nodeName, nodeDetails.raftAddr, nodeJWT, genesisHash,
 			testEndpoints.GetDAAddress(), "", raftCluster, p2pPeers,
 			strings.TrimPrefix(nodeDetails.rpcAddr, "http://"), nodeDetails.p2pAddr,

@@ -50,7 +50,7 @@ func getStateAtHeightKey(height uint64) string {
 	return GenerateKey([]string{statePrefix, strconv.FormatUint(height, 10)})
 }
 
-func getMetaKey(key string) string {
+func GetMetaKey(key string) string {
 	return GenerateKey([]string{metaPrefix, key})
 }
 

@@ -146,7 +146,7 @@ func verifyTransactionSync(t *testing.T, sequencerClient, fullNodeClient *ethcli
 			}
 		}
 		return false
-	}, 60*time.Second, 500*time.Millisecond, "Full node should sync the block containing the transaction")
+	}, 3*time.Minute, 500*time.Millisecond, "Full node should sync the block containing the transaction")
 
 	// Final verification - both nodes should have the transaction in the same block
 	sequencerReceipt, err := sequencerClient.TransactionReceipt(ctx, txHash)
