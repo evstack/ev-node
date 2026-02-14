@@ -760,9 +760,49 @@ func (s *Syncer) TrySyncNextBlock(ctx context.Context, event *common.DAHeightEve
 
 	// Update DA height if needed
 	// This height is only updated when a height is processed from DA as P2P
-	// events do not contain DA height information
+	// events do not contain DA height information.
+	//
+	// When a sequencer restarts after extended downtime, it produces "catch-up"
+	// blocks containing forced inclusion transactions from missed DA epochs and
+	// submits them to DA at the current (much higher) DA height. This creates a
+	// gap between the state's DAHeight (tracking forced inclusion epoch progress)
+	// and event.DaHeight (the DA submission height).
+	//
+	// If we jump state.DAHeight directly to event.DaHeight, subsequent calls to
+	// VerifyForcedInclusionTxs would check the wrong epoch (the submission epoch
+	// instead of the next forced-inclusion epoch), causing valid catch-up blocks
+	// to be incorrectly flagged as malicious.
+	//
+	// To handle this, when the gap exceeds one DA epoch, we advance DAHeight by
+	// exactly one epoch per block. This lets the forced inclusion verifier check
+	// the correct epoch for each catch-up block. Once the sequencer finishes
+	// catching up and the gap closes, DAHeight converges to event.DaHeight.
 	if event.DaHeight > newState.DAHeight {
-		newState.DAHeight = event.DaHeight
+		epochSize := s.genesis.DAEpochForcedInclusion
+		gap := event.DaHeight - newState.DAHeight
+
+		if epochSize > 0 && gap > epochSize {
+			// Large gap detected — likely catch-up blocks from a restarted sequencer.
+			// Advance DAHeight by one epoch to keep forced inclusion verification
+			// aligned with the epoch the sequencer is replaying.
+			_, epochEnd, _ := types.CalculateEpochBoundaries(
+				newState.DAHeight, s.genesis.DAStartHeight, epochSize,
+			)
+			nextEpochStart := epochEnd + 1
+			if nextEpochStart > event.DaHeight {
+				// Shouldn't happen, but clamp to event.DaHeight as a safety net.
+				nextEpochStart = event.DaHeight
+			}
+			s.logger.Debug().
+				Uint64("current_da_height", newState.DAHeight).
+				Uint64("event_da_height", event.DaHeight).
+				Uint64("advancing_to", nextEpochStart).
+				Uint64("gap", gap).
+				Msg("large DA height gap detected (sequencer catch-up), advancing DA height by one epoch")
+			newState.DAHeight = nextEpochStart
+		} else {
+			newState.DAHeight = event.DaHeight
+		}
 	}
 
 	batch, err := s.store.NewBatch(ctx)

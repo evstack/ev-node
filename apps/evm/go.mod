@@ -4,7 +4,6 @@ go 1.25.6
 
 replace (
 	github.com/evstack/ev-node => ../../
-	github.com/evstack/ev-node/core => ../../core
 	github.com/evstack/ev-node/execution/evm => ../../execution/evm
 )
 
