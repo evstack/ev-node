@@ -378,6 +378,7 @@ func setupSequencerNodeLazy(t *testing.T, sut *SystemUnderTest, sequencerHome, j
 	// Use helper methods to get complete URLs
 	args := []string{
 		"start",
+		"--evnode.log.level", "debug",
 		"--evnode.log.format", "json",
 		"--evm.jwt-secret-file", jwtSecretFile,
 		"--evm.genesis-hash", genesisHash,
@@ -440,6 +441,7 @@ func setupFullNode(t *testing.T, sut *SystemUnderTest, fullNodeHome, sequencerHo
 	// Use helper methods to get complete URLs
 	args := []string{
 		"start",
+		"--evnode.log.level", "debug",
 		"--evnode.log.format", "json",
 		"--home", fullNodeHome,
 		"--evm.jwt-secret-file", fullNodeJwtSecretFile,

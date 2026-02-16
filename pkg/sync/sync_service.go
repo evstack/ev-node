@@ -20,7 +20,6 @@ import (
 
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
-	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
 )
@@ -38,6 +37,15 @@ type HeaderSyncService = SyncService[*types.P2PSignedHeader]
 // DataSyncService is the P2P Sync Service for blocks.
 type DataSyncService = SyncService[*types.P2PData]
 
+// P2PClient defines the interface for P2P client operations needed by the sync service.
+type P2PClient interface {
+	PubSub() *pubsub.PubSub
+	Info() (string, string, string, error)
+	Host() host.Host
+	ConnectionGater() *conngater.BasicConnectionGater
+	PeerIDs() []peer.ID
+}
+
 // SyncService is the P2P Sync Service for blocks and headers.
 //
 // Uses the go-header library for handling all P2P logic.
@@ -48,7 +56,7 @@ type SyncService[H store.EntityWithDAHint[H]] struct {
 
 	genesis genesis.Genesis
 
-	p2p *p2p.Client
+	p2p P2PClient
 
 	ex                *goheaderp2p.Exchange[H]
 	sub               *goheaderp2p.Subscriber[H]
@@ -66,7 +74,7 @@ func NewDataSyncService(
 	evStore store.Store,
 	conf config.Config,
 	genesis genesis.Genesis,
-	p2p *p2p.Client,
+	p2p P2PClient,
 	logger zerolog.Logger,
 ) (*DataSyncService, error) {
 	storeAdapter := store.NewDataStoreAdapter(evStore, genesis)
@@ -78,7 +86,7 @@ func NewHeaderSyncService(
 	evStore store.Store,
 	conf config.Config,
 	genesis genesis.Genesis,
-	p2p *p2p.Client,
+	p2p P2PClient,
 	logger zerolog.Logger,
 ) (*HeaderSyncService, error) {
 	storeAdapter := store.NewHeaderStoreAdapter(evStore, genesis)
@@ -90,7 +98,7 @@ func newSyncService[H store.EntityWithDAHint[H]](
 	syncType syncType,
 	conf config.Config,
 	genesis genesis.Genesis,
-	p2p *p2p.Client,
+	p2p P2PClient,
 	logger zerolog.Logger,
 ) (*SyncService[H], error) {
 	if p2p == nil {
