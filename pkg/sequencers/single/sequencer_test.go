@@ -1291,7 +1291,7 @@ func TestSequencer_CatchUp_DetectsOldEpoch(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	assert.False(t, seq.IsCatchingUp(), "should not be catching up initially")
+	assert.False(t, seq.isCatchingUp(), "should not be catching up initially")
 
 	// First GetNextBatch — DA head is far ahead, should enter catch-up
 	req := coresequencer.GetNextBatchRequest{
@@ -1303,7 +1303,7 @@ func TestSequencer_CatchUp_DetectsOldEpoch(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, resp.Batch)
 
-	assert.True(t, seq.IsCatchingUp(), "should be catching up after detecting epoch gap")
+	assert.True(t, seq.isCatchingUp(), "should be catching up after detecting epoch gap")
 
 	// During catch-up, batch should contain only forced inclusion tx, no mempool tx
 	assert.Equal(t, 1, len(resp.Batch.Transactions), "should have only forced inclusion tx during catch-up")
@@ -1385,7 +1385,7 @@ func TestSequencer_CatchUp_SkipsMempoolDuringCatchUp(t *testing.T) {
 	// First batch (epoch 100): only forced txs
 	resp1, err := seq.GetNextBatch(ctx, req)
 	require.NoError(t, err)
-	assert.True(t, seq.IsCatchingUp())
+	assert.True(t, seq.isCatchingUp())
 
 	for _, tx := range resp1.Batch.Transactions {
 		assert.NotEqual(t, []byte("mempool-tx"), tx, "mempool tx should not appear during catch-up")
@@ -1395,7 +1395,7 @@ func TestSequencer_CatchUp_SkipsMempoolDuringCatchUp(t *testing.T) {
 	// Second batch (epoch 101): only forced txs
 	resp2, err := seq.GetNextBatch(ctx, req)
 	require.NoError(t, err)
-	assert.True(t, seq.IsCatchingUp())
+	assert.True(t, seq.isCatchingUp())
 
 	for _, tx := range resp2.Batch.Transactions {
 		assert.NotEqual(t, []byte("mempool-tx"), tx, "mempool tx should not appear during catch-up")
@@ -1454,7 +1454,7 @@ func TestSequencer_CatchUp_UsesDATimestamp(t *testing.T) {
 	resp, err := seq.GetNextBatch(ctx, req)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
-	assert.True(t, seq.IsCatchingUp(), "should be in catch-up mode")
+	assert.True(t, seq.isCatchingUp(), "should be in catch-up mode")
 
 	// During catch-up, the timestamp should be the DA epoch end time, not time.Now()
 	assert.Equal(t, epochTimestamp, resp.Timestamp,
@@ -1524,14 +1524,14 @@ func TestSequencer_CatchUp_ExitsCatchUpAtDAHead(t *testing.T) {
 	// First batch: catch-up (old epoch 100)
 	resp1, err := seq.GetNextBatch(ctx, req)
 	require.NoError(t, err)
-	assert.True(t, seq.IsCatchingUp(), "should be catching up during old epoch")
+	assert.True(t, seq.isCatchingUp(), "should be catching up during old epoch")
 	assert.Equal(t, 1, len(resp1.Batch.Transactions), "catch-up: only forced tx")
 	assert.Equal(t, []byte("forced-old"), resp1.Batch.Transactions[0])
 
 	// Second batch: epoch 101 returns HeightFromFuture — should exit catch-up
 	resp2, err := seq.GetNextBatch(ctx, req)
 	require.NoError(t, err)
-	assert.False(t, seq.IsCatchingUp(), "should have exited catch-up after reaching DA head")
+	assert.False(t, seq.isCatchingUp(), "should have exited catch-up after reaching DA head")
 
 	// Should include mempool tx now (no forced txs available)
 	hasMempoolTx := false
@@ -1598,13 +1598,13 @@ func TestSequencer_CatchUp_HeightFromFutureExitsCatchUp(t *testing.T) {
 	// First call: fetches epoch 100, enters catch-up via epoch gap detection
 	resp1, err := seq.GetNextBatch(ctx, req)
 	require.NoError(t, err)
-	assert.True(t, seq.IsCatchingUp())
+	assert.True(t, seq.isCatchingUp())
 	assert.Equal(t, 1, len(resp1.Batch.Transactions))
 
 	// Second call: epoch 101 is from the future, should exit catch-up
 	resp2, err := seq.GetNextBatch(ctx, req)
 	require.NoError(t, err)
-	assert.False(t, seq.IsCatchingUp(), "should exit catch-up when DA returns HeightFromFuture")
+	assert.False(t, seq.isCatchingUp(), "should exit catch-up when DA returns HeightFromFuture")
 	// No forced txs available, batch is empty
 	assert.Equal(t, 0, len(resp2.Batch.Transactions))
 }
@@ -1666,7 +1666,7 @@ func TestSequencer_CatchUp_NoCatchUpWhenRecentEpoch(t *testing.T) {
 
 	resp, err := seq.GetNextBatch(ctx, req)
 	require.NoError(t, err)
-	assert.False(t, seq.IsCatchingUp(), "should NOT be catching up when within one epoch of DA head")
+	assert.False(t, seq.isCatchingUp(), "should NOT be catching up when within one epoch of DA head")
 
 	// Should have both forced and mempool txs (normal operation)
 	assert.Equal(t, 2, len(resp.Batch.Transactions), "should have forced + mempool tx in normal mode")
@@ -1744,7 +1744,7 @@ func TestSequencer_CatchUp_MultiEpochReplay(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		resp, err := seq.GetNextBatch(ctx, req)
 		require.NoError(t, err)
-		assert.True(t, seq.IsCatchingUp(), "should be catching up during epoch %d", 100+i)
+		assert.True(t, seq.isCatchingUp(), "should be catching up during epoch %d", 100+i)
 		assert.Equal(t, 1, len(resp.Batch.Transactions),
 			"epoch %d: should have exactly 1 forced tx", 100+i)
 
@@ -1760,7 +1760,7 @@ func TestSequencer_CatchUp_MultiEpochReplay(t *testing.T) {
 	// Next batch: epoch 103 returns HeightFromFuture — should exit catch-up and include mempool
 	resp4, err := seq.GetNextBatch(ctx, req)
 	require.NoError(t, err)
-	assert.False(t, seq.IsCatchingUp(), "should have exited catch-up at DA head")
+	assert.False(t, seq.isCatchingUp(), "should have exited catch-up at DA head")
 
 	hasMempoolTx := false
 	for _, tx := range resp4.Batch.Transactions {
@@ -1820,7 +1820,7 @@ func TestSequencer_CatchUp_NoForcedInclusionConfigured(t *testing.T) {
 
 	resp, err := seq.GetNextBatch(ctx, req)
 	require.NoError(t, err)
-	assert.False(t, seq.IsCatchingUp(), "should never catch up when forced inclusion not configured")
+	assert.False(t, seq.isCatchingUp(), "should never catch up when forced inclusion not configured")
 	assert.Equal(t, 1, len(resp.Batch.Transactions))
 	assert.Equal(t, []byte("mempool-tx"), resp.Batch.Transactions[0])
 }
@@ -2004,7 +2004,7 @@ func TestSequencer_CatchUp_MonotonicTimestamps(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		resp, err := seq.GetNextBatch(ctx, req)
 		require.NoError(t, err)
-		assert.True(t, seq.IsCatchingUp(), "should be catching up during block %d", i)
+		assert.True(t, seq.isCatchingUp(), "should be catching up during block %d", i)
 		assert.Equal(t, 1, len(resp.Batch.Transactions), "block %d: exactly 1 forced tx", i)
 		timestamps = append(timestamps, resp.Timestamp)
 	}
@@ -2027,7 +2027,7 @@ func TestSequencer_CatchUp_MonotonicTimestamps(t *testing.T) {
 	// Block from epoch 101 should also be monotonically after epoch 100's last block
 	resp4, err := seq.GetNextBatch(ctx, req)
 	require.NoError(t, err)
-	assert.True(t, seq.IsCatchingUp(), "should still be catching up")
+	assert.True(t, seq.isCatchingUp(), "should still be catching up")
 	assert.Equal(t, 1, len(resp4.Batch.Transactions))
 	assert.True(t, resp4.Timestamp.After(timestamps[2]),
 		"epoch 101 timestamp (%v) must be after epoch 100 last timestamp (%v)",
@@ -2100,7 +2100,7 @@ func TestSequencer_CatchUp_MonotonicTimestamps_EmptyEpoch(t *testing.T) {
 	// First call processes the empty epoch 100 — empty batch, but checkpoint advances
 	resp1, err := seq.GetNextBatch(ctx, req)
 	require.NoError(t, err)
-	assert.True(t, seq.IsCatchingUp())
+	assert.True(t, seq.isCatchingUp())
 	assert.Equal(t, 0, len(resp1.Batch.Transactions), "empty epoch should produce empty batch")
 	assert.Equal(t, emptyEpochTimestamp, resp1.Timestamp,
 		"empty epoch batch should use epoch DA end time (0 remaining)")
@@ -2108,7 +2108,7 @@ func TestSequencer_CatchUp_MonotonicTimestamps_EmptyEpoch(t *testing.T) {
 	// Second call processes epoch 101 — should have later timestamp
 	resp2, err := seq.GetNextBatch(ctx, req)
 	require.NoError(t, err)
-	assert.True(t, seq.IsCatchingUp())
+	assert.True(t, seq.isCatchingUp())
 	assert.Equal(t, 1, len(resp2.Batch.Transactions))
 	assert.True(t, resp2.Timestamp.After(resp1.Timestamp),
 		"epoch 101 timestamp (%v) must be after empty epoch 100 timestamp (%v)",

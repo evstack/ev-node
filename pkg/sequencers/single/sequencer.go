@@ -27,6 +27,14 @@ import (
 // ErrInvalidId is returned when the chain id is invalid
 var ErrInvalidId = errors.New("invalid chain id")
 
+// Catch-up state machine. The sequencer transitions through these once per
+// lifecycle: unchecked → (inProgress | done).
+const (
+	catchUpUnchecked  int32 = iota // haven't checked DA height yet
+	catchUpInProgress              // actively replaying missed DA epochs
+	catchUpDone                    // caught up or was never behind
+)
+
 var _ coresequencer.Sequencer = (*Sequencer)(nil)
 
 // Sequencer implements core sequencing interface
@@ -53,18 +61,11 @@ type Sequencer struct {
 	// Cached forced inclusion transactions from the current epoch
 	cachedForcedInclusionTxs [][]byte
 
-	// Catch-up state: when the sequencer restarts after being down for more than
-	// one DA epoch, it must replay missed epochs (producing blocks with only forced
-	// inclusion transactions, no mempool) before resuming normal sequencing.
-	// This ensures the sequencer produces the same blocks that nodes running in
-	// base sequencing mode would have produced during the downtime.
-	//
-	// catchingUp is true when the sequencer is replaying missed DA epochs.
-	// It is set when we detect (via GetLatestDAHeight) that the DA layer is more
-	// than one epoch ahead of our checkpoint, and cleared when we hit
-	// ErrHeightFromFuture (meaning we've reached the DA head).
-
-	catchingUp atomic.Bool
+	// catchUpState tracks the catch-up lifecycle (see constants above).
+	// Checked once on the first epoch fetch via updateCatchUpState. If catch-up
+	// is needed, transitions to catchUpInProgress until ErrHeightFromFuture
+	// moves it to catchUpDone.
+	catchUpState atomic.Int32
 	// currentDAEndTime is the DA epoch end timestamp from the last fetched epoch.
 	// Used as the block timestamp during catch-up to match based sequencing behavior.
 	currentDAEndTime time.Time
@@ -236,7 +237,7 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 	// During catch-up, the sequencer must produce blocks identical to what base
 	// sequencing would produce (forced inclusion txs only, no mempool).
 	var mempoolBatch *coresequencer.Batch
-	if !c.catchingUp.Load() {
+	if c.catchUpState.Load() != catchUpInProgress {
 		var err error
 		mempoolBatch, err = c.queue.Next(ctx)
 		if err != nil {
@@ -354,7 +355,7 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 			Uint64("consumed_count", forcedTxConsumedCount).
 			Uint64("checkpoint_tx_index", c.checkpoint.TxIndex).
 			Uint64("checkpoint_da_height", c.checkpoint.DAHeight).
-			Bool("catching_up", c.catchingUp.Load()).
+			Bool("catching_up", c.catchUpState.Load() == catchUpInProgress).
 			Msg("updated checkpoint after processing forced inclusion transactions")
 	}
 
@@ -364,9 +365,8 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 	batchTxs = append(batchTxs, validMempoolTxs...)
 
 	// During catch-up, use the DA epoch end timestamp to match based sequencing behavior.
-	// Replicates based sequencing nodes' behavior of timestamping blocks during catchingUp.
 	timestamp := time.Now()
-	if c.catchingUp.Load() {
+	if c.catchUpState.Load() == catchUpInProgress {
 		daEndTime := c.currentDAEndTime
 		if !daEndTime.IsZero() {
 			var remainingForcedTxs uint64
@@ -425,12 +425,9 @@ func (c *Sequencer) GetDAHeight() uint64 {
 	return c.daHeight.Load()
 }
 
-// IsCatchingUp returns whether the sequencer is in catch-up mode.
-// During catch-up, the sequencer replays missed DA epochs producing blocks
-// with only forced inclusion transactions (no mempool), matching the blocks
-// that base sequencing nodes would have produced during sequencer downtime.
-func (c *Sequencer) IsCatchingUp() bool {
-	return c.catchingUp.Load()
+// isCatchingUp returns whether the sequencer is in catch-up mode.
+func (c *Sequencer) isCatchingUp() bool {
+	return c.catchUpState.Load() == catchUpInProgress
 }
 
 // fetchNextDAEpoch fetches transactions from the next DA epoch using checkpoint.
@@ -451,7 +448,7 @@ func (c *Sequencer) fetchNextDAEpoch(ctx context.Context, maxBytes uint64) (uint
 	c.logger.Debug().
 		Uint64("da_height", currentDAHeight).
 		Uint64("tx_index", c.checkpoint.TxIndex).
-		Bool("catching_up", c.catchingUp.Load()).
+		Bool("catching_up", c.catchUpState.Load() == catchUpInProgress).
 		Msg("fetching forced inclusion transactions from DA")
 
 	forcedTxsEvent, err := c.fiRetriever.RetrieveForcedIncludedTxs(ctx, currentDAHeight)
@@ -462,18 +459,18 @@ func (c *Sequencer) fetchNextDAEpoch(ctx context.Context, maxBytes uint64) (uint
 				Msg("DA height from future, waiting for DA to produce block")
 
 			// We've reached the DA head — exit catch-up mode
-			if c.catchingUp.Load() {
+			if c.catchUpState.Load() == catchUpInProgress {
 				c.logger.Info().
 					Uint64("da_height", currentDAHeight).
 					Msg("catch-up complete: reached DA head, resuming normal sequencing")
-				c.catchingUp.Store(false)
+				c.catchUpState.Store(catchUpDone)
 			}
 
 			return 0, nil
 		} else if errors.Is(err, block.ErrForceInclusionNotConfigured) {
 			// Forced inclusion not configured, continue without forced txs
 			c.cachedForcedInclusionTxs = [][]byte{}
-			c.catchingUp.Store(false)
+			c.catchUpState.Store(catchUpDone)
 			return 0, nil
 		}
 
@@ -506,7 +503,7 @@ func (c *Sequencer) fetchNextDAEpoch(ctx context.Context, maxBytes uint64) (uint
 		Int("skipped_tx_count", skippedTxs).
 		Uint64("da_height_start", forcedTxsEvent.StartDaHeight).
 		Uint64("da_height_end", forcedTxsEvent.EndDaHeight).
-		Bool("catching_up", c.catchingUp.Load()).
+		Bool("catching_up", c.catchUpState.Load() == catchUpInProgress).
 		Msg("fetched forced inclusion transactions from DA")
 
 	// Cache the transactions
@@ -526,15 +523,18 @@ func (c *Sequencer) fetchNextDAEpoch(ctx context.Context, maxBytes uint64) (uint
 // in catch-up until fetchNextDAEpoch hits ErrHeightFromFuture, meaning we've
 // reached the DA head.
 //
-// This check is performed only once per sequencer lifecycle. If the downtime was
-// short enough that the sequencer is still within the current or next epoch, no
-// catch-up is needed and the (lightweight) GetLatestDAHeight call is the only
-// overhead.
+// This check runs exactly once per sequencer lifecycle, enforced by the
+// catchUpState field: any state other than catchUpUnchecked causes an immediate
+// return. If the downtime was short enough that the sequencer is still within
+// the current or next epoch, no catch-up is needed and the single
+// GetLatestDAHeight call is the only overhead.
 func (c *Sequencer) updateCatchUpState(ctx context.Context) {
-	// Already catching up — nothing to do. We'll exit via ErrHeightFromFuture.
-	if c.catchingUp.Load() {
+	if c.catchUpState.Load() != catchUpUnchecked {
 		return
 	}
+	// Optimistically mark as done; overridden to catchUpInProgress below if
+	// catch-up is actually needed.
+	c.catchUpState.Store(catchUpDone)
 
 	epochSize := c.genesis.DAEpochForcedInclusion
 	if epochSize == 0 {
@@ -578,7 +578,7 @@ func (c *Sequencer) updateCatchUpState(ctx context.Context) {
 	}
 
 	// The DA layer is more than one epoch ahead. Enter catch-up mode.
-	c.catchingUp.Store(true)
+	c.catchUpState.Store(catchUpInProgress)
 	c.logger.Warn().
 		Uint64("checkpoint_da_height", currentDAHeight).
 		Uint64("latest_da_height", latestDAHeight).
