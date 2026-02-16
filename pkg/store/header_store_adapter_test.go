@@ -599,7 +599,7 @@ func TestHeaderStoreAdapter_HeadPrefersPending(t *testing.T) {
 
 func TestHeaderStoreAdapter_GetFromPendingByHash(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
