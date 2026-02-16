@@ -225,7 +225,7 @@ func TestCache_DeleteAllForHeight(t *testing.T) {
 	assert.True(t, c.isSeen("hash2"))
 }
 
-// TestCacheWithConfig tests creating cache with custom config
+// TestCache_WithNilStore tests creating cache with nil store
 func TestCache_WithNilStore(t *testing.T) {
 	// Cache without store should work fine
 	c := NewCache[testItem](nil, "")
