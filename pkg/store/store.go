@@ -403,12 +403,12 @@ func (s *DefaultStore) PruneBlocks(ctx context.Context, height uint64) error {
 		}
 
 		// Delete per-height DA metadata associated with this height, if any.
-		if err := batch.Delete(ctx, ds.NewKey(getMetaKey(GetHeightToDAHeightHeaderKey(h)))); err != nil {
+		if err := batch.Delete(ctx, ds.NewKey(GetMetaKey(GetHeightToDAHeightHeaderKey(h)))); err != nil {
 			if !errors.Is(err, ds.ErrNotFound) {
 				return fmt.Errorf("failed to delete header DA height metadata at height %d during pruning: %w", h, err)
 			}
 		}
-		if err := batch.Delete(ctx, ds.NewKey(getMetaKey(GetHeightToDAHeightDataKey(h)))); err != nil {
+		if err := batch.Delete(ctx, ds.NewKey(GetMetaKey(GetHeightToDAHeightDataKey(h)))); err != nil {
 			if !errors.Is(err, ds.ErrNotFound) {
 				return fmt.Errorf("failed to delete data DA height metadata at height %d during pruning: %w", h, err)
 			}
@@ -423,7 +423,7 @@ func (s *DefaultStore) PruneBlocks(ctx context.Context, height uint64) error {
 	}
 
 	// Persist the updated last pruned height.
-	if err := batch.Put(ctx, ds.NewKey(getMetaKey(LastPrunedBlockHeightKey)), encodeHeight(height)); err != nil {
+	if err := batch.Put(ctx, ds.NewKey(GetMetaKey(LastPrunedBlockHeightKey)), encodeHeight(height)); err != nil {
 		return fmt.Errorf("failed to update last pruned height: %w", err)
 	}
 
