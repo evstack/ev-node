@@ -23,7 +23,7 @@ type Pruner struct {
 	execPruner coreexecutor.ExecPruner
 	cfg        config.PruningConfig
 	blockTime  time.Duration
-	daEnabled  bool // Whether DA is enabled (determined by DA address)
+	daEnabled  bool
 	logger     zerolog.Logger
 
 	// Lifecycle
@@ -39,7 +39,7 @@ func New(
 	execPruner coreexecutor.ExecPruner,
 	cfg config.PruningConfig,
 	blockTime time.Duration,
-	daAddress string, // DA address to determine if DA is enabled
+	daAddress string,
 ) *Pruner {
 	return &Pruner{
 		store:      store,
@@ -115,14 +115,13 @@ func (p *Pruner) pruneBlocks() error {
 
 	upperBound := storeHeight
 
-	// If DA is enabled, only prune blocks that are DA included for safety
+	// If DA is enabled, only prune blocks that are DA included
 	if p.daEnabled {
 		var currentDAIncluded uint64
 		currentDAIncludedBz, err := p.store.GetMetadata(p.ctx, store.DAIncludedHeightKey)
 		if err == nil && len(currentDAIncludedBz) == 8 {
 			currentDAIncluded = binary.LittleEndian.Uint64(currentDAIncludedBz)
 		} else {
-			// if we cannot get the current DA height, we cannot safely prune, so we skip pruning until we can get it.
 			p.logger.Debug().Msg("skipping pruning: DA is enabled but DA included height is not available yet")
 			return nil
 		}
