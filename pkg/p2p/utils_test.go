@@ -3,7 +3,6 @@ package p2p
 import (
 	"context"
 	"crypto/rand"
-	"errors"
 	"fmt"
 	"net"
 	"path/filepath"
@@ -25,11 +24,10 @@ import (
 
 type testNet []*Client
 
-func (tn testNet) Close() (err error) {
+func (tn testNet) Close() {
 	for i := range tn {
-		err = errors.Join(err, tn[i].Close())
+		_ = tn[i].Close()
 	}
-	return
 }
 
 func (tn testNet) WaitForDHT() {
