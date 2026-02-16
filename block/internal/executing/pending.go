@@ -30,7 +30,7 @@ func (e *Executor) getPendingBlock(ctx context.Context) (*types.SignedHeader, *t
 	dataBytes, err := e.store.GetMetadata(ctx, dataKey)
 	if err != nil {
 		if errors.Is(err, ds.ErrNotFound) {
-			return nil, nil, nil
+			return nil, nil, fmt.Errorf("pending header exists but data is missing: corrupt state")
 		}
 		return nil, nil, err
 	}
@@ -79,7 +79,7 @@ func (e *Executor) savePendingBlock(ctx context.Context, header *types.SignedHea
 }
 
 // deletePendingBlock removes pending block metadata
-func (e *Executor) deletePendingBlock(ctx context.Context, batch store.Batch) error {
+func (e *Executor) deletePendingBlock(batch store.Batch) error {
 	if err := batch.Delete(ds.NewKey(store.GetMetaKey(headerKey))); err != nil {
 		return fmt.Errorf("delete pending header: %w", err)
 	}
@@ -132,7 +132,7 @@ func (e *Executor) migrateLegacyPendingBlock(ctx context.Context) error {
 		store.GetSignatureKey(candidateHeight),
 		store.GetIndexKey(headerHash[:]),
 	} {
-		if err := batch.Delete(ds.NewKey(key)); err != nil {
+		if err := batch.Delete(ds.NewKey(key)); err != nil && !errors.Is(err, ds.ErrNotFound) {
 			return fmt.Errorf("delete legacy key %s: %w", key, err)
 		}
 	}

@@ -272,6 +272,7 @@ func (e *Executor) initializeState() error {
 
 	// Migrate any old-style pending block (stored at height N+1 via SaveBlockData
 	// with empty signature) to the new metadata-key format.
+	// Todo remove in the future: https://github.com/evstack/ev-node/issues/2795
 	if err := e.migrateLegacyPendingBlock(e.ctx); err != nil {
 		return fmt.Errorf("failed to migrate legacy pending block: %w", err)
 	}
@@ -532,7 +533,7 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 		}
 		e.logger.Debug().Uint64("height", newHeight).Msg("proposed block to raft")
 	}
-	if err := e.deletePendingBlock(e.ctx, batch); err != nil {
+	if err := e.deletePendingBlock(batch); err != nil {
 		e.logger.Warn().Err(err).Uint64("height", newHeight).Msg("failed to delete pending block metadata")
 	}
 

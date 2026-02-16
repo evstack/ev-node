@@ -39,18 +39,21 @@ const (
 	heightPrefix    = "t"
 )
 
+// GetHeaderKey returns the store key for a block header at the given height.
 func GetHeaderKey(height uint64) string {
 	return GenerateKey([]string{headerPrefix, strconv.FormatUint(height, 10)})
 }
 
 func getHeaderKey(height uint64) string { return GetHeaderKey(height) }
 
+// GetDataKey returns the store key for block data at the given height.
 func GetDataKey(height uint64) string {
 	return GenerateKey([]string{dataPrefix, strconv.FormatUint(height, 10)})
 }
 
 func getDataKey(height uint64) string { return GetDataKey(height) }
 
+// GetSignatureKey returns the store key for a block signature at the given height.
 func GetSignatureKey(height uint64) string {
 	return GenerateKey([]string{signaturePrefix, strconv.FormatUint(height, 10)})
 }
@@ -61,10 +64,12 @@ func getStateAtHeightKey(height uint64) string {
 	return GenerateKey([]string{statePrefix, strconv.FormatUint(height, 10)})
 }
 
+// GetMetaKey returns the store key for a metadata entry.
 func GetMetaKey(key string) string {
 	return GenerateKey([]string{metaPrefix, key})
 }
 
+// GetIndexKey returns the store key for indexing a block by its hash.
 func GetIndexKey(hash types.Hash) string {
 	return GenerateKey([]string{indexPrefix, hash.String()})
 }
