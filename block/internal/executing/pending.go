@@ -8,7 +8,6 @@ import (
 
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
-	"github.com/ipfs/go-datastore"
 	ds "github.com/ipfs/go-datastore"
 )
 
@@ -101,7 +100,7 @@ func (e *Executor) migrateLegacyPendingBlock(ctx context.Context) error {
 	candidateHeight := e.getLastState().LastBlockHeight + 1
 	pendingHeader, pendingData, err := e.store.GetBlockData(ctx, candidateHeight)
 	if err != nil {
-		if !errors.Is(err, datastore.ErrNotFound) {
+		if !errors.Is(err, ds.ErrNotFound) {
 			return fmt.Errorf("get block data: %w", err)
 		}
 		return nil
