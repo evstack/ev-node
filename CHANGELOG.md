@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     By using one or the other, you are losing the ability to rollback or replay transactions earlier than `HEAD-n`.
     When using _classic pruning_, you aren't able to fetch blocks prior to `HEAD-n`.
 
+### Changes
+
+- Store pending blocks separately from executed blocks key. [#3073](https://github.com/evstack/ev-node/pull/3073)
+
 ## v1.0.0-rc.4
 
 ### Changes
