@@ -120,10 +120,6 @@ func newFullNode(
 	switch {
 	case nodeConfig.Node.Aggregator && nodeConfig.Raft.Enable:
 		leaderElection = raftpkg.NewDynamicLeaderElection(logger, leaderFactory, followerFactory, raftNode)
-	case nodeConfig.Node.Aggregator && nodeConfig.Node.SequencerRecovery.Duration > 0 && !nodeConfig.Raft.Enable:
-		if leaderElection, err = newSequencerRecoveryElector(logger, leaderFactory, followerFactory, evstore, nodeConfig.DA.BlockTime.Duration, nodeConfig.Node.SequencerRecovery.Duration); err != nil {
-			return nil, err
-		}
 	case nodeConfig.Node.Aggregator && !nodeConfig.Raft.Enable:
 		if leaderElection, err = newSingleRoleElector(leaderFactory); err != nil {
 			return nil, err
