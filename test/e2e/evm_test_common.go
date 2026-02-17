@@ -313,7 +313,7 @@ func getNodeP2PAddress(t testing.TB, sut *SystemUnderTest, nodeHome string, rpcP
 // - jwtSecret: JWT secret for authenticating with EVM engine
 // - genesisHash: Hash of the genesis block for chain validation
 // - endpoints: TestEndpoints struct containing unique port assignments
-func setupSequencerNode(t testing.TB, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string, endpoints *TestEndpoints) {
+func setupSequencerNode(t testing.TB, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string, endpoints *TestEndpoints, extraArgs ...string) {
 	t.Helper()
 
 	// Create passphrase file
@@ -350,6 +350,7 @@ func setupSequencerNode(t testing.TB, sut *SystemUnderTest, sequencerHome, jwtSe
 		"--evm.engine-url", endpoints.GetSequencerEngineURL(),
 		"--evm.eth-url", endpoints.GetSequencerEthURL(),
 	}
+	args = append(args, extraArgs...)
 	sut.ExecCmd(evmSingleBinaryPath, args...)
 	sut.AwaitNodeUp(t, endpoints.GetRollkitRPCAddress(), NodeStartupTimeout)
 }
@@ -613,14 +614,14 @@ func checkBlockInfoAt(t testing.TB, ethURL string, blockHeight *uint64) (common.
 // - nodeHome: Directory path for sequencer node data
 //
 // Returns: genesisHash for the sequencer
-func setupSequencerOnlyTest(t testing.TB, sut *SystemUnderTest, nodeHome string) (string, string) {
+func setupSequencerOnlyTest(t testing.TB, sut *SystemUnderTest, nodeHome string, extraArgs ...string) (string, string) {
 	t.Helper()
 
 	// Use common setup (no full node needed)
 	jwtSecret, _, genesisHash, endpoints := setupCommonEVMTest(t, sut, false)
 
 	// Initialize and start sequencer node
-	setupSequencerNode(t, sut, nodeHome, jwtSecret, genesisHash, endpoints)
+	setupSequencerNode(t, sut, nodeHome, jwtSecret, genesisHash, endpoints, extraArgs...)
 	t.Log("Sequencer node is up")
 
 	return genesisHash, endpoints.GetSequencerEthURL()

@@ -240,10 +240,10 @@ func TestEvmContractEvents(t *testing.T) {
 
 // setupTestSequencer sets up a single sequencer node for testing.
 // Returns the ethclient, genesis hash, and a cleanup function.
-func setupTestSequencer(t testing.TB, homeDir string) (*ethclient.Client, string, func()) {
+func setupTestSequencer(t testing.TB, homeDir string, extraArgs ...string) (*ethclient.Client, string, func()) {
 	sut := NewSystemUnderTest(t)
 
-	genesisHash, seqEthURL := setupSequencerOnlyTest(t, sut, homeDir)
+	genesisHash, seqEthURL := setupSequencerOnlyTest(t, sut, homeDir, extraArgs...)
 	t.Logf("Sequencer started at %s (Genesis: %s)", seqEthURL, genesisHash)
 
 	client, err := ethclient.Dial(seqEthURL)
