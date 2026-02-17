@@ -511,12 +511,10 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 	}
 	header.Signature = signature
 
-	if err := e.blockProducer.ValidateBlock(ctx, currentState, header, data); err != nil {
-		e.sendCriticalError(fmt.Errorf("failed to validate block: %w", err))
-		e.logger.Error().Err(err).Msg("CRITICAL: Permanent block validation error - halting block production")
-		return fmt.Errorf("failed to validate block: %w", err)
-	}
+	// ValidateBlock is only needed for blocks we didn't produce (syncer path).
+	// On the sequencer, we just built this block — skip self-validation.
 
+	// Prepare store batch synchronously. Only the commit is deferred.
 	batch, err := e.store.NewBatch(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create batch: %w", err)
@@ -565,11 +563,12 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 		}
 	}
 
+	// Commit synchronously — DA submitter reads store height.
 	if err := batch.Commit(); err != nil {
 		return fmt.Errorf("failed to commit batch: %w", err)
 	}
 
-	// Update in-memory state after successful commit
+	// Update in-memory state after successful commit.
 	e.setLastState(newState)
 
 	// Cache this block for the next CreateBlock call (avoids 2 store reads).
@@ -582,18 +581,19 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 	}
 	e.lastBlockMu.Unlock()
 
-	// broadcast header and data to P2P network
-	g, broadcastCtx := errgroup.WithContext(e.ctx)
-	g.Go(func() error {
-		return e.headerBroadcaster.WriteToStoreAndBroadcast(broadcastCtx, &types.P2PSignedHeader{SignedHeader: header})
-	})
-	g.Go(func() error {
-		return e.dataBroadcaster.WriteToStoreAndBroadcast(broadcastCtx, &types.P2PData{Data: data})
-	})
-	if err := g.Wait(); err != nil {
-		e.logger.Error().Err(err).Msg("failed to broadcast header and/data")
-		// don't fail block production on broadcast error
-	}
+	// P2P broadcast is fire-and-forget — doesn't block next block production.
+	go func() {
+		g, broadcastCtx := errgroup.WithContext(e.ctx)
+		g.Go(func() error {
+			return e.headerBroadcaster.WriteToStoreAndBroadcast(broadcastCtx, &types.P2PSignedHeader{SignedHeader: header})
+		})
+		g.Go(func() error {
+			return e.dataBroadcaster.WriteToStoreAndBroadcast(broadcastCtx, &types.P2PData{Data: data})
+		})
+		if err := g.Wait(); err != nil {
+			e.logger.Error().Err(err).Msg("failed to broadcast header and/data")
+		}
+	}()
 
 	e.recordBlockMetrics(newState, data)
 

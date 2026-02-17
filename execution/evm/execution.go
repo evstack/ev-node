@@ -56,6 +56,14 @@ var (
 	ErrPayloadSyncing = errors.New("payload syncing")
 )
 
+// Pre-computed constants to avoid per-block allocations.
+var (
+	zeroHashHex      = common.Hash{}.Hex()
+	emptyWithdrawals = []*types.Withdrawal{}
+	emptyBlobHashes  = []string{}
+	emptyExecReqs    = [][]byte{}
+)
+
 // Ensure EngineAPIExecutionClient implements the execution.Execute interface
 var _ execution.Executor = (*EngineClient)(nil)
 
@@ -409,9 +417,9 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 		"timestamp":             timestamp.Unix(),
 		"prevRandao":            c.derivePrevRandao(blockHeight),
 		"suggestedFeeRecipient": c.feeRecipient,
-		"withdrawals":           []*types.Withdrawal{},
+		"withdrawals":           emptyWithdrawals,
 		// V3 requires parentBeaconBlockRoot
-		"parentBeaconBlockRoot": common.Hash{}.Hex(), // Use zero hash for evolve
+		"parentBeaconBlockRoot": zeroHashHex, // Use zero hash for evolve
 		// evolve-specific fields
 		"transactions": txsPayload,
 		"gasLimit":     prevGasLimit, // Use camelCase to match JSON conventions
@@ -998,9 +1006,9 @@ func (c *EngineClient) processPayload(ctx context.Context, payloadID engine.Payl
 	err = retryWithBackoffOnPayloadStatus(ctx, func() error {
 		newPayloadResult, err := c.engineClient.NewPayload(ctx,
 			payloadResult.ExecutionPayload,
-			[]string{},          // No blob hashes
-			common.Hash{}.Hex(), // Use zero hash for parentBeaconBlockRoot
-			[][]byte{},          // No execution requests
+			emptyBlobHashes, // No blob hashes
+			zeroHashHex,     // Use zero hash for parentBeaconBlockRoot
+			emptyExecReqs,   // No execution requests
 		)
 		if err != nil {
 			return fmt.Errorf("new payload submission failed: %w", err)
