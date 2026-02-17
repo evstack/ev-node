@@ -569,6 +569,33 @@ func (c *EngineClient) setFinalWithHeight(ctx context.Context, blockHash common.
 	return c.doForkchoiceUpdate(ctx, args, "setFinal")
 }
 
+// updateForkchoiceState updates the in-memory forkchoice state (head, safe, finalized)
+// WITHOUT making an engine RPC call. The updated values will be sent in the next
+// ForkchoiceUpdated call (from ExecuteTxs), avoiding a redundant round-trip.
+func (c *EngineClient) updateForkchoiceState(blockHash common.Hash, headHeight uint64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.currentHeadBlockHash = blockHash
+	c.currentHeadHeight = headHeight
+
+	// Advance safe block
+	if headHeight > SafeBlockLag {
+		safeHeight := headHeight - SafeBlockLag
+		if h, ok := c.blockHashCache[safeHeight]; ok {
+			c.currentSafeBlockHash = h
+		}
+	}
+
+	// Advance finalized block
+	if headHeight > FinalizedBlockLag {
+		finalizedHeight := headHeight - FinalizedBlockLag
+		if h, ok := c.blockHashCache[finalizedHeight]; ok {
+			c.currentFinalizedBlockHash = h
+		}
+	}
+}
+
 // doForkchoiceUpdate performs the actual forkchoice update RPC call with retry logic.
 func (c *EngineClient) doForkchoiceUpdate(ctx context.Context, args engine.ForkchoiceStateV1, operation string) error {
 
@@ -994,14 +1021,12 @@ func (c *EngineClient) processPayload(ctx context.Context, payloadID engine.Payl
 		return nil, err
 	}
 
-	// 3. Update Forkchoice
+	// 3. Update forkchoice state (deferred — no RPC).
+	// The next ExecuteTxs call's ForkchoiceUpdated will carry the correct
+	// head/safe/finalized values, so we skip the redundant engine RPC here.
 	blockHash := payloadResult.ExecutionPayload.BlockHash
 	c.cacheBlockHash(blockHeight, blockHash)
-
-	err = c.setFinalWithHeight(ctx, blockHash, blockHeight, false)
-	if err != nil {
-		return nil, fmt.Errorf("forkchoice update failed: %w", err)
-	}
+	c.updateForkchoiceState(blockHash, blockHeight)
 
 	// 4. Cache block info for next ExecuteTxs (avoids getBlockInfo RPC).
 	c.mu.Lock()

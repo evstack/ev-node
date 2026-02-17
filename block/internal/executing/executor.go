@@ -29,6 +29,15 @@ import (
 
 var _ BlockProducer = (*Executor)(nil)
 
+// lastBlockCacheEntry caches the last produced block's header hash, data hash,
+// and signature to avoid store reads in CreateBlock.
+type lastBlockCacheEntry struct {
+	height     uint64
+	headerHash types.Hash
+	dataHash   types.Hash
+	signature  types.Signature
+}
+
 // Executor handles block production, transaction processing, and state management
 type Executor struct {
 	// Core components
@@ -71,6 +80,16 @@ type Executor struct {
 	// blockProducer is the interface used for block production operations.
 	// defaults to self, but can be wrapped with tracing.
 	blockProducer BlockProducer
+
+	// lastBlock caches last produced header/data/signature to avoid store reads
+	// in CreateBlock. Protected by lastBlockMu.
+	lastBlockMu   sync.Mutex
+	lastBlockInfo *lastBlockCacheEntry
+
+	// cachedSignerInfo caches pubKey and validatorHash (never change after init).
+	cachedPubKey        crypto.PubKey
+	cachedValidatorHash types.Hash
+	signerInfoCached    bool
 }
 
 // NewExecutor creates a new block executor.
@@ -553,6 +572,16 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 	// Update in-memory state after successful commit
 	e.setLastState(newState)
 
+	// Cache this block for the next CreateBlock call (avoids 2 store reads).
+	e.lastBlockMu.Lock()
+	e.lastBlockInfo = &lastBlockCacheEntry{
+		height:     newHeight,
+		headerHash: header.Hash(),
+		dataHash:   data.Hash(),
+		signature:  signature,
+	}
+	e.lastBlockMu.Unlock()
+
 	// broadcast header and data to P2P network
 	g, broadcastCtx := errgroup.WithContext(e.ctx)
 	g.Go(func() error {
@@ -621,25 +650,40 @@ func (e *Executor) CreateBlock(ctx context.Context, height uint64, batchData *Ba
 	if height > e.genesis.InitialHeight {
 		headerTime = uint64(batchData.UnixNano())
 
-		lastHeader, lastData, err := e.store.GetBlockData(ctx, height-1)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to get last block: %w", err)
-		}
-		lastHeaderHash = lastHeader.Hash()
-		lastDataHash = lastData.Hash()
+		// Try cache first (hot path — avoids 2 store reads).
+		e.lastBlockMu.Lock()
+		cached := e.lastBlockInfo
+		e.lastBlockMu.Unlock()
 
-		lastSignaturePtr, err := e.store.GetSignature(ctx, height-1)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to get last signature: %w", err)
+		if cached != nil && cached.height == height-1 {
+			lastHeaderHash = cached.headerHash
+			lastDataHash = cached.dataHash
+			lastSignature = cached.signature
+		} else {
+			// Cache miss (first block after restart) — fall back to store.
+			lastHeader, lastData, err := e.store.GetBlockData(ctx, height-1)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to get last block: %w", err)
+			}
+			lastHeaderHash = lastHeader.Hash()
+			lastDataHash = lastData.Hash()
+
+			lastSignaturePtr, err := e.store.GetSignature(ctx, height-1)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to get last signature: %w", err)
+			}
+			lastSignature = *lastSignaturePtr
 		}
-		lastSignature = *lastSignaturePtr
 	}
 
-	// Get signer info and validator hash
+	// Get signer info and validator hash (cached after first call).
 	var pubKey crypto.PubKey
 	var validatorHash types.Hash
 
-	if e.signer != nil {
+	if e.signerInfoCached {
+		pubKey = e.cachedPubKey
+		validatorHash = e.cachedValidatorHash
+	} else if e.signer != nil {
 		var err error
 		pubKey, err = e.signer.GetPublic()
 		if err != nil {
@@ -650,6 +694,9 @@ func (e *Executor) CreateBlock(ctx context.Context, height uint64, batchData *Ba
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to get validator hash: %w", err)
 		}
+		e.cachedPubKey = pubKey
+		e.cachedValidatorHash = validatorHash
+		e.signerInfoCached = true
 	} else {
 		// For based sequencer without signer, use nil pubkey and compute validator hash
 		var err error
@@ -657,6 +704,8 @@ func (e *Executor) CreateBlock(ctx context.Context, height uint64, batchData *Ba
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to get validator hash: %w", err)
 		}
+		e.cachedValidatorHash = validatorHash
+		e.signerInfoCached = true
 	}
 
 	// Create header
