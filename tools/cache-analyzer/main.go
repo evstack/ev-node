@@ -78,8 +78,8 @@ func formatTable(events []eventEntry) string {
 		daHeightStr := fmt.Sprintf("%d", entry.DAHeight)
 
 		// Format each row
-		sb.WriteString(fmt.Sprintf("│ %-11s │ %-12s │ %-67s │\n",
-			heightStr, daHeightStr, truncateString(entry.Details, 67)))
+		fmt.Fprintf(&sb, "│ %-11s │ %-12s │ %-67s │\n",
+			heightStr, daHeightStr, truncateString(entry.Details, 67))
 	}
 
 	sb.WriteString("└─────────────┴──────────────┴─────────────────────────────────────────────────────────────────────┘\n")

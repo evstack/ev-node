@@ -7,7 +7,7 @@ require (
 	github.com/ethereum/go-ethereum v1.16.8
 	github.com/evstack/ev-node/execution/evm v0.0.0-00010101000000-000000000000
 	github.com/golang-jwt/jwt/v5 v5.3.1
-	github.com/ipfs/go-datastore v0.9.0
+	github.com/ipfs/go-datastore v0.9.1
 	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.11.1
 )
