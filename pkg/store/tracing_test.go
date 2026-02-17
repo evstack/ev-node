@@ -17,18 +17,22 @@ import (
 )
 
 type tracingMockStore struct {
-	heightFn           func(ctx context.Context) (uint64, error)
-	getBlockDataFn     func(ctx context.Context, height uint64) (*types.SignedHeader, *types.Data, error)
-	getBlockByHashFn   func(ctx context.Context, hash []byte) (*types.SignedHeader, *types.Data, error)
-	getSignatureFn     func(ctx context.Context, height uint64) (*types.Signature, error)
-	getSignatureByHash func(ctx context.Context, hash []byte) (*types.Signature, error)
-	getHeaderFn        func(ctx context.Context, height uint64) (*types.SignedHeader, error)
-	getStateFn         func(ctx context.Context) (types.State, error)
-	getStateAtHeightFn func(ctx context.Context, height uint64) (types.State, error)
-	getMetadataFn      func(ctx context.Context, key string) ([]byte, error)
-	setMetadataFn      func(ctx context.Context, key string, value []byte) error
-	rollbackFn         func(ctx context.Context, height uint64, aggregator bool) error
-	newBatchFn         func(ctx context.Context) (Batch, error)
+	heightFn              func(ctx context.Context) (uint64, error)
+	getBlockDataFn        func(ctx context.Context, height uint64) (*types.SignedHeader, *types.Data, error)
+	getBlockByHashFn      func(ctx context.Context, hash []byte) (*types.SignedHeader, *types.Data, error)
+	getSignatureFn        func(ctx context.Context, height uint64) (*types.Signature, error)
+	getSignatureByHash    func(ctx context.Context, hash []byte) (*types.Signature, error)
+	getHeaderFn           func(ctx context.Context, height uint64) (*types.SignedHeader, error)
+	getStateFn            func(ctx context.Context) (types.State, error)
+	getStateAtHeightFn    func(ctx context.Context, height uint64) (types.State, error)
+	getMetadataFn         func(ctx context.Context, key string) ([]byte, error)
+	getMetadataByPrefixFn func(ctx context.Context, prefix string) ([]MetadataEntry, error)
+	setMetadataFn         func(ctx context.Context, key string, value []byte) error
+	deleteMetadataFn      func(ctx context.Context, key string) error
+	rollbackFn            func(ctx context.Context, height uint64, aggregator bool) error
+	pruneBlocksFn         func(ctx context.Context, height uint64) error
+	deleteStateAtHeightFn func(ctx context.Context, height uint64) error
+	newBatchFn            func(ctx context.Context) (Batch, error)
 }
 
 func (m *tracingMockStore) Height(ctx context.Context) (uint64, error) {
@@ -94,6 +98,13 @@ func (m *tracingMockStore) GetMetadata(ctx context.Context, key string) ([]byte,
 	return nil, nil
 }
 
+func (m *tracingMockStore) GetMetadataByPrefix(ctx context.Context, prefix string) ([]MetadataEntry, error) {
+	if m.getMetadataByPrefixFn != nil {
+		return m.getMetadataByPrefixFn(ctx, prefix)
+	}
+	return nil, nil
+}
+
 func (m *tracingMockStore) SetMetadata(ctx context.Context, key string, value []byte) error {
 	if m.setMetadataFn != nil {
 		return m.setMetadataFn(ctx, key, value)
@@ -101,9 +112,30 @@ func (m *tracingMockStore) SetMetadata(ctx context.Context, key string, value []
 	return nil
 }
 
+func (m *tracingMockStore) DeleteMetadata(ctx context.Context, key string) error {
+	if m.deleteMetadataFn != nil {
+		return m.deleteMetadataFn(ctx, key)
+	}
+	return nil
+}
+
 func (m *tracingMockStore) Rollback(ctx context.Context, height uint64, aggregator bool) error {
 	if m.rollbackFn != nil {
 		return m.rollbackFn(ctx, height, aggregator)
+	}
+	return nil
+}
+
+func (m *tracingMockStore) PruneBlocks(ctx context.Context, height uint64) error {
+	if m.pruneBlocksFn != nil {
+		return m.pruneBlocksFn(ctx, height)
+	}
+	return nil
+}
+
+func (m *tracingMockStore) DeleteStateAtHeight(ctx context.Context, height uint64) error {
+	if m.deleteStateAtHeightFn != nil {
+		return m.deleteStateAtHeightFn(ctx, height)
 	}
 	return nil
 }

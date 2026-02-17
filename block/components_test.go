@@ -5,6 +5,7 @@ import (
 	crand "crypto/rand"
 	"errors"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/ipfs/go-datastore"
@@ -22,7 +23,16 @@ import (
 	"github.com/evstack/ev-node/pkg/signer/noop"
 	"github.com/evstack/ev-node/pkg/store"
 	testmocks "github.com/evstack/ev-node/test/mocks"
+	extmocks "github.com/evstack/ev-node/test/mocks/external"
+	"github.com/evstack/ev-node/types"
 )
+
+// noopDAHintAppender is a no-op implementation of DAHintAppender for testing
+type noopDAHintAppender struct{}
+
+func (n noopDAHintAppender) AppendDAHint(ctx context.Context, daHeight uint64, heights ...uint64) error {
+	return nil
+}
 
 func TestBlockComponents_ExecutionClientFailure_StopsNode(t *testing.T) {
 	// Test the error channel mechanism works as intended
@@ -86,6 +96,14 @@ func TestNewSyncComponents_Creation(t *testing.T) {
 	daClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 	daClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
 
+	// Create mock P2P stores
+	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
+	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
+
+	// Create noop DAHintAppenders for testing
+	headerHintAppender := noopDAHintAppender{}
+	dataHintAppender := noopDAHintAppender{}
+
 	// Just test that the constructor doesn't panic - don't start the components
 	// to avoid P2P store dependencies
 	components, err := NewSyncComponents(
@@ -94,8 +112,10 @@ func TestNewSyncComponents_Creation(t *testing.T) {
 		memStore,
 		mockExec,
 		daClient,
-		nil,
-		nil,
+		mockHeaderStore,
+		mockDataStore,
+		headerHintAppender,
+		dataHintAppender,
 		zerolog.Nop(),
 		NopMetrics(),
 		DefaultBlockOptions(),
@@ -107,6 +127,7 @@ func TestNewSyncComponents_Creation(t *testing.T) {
 	assert.NotNil(t, components.Syncer)
 	assert.NotNil(t, components.Submitter)
 	assert.NotNil(t, components.Cache)
+	assert.NotNil(t, components.Pruner)
 	assert.NotNil(t, components.errorCh)
 	assert.Nil(t, components.Executor) // Sync nodes don't have executors
 }
@@ -155,7 +176,7 @@ func TestNewAggregatorComponents_Creation(t *testing.T) {
 		zerolog.Nop(),
 		NopMetrics(),
 		DefaultBlockOptions(),
-		nil,
+		nil, // raftNode
 	)
 
 	require.NoError(t, err)
@@ -163,6 +184,7 @@ func TestNewAggregatorComponents_Creation(t *testing.T) {
 	assert.NotNil(t, components.Executor)
 	assert.NotNil(t, components.Submitter)
 	assert.NotNil(t, components.Cache)
+	assert.NotNil(t, components.Pruner)
 	assert.NotNil(t, components.errorCh)
 	assert.Nil(t, components.Syncer) // Aggregator nodes currently don't create syncers in this constructor
 }
@@ -170,101 +192,103 @@ func TestNewAggregatorComponents_Creation(t *testing.T) {
 func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
 	// This test verifies that when the executor's execution client calls fail,
 	// the error is properly propagated through the error channel and stops the node
+	synctest.Test(t, func(t *testing.T) {
+		ds := sync.MutexWrap(datastore.NewMapDatastore())
+		memStore := store.New(ds)
 
-	ds := sync.MutexWrap(datastore.NewMapDatastore())
-	memStore := store.New(ds)
+		cfg := config.DefaultConfig()
+		cfg.Node.BlockTime.Duration = 50 * time.Millisecond // Fast for testing
 
-	cfg := config.DefaultConfig()
-	cfg.Node.BlockTime.Duration = 50 * time.Millisecond // Fast for testing
+		// Create test signer
+		priv, _, err := crypto.GenerateEd25519Key(crand.Reader)
+		require.NoError(t, err)
+		testSigner, err := noop.NewNoopSigner(priv)
+		require.NoError(t, err)
+		addr, err := testSigner.GetAddress()
+		require.NoError(t, err)
 
-	// Create test signer
-	priv, _, err := crypto.GenerateEd25519Key(crand.Reader)
-	require.NoError(t, err)
-	testSigner, err := noop.NewNoopSigner(priv)
-	require.NoError(t, err)
-	addr, err := testSigner.GetAddress()
-	require.NoError(t, err)
+		gen := genesis.Genesis{
+			ChainID:         "test-chain",
+			InitialHeight:   1,
+			StartTime:       time.Now().Add(-time.Second), // Start in past to trigger immediate execution
+			ProposerAddress: addr,
+		}
 
-	gen := genesis.Genesis{
-		ChainID:         "test-chain",
-		InitialHeight:   1,
-		StartTime:       time.Now().Add(-time.Second), // Start in past to trigger immediate execution
-		ProposerAddress: addr,
-	}
+		// Create mock executor that will fail on ExecuteTxs
+		mockExec := testmocks.NewMockExecutor(t)
+		mockSeq := testmocks.NewMockSequencer(t)
+		daClient := testmocks.NewMockClient(t)
+		daClient.On("GetHeaderNamespace").Return(datypes.NamespaceFromString("ns").Bytes()).Maybe()
+		daClient.On("GetDataNamespace").Return(datypes.NamespaceFromString("data-ns").Bytes()).Maybe()
+		daClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
+		daClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
 
-	// Create mock executor that will fail on ExecuteTxs
-	mockExec := testmocks.NewMockExecutor(t)
-	mockSeq := testmocks.NewMockSequencer(t)
-	daClient := testmocks.NewMockClient(t)
-	daClient.On("GetHeaderNamespace").Return(datypes.NamespaceFromString("ns").Bytes()).Maybe()
-	daClient.On("GetDataNamespace").Return(datypes.NamespaceFromString("data-ns").Bytes()).Maybe()
-	daClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
-	daClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
+		// Mock InitChain to succeed initially
+		mockExec.On("InitChain", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return([]byte("state-root"), nil).Once()
 
-	// Mock InitChain to succeed initially
-	mockExec.On("InitChain", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return([]byte("state-root"), nil).Once()
+		// Mock SetDAHeight to be called during initialization
+		mockSeq.On("SetDAHeight", uint64(0)).Return().Once()
 
-	// Mock SetDAHeight to be called during initialization
-	mockSeq.On("SetDAHeight", uint64(0)).Return().Once()
+		// Mock GetNextBatch to return empty batch
+		mockSeq.On("GetNextBatch", mock.Anything, mock.Anything).
+			Return(&coresequencer.GetNextBatchResponse{
+				Batch:     &coresequencer.Batch{Transactions: nil},
+				Timestamp: time.Now(),
+			}, nil).Maybe()
 
-	// Mock GetNextBatch to return empty batch
-	mockSeq.On("GetNextBatch", mock.Anything, mock.Anything).
-		Return(&coresequencer.GetNextBatchResponse{
-			Batch:     &coresequencer.Batch{Transactions: nil},
-			Timestamp: time.Now(),
-		}, nil).Maybe()
+		// Mock GetTxs for reaper (return empty to avoid interfering with test)
+		mockExec.On("GetTxs", mock.Anything).
+			Return([][]byte{}, nil).Maybe()
 
-	// Mock GetTxs for reaper (return empty to avoid interfering with test)
-	mockExec.On("GetTxs", mock.Anything).
-		Return([][]byte{}, nil).Maybe()
+		// Mock ExecuteTxs to fail with a critical error
+		criticalError := errors.New("execution client RPC connection failed")
+		mockExec.On("ExecuteTxs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(nil, criticalError).Maybe()
 
-	// Mock ExecuteTxs to fail with a critical error
-	criticalError := errors.New("execution client RPC connection failed")
-	mockExec.On("ExecuteTxs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(nil, criticalError).Maybe()
+		// Create aggregator node
+		components, err := NewAggregatorComponents(
+			cfg,
+			gen,
+			memStore,
+			mockExec,
+			mockSeq,
+			daClient,
+			testSigner,
+			nil, // header broadcaster
+			nil, // data broadcaster
+			zerolog.Nop(),
+			NopMetrics(),
+			DefaultBlockOptions(),
+			nil, // raftNode
+		)
+		require.NoError(t, err)
 
-	// Create aggregator node
-	components, err := NewAggregatorComponents(
-		cfg,
-		gen,
-		memStore,
-		mockExec,
-		mockSeq,
-		daClient,
-		testSigner,
-		nil, // header broadcaster
-		nil, // data broadcaster
-		zerolog.Nop(),
-		NopMetrics(),
-		DefaultBlockOptions(),
-		nil,
-	)
-	require.NoError(t, err)
+		// Start should return with error when execution client fails.
+		// With synctest the fake clock advances the retry delays instantly.
+		ctx, cancel := context.WithTimeout(t.Context(), 35*time.Second)
+		defer cancel()
 
-	// Start should return with error when execution client fails
-	// Timeout accounts for retry delays: 3 retries × 10s timeout = ~30s plus buffer
-	ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
-	defer cancel()
+		// Run Start in a goroutine to handle the blocking call
+		startErrCh := make(chan error, 1)
+		go func() {
+			startErrCh <- components.Start(ctx)
+		}()
 
-	// Run Start in a goroutine to handle the blocking call
-	startErrCh := make(chan error, 1)
-	go func() {
-		startErrCh <- components.Start(ctx)
-	}()
+		// Wait for either the error or timeout
+		synctest.Wait()
+		select {
+		case err = <-startErrCh:
+			// We expect an error containing the critical execution client failure
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "critical execution client failure")
+			assert.Contains(t, err.Error(), "execution client RPC connection failed")
+		case <-ctx.Done():
+			t.Fatal("timeout waiting for critical error to propagate")
+		}
 
-	// Wait for either the error or timeout
-	select {
-	case err = <-startErrCh:
-		// We expect an error containing the critical execution client failure
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "critical execution client failure")
-		assert.Contains(t, err.Error(), "execution client RPC connection failed")
-	case <-ctx.Done():
-		t.Fatal("timeout waiting for critical error to propagate")
-	}
-
-	// Clean up
-	stopErr := components.Stop()
-	assert.NoError(t, stopErr)
+		// Clean up
+		stopErr := components.Stop()
+		assert.NoError(t, stopErr)
+	})
 }

@@ -22,7 +22,7 @@ import (
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
-	"github.com/evstack/ev-node/pkg/p2p/key"
+	"github.com/evstack/ev-node/pkg/p2p"
 	raftpkg "github.com/evstack/ev-node/pkg/raft"
 	"github.com/evstack/ev-node/pkg/service"
 	"github.com/evstack/ev-node/pkg/signer"
@@ -53,7 +53,8 @@ type FullNode struct {
 
 	nodeConfig config.Config
 
-	daClient block.DAClient
+	daClient  block.DAClient
+	p2pClient *p2p.Client
 
 	Store    store.Store
 	raftNode *raftpkg.Node
@@ -66,7 +67,7 @@ type FullNode struct {
 // newFullNode creates a new Rollkit full node.
 func newFullNode(
 	nodeConfig config.Config,
-	nodeKey *key.NodeKey,
+	p2pClient *p2p.Client,
 	signer signer.Signer,
 	genesis genesispkg.Genesis,
 	database ds.Batching,
@@ -106,13 +107,12 @@ func newFullNode(
 	leaderFactory := func() (raftpkg.Runnable, error) {
 		logger.Info().Msg("Starting aggregator-MODE")
 		nodeConfig.Node.Aggregator = true
-		nodeConfig.P2P.Peers = "" // peers are not supported in aggregator mode
-		return newAggregatorMode(nodeConfig, nodeKey, signer, genesis, database, evstore, exec, sequencer, daClient, logger, evstore, mainKV, blockMetrics, nodeOpts, raftNode)
+		return newAggregatorMode(nodeConfig, signer, genesis, exec, sequencer, daClient, logger, evstore, blockMetrics, nodeOpts, raftNode, p2pClient)
 	}
 	followerFactory := func() (raftpkg.Runnable, error) {
 		logger.Info().Msg("Starting sync-MODE")
 		nodeConfig.Node.Aggregator = false
-		return newSyncMode(nodeConfig, nodeKey, genesis, database, evstore, exec, daClient, logger, evstore, mainKV, blockMetrics, nodeOpts, raftNode)
+		return newSyncMode(nodeConfig, genesis, exec, daClient, logger, evstore, blockMetrics, nodeOpts, raftNode, p2pClient)
 	}
 
 	// Initialize raft node if enabled (for both aggregator and sync nodes)
@@ -136,6 +136,7 @@ func newFullNode(
 		genesis:        genesis,
 		nodeConfig:     nodeConfig,
 		daClient:       daClient,
+		p2pClient:      p2pClient,
 		Store:          evstore,
 		leaderElection: leaderElection,
 		raftNode:       raftNode,
@@ -279,6 +280,17 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 		(n.nodeConfig.Instrumentation.IsPrometheusEnabled() || n.nodeConfig.Instrumentation.IsPprofEnabled()) {
 		n.prometheusSrv, n.pprofSrv = n.startInstrumentationServer()
 	}
+
+	// Start the P2P client once. It persists across mode switches
+	if err := n.p2pClient.Start(ctx); err != nil {
+		return fmt.Errorf("start p2p: %w", err)
+	}
+	defer func() {
+		if err := n.p2pClient.Close(); err != nil {
+			n.Logger.Error().Err(err).Msg("error closing p2p client")
+		}
+	}()
+
 	// Start leader election
 	if n.raftNode != nil {
 		if err := n.raftNode.Start(ctx); err != nil {

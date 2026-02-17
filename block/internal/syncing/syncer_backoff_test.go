@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/ipfs/go-datastore"
@@ -61,94 +62,91 @@ func TestSyncer_BackoffOnDAError(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
+			synctest.Test(t, func(t *testing.T) {
+				ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+				defer cancel()
 
-			// Setup syncer
-			syncer := setupTestSyncer(t, tc.daBlockTime)
-			syncer.ctx = ctx
+				// Setup syncer
+				syncer := setupTestSyncer(t, tc.daBlockTime)
+				syncer.ctx = ctx
 
-			// Setup mocks
-			daRetriever := NewMockDARetriever(t)
-			p2pHandler := newMockp2pHandler(t)
-			p2pHandler.On("ProcessHeight", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
-			syncer.daRetriever = daRetriever
-			syncer.p2pHandler = p2pHandler
-			p2pHandler.On("SetProcessedHeight", mock.Anything).Return().Maybe()
+				// Setup mocks
+				daRetriever := NewMockDARetriever(t)
+				p2pHandler := newMockp2pHandler(t)
+				p2pHandler.On("ProcessHeight", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+				syncer.daRetriever = daRetriever
+				syncer.p2pHandler = p2pHandler
+				p2pHandler.On("SetProcessedHeight", mock.Anything).Return().Maybe()
 
-			// Create mock stores for P2P
-			mockHeaderStore := extmocks.NewMockStore[*types.SignedHeader](t)
-			mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
+				// Mock PopPriorityHeight to always return 0 (no priority heights)
+				daRetriever.On("PopPriorityHeight").Return(uint64(0)).Maybe()
 
-			mockDataStore := extmocks.NewMockStore[*types.Data](t)
-			mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
+				// Create mock stores for P2P
+				mockHeaderStore := extmocks.NewMockStore[*types.SignedHeader](t)
+				mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
 
-			headerStore := common.NewMockBroadcaster[*types.SignedHeader](t)
-			headerStore.EXPECT().Store().Return(mockHeaderStore).Maybe()
-			syncer.headerStore = headerStore
+				mockDataStore := extmocks.NewMockStore[*types.Data](t)
+				mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
 
-			dataStore := common.NewMockBroadcaster[*types.Data](t)
-			dataStore.EXPECT().Store().Return(mockDataStore).Maybe()
-			syncer.dataStore = dataStore
+				var callTimes []time.Time
+				callCount := 0
 
-			var callTimes []time.Time
-			callCount := 0
-
-			// First call - returns test error
-			daRetriever.On("RetrieveFromDA", mock.Anything, uint64(100)).
-				Run(func(args mock.Arguments) {
-					callTimes = append(callTimes, time.Now())
-					callCount++
-				}).
-				Return(nil, tc.error).Once()
-
-			if tc.expectsBackoff {
-				// Second call should be delayed due to backoff
+				// First call - returns test error
 				daRetriever.On("RetrieveFromDA", mock.Anything, uint64(100)).
 					Run(func(args mock.Arguments) {
 						callTimes = append(callTimes, time.Now())
 						callCount++
-						// Cancel to end test
-						cancel()
 					}).
-					Return(nil, datypes.ErrBlobNotFound).Once()
-			} else {
-				// For ErrBlobNotFound, DA height should increment
-				daRetriever.On("RetrieveFromDA", mock.Anything, uint64(101)).
-					Run(func(args mock.Arguments) {
-						callTimes = append(callTimes, time.Now())
-						callCount++
-						cancel()
-					}).
-					Return(nil, datypes.ErrBlobNotFound).Once()
-			}
+					Return(nil, tc.error).Once()
 
-			// Run sync loop
-			syncer.startSyncWorkers()
-			<-ctx.Done()
-			syncer.wg.Wait()
-
-			// Verify behavior
-			if tc.expectsBackoff {
-				require.Len(t, callTimes, 2, "should make exactly 2 calls with backoff")
-
-				timeBetweenCalls := callTimes[1].Sub(callTimes[0])
-				expectedDelay := tc.daBlockTime
-				if expectedDelay == 0 {
-					expectedDelay = 2 * time.Second
+				if tc.expectsBackoff {
+					// Second call should be delayed due to backoff
+					daRetriever.On("RetrieveFromDA", mock.Anything, uint64(100)).
+						Run(func(args mock.Arguments) {
+							callTimes = append(callTimes, time.Now())
+							callCount++
+							// Cancel to end test
+							cancel()
+						}).
+						Return(nil, datypes.ErrBlobNotFound).Once()
+				} else {
+					// For ErrBlobNotFound, DA height should increment
+					daRetriever.On("RetrieveFromDA", mock.Anything, uint64(101)).
+						Run(func(args mock.Arguments) {
+							callTimes = append(callTimes, time.Now())
+							callCount++
+							cancel()
+						}).
+						Return(nil, datypes.ErrBlobNotFound).Once()
 				}
 
-				assert.GreaterOrEqual(t, timeBetweenCalls, expectedDelay-50*time.Millisecond,
-					"second call should be delayed by backoff duration (expected ~%v, got %v)",
-					expectedDelay, timeBetweenCalls)
-			} else {
-				assert.GreaterOrEqual(t, callCount, 2, "should continue without significant delay")
-				if len(callTimes) >= 2 {
+				// Run sync loop
+				syncer.startSyncWorkers()
+				<-ctx.Done()
+				syncer.wg.Wait()
+
+				// Verify behavior
+				if tc.expectsBackoff {
+					require.Len(t, callTimes, 2, "should make exactly 2 calls with backoff")
+
 					timeBetweenCalls := callTimes[1].Sub(callTimes[0])
-					assert.Less(t, timeBetweenCalls, 120*time.Millisecond,
-						"should not have backoff delay for ErrBlobNotFound")
+					expectedDelay := tc.daBlockTime
+					if expectedDelay == 0 {
+						expectedDelay = 2 * time.Second
+					}
+
+					assert.GreaterOrEqual(t, timeBetweenCalls, expectedDelay,
+						"second call should be delayed by backoff duration (expected ~%v, got %v)",
+						expectedDelay, timeBetweenCalls)
+				} else {
+					assert.GreaterOrEqual(t, callCount, 2, "should continue without significant delay")
+					if len(callTimes) >= 2 {
+						timeBetweenCalls := callTimes[1].Sub(callTimes[0])
+						assert.Less(t, timeBetweenCalls, 120*time.Millisecond,
+							"should not have backoff delay for ErrBlobNotFound")
+					}
 				}
-			}
+			})
 		})
 	}
 }
@@ -156,168 +154,162 @@ func TestSyncer_BackoffOnDAError(t *testing.T) {
 // TestSyncer_BackoffResetOnSuccess verifies that backoff is properly reset
 // after a successful DA retrieval, allowing the syncer to continue at normal speed.
 func TestSyncer_BackoffResetOnSuccess(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		defer cancel()
 
-	syncer := setupTestSyncer(t, 1*time.Second)
-	syncer.ctx = ctx
+		syncer := setupTestSyncer(t, 1*time.Second)
+		syncer.ctx = ctx
 
-	addr, pub, signer := buildSyncTestSigner(t)
-	gen := syncer.genesis
+		addr, pub, signer := buildSyncTestSigner(t)
+		gen := syncer.genesis
 
-	daRetriever := NewMockDARetriever(t)
-	p2pHandler := newMockp2pHandler(t)
-	p2pHandler.On("ProcessHeight", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
-	syncer.daRetriever = daRetriever
-	syncer.p2pHandler = p2pHandler
-	p2pHandler.On("SetProcessedHeight", mock.Anything).Return().Maybe()
+		daRetriever := NewMockDARetriever(t)
+		p2pHandler := newMockp2pHandler(t)
+		p2pHandler.On("ProcessHeight", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+		syncer.daRetriever = daRetriever
+		syncer.p2pHandler = p2pHandler
+		p2pHandler.On("SetProcessedHeight", mock.Anything).Return().Maybe()
 
-	// Create mock stores for P2P
-	mockHeaderStore := extmocks.NewMockStore[*types.SignedHeader](t)
-	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
+		// Mock PopPriorityHeight to always return 0 (no priority heights)
+		daRetriever.On("PopPriorityHeight").Return(uint64(0)).Maybe()
 
-	mockDataStore := extmocks.NewMockStore[*types.Data](t)
-	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
+		// Create mock stores for P2P
+		mockHeaderStore := extmocks.NewMockStore[*types.SignedHeader](t)
+		mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
 
-	headerStore := common.NewMockBroadcaster[*types.SignedHeader](t)
-	headerStore.EXPECT().Store().Return(mockHeaderStore).Maybe()
-	syncer.headerStore = headerStore
+		mockDataStore := extmocks.NewMockStore[*types.Data](t)
+		mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
 
-	dataStore := common.NewMockBroadcaster[*types.Data](t)
-	dataStore.EXPECT().Store().Return(mockDataStore).Maybe()
-	syncer.dataStore = dataStore
+		var callTimes []time.Time
 
-	var callTimes []time.Time
+		// First call - error (should trigger backoff)
+		daRetriever.On("RetrieveFromDA", mock.Anything, uint64(100)).
+			Run(func(args mock.Arguments) {
+				callTimes = append(callTimes, time.Now())
+			}).
+			Return(nil, errors.New("temporary failure")).Once()
 
-	// First call - error (should trigger backoff)
-	daRetriever.On("RetrieveFromDA", mock.Anything, uint64(100)).
-		Run(func(args mock.Arguments) {
-			callTimes = append(callTimes, time.Now())
-		}).
-		Return(nil, errors.New("temporary failure")).Once()
+		// Second call - success (should reset backoff and increment DA height)
+		_, header := makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, nil, nil, nil)
+		data := &types.Data{
+			Metadata: &types.Metadata{
+				ChainID: gen.ChainID,
+				Height:  1,
+				Time:    uint64(time.Now().UnixNano()),
+			},
+		}
+		event := common.DAHeightEvent{
+			Header:   header,
+			Data:     data,
+			DaHeight: 100,
+		}
 
-	// Second call - success (should reset backoff and increment DA height)
-	_, header := makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, nil, nil, nil)
-	data := &types.Data{
-		Metadata: &types.Metadata{
-			ChainID: gen.ChainID,
-			Height:  1,
-			Time:    uint64(time.Now().UnixNano()),
-		},
-	}
-	event := common.DAHeightEvent{
-		Header:   header,
-		Data:     data,
-		DaHeight: 100,
-	}
+		daRetriever.On("RetrieveFromDA", mock.Anything, uint64(100)).
+			Run(func(args mock.Arguments) {
+				callTimes = append(callTimes, time.Now())
+			}).
+			Return([]common.DAHeightEvent{event}, nil).Once()
 
-	daRetriever.On("RetrieveFromDA", mock.Anything, uint64(100)).
-		Run(func(args mock.Arguments) {
-			callTimes = append(callTimes, time.Now())
-		}).
-		Return([]common.DAHeightEvent{event}, nil).Once()
+		// Third call - should happen immediately after success (DA height incremented to 101)
+		daRetriever.On("RetrieveFromDA", mock.Anything, uint64(101)).
+			Run(func(args mock.Arguments) {
+				callTimes = append(callTimes, time.Now())
+				cancel()
+			}).
+			Return(nil, datypes.ErrBlobNotFound).Once()
 
-	// Third call - should happen immediately after success (DA height incremented to 101)
-	daRetriever.On("RetrieveFromDA", mock.Anything, uint64(101)).
-		Run(func(args mock.Arguments) {
-			callTimes = append(callTimes, time.Now())
-			cancel()
-		}).
-		Return(nil, datypes.ErrBlobNotFound).Once()
+		// Start process loop to handle events
+		go syncer.processLoop()
 
-	// Start process loop to handle events
-	go syncer.processLoop()
+		// Run workers
+		syncer.startSyncWorkers()
+		<-ctx.Done()
+		syncer.wg.Wait()
 
-	// Run workers
-	syncer.startSyncWorkers()
-	<-ctx.Done()
-	syncer.wg.Wait()
+		require.Len(t, callTimes, 3, "should make exactly 3 calls")
 
-	require.Len(t, callTimes, 3, "should make exactly 3 calls")
+		// Verify backoff between first and second call
+		delay1to2 := callTimes[1].Sub(callTimes[0])
+		assert.GreaterOrEqual(t, delay1to2, 1*time.Second,
+			"should have backed off between error and success (got %v)", delay1to2)
 
-	// Verify backoff between first and second call
-	delay1to2 := callTimes[1].Sub(callTimes[0])
-	assert.GreaterOrEqual(t, delay1to2, 950*time.Millisecond,
-		"should have backed off between error and success (got %v)", delay1to2)
-
-	// Verify no backoff between second and third call (backoff reset)
-	delay2to3 := callTimes[2].Sub(callTimes[1])
-	assert.Less(t, delay2to3, 100*time.Millisecond,
-		"should continue immediately after success (got %v)", delay2to3)
+		// Verify no backoff between second and third call (backoff reset)
+		delay2to3 := callTimes[2].Sub(callTimes[1])
+		assert.Less(t, delay2to3, 100*time.Millisecond,
+			"should continue immediately after success (got %v)", delay2to3)
+	})
 }
 
 // TestSyncer_BackoffBehaviorIntegration tests the complete backoff flow:
 // error -> backoff delay -> recovery -> normal operation.
 func TestSyncer_BackoffBehaviorIntegration(t *testing.T) {
 	// Test simpler backoff behavior: error -> backoff -> success -> continue
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		defer cancel()
 
-	syncer := setupTestSyncer(t, 500*time.Millisecond)
-	syncer.ctx = ctx
+		syncer := setupTestSyncer(t, 500*time.Millisecond)
+		syncer.ctx = ctx
 
-	daRetriever := NewMockDARetriever(t)
-	p2pHandler := newMockp2pHandler(t)
-	p2pHandler.On("ProcessHeight", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
-	syncer.daRetriever = daRetriever
-	syncer.p2pHandler = p2pHandler
+		daRetriever := NewMockDARetriever(t)
+		p2pHandler := newMockp2pHandler(t)
+		p2pHandler.On("ProcessHeight", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+		syncer.daRetriever = daRetriever
+		syncer.p2pHandler = p2pHandler
 
-	// Create mock stores for P2P
-	mockHeaderStore := extmocks.NewMockStore[*types.SignedHeader](t)
-	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
+		// Mock PopPriorityHeight to always return 0 (no priority heights)
+		daRetriever.On("PopPriorityHeight").Return(uint64(0)).Maybe()
 
-	mockDataStore := extmocks.NewMockStore[*types.Data](t)
-	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
+		// Create mock stores for P2P
+		mockHeaderStore := extmocks.NewMockStore[*types.SignedHeader](t)
+		mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
 
-	headerStore := common.NewMockBroadcaster[*types.SignedHeader](t)
-	headerStore.EXPECT().Store().Return(mockHeaderStore).Maybe()
-	syncer.headerStore = headerStore
+		mockDataStore := extmocks.NewMockStore[*types.Data](t)
+		mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
 
-	dataStore := common.NewMockBroadcaster[*types.Data](t)
-	dataStore.EXPECT().Store().Return(mockDataStore).Maybe()
-	syncer.dataStore = dataStore
+		var callTimes []time.Time
+		p2pHandler.On("SetProcessedHeight", mock.Anything).Return().Maybe()
 
-	var callTimes []time.Time
-	p2pHandler.On("SetProcessedHeight", mock.Anything).Return().Maybe()
+		// First call - error (triggers backoff)
+		daRetriever.On("RetrieveFromDA", mock.Anything, uint64(100)).
+			Run(func(args mock.Arguments) {
+				callTimes = append(callTimes, time.Now())
+			}).
+			Return(nil, errors.New("network error")).Once()
 
-	// First call - error (triggers backoff)
-	daRetriever.On("RetrieveFromDA", mock.Anything, uint64(100)).
-		Run(func(args mock.Arguments) {
-			callTimes = append(callTimes, time.Now())
-		}).
-		Return(nil, errors.New("network error")).Once()
+		// Second call - should be delayed due to backoff
+		daRetriever.On("RetrieveFromDA", mock.Anything, uint64(100)).
+			Run(func(args mock.Arguments) {
+				callTimes = append(callTimes, time.Now())
+			}).
+			Return(nil, datypes.ErrBlobNotFound).Once()
 
-	// Second call - should be delayed due to backoff
-	daRetriever.On("RetrieveFromDA", mock.Anything, uint64(100)).
-		Run(func(args mock.Arguments) {
-			callTimes = append(callTimes, time.Now())
-		}).
-		Return(nil, datypes.ErrBlobNotFound).Once()
+		// Third call - should continue without delay (DA height incremented)
+		daRetriever.On("RetrieveFromDA", mock.Anything, uint64(101)).
+			Run(func(args mock.Arguments) {
+				callTimes = append(callTimes, time.Now())
+				cancel()
+			}).
+			Return(nil, datypes.ErrBlobNotFound).Once()
 
-	// Third call - should continue without delay (DA height incremented)
-	daRetriever.On("RetrieveFromDA", mock.Anything, uint64(101)).
-		Run(func(args mock.Arguments) {
-			callTimes = append(callTimes, time.Now())
-			cancel()
-		}).
-		Return(nil, datypes.ErrBlobNotFound).Once()
+		go syncer.processLoop()
+		syncer.startSyncWorkers()
+		<-ctx.Done()
+		syncer.wg.Wait()
 
-	go syncer.processLoop()
-	syncer.startSyncWorkers()
-	<-ctx.Done()
-	syncer.wg.Wait()
+		require.Len(t, callTimes, 3, "should make exactly 3 calls")
 
-	require.Len(t, callTimes, 3, "should make exactly 3 calls")
+		// First to second call should be delayed (backoff)
+		delay1to2 := callTimes[1].Sub(callTimes[0])
+		assert.GreaterOrEqual(t, delay1to2, 500*time.Millisecond,
+			"should have backoff delay between first and second call (got %v)", delay1to2)
 
-	// First to second call should be delayed (backoff)
-	delay1to2 := callTimes[1].Sub(callTimes[0])
-	assert.GreaterOrEqual(t, delay1to2, 450*time.Millisecond,
-		"should have backoff delay between first and second call (got %v)", delay1to2)
-
-	// Second to third call should be immediate (no backoff after ErrBlobNotFound)
-	delay2to3 := callTimes[2].Sub(callTimes[1])
-	assert.Less(t, delay2to3, 100*time.Millisecond,
-		"should continue immediately after ErrBlobNotFound (got %v)", delay2to3)
+		// Second to third call should be immediate (no backoff after ErrBlobNotFound)
+		delay2to3 := callTimes[2].Sub(callTimes[1])
+		assert.Less(t, delay2to3, 100*time.Millisecond,
+			"should continue immediately after ErrBlobNotFound (got %v)", delay2to3)
+	})
 }
 
 func setupTestSyncer(t *testing.T, daBlockTime time.Duration) *Syncer {
@@ -350,8 +342,8 @@ func setupTestSyncer(t *testing.T, daBlockTime time.Duration) *Syncer {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		common.NewMockBroadcaster[*types.SignedHeader](t),
-		common.NewMockBroadcaster[*types.Data](t),
+		extmocks.NewMockStore[*types.P2PSignedHeader](t),
+		extmocks.NewMockStore[*types.P2PData](t),
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),

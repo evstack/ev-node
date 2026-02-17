@@ -174,6 +174,23 @@ func (t *tracedStore) GetMetadata(ctx context.Context, key string) ([]byte, erro
 	return data, nil
 }
 
+func (t *tracedStore) GetMetadataByPrefix(ctx context.Context, prefix string) ([]MetadataEntry, error) {
+	ctx, span := t.tracer.Start(ctx, "Store.GetMetadataByPrefix",
+		trace.WithAttributes(attribute.String("prefix", prefix)),
+	)
+	defer span.End()
+
+	entries, err := t.inner.GetMetadataByPrefix(ctx, prefix)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return entries, err
+	}
+
+	span.SetAttributes(attribute.Int("entries.count", len(entries)))
+	return entries, nil
+}
+
 func (t *tracedStore) SetMetadata(ctx context.Context, key string, value []byte) error {
 	ctx, span := t.tracer.Start(ctx, "Store.SetMetadata",
 		trace.WithAttributes(
@@ -193,6 +210,39 @@ func (t *tracedStore) SetMetadata(ctx context.Context, key string, value []byte)
 	return nil
 }
 
+func (t *tracedStore) DeleteMetadata(ctx context.Context, key string) error {
+	ctx, span := t.tracer.Start(ctx, "Store.DeleteMetadata",
+		trace.WithAttributes(
+			attribute.String("key", key),
+		),
+	)
+	defer span.End()
+
+	err := t.inner.DeleteMetadata(ctx, key)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return err
+	}
+
+	return nil
+}
+
+func (t *tracedStore) DeleteStateAtHeight(ctx context.Context, height uint64) error {
+	ctx, span := t.tracer.Start(ctx, "Store.DeleteStateAtHeight",
+		trace.WithAttributes(attribute.Int64("height", int64(height))),
+	)
+	defer span.End()
+
+	if err := t.inner.DeleteStateAtHeight(ctx, height); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return err
+	}
+
+	return nil
+}
+
 func (t *tracedStore) Rollback(ctx context.Context, height uint64, aggregator bool) error {
 	ctx, span := t.tracer.Start(ctx, "Store.Rollback",
 		trace.WithAttributes(
@@ -203,6 +253,22 @@ func (t *tracedStore) Rollback(ctx context.Context, height uint64, aggregator bo
 	defer span.End()
 
 	err := t.inner.Rollback(ctx, height, aggregator)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return err
+	}
+
+	return nil
+}
+
+func (t *tracedStore) PruneBlocks(ctx context.Context, height uint64) error {
+	ctx, span := t.tracer.Start(ctx, "Store.PruneBlocks",
+		trace.WithAttributes(attribute.Int64("height", int64(height))),
+	)
+	defer span.End()
+
+	err := t.inner.PruneBlocks(ctx, height)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())

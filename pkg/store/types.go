@@ -31,19 +31,36 @@ type Batch interface {
 
 // Store is minimal interface for storing and retrieving blocks, commits and state.
 type Store interface {
-	Rollback
 	Reader
-
-	// SetMetadata saves arbitrary value in the store.
-	//
-	// This method enables evolve to safely persist any information.
-	SetMetadata(ctx context.Context, key string, value []byte) error
+	Metadata
+	Rollback
+	Pruner
 
 	// Close safely closes underlying data storage, to ensure that data is actually saved.
 	Close() error
 
 	// NewBatch creates a new batch for atomic operations.
 	NewBatch(ctx context.Context) (Batch, error)
+}
+
+// MetadataEntry represents a key-value pair from metadata storage.
+type MetadataEntry struct {
+	Key   string
+	Value []byte
+}
+
+type Metadata interface {
+	// SetMetadata saves arbitrary value in the store.
+	//
+	// This method enables evolve to safely persist any information.
+	SetMetadata(ctx context.Context, key string, value []byte) error
+
+	// GetMetadataByPrefix returns all metadata entries whose keys have the given prefix.
+	// This is more efficient than iterating through known keys when the set of keys is unknown.
+	GetMetadataByPrefix(ctx context.Context, prefix string) ([]MetadataEntry, error)
+
+	// DeleteMetadata removes a metadata key from the store.
+	DeleteMetadata(ctx context.Context, key string) error
 }
 
 type Reader interface {
@@ -74,4 +91,15 @@ type Rollback interface {
 	// Rollback deletes x height from the ev-node store.
 	// Aggregator is used to determine if the rollback is performed on the aggregator node.
 	Rollback(ctx context.Context, height uint64, aggregator bool) error
+}
+
+// Pruner provides long-term, height-based pruning of historical block data.
+type Pruner interface {
+	// PruneBlocks removes block data (header, data, signature, and hash index)
+	// up to and including the given height from the store, without modifying
+	// state snapshots or the current chain height.
+	PruneBlocks(ctx context.Context, height uint64) error
+	// DeleteStateAtHeight removes the state at the given height from the store.
+	// It does not affect the current state or any states at other heights, allowing for targeted pruning of historical state snapshots.
+	DeleteStateAtHeight(ctx context.Context, height uint64) error
 }

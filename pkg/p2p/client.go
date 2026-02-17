@@ -49,11 +49,12 @@ type Client struct {
 	chainID string
 	privKey crypto.PrivKey
 
-	host  host.Host
-	dht   *dht.IpfsDHT
-	disc  *discovery.RoutingDiscovery
-	gater *conngater.BasicConnectionGater
-	ps    *pubsub.PubSub
+	host    host.Host
+	dht     *dht.IpfsDHT
+	disc    *discovery.RoutingDiscovery
+	gater   *conngater.BasicConnectionGater
+	ps      *pubsub.PubSub
+	started bool
 
 	metrics *Metrics
 }
@@ -121,6 +122,9 @@ func NewClientWithHost(
 // 3. Setup DHT, establish connection to seed nodes and initialize peer discovery.
 // 4. Use active peer discovery to look for peers from same ORU network.
 func (c *Client) Start(ctx context.Context) error {
+	if c.started {
+		return nil
+	}
 	c.logger.Debug().Msg("starting P2P client")
 
 	if c.host != nil {
@@ -165,19 +169,21 @@ func (c *Client) startWithHost(ctx context.Context, h host.Host) error {
 		return err
 	}
 
+	c.started = true
 	return nil
 }
 
 // Close gently stops Client.
 func (c *Client) Close() error {
-	var dhtErr, hostErr error
+	var err error
 	if c.dht != nil {
-		dhtErr = c.dht.Close()
+		err = errors.Join(err, c.dht.Close())
 	}
 	if c.host != nil {
-		hostErr = c.host.Close()
+		err = errors.Join(err, c.host.Close())
 	}
-	return errors.Join(dhtErr, hostErr)
+	c.started = false
+	return err
 }
 
 // Addrs returns listen addresses of Client.
@@ -410,8 +416,13 @@ func (c *Client) GetPeers() ([]peer.AddrInfo, error) {
 
 func (c *Client) GetNetworkInfo() (NetworkInfo, error) {
 	var addrs []string
+	peerIDSuffix := "/p2p/" + c.host.ID().String()
 	for _, a := range c.host.Addrs() {
-		addr := fmt.Sprintf("%s/p2p/%s", a, c.host.ID())
+		addr := a.String()
+		// Only append peer ID if not already present
+		if !strings.HasSuffix(addr, peerIDSuffix) {
+			addr = addr + peerIDSuffix
+		}
 		addrs = append(addrs, addr)
 	}
 

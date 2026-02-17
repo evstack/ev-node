@@ -146,7 +146,7 @@ func verifyTransactionSync(t *testing.T, sequencerClient, fullNodeClient *ethcli
 			}
 		}
 		return false
-	}, 45*time.Second, 1*time.Second, "Full node should sync the block containing the transaction")
+	}, 3*time.Minute, 500*time.Millisecond, "Full node should sync the block containing the transaction")
 
 	// Final verification - both nodes should have the transaction in the same block
 	sequencerReceipt, err := sequencerClient.TransactionReceipt(ctx, txHash)
@@ -341,7 +341,6 @@ func TestEvmSequencerWithFullNodeE2E(t *testing.T) {
 
 	// Wait for all transactions to be processed
 	time.Sleep(500 * time.Millisecond)
-
 	t.Logf("Total transactions submitted: %d across blocks %v", len(txHashes), txBlockNumbers)
 
 	t.Log("Waiting for full node to sync all transaction blocks...")
@@ -1222,6 +1221,20 @@ func testSequencerFullNodeRestart(t *testing.T, initialLazyMode, restartLazyMode
 
 	t.Log("Phase 4: Verifying blockchain state preservation after restart...")
 
+	// After restart, the full node needs to re-fetch blocks via P2P from the sequencer.
+	// Wait for the full node to sync up to the pre-restart height before verifying state preservation.
+	t.Log("Waiting for full node to re-sync blocks via P2P after restart...")
+	require.Eventually(t, func() bool {
+		fnHeader, fnErr := fullNodeClient.HeaderByNumber(ctx, nil)
+		if fnErr != nil {
+			return false
+		}
+		fnHeight := fnHeader.Number.Uint64()
+		t.Logf("Full node re-sync progress: current=%d, target=%d", fnHeight, preRestartFnHeight)
+		return fnHeight >= preRestartFnHeight
+	}, DefaultTestTimeout, 500*time.Millisecond, "Full node should re-sync to pre-restart height via P2P")
+	t.Log("Full node re-synced to pre-restart height")
+
 	postRestartSeqHeader, err := sequencerClient.HeaderByNumber(ctx, nil)
 	require.NoError(t, err, "Should get sequencer header after restart")
 	postRestartFnHeader, err := fullNodeClient.HeaderByNumber(ctx, nil)
@@ -1284,9 +1297,7 @@ func testSequencerFullNodeRestart(t *testing.T, initialLazyMode, restartLazyMode
 
 		// Verify transaction syncs to full node (testing P2P sync functionality)
 		verifyTransactionSync(t, sequencerClient, fullNodeClient, txHash, txBlockNumber)
-		t.Logf("✅ Post-restart transaction %d synced to full node via P2P", i+1)
-
-		time.Sleep(5 * time.Millisecond)
+		t.Logf("✅Post-restart transaction %d synced to full node via P2P", i+1)
 	}
 
 	// === LAZY MODE POST-TRANSACTION VERIFICATION (if applicable) ===

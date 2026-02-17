@@ -55,3 +55,11 @@ func (t *tracedDARetriever) RetrieveFromDA(ctx context.Context, daHeight uint64)
 
 	return events, nil
 }
+
+func (t *tracedDARetriever) QueuePriorityHeight(daHeight uint64) {
+	t.inner.QueuePriorityHeight(daHeight)
+}
+
+func (t *tracedDARetriever) PopPriorityHeight() uint64 {
+	return t.inner.PopPriorityHeight()
+}

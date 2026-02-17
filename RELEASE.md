@@ -2,8 +2,77 @@
 
 This document covers the release process for ev-node components:
 
+- **GitHub Releases** - Manual workflow to create draft releases with AI-generated release notes
 - **Docker Image Releases** - Automated via GitHub workflows (for deployable applications)
 - **Go Module Releases** - Manual process for library packages and dependencies
+
+---
+
+## GitHub Releases (Manual Workflow)
+
+### When to Use
+
+Create official GitHub releases with professionally formatted release notes for version tags.
+
+### Quick Steps
+
+```bash
+# 1. Ensure CHANGELOG.md is updated for the version
+# 2. Navigate to GitHub Actions
+# 3. Run "Github Release" workflow
+# 4. Enter tag (e.g., v1.2.3)
+# 5. Review and publish the draft release
+```
+
+### How It Works
+
+The GitHub Release workflow (`.github/workflows/release-github.yml`) automates release note generation:
+
+1. **Validates Tag Format** - Ensures tag follows semantic versioning (e.g., `v1.2.3`, `v1.2.3-rc.4`)
+2. **Extracts Version Info** - Parses version from tag and finds previous release
+3. **Discovers Docker Images** - Lists all Docker images that will be included in the release
+4. **Generates Release Notes** - Uses Claude AI to read CHANGELOG.md and create professional release notes
+5. **Creates Draft Release** - Publishes a draft GitHub release for review
+
+### Release Notes Structure
+
+The workflow generates release notes with:
+
+- **Summary** - Overview of the release type and upgrade recommendations
+- **Tested Upgrade Paths** - Version compatibility information
+- **Changelog Sections**:
+  - Added (new features, with BREAKING changes highlighted)
+  - Changed (modifications, with BREAKING changes highlighted)
+  - Removed (deprecated features, with BREAKING changes highlighted)
+  - Fixed (bug fixes)
+- **Docker Images** - List of all available Docker images for this release
+
+### Requirements
+
+- Tag must follow semantic versioning: `v<MAJOR>.<MINOR>.<PATCH>[-PRERELEASE][+BUILD]`
+  - Valid: `v1.2.3`, `v1.2.3-rc.4`, `v1.2.3-beta.1`, `v1.2.3-alpha.1+build.123`
+- CHANGELOG.md must contain a section for the version being released
+- `CLAUDE_CODE_OAUTH_TOKEN` secret must be configured in repository settings
+
+### Workflow Dispatch
+
+To trigger the workflow:
+
+1. Go to **GitHub → Actions → Github Release**
+2. Click **Run workflow**
+3. Enter the release tag (e.g., `v1.2.3`)
+4. Click **Run workflow**
+
+The workflow will create a **draft release** that you can review and edit before publishing.
+
+### Best Practices
+
+- ✅ Update CHANGELOG.md before running the workflow
+- ✅ Use clear, descriptive changelog entries
+- ✅ Mark breaking changes explicitly in CHANGELOG.md
+- ✅ Review the draft release before publishing
+- ✅ Test upgrade paths and update release notes accordingly
+- ✅ Ensure all Docker images are built and available
 
 ---
 
@@ -182,7 +251,21 @@ go list -m github.com/evstack/ev-node/apps/evm@v0.3.0
 
 ## Common Release Scenarios
 
-### Scenario 1: Release Single App (Docker Only)
+### Scenario 1: Create GitHub Release
+
+```bash
+# 1. Update CHANGELOG.md with version changes
+# 2. Commit and push changes
+git add CHANGELOG.md
+git commit -m "Update changelog for v1.2.3"
+git push origin main
+
+# 3. Go to GitHub Actions → Github Release → Run workflow
+# 4. Enter tag: v1.2.3
+# 5. Review draft release and publish
+```
+
+### Scenario 2: Release Single App (Docker Only)
 
 ```bash
 # Tag and push - automation handles the rest
@@ -190,7 +273,7 @@ git tag evm/v0.2.0
 git push origin evm/v0.2.0
 ```
 
-### Scenario 2: Release Multiple Apps
+### Scenario 3: Release Multiple Apps
 
 ```bash
 # Release apps independently
@@ -201,7 +284,7 @@ git push origin evm/single/v0.2.0 testapp/v1.0.0
 # Each triggers its own workflow
 ```
 
-### Scenario 3: Full Go Module Release
+### Scenario 4: Full Go Module Release
 
 ```bash
 # 1. Core
@@ -216,7 +299,7 @@ git tag execution/evm/v0.3.0 && git push origin execution/evm/v0.3.0
 git tag apps/evm/v0.3.0 && git push origin apps/evm/v0.3.0
 ```
 
-### Scenario 4: Hotfix/Patch Release
+### Scenario 5: Hotfix/Patch Release
 
 ```bash
 # For Docker images - delete and recreate
@@ -262,6 +345,32 @@ go get github.com/evstack/ev-node/core@v0.3.0
 ---
 
 ## Troubleshooting
+
+### GitHub Releases
+
+**"Invalid tag format" error**
+
+- Ensure tag follows semantic versioning: `v1.2.3`
+- Check for typos or incorrect format
+- Valid examples: `v1.2.3`, `v1.2.3-rc.4`, `v1.2.3-beta.1`
+
+**"Version not found in CHANGELOG.md"**
+
+- Verify CHANGELOG.md contains a section for the version
+- Check version format matches exactly (e.g., `v1.2.3` vs `1.2.3`)
+- Ensure CHANGELOG.md is committed and pushed
+
+**"Claude API error"**
+
+- Verify `CLAUDE_CODE_OAUTH_TOKEN` secret is configured
+- Check repository permissions for GitHub Actions
+- Review workflow logs for specific error messages
+
+**Empty or incomplete release notes**
+
+- Ensure CHANGELOG.md has detailed entries for the version
+- Check that changelog sections (Added, Changed, Fixed, etc.) are properly formatted
+- Review the draft release and manually edit if needed
 
 ### Docker Releases
 

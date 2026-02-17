@@ -14,13 +14,11 @@ import (
 	"github.com/evstack/ev-node/pkg/config"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p"
-	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/raft"
 	rpcserver "github.com/evstack/ev-node/pkg/rpc/server"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
 	evsync "github.com/evstack/ev-node/pkg/sync"
-	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 )
@@ -38,18 +36,15 @@ type failoverState struct {
 
 func newSyncMode(
 	nodeConfig config.Config,
-	nodeKey *key.NodeKey,
 	genesis genesispkg.Genesis,
-	rootDB ds.Batching,
-	daStore store.Store,
 	exec coreexecutor.Executor,
 	da block.DAClient,
 	logger zerolog.Logger,
 	rktStore store.Store,
-	mainKV ds.Batching,
 	blockMetrics *block.Metrics,
 	nodeOpts NodeOptions,
 	raftNode *raft.Node,
+	p2pClient *p2p.Client,
 ) (*failoverState, error) {
 	blockComponentsFn := func(headerSyncService *evsync.HeaderSyncService, dataSyncService *evsync.DataSyncService) (*block.Components, error) {
 		return block.NewSyncComponents(
@@ -58,6 +53,8 @@ func newSyncMode(
 			rktStore,
 			exec,
 			da,
+			headerSyncService.Store(),
+			dataSyncService.Store(),
 			headerSyncService,
 			dataSyncService,
 			logger,
@@ -66,27 +63,23 @@ func newSyncMode(
 			raftNode,
 		)
 	}
-	return setupFailoverState(nodeConfig, nodeKey, rootDB, daStore, genesis, logger, mainKV, rktStore, blockComponentsFn, raftNode)
+	return setupFailoverState(nodeConfig, genesis, logger, rktStore, blockComponentsFn, raftNode, p2pClient)
 }
 
 func newAggregatorMode(
 	nodeConfig config.Config,
-	nodeKey *key.NodeKey,
 	signer signer.Signer,
 	genesis genesispkg.Genesis,
-	rootDB ds.Batching,
-	daStore store.Store,
 	exec coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
 	da block.DAClient,
 	logger zerolog.Logger,
 	rktStore store.Store,
-	mainKV ds.Batching,
 	blockMetrics *block.Metrics,
 	nodeOpts NodeOptions,
 	raftNode *raft.Node,
+	p2pClient *p2p.Client,
 ) (*failoverState, error) {
-
 	blockComponentsFn := func(headerSyncService *evsync.HeaderSyncService, dataSyncService *evsync.DataSyncService) (*block.Components, error) {
 		return block.NewAggregatorComponents(
 			nodeConfig,
@@ -105,32 +98,24 @@ func newAggregatorMode(
 		)
 	}
 
-	return setupFailoverState(nodeConfig, nodeKey, rootDB, daStore, genesis, logger, mainKV, rktStore, blockComponentsFn, raftNode)
+	return setupFailoverState(nodeConfig, genesis, logger, rktStore, blockComponentsFn, raftNode, p2pClient)
 }
 
 func setupFailoverState(
 	nodeConfig config.Config,
-	nodeKey *key.NodeKey,
-	rootDB ds.Batching,
-	daStore store.Store,
 	genesis genesispkg.Genesis,
 	logger zerolog.Logger,
-	mainKV ds.Batching,
 	rktStore store.Store,
 	buildComponentsFn func(headerSyncService *evsync.HeaderSyncService, dataSyncService *evsync.DataSyncService) (*block.Components, error),
 	raftNode *raft.Node,
+	p2pClient *p2p.Client,
 ) (*failoverState, error) {
-	p2pClient, err := p2p.NewClient(nodeConfig.P2P, nodeKey.PrivKey, rootDB, genesis.ChainID, logger, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	headerSyncService, err := evsync.NewHeaderSyncService(mainKV, daStore, nodeConfig, genesis, p2pClient, logger.With().Str("component", "HeaderSyncService").Logger())
+	headerSyncService, err := evsync.NewHeaderSyncService(rktStore, nodeConfig, genesis, p2pClient, logger.With().Str("component", "HeaderSyncService").Logger())
 	if err != nil {
 		return nil, fmt.Errorf("error while initializing HeaderSyncService: %w", err)
 	}
 
-	dataSyncService, err := evsync.NewDataSyncService(mainKV, daStore, nodeConfig, genesis, p2pClient, logger.With().Str("component", "DataSyncService").Logger())
+	dataSyncService, err := evsync.NewDataSyncService(rktStore, nodeConfig, genesis, p2pClient, logger.With().Str("component", "DataSyncService").Logger())
 	if err != nil {
 		return nil, fmt.Errorf("error while initializing DataSyncService: %w", err)
 	}
@@ -204,19 +189,24 @@ func (f *failoverState) Run(pCtx context.Context) (multiErr error) {
 		return nil
 	})
 
-	if err := f.p2pClient.Start(ctx); err != nil {
-		return fmt.Errorf("start p2p: %w", err)
-	}
-	defer f.p2pClient.Close() // nolint: errcheck
-
-	if err := f.headerSyncService.Start(ctx); err != nil {
-		return fmt.Errorf("error while starting header sync service: %w", err)
+	// start header and data sync services concurrently to avoid cumulative startup delay.
+	syncWg, syncCtx := errgroup.WithContext(ctx)
+	syncWg.Go(func() error {
+		if err := f.headerSyncService.Start(syncCtx); err != nil {
+			return fmt.Errorf("header sync service: %w", err)
+		}
+		return nil
+	})
+	syncWg.Go(func() error {
+		if err := f.dataSyncService.Start(syncCtx); err != nil {
+			return fmt.Errorf("data sync service: %w", err)
+		}
+		return nil
+	})
+	if err := syncWg.Wait(); err != nil {
+		return err
 	}
 	defer stopService(f.headerSyncService.Stop, "header sync")
-
-	if err := f.dataSyncService.Start(ctx); err != nil {
-		return fmt.Errorf("error while starting data sync service: %w", err)
-	}
 	defer stopService(f.dataSyncService.Stop, "data sync")
 
 	wg.Go(func() error {

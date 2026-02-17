@@ -42,8 +42,8 @@ type Executor struct {
 	metrics *common.Metrics
 
 	// Broadcasting
-	headerBroadcaster common.Broadcaster[*types.SignedHeader]
-	dataBroadcaster   common.Broadcaster[*types.Data]
+	headerBroadcaster common.HeaderP2PBroadcaster
+	dataBroadcaster   common.DataP2PBroadcaster
 
 	// Configuration
 	config  config.Config
@@ -90,8 +90,8 @@ func NewExecutor(
 	metrics *common.Metrics,
 	config config.Config,
 	genesis genesis.Genesis,
-	headerBroadcaster common.Broadcaster[*types.SignedHeader],
-	dataBroadcaster common.Broadcaster[*types.Data],
+	headerBroadcaster common.HeaderP2PBroadcaster,
+	dataBroadcaster common.DataP2PBroadcaster,
 	logger zerolog.Logger,
 	options common.BlockOptions,
 	errorCh chan<- error,
@@ -154,11 +154,7 @@ func (e *Executor) Start(ctx context.Context) error {
 	}
 
 	// Start execution loop
-	e.wg.Add(1)
-	go func() {
-		defer e.wg.Done()
-		e.executionLoop()
-	}()
+	e.wg.Go(e.executionLoop)
 
 	e.logger.Info().Msg("executor started")
 	return nil
@@ -273,6 +269,13 @@ func (e *Executor) initializeState() error {
 
 	e.logger.Info().Uint64("height", state.LastBlockHeight).
 		Str("chain_id", state.ChainID).Msg("initialized state")
+
+	// Migrate any old-style pending block (stored at height N+1 via SaveBlockData
+	// with empty signature) to the new metadata-key format.
+	// Todo remove in the future: https://github.com/evstack/ev-node/issues/2795
+	if err := e.migrateLegacyPendingBlock(e.ctx); err != nil {
+		return fmt.Errorf("failed to migrate legacy pending block: %w", err)
+	}
 
 	// Determine sync target: use Raft height if node is behind Raft consensus
 	syncTargetHeight := state.LastBlockHeight
@@ -433,12 +436,12 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 
 	// Check if there's an already stored block at the newHeight
 	// If there is use that instead of creating a new block
-	pendingHeader, pendingData, err := e.store.GetBlockData(ctx, newHeight)
-	if err == nil {
+	pendingHeader, pendingData, err := e.getPendingBlock(ctx)
+	if err == nil && pendingHeader != nil && pendingHeader.Height() == newHeight {
 		e.logger.Info().Uint64("height", newHeight).Msg("using pending block")
 		header = pendingHeader
 		data = pendingData
-	} else if !errors.Is(err, datastore.ErrNotFound) {
+	} else if err != nil && !errors.Is(err, datastore.ErrNotFound) {
 		return fmt.Errorf("failed to get block data: %w", err)
 	} else {
 		// get batch from sequencer
@@ -456,17 +459,8 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("failed to create block: %w", err)
 		}
-
-		// saved early for crash recovery, will be overwritten later with the final signature
-		batch, err := e.store.NewBatch(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to create batch for early save: %w", err)
-		}
-		if err = batch.SaveBlockData(header, data, &types.Signature{}); err != nil {
+		if err := e.savePendingBlock(ctx, header, data); err != nil {
 			return fmt.Errorf("failed to save block data: %w", err)
-		}
-		if err = batch.Commit(); err != nil {
-			return fmt.Errorf("failed to commit early save batch: %w", err)
 		}
 	}
 
@@ -539,6 +533,10 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 		}
 		e.logger.Debug().Uint64("height", newHeight).Msg("proposed block to raft")
 	}
+	if err := e.deletePendingBlock(batch); err != nil {
+		e.logger.Warn().Err(err).Uint64("height", newHeight).Msg("failed to delete pending block metadata")
+	}
+
 	if err := batch.Commit(); err != nil {
 		return fmt.Errorf("failed to commit batch: %w", err)
 	}
@@ -547,9 +545,13 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 	e.setLastState(newState)
 
 	// broadcast header and data to P2P network
-	g, broadcastCtx := errgroup.WithContext(ctx)
-	g.Go(func() error { return e.headerBroadcaster.WriteToStoreAndBroadcast(broadcastCtx, header) })
-	g.Go(func() error { return e.dataBroadcaster.WriteToStoreAndBroadcast(broadcastCtx, data) })
+	g, broadcastCtx := errgroup.WithContext(e.ctx)
+	g.Go(func() error {
+		return e.headerBroadcaster.WriteToStoreAndBroadcast(broadcastCtx, &types.P2PSignedHeader{SignedHeader: header})
+	})
+	g.Go(func() error {
+		return e.dataBroadcaster.WriteToStoreAndBroadcast(broadcastCtx, &types.P2PData{Data: data})
+	})
 	if err := g.Wait(); err != nil {
 		e.logger.Error().Err(err).Msg("failed to broadcast header and/data")
 		// don't fail block production on broadcast error

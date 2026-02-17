@@ -5,6 +5,7 @@ import (
 	crand "crypto/rand"
 	"errors"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/ipfs/go-datastore"
@@ -69,9 +70,9 @@ func TestProduceBlock_EmptyBatch_SetsEmptyDataHash(t *testing.T) {
 	mockSeq := testmocks.NewMockSequencer(t)
 
 	// Broadcasters are required by produceBlock; use generated mocks
-	hb := common.NewMockBroadcaster[*types.SignedHeader](t)
+	hb := common.NewMockBroadcaster[*types.P2PSignedHeader](t)
 	hb.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
-	db := common.NewMockBroadcaster[*types.Data](t)
+	db := common.NewMockBroadcaster[*types.P2PData](t)
 	db.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	exec, err := NewExecutor(
@@ -160,9 +161,9 @@ func TestPendingLimit_SkipsProduction(t *testing.T) {
 
 	mockExec := testmocks.NewMockExecutor(t)
 	mockSeq := testmocks.NewMockSequencer(t)
-	hb := common.NewMockBroadcaster[*types.SignedHeader](t)
+	hb := common.NewMockBroadcaster[*types.P2PSignedHeader](t)
 	hb.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
-	db := common.NewMockBroadcaster[*types.Data](t)
+	db := common.NewMockBroadcaster[*types.P2PData](t)
 	db.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	exec, err := NewExecutor(
@@ -281,49 +282,50 @@ func TestExecutor_executeTxsWithRetry(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+			synctest.Test(t, func(t *testing.T) {
+				ctx := context.Background()
+				execCtx := ctx
 
-			ctx := context.Background()
-			execCtx := ctx
-
-			// For context cancellation test, create a cancellable context
-			if tt.name == "context cancelled during retry" {
-				var cancel context.CancelFunc
-				execCtx, cancel = context.WithCancel(ctx)
-				// Cancel context after first failure to simulate cancellation during retry
-				go func() {
-					time.Sleep(100 * time.Millisecond)
-					cancel()
-				}()
-			}
-
-			mockExec := testmocks.NewMockExecutor(t)
-			tt.setupMock(mockExec)
-
-			e := &Executor{
-				exec:   mockExec,
-				ctx:    execCtx,
-				logger: zerolog.Nop(),
-			}
-
-			rawTxs := [][]byte{[]byte("tx1"), []byte("tx2")}
-			header := types.Header{
-				BaseHeader: types.BaseHeader{Height: 100, Time: uint64(time.Now().UnixNano())},
-			}
-			currentState := types.State{AppHash: []byte("current-hash")}
-
-			result, err := e.executeTxsWithRetry(ctx, rawTxs, header, currentState)
-
-			if tt.expectSuccess {
-				require.NoError(t, err)
-				assert.Equal(t, tt.expectHash, result)
-			} else {
-				require.Error(t, err)
-				if tt.expectError != "" {
-					assert.Contains(t, err.Error(), tt.expectError)
+				// For context cancellation test, create a cancellable context
+				if tt.name == "context cancelled during retry" {
+					var cancel context.CancelFunc
+					execCtx, cancel = context.WithCancel(ctx)
+					// Cancel context after first failure to simulate cancellation during retry
+					go func() {
+						time.Sleep(100 * time.Millisecond)
+						cancel()
+					}()
 				}
-			}
 
-			mockExec.AssertExpectations(t)
+				mockExec := testmocks.NewMockExecutor(t)
+				tt.setupMock(mockExec)
+
+				e := &Executor{
+					exec:   mockExec,
+					ctx:    execCtx,
+					logger: zerolog.Nop(),
+				}
+
+				rawTxs := [][]byte{[]byte("tx1"), []byte("tx2")}
+				header := types.Header{
+					BaseHeader: types.BaseHeader{Height: 100, Time: uint64(time.Now().UnixNano())},
+				}
+				currentState := types.State{AppHash: []byte("current-hash")}
+
+				result, err := e.executeTxsWithRetry(ctx, rawTxs, header, currentState)
+
+				if tt.expectSuccess {
+					require.NoError(t, err)
+					assert.Equal(t, tt.expectHash, result)
+				} else {
+					require.Error(t, err)
+					if tt.expectError != "" {
+						assert.Contains(t, err.Error(), tt.expectError)
+					}
+				}
+
+				mockExec.AssertExpectations(t)
+			})
 		})
 	}
 }

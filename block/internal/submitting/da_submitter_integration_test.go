@@ -96,7 +96,7 @@ func TestDASubmitter_SubmitHeadersAndData_MarksInclusionAndUpdatesLastSubmitted(
 		Return(func(_ context.Context, blobs [][]byte, _ float64, _ []byte, _ []byte) datypes.ResultSubmit {
 			return datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, SubmittedCount: uint64(len(blobs)), Height: 1}}
 		}).Twice()
-	daSubmitter := NewDASubmitter(client, cfg, gen, common.DefaultBlockOptions(), common.NopMetrics(), zerolog.Nop())
+	daSubmitter := NewDASubmitter(client, cfg, gen, common.DefaultBlockOptions(), common.NopMetrics(), zerolog.Nop(), noopDAHintAppender{}, noopDAHintAppender{})
 
 	// Submit headers and data - cache returns both items and marshalled bytes
 	headers, marshalledHeaders, err := cm.GetPendingHeaders(context.Background())
@@ -117,4 +117,10 @@ func TestDASubmitter_SubmitHeadersAndData_MarksInclusionAndUpdatesLastSubmitted(
 	_, ok = cm.GetDataDAIncluded(data2.DACommitment().String())
 	assert.True(t, ok)
 
+}
+
+type noopDAHintAppender struct{}
+
+func (n noopDAHintAppender) AppendDAHint(ctx context.Context, daHeight uint64, heights ...uint64) error {
+	return nil
 }
