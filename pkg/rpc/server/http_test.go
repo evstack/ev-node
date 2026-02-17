@@ -120,7 +120,7 @@ func TestHealthReady_aggregatorBlockDelay(t *testing.T) {
 
 			req, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/health/ready", nil)
 			require.NoError(t, err)
-			resp, err := http.DefaultClient.Do(req)
+			resp, err := http.DefaultClient.Do(req) //nolint:gosec // ok to use default client in tests
 			require.NoError(t, err)
 			t.Cleanup(func() { _ = resp.Body.Close() })
 
