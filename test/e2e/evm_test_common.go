@@ -55,7 +55,7 @@ func getAvailablePort() (int, net.Listener, error) {
 }
 
 // same as getAvailablePort but fails test if not successful
-func mustGetAvailablePort(t *testing.T) int {
+func mustGetAvailablePort(t testing.TB) int {
 	t.Helper()
 	port, listener, err := getAvailablePort()
 	require.NoError(t, err)
@@ -221,7 +221,7 @@ const (
 // createPassphraseFile creates a temporary passphrase file and returns its path.
 // The file is created in the provided directory with secure permissions (0600).
 // If the directory doesn't exist, it will be created with 0755 permissions.
-func createPassphraseFile(t *testing.T, dir string) string {
+func createPassphraseFile(t testing.TB, dir string) string {
 	t.Helper()
 	// Ensure the directory exists
 	err := os.MkdirAll(dir, 0755)
@@ -236,7 +236,7 @@ func createPassphraseFile(t *testing.T, dir string) string {
 // createJWTSecretFile creates a temporary JWT secret file and returns its path.
 // The file is created in the provided directory with secure permissions (0600).
 // If the directory doesn't exist, it will be created with 0755 permissions.
-func createJWTSecretFile(t *testing.T, dir, jwtSecret string) string {
+func createJWTSecretFile(t testing.TB, dir, jwtSecret string) string {
 	t.Helper()
 	// Ensure the directory exists
 	err := os.MkdirAll(dir, 0755)
@@ -256,7 +256,7 @@ func createJWTSecretFile(t *testing.T, dir, jwtSecret string) string {
 // - rpcPort: Optional RPC port to use (if empty, uses default port)
 //
 // Returns: The full P2P address (e.g., /ip4/127.0.0.1/tcp/7676/p2p/12D3KooW...)
-func getNodeP2PAddress(t *testing.T, sut *SystemUnderTest, nodeHome string, rpcPort ...string) string {
+func getNodeP2PAddress(t testing.TB, sut *SystemUnderTest, nodeHome string, rpcPort ...string) string {
 	t.Helper()
 
 	// Build command arguments
@@ -313,7 +313,7 @@ func getNodeP2PAddress(t *testing.T, sut *SystemUnderTest, nodeHome string, rpcP
 // - jwtSecret: JWT secret for authenticating with EVM engine
 // - genesisHash: Hash of the genesis block for chain validation
 // - endpoints: TestEndpoints struct containing unique port assignments
-func setupSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string, endpoints *TestEndpoints) {
+func setupSequencerNode(t testing.TB, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string, endpoints *TestEndpoints) {
 	t.Helper()
 
 	// Create passphrase file
@@ -357,7 +357,7 @@ func setupSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSe
 // setupSequencerNodeLazy initializes and starts the sequencer node in lazy mode.
 // In lazy mode, blocks are only produced when transactions are available,
 // not on a regular timer.
-func setupSequencerNodeLazy(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string, endpoints *TestEndpoints) {
+func setupSequencerNodeLazy(t testing.TB, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string, endpoints *TestEndpoints) {
 	t.Helper()
 
 	// Create passphrase file
@@ -417,7 +417,7 @@ func setupSequencerNodeLazy(t *testing.T, sut *SystemUnderTest, sequencerHome, j
 // - genesisHash: Hash of the genesis block for chain validation
 // - sequencerP2PAddress: P2P address of the sequencer node to connect to
 // - endpoints: TestEndpoints struct containing unique port assignments
-func setupFullNode(t *testing.T, sut *SystemUnderTest, fullNodeHome, sequencerHome, fullNodeJwtSecret, genesisHash, sequencerP2PAddress string, endpoints *TestEndpoints) {
+func setupFullNode(t testing.TB, sut *SystemUnderTest, fullNodeHome, sequencerHome, fullNodeJwtSecret, genesisHash, sequencerP2PAddress string, endpoints *TestEndpoints) {
 	t.Helper()
 
 	// Initialize full node
@@ -478,7 +478,7 @@ var globalNonce uint64 = 0
 //
 // This is used in full node sync tests to verify that both nodes
 // include the same transaction in the same block number.
-func submitTransactionAndGetBlockNumber(t *testing.T, sequencerClients ...*ethclient.Client) (common.Hash, uint64) {
+func submitTransactionAndGetBlockNumber(t testing.TB, sequencerClients ...*ethclient.Client) (common.Hash, uint64) {
 	t.Helper()
 
 	// Submit transaction to sequencer EVM with unique nonce
@@ -512,7 +512,7 @@ func submitTransactionAndGetBlockNumber(t *testing.T, sequencerClients ...*ethcl
 // - daPort: optional DA port to use (if empty, uses default)
 //
 // Returns: jwtSecret, fullNodeJwtSecret (empty if needsFullNode=false), genesisHash
-func setupCommonEVMTest(t *testing.T, sut *SystemUnderTest, needsFullNode bool, _ ...string) (string, string, string, *TestEndpoints) {
+func setupCommonEVMTest(t testing.TB, sut *SystemUnderTest, needsFullNode bool, _ ...string) (string, string, string, *TestEndpoints) {
 	t.Helper()
 
 	// Reset global nonce for each test to ensure clean state
@@ -570,7 +570,7 @@ func setupCommonEVMTest(t *testing.T, sut *SystemUnderTest, needsFullNode bool, 
 // - blockHeight: Height of the block to retrieve (use nil for latest)
 //
 // Returns: block hash, state root, transaction count, block number, and error
-func checkBlockInfoAt(t *testing.T, ethURL string, blockHeight *uint64) (common.Hash, common.Hash, int, uint64, error) {
+func checkBlockInfoAt(t testing.TB, ethURL string, blockHeight *uint64) (common.Hash, common.Hash, int, uint64, error) {
 	t.Helper()
 
 	ctx := context.Background()
@@ -613,7 +613,7 @@ func checkBlockInfoAt(t *testing.T, ethURL string, blockHeight *uint64) (common.
 // - nodeHome: Directory path for sequencer node data
 //
 // Returns: genesisHash for the sequencer
-func setupSequencerOnlyTest(t *testing.T, sut *SystemUnderTest, nodeHome string) (string, string) {
+func setupSequencerOnlyTest(t testing.TB, sut *SystemUnderTest, nodeHome string) (string, string) {
 	t.Helper()
 
 	// Use common setup (no full node needed)
@@ -635,7 +635,7 @@ func setupSequencerOnlyTest(t *testing.T, sut *SystemUnderTest, nodeHome string)
 // - sequencerHome: Directory path for sequencer node data
 // - jwtSecret: JWT secret for sequencer's EVM engine authentication
 // - genesisHash: Hash of the genesis block for chain validation
-func restartDAAndSequencer(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string, endpoints *TestEndpoints) {
+func restartDAAndSequencer(t testing.TB, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string, endpoints *TestEndpoints) {
 	t.Helper()
 
 	// First restart the local DA
@@ -685,7 +685,7 @@ func restartDAAndSequencer(t *testing.T, sut *SystemUnderTest, sequencerHome, jw
 // - sequencerHome: Directory path for sequencer node data
 // - jwtSecret: JWT secret for sequencer's EVM engine authentication
 // - genesisHash: Hash of the genesis block for chain validation
-func restartDAAndSequencerLazy(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string, endpoints *TestEndpoints) {
+func restartDAAndSequencerLazy(t testing.TB, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string, endpoints *TestEndpoints) {
 	t.Helper()
 
 	// First restart the local DA
@@ -736,7 +736,7 @@ func restartDAAndSequencerLazy(t *testing.T, sut *SystemUnderTest, sequencerHome
 // - sequencerHome: Directory path for sequencer node data
 // - jwtSecret: JWT secret for sequencer's EVM engine authentication
 // - genesisHash: Hash of the genesis block for chain validation
-func restartSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string) {
+func restartSequencerNode(t testing.TB, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string) {
 	t.Helper()
 
 	// Start sequencer node (without init - node already exists)
@@ -772,7 +772,7 @@ func restartSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwt
 // - nodeName: Human-readable name for logging (e.g., "sequencer", "full node")
 //
 // This function ensures that during lazy mode idle periods, no automatic block production occurs.
-func verifyNoBlockProduction(t *testing.T, client *ethclient.Client, duration time.Duration, nodeName string) {
+func verifyNoBlockProduction(t testing.TB, client *ethclient.Client, duration time.Duration, nodeName string) {
 	t.Helper()
 
 	ctx := context.Background()
