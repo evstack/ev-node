@@ -23,6 +23,7 @@ type Pruner struct {
 	execPruner coreexecutor.ExecPruner
 	cfg        config.PruningConfig
 	blockTime  time.Duration
+	daEnabled  bool
 	logger     zerolog.Logger
 
 	// Lifecycle
@@ -38,12 +39,14 @@ func New(
 	execPruner coreexecutor.ExecPruner,
 	cfg config.PruningConfig,
 	blockTime time.Duration,
+	daAddress string,
 ) *Pruner {
 	return &Pruner{
 		store:      store,
 		execPruner: execPruner,
 		cfg:        cfg,
 		blockTime:  blockTime,
+		daEnabled:  daAddress != "", // DA is enabled if address is provided
 		logger:     logger.With().Str("component", "pruner").Logger(),
 	}
 }
@@ -105,22 +108,28 @@ func (p *Pruner) pruneLoop() {
 
 // pruneBlocks prunes blocks and their metadatas.
 func (p *Pruner) pruneBlocks() error {
-	var currentDAIncluded uint64
-	currentDAIncludedBz, err := p.store.GetMetadata(p.ctx, store.DAIncludedHeightKey)
-	if err == nil && len(currentDAIncludedBz) == 8 {
-		currentDAIncluded = binary.LittleEndian.Uint64(currentDAIncludedBz)
-	} else {
-		// if we cannot get the current DA height, we cannot safely prune, so we skip pruning until we can get it.
-		return nil
-	}
-
 	storeHeight, err := p.store.Height(p.ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get store height for pruning: %w", err)
 	}
 
-	// Never prune blocks that are not DA included
-	upperBound := min(storeHeight, currentDAIncluded)
+	upperBound := storeHeight
+
+	// If DA is enabled, only prune blocks that are DA included
+	if p.daEnabled {
+		var currentDAIncluded uint64
+		currentDAIncludedBz, err := p.store.GetMetadata(p.ctx, store.DAIncludedHeightKey)
+		if err == nil && len(currentDAIncludedBz) == 8 {
+			currentDAIncluded = binary.LittleEndian.Uint64(currentDAIncludedBz)
+		} else {
+			p.logger.Debug().Msg("skipping pruning: DA is enabled but DA included height is not available yet")
+			return nil
+		}
+
+		// Never prune blocks that are not DA included
+		upperBound = min(storeHeight, currentDAIncluded)
+	}
+
 	if upperBound <= p.cfg.KeepRecent {
 		// Not enough fully included blocks to prune
 		return nil
@@ -149,7 +158,7 @@ func (p *Pruner) pruneBlocks() error {
 		}
 	}
 
-	p.logger.Debug().Uint64("pruned_up_to_height", batchEnd).Msg("pruned blocks up to height")
+	p.logger.Debug().Uint64("pruned_up_to_height", batchEnd).Bool("da_enabled", p.daEnabled).Msg("pruned blocks up to height")
 	return nil
 }
 
