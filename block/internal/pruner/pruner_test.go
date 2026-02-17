@@ -32,7 +32,7 @@ func (e *execMetaAdapter) PruneExec(ctx context.Context, height uint64) error {
 func TestPrunerPruneMetadata(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
+	ctx := t.Context()
 	kv := dssync.MutexWrap(ds.NewMapDatastore())
 	stateStore := store.New(kv)
 
@@ -67,7 +67,7 @@ func TestPrunerPruneMetadata(t *testing.T) {
 func TestPrunerPruneBlocksWithoutDA(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
+	ctx := t.Context()
 	kv := dssync.MutexWrap(ds.NewMapDatastore())
 	stateStore := store.New(kv)
 
@@ -128,7 +128,7 @@ func TestPrunerPruneBlocksWithoutDA(t *testing.T) {
 func TestPrunerPruneBlocksWithDAEnabled(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
+	ctx := t.Context()
 	kv := dssync.MutexWrap(ds.NewMapDatastore())
 	stateStore := store.New(kv)
 
