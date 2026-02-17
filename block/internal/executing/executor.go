@@ -432,18 +432,21 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 		header    *types.SignedHeader
 		data      *types.Data
 		batchData *BatchData
+		err       error
 	)
 
-	// Check if there's an already stored block at the newHeight
-	// If there is use that instead of creating a new block
-	pendingHeader, pendingData, err := e.getPendingBlock(ctx)
-	if err == nil && pendingHeader != nil && pendingHeader.Height() == newHeight {
+	// Check if there's an already stored pending block at the newHeight.
+	// This handles crash recovery — a previous run may have saved a pending block.
+	pendingHeader, pendingData, pendErr := e.getPendingBlock(ctx)
+	if pendErr == nil && pendingHeader != nil && pendingHeader.Height() == newHeight {
 		e.logger.Info().Uint64("height", newHeight).Msg("using pending block")
 		header = pendingHeader
 		data = pendingData
-	} else if err != nil && !errors.Is(err, datastore.ErrNotFound) {
-		return fmt.Errorf("failed to get block data: %w", err)
-	} else {
+	} else if pendErr != nil && !errors.Is(pendErr, datastore.ErrNotFound) {
+		return fmt.Errorf("failed to get block data: %w", pendErr)
+	}
+
+	if header == nil {
 		// get batch from sequencer
 		batchData, err = e.blockProducer.RetrieveBatch(ctx)
 		if errors.Is(err, common.ErrNoBatch) {
@@ -459,8 +462,12 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("failed to create block: %w", err)
 		}
-		if err := e.savePendingBlock(ctx, header, data); err != nil {
-			return fmt.Errorf("failed to save block data: %w", err)
+		// Only persist pending block for raft crash recovery — skip for non-raft
+		// to avoid serialization + store write overhead on every block.
+		if e.raftNode != nil {
+			if err := e.savePendingBlock(ctx, header, data); err != nil {
+				return fmt.Errorf("failed to save block data: %w", err)
+			}
 		}
 	}
 
@@ -533,8 +540,10 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 		}
 		e.logger.Debug().Uint64("height", newHeight).Msg("proposed block to raft")
 	}
-	if err := e.deletePendingBlock(batch); err != nil {
-		e.logger.Warn().Err(err).Uint64("height", newHeight).Msg("failed to delete pending block metadata")
+	if e.raftNode != nil {
+		if err := e.deletePendingBlock(batch); err != nil {
+			e.logger.Warn().Err(err).Uint64("height", newHeight).Msg("failed to delete pending block metadata")
+		}
 	}
 
 	if err := batch.Commit(); err != nil {
