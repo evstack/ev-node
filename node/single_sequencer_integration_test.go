@@ -234,10 +234,10 @@ func TestStateRecovery(t *testing.T) {
 
 	// Set up one sequencer
 	config := getTestConfig(t, 1)
-	executor, sequencer, dac, nodeKey, _, stopDAHeightTicker := createTestComponents(t, config)
+	executor, sequencer, dac, privKey, _, stopDAHeightTicker := createTestComponents(t, config)
 	ds, err := store.NewDefaultKVStore(config.RootDir, "db", "test")
 	require.NoError(err)
-	node, cleanup := createNodeWithCustomComponents(t, config, executor, sequencer, dac, nodeKey, ds, stopDAHeightTicker)
+	node, cleanup := createNodeWithCustomComponents(t, config, executor, sequencer, dac, privKey, ds, stopDAHeightTicker)
 	defer cleanup()
 
 	var runningWg sync.WaitGroup
@@ -262,10 +262,10 @@ func TestStateRecovery(t *testing.T) {
 	shutdownAndWait(t, []context.CancelFunc{cancel}, &runningWg, 60*time.Second)
 
 	// Create a new node instance using the same components
-	executor, sequencer, dac, nodeKey, _, stopDAHeightTicker = createTestComponents(t, config)
+	executor, sequencer, dac, privKey, _, stopDAHeightTicker = createTestComponents(t, config)
 	ds, err = store.NewDefaultKVStore(config.RootDir, "db", "test")
 	require.NoError(err)
-	node, cleanup = createNodeWithCustomComponents(t, config, executor, sequencer, dac, nodeKey, ds, stopDAHeightTicker)
+	node, cleanup = createNodeWithCustomComponents(t, config, executor, sequencer, dac, privKey, ds, stopDAHeightTicker)
 	defer cleanup()
 
 	// Verify state persistence
@@ -319,7 +319,7 @@ func TestBatchQueueThrottlingWithDAFailure(t *testing.T) {
 	config.DA.BlockTime = evconfig.DurationWrapper{Duration: 100 * time.Millisecond} // Longer DA time to ensure blocks are produced first
 
 	// Create test components
-	executor, sequencer, dummyDA, ds, nodeKey, stopDAHeightTicker := createTestComponents(t, config)
+	executor, sequencer, dummyDA, privKey, ds, stopDAHeightTicker := createTestComponents(t, config)
 	defer stopDAHeightTicker()
 
 	// Cast executor to DummyExecutor so we can inject transactions
@@ -331,7 +331,7 @@ func TestBatchQueueThrottlingWithDAFailure(t *testing.T) {
 	require.True(ok, "Expected testda.DummyDA implementation")
 
 	// Create node with components
-	node, cleanup := createNodeWithCustomComponents(t, config, executor, sequencer, dummyDAImpl, ds, nodeKey, func() {})
+	node, cleanup := createNodeWithCustomComponents(t, config, executor, sequencer, dummyDAImpl, privKey, ds, func() {})
 	defer cleanup()
 
 	ctx, cancel := context.WithCancel(t.Context())
