@@ -340,7 +340,8 @@ _Constants:_ `FlagPruningMode`, `FlagPruningKeepRecent`, `FlagPruningInterval`
 
 **Important Notes:**
 
-- Pruning only removes blocks that have been confirmed on the DA layer (for mode `all`)
+- When DA is enabled (DA address is configured), pruning only removes blocks that have been confirmed on the DA layer (for mode `all`) to ensure data safety
+- When DA is not enabled (no DA address configured), pruning proceeds based solely on store height, allowing nodes without DA to manage disk space
 - The first pruning run after enabling may take several cycles to catch up, processing data in smaller batches
 - Pruning cannot be undone - ensure your retention window is sufficient for your use case
 - For production deployments, consider keeping at least 100,000 recent blocks
