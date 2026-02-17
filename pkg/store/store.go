@@ -113,6 +113,7 @@ func (s *DefaultStore) GetHeader(ctx context.Context, height uint64) (*types.Sig
 	if err = header.UnmarshalBinary(headerBlob); err != nil {
 		return nil, fmt.Errorf("unmarshal block header: %w", err)
 	}
+
 	return header, nil
 }
 
@@ -172,11 +173,19 @@ func (s *DefaultStore) GetStateAtHeight(ctx context.Context, height uint64) (typ
 	return state, nil
 }
 
+// DeleteStateAtHeight removes the state entry at the given height.
+func (s *DefaultStore) DeleteStateAtHeight(ctx context.Context, height uint64) error {
+	if err := s.db.Delete(ctx, ds.NewKey(getStateAtHeightKey(height))); err != nil && !errors.Is(err, ds.ErrNotFound) {
+		return fmt.Errorf("failed to delete state at height %d: %w", height, err)
+	}
+	return nil
+}
+
 // SetMetadata saves arbitrary value in the store.
 //
 // Metadata is separated from other data by using prefix in KV.
 func (s *DefaultStore) SetMetadata(ctx context.Context, key string, value []byte) error {
-	err := s.db.Put(ctx, ds.NewKey(getMetaKey(key)), value)
+	err := s.db.Put(ctx, ds.NewKey(GetMetaKey(key)), value)
 	if err != nil {
 		return fmt.Errorf("failed to set metadata for key '%s': %w", key, err)
 	}
@@ -185,7 +194,7 @@ func (s *DefaultStore) SetMetadata(ctx context.Context, key string, value []byte
 
 // GetMetadata returns values stored for given key with SetMetadata.
 func (s *DefaultStore) GetMetadata(ctx context.Context, key string) ([]byte, error) {
-	data, err := s.db.Get(ctx, ds.NewKey(getMetaKey(key)))
+	data, err := s.db.Get(ctx, ds.NewKey(GetMetaKey(key)))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get metadata for key '%s': %w", key, err)
 	}
@@ -196,7 +205,7 @@ func (s *DefaultStore) GetMetadata(ctx context.Context, key string) ([]byte, err
 // This is more efficient than iterating through known keys when the set of keys is unknown.
 func (s *DefaultStore) GetMetadataByPrefix(ctx context.Context, prefix string) ([]MetadataEntry, error) {
 	// The full key in the datastore includes the meta prefix
-	fullPrefix := getMetaKey(prefix)
+	fullPrefix := GetMetaKey(prefix)
 
 	results, err := s.db.Query(ctx, dsq.Query{Prefix: fullPrefix})
 	if err != nil {
@@ -213,7 +222,7 @@ func (s *DefaultStore) GetMetadataByPrefix(ctx context.Context, prefix string) (
 		// Extract the original key by removing the meta prefix
 		// The key from datastore is like "/m/cache/header-da-included/hash"
 		// We want to return "cache/header-da-included/hash"
-		metaKeyPrefix := getMetaKey("")
+		metaKeyPrefix := GetMetaKey("")
 		key := strings.TrimPrefix(result.Key, metaKeyPrefix)
 		key = strings.TrimPrefix(key, "/") // Remove leading slash for consistency
 
@@ -228,7 +237,7 @@ func (s *DefaultStore) GetMetadataByPrefix(ctx context.Context, prefix string) (
 
 // DeleteMetadata removes a metadata key from the store.
 func (s *DefaultStore) DeleteMetadata(ctx context.Context, key string) error {
-	err := s.db.Delete(ctx, ds.NewKey(getMetaKey(key)))
+	err := s.db.Delete(ctx, ds.NewKey(GetMetaKey(key)))
 	if err != nil {
 		return fmt.Errorf("failed to delete metadata for key '%s': %w", key, err)
 	}
@@ -279,7 +288,7 @@ func (s *DefaultStore) Rollback(ctx context.Context, height uint64, aggregator b
 			} else { // in case of syncing issues, rollback the included height is OK.
 				bz := make([]byte, 8)
 				binary.LittleEndian.PutUint64(bz, height)
-				if err := batch.Put(ctx, ds.NewKey(getMetaKey(DAIncludedHeightKey)), bz); err != nil {
+				if err := batch.Put(ctx, ds.NewKey(GetMetaKey(DAIncludedHeightKey)), bz); err != nil {
 					return fmt.Errorf("failed to update DA included height: %w", err)
 				}
 			}
@@ -327,6 +336,99 @@ func (s *DefaultStore) Rollback(ctx context.Context, height uint64, aggregator b
 
 	if err := batch.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to commit batch: %w", err)
+	}
+
+	return nil
+}
+
+// PruneBlocks removes block data (header, data, signature, and hash index)
+// up to and including the given height from the store. It does not modify
+// the current chain height or any state snapshots.
+//
+// This method is intended for long-term storage reduction and is safe to
+// call repeatedly with the same or increasing heights.
+func (s *DefaultStore) PruneBlocks(ctx context.Context, height uint64) error {
+	batch, err := s.db.Batch(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create a new batch for pruning: %w", err)
+	}
+
+	// Track the last successfully pruned height so we can resume across restarts.
+	var lastPruned uint64
+	meta, err := s.GetMetadata(ctx, LastPrunedBlockHeightKey)
+	if err != nil {
+		if !errors.Is(err, ds.ErrNotFound) {
+			return fmt.Errorf("failed to get last pruned height: %w", err)
+		}
+	} else if len(meta) == heightLength {
+		lastPruned, err = decodeHeight(meta)
+		if err != nil {
+			return fmt.Errorf("failed to decode last pruned height: %w", err)
+		}
+	}
+
+	// Nothing new to prune.
+	if height <= lastPruned {
+		return nil
+	}
+
+	// Delete block data for heights in (lastPruned, height].
+	for h := lastPruned + 1; h <= height; h++ {
+		// Get header blob to compute the hash index key. If header is already
+		// missing (e.g. due to previous partial pruning), just skip this height.
+		headerBlob, err := s.db.Get(ctx, ds.NewKey(getHeaderKey(h)))
+		if err != nil {
+			if errors.Is(err, ds.ErrNotFound) {
+				continue
+			}
+			return fmt.Errorf("failed to get header at height %d during pruning: %w", h, err)
+		}
+
+		if err := batch.Delete(ctx, ds.NewKey(getHeaderKey(h))); err != nil {
+			if !errors.Is(err, ds.ErrNotFound) {
+				return fmt.Errorf("failed to delete header at height %d during pruning: %w", h, err)
+			}
+		}
+
+		if err := batch.Delete(ctx, ds.NewKey(getDataKey(h))); err != nil {
+			if !errors.Is(err, ds.ErrNotFound) {
+				return fmt.Errorf("failed to delete data at height %d during pruning: %w", h, err)
+			}
+		}
+
+		if err := batch.Delete(ctx, ds.NewKey(getSignatureKey(h))); err != nil {
+			if !errors.Is(err, ds.ErrNotFound) {
+				return fmt.Errorf("failed to delete signature at height %d during pruning: %w", h, err)
+			}
+		}
+
+		// Delete per-height DA metadata associated with this height, if any.
+		if err := batch.Delete(ctx, ds.NewKey(GetMetaKey(GetHeightToDAHeightHeaderKey(h)))); err != nil {
+			if !errors.Is(err, ds.ErrNotFound) {
+				return fmt.Errorf("failed to delete header DA height metadata at height %d during pruning: %w", h, err)
+			}
+		}
+		if err := batch.Delete(ctx, ds.NewKey(GetMetaKey(GetHeightToDAHeightDataKey(h)))); err != nil {
+			if !errors.Is(err, ds.ErrNotFound) {
+				return fmt.Errorf("failed to delete data DA height metadata at height %d during pruning: %w", h, err)
+			}
+		}
+
+		headerHash := sha256.Sum256(headerBlob)
+		if err := batch.Delete(ctx, ds.NewKey(getIndexKey(headerHash[:]))); err != nil {
+			if !errors.Is(err, ds.ErrNotFound) {
+				return fmt.Errorf("failed to delete index for height %d during pruning: %w", h, err)
+			}
+		}
+	}
+
+	// Persist the updated last pruned height.
+	if err := batch.Put(ctx, ds.NewKey(GetMetaKey(LastPrunedBlockHeightKey)), encodeHeight(height)); err != nil {
+		return fmt.Errorf("failed to update last pruned height: %w", err)
+	}
+
+	if err := batch.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit pruning batch: %w", err)
 	}
 
 	return nil

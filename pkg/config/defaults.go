@@ -104,6 +104,11 @@ func DefaultConfig() Config {
 			LeaderLeaseTimeout: 175 * time.Millisecond,
 			RaftDir:            filepath.Join(DefaultRootDir, "raft"),
 		},
+		Pruning: PruningConfig{
+			Mode:       PruningModeDisabled,
+			KeepRecent: 100_000,
+			Interval:   DurationWrapper{15 * time.Minute},
+		},
 	}
 }
 

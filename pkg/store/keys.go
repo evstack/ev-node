@@ -19,11 +19,16 @@ const (
 	// DAIncludedHeightKey is the key used for persisting the da included height in store.
 	DAIncludedHeightKey = "d"
 
-	// LastBatchDataKey is the key used for persisting the last batch data in store.
-	LastBatchDataKey = "l"
-
 	// LastSubmittedHeaderHeightKey is the key used for persisting the last submitted header height in store.
 	LastSubmittedHeaderHeightKey = "last-submitted-header-height"
+
+	// LastPrunedBlockHeightKey is the metadata key used for persisting the last
+	// pruned block height in the store.
+	LastPrunedBlockHeightKey = "lst-prnd-b"
+
+	// LastPrunedStateHeightKey is the metadata key used for persisting the last
+	// pruned state height in the store.
+	LastPrunedStateHeightKey = "lst-prnd-s"
 
 	headerPrefix    = "h"
 	dataPrefix      = "d"
@@ -34,29 +39,42 @@ const (
 	heightPrefix    = "t"
 )
 
-func getHeaderKey(height uint64) string {
+// GetHeaderKey returns the store key for a block header at the given height.
+func GetHeaderKey(height uint64) string {
 	return GenerateKey([]string{headerPrefix, strconv.FormatUint(height, 10)})
 }
 
-func getDataKey(height uint64) string {
+func getHeaderKey(height uint64) string { return GetHeaderKey(height) }
+
+// GetDataKey returns the store key for block data at the given height.
+func GetDataKey(height uint64) string {
 	return GenerateKey([]string{dataPrefix, strconv.FormatUint(height, 10)})
 }
 
-func getSignatureKey(height uint64) string {
+func getDataKey(height uint64) string { return GetDataKey(height) }
+
+// GetSignatureKey returns the store key for a block signature at the given height.
+func GetSignatureKey(height uint64) string {
 	return GenerateKey([]string{signaturePrefix, strconv.FormatUint(height, 10)})
 }
+
+func getSignatureKey(height uint64) string { return GetSignatureKey(height) }
 
 func getStateAtHeightKey(height uint64) string {
 	return GenerateKey([]string{statePrefix, strconv.FormatUint(height, 10)})
 }
 
-func getMetaKey(key string) string {
+// GetMetaKey returns the store key for a metadata entry.
+func GetMetaKey(key string) string {
 	return GenerateKey([]string{metaPrefix, key})
 }
 
-func getIndexKey(hash types.Hash) string {
+// GetIndexKey returns the store key for indexing a block by its hash.
+func GetIndexKey(hash types.Hash) string {
 	return GenerateKey([]string{indexPrefix, hash.String()})
 }
+
+func getIndexKey(hash types.Hash) string { return GetIndexKey(hash) }
 
 func getHeightKey() string {
 	return GenerateKey([]string{heightPrefix})

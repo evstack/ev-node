@@ -154,11 +154,7 @@ func (e *Executor) Start(ctx context.Context) error {
 	}
 
 	// Start execution loop
-	e.wg.Add(1)
-	go func() {
-		defer e.wg.Done()
-		e.executionLoop()
-	}()
+	e.wg.Go(e.executionLoop)
 
 	e.logger.Info().Msg("executor started")
 	return nil
@@ -273,6 +269,13 @@ func (e *Executor) initializeState() error {
 
 	e.logger.Info().Uint64("height", state.LastBlockHeight).
 		Str("chain_id", state.ChainID).Msg("initialized state")
+
+	// Migrate any old-style pending block (stored at height N+1 via SaveBlockData
+	// with empty signature) to the new metadata-key format.
+	// Todo remove in the future: https://github.com/evstack/ev-node/issues/2795
+	if err := e.migrateLegacyPendingBlock(e.ctx); err != nil {
+		return fmt.Errorf("failed to migrate legacy pending block: %w", err)
+	}
 
 	// Determine sync target: use Raft height if node is behind Raft consensus
 	syncTargetHeight := state.LastBlockHeight
@@ -433,12 +436,12 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 
 	// Check if there's an already stored block at the newHeight
 	// If there is use that instead of creating a new block
-	pendingHeader, pendingData, err := e.store.GetBlockData(ctx, newHeight)
-	if err == nil {
+	pendingHeader, pendingData, err := e.getPendingBlock(ctx)
+	if err == nil && pendingHeader != nil && pendingHeader.Height() == newHeight {
 		e.logger.Info().Uint64("height", newHeight).Msg("using pending block")
 		header = pendingHeader
 		data = pendingData
-	} else if !errors.Is(err, datastore.ErrNotFound) {
+	} else if err != nil && !errors.Is(err, datastore.ErrNotFound) {
 		return fmt.Errorf("failed to get block data: %w", err)
 	} else {
 		// get batch from sequencer
@@ -456,17 +459,8 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("failed to create block: %w", err)
 		}
-
-		// saved early for crash recovery, will be overwritten later with the final signature
-		batch, err := e.store.NewBatch(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to create batch for early save: %w", err)
-		}
-		if err = batch.SaveBlockData(header, data, &types.Signature{}); err != nil {
+		if err := e.savePendingBlock(ctx, header, data); err != nil {
 			return fmt.Errorf("failed to save block data: %w", err)
-		}
-		if err = batch.Commit(); err != nil {
-			return fmt.Errorf("failed to commit early save batch: %w", err)
 		}
 	}
 
@@ -539,6 +533,10 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 		}
 		e.logger.Debug().Uint64("height", newHeight).Msg("proposed block to raft")
 	}
+	if err := e.deletePendingBlock(batch); err != nil {
+		e.logger.Warn().Err(err).Uint64("height", newHeight).Msg("failed to delete pending block metadata")
+	}
+
 	if err := batch.Commit(); err != nil {
 		return fmt.Errorf("failed to commit batch: %w", err)
 	}
