@@ -14,7 +14,6 @@ import (
 	"github.com/ipfs/go-datastore"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
@@ -55,6 +54,10 @@ type Executor struct {
 
 	// State management
 	lastState *atomic.Pointer[types.State]
+
+	// hasPendingBlock tracks whether a pending block exists in the store,
+	// avoiding a store lookup on every ProduceBlock call.
+	hasPendingBlock atomic.Bool
 
 	// Channels for coordination
 	txNotifyCh chan struct{}
@@ -277,6 +280,12 @@ func (e *Executor) initializeState() error {
 		return fmt.Errorf("failed to migrate legacy pending block: %w", err)
 	}
 
+	// Detect any existing pending block and set the in-memory flag so that
+	// ProduceBlock can skip unnecessary store lookups on the happy path.
+	if _, err := e.store.GetMetadata(e.ctx, headerKey); err == nil {
+		e.hasPendingBlock.Store(true)
+	}
+
 	// Determine sync target: use Raft height if node is behind Raft consensus
 	syncTargetHeight := state.LastBlockHeight
 	if e.raftNode != nil {
@@ -434,17 +443,22 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 		batchData *BatchData
 	)
 
-	// Check if there's an already stored block at the newHeight
-	// If there is use that instead of creating a new block
-	pendingHeader, pendingData, err := e.getPendingBlock(ctx)
-	if err == nil && pendingHeader != nil && pendingHeader.Height() == newHeight {
-		e.logger.Info().Uint64("height", newHeight).Msg("using pending block")
-		header = pendingHeader
-		data = pendingData
-	} else if err != nil && !errors.Is(err, datastore.ErrNotFound) {
-		return fmt.Errorf("failed to get block data: %w", err)
-	} else {
+	// Check if there's an already stored block at the newHeight.
+	// Only hit the store if the in-memory flag indicates a pending block exists.
+	if e.hasPendingBlock.Load() {
+		pendingHeader, pendingData, err := e.getPendingBlock(ctx)
+		if err == nil && pendingHeader != nil && pendingHeader.Height() == newHeight {
+			e.logger.Info().Uint64("height", newHeight).Msg("using pending block")
+			header = pendingHeader
+			data = pendingData
+		} else if err != nil && !errors.Is(err, datastore.ErrNotFound) {
+			return fmt.Errorf("failed to get block data: %w", err)
+		}
+	}
+
+	if header == nil {
 		// get batch from sequencer
+		var err error
 		batchData, err = e.blockProducer.RetrieveBatch(ctx)
 		if errors.Is(err, common.ErrNoBatch) {
 			e.logger.Debug().Msg("no batch available")
@@ -462,6 +476,7 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 		if err := e.savePendingBlock(ctx, header, data); err != nil {
 			return fmt.Errorf("failed to save block data: %w", err)
 		}
+		e.hasPendingBlock.Store(true)
 	}
 
 	if e.raftNode != nil && !e.raftNode.HasQuorum() {
@@ -485,7 +500,9 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 	}
 	header.Signature = signature
 
-	if err := e.blockProducer.ValidateBlock(ctx, currentState, header, data); err != nil {
+	// Structural validation only — skip the expensive signature re-verification
+	// (ValidateBasic) since we just signed this block ourselves.
+	if err := currentState.AssertValidForNextState(header, data); err != nil {
 		e.sendCriticalError(fmt.Errorf("failed to validate block: %w", err))
 		e.logger.Error().Err(err).Msg("CRITICAL: Permanent block validation error - halting block production")
 		return fmt.Errorf("failed to validate block: %w", err)
@@ -541,20 +558,20 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 		return fmt.Errorf("failed to commit batch: %w", err)
 	}
 
+	// Clear pending block flag after successful commit
+	e.hasPendingBlock.Store(false)
+
 	// Update in-memory state after successful commit
 	e.setLastState(newState)
 
-	// broadcast header and data to P2P network
-	g, broadcastCtx := errgroup.WithContext(e.ctx)
-	g.Go(func() error {
-		return e.headerBroadcaster.WriteToStoreAndBroadcast(broadcastCtx, &types.P2PSignedHeader{SignedHeader: header})
-	})
-	g.Go(func() error {
-		return e.dataBroadcaster.WriteToStoreAndBroadcast(broadcastCtx, &types.P2PData{Data: data})
-	})
-	if err := g.Wait(); err != nil {
-		e.logger.Error().Err(err).Msg("failed to broadcast header and/data")
-		// don't fail block production on broadcast error
+	// Broadcast header and data to P2P network sequentially.
+	// This avoids the overhead of spawning two goroutines per block via errgroup,
+	// which the profiler showed dominates CPU time due to goroutine scheduling.
+	if err := e.headerBroadcaster.WriteToStoreAndBroadcast(e.ctx, &types.P2PSignedHeader{SignedHeader: header}); err != nil {
+		e.logger.Error().Err(err).Msg("failed to broadcast header")
+	}
+	if err := e.dataBroadcaster.WriteToStoreAndBroadcast(e.ctx, &types.P2PData{Data: data}); err != nil {
+		e.logger.Error().Err(err).Msg("failed to broadcast data")
 	}
 
 	e.recordBlockMetrics(newState, data)
