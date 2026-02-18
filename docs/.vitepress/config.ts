@@ -306,6 +306,10 @@ function sidebarHome() {
           link: "/guides/migrating-to-ev-abci",
         },
         {
+          text: "Migrate Docker to non-root",
+          link: "/guides/migrate-docker-nonroot",
+        },
+        {
           text: "Create genesis for your chain",
           link: "/guides/create-genesis",
         },

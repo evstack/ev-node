@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changes
 
 - Store pending blocks separately from executed blocks key. [#3073](https://github.com/evstack/ev-node/pull/3073)
-- **BREAKING:** Docker images for `evm`, `testapp`, and `local-da` now run as non-root user `ev-node` (uid 1000) instead of `root`. Existing volumes or bind mounts with root-owned files may require a `chown` to uid 1000.
+- **BREAKING:** Docker images for `evm`, `testapp`, and `local-da` now run as non-root user `ev-node` (uid 1000) instead of `root`. Existing volumes or bind mounts with root-owned files may require a `chown` to uid 1000. See the [migration guide](https://ev.xyz/guides/migrate-docker-nonroot).
 
 ## v1.0.0-rc.4
 
