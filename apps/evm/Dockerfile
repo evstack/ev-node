@@ -17,10 +17,16 @@ FROM alpine:3.22.2
 #hadolint ignore=DL3018
 RUN apk --no-cache add ca-certificates curl
 
-WORKDIR /root
+RUN addgroup -g 1000 ev-node && \
+    adduser -u 1000 -G ev-node -s /bin/sh -D ev-node
+
+WORKDIR /home/ev-node
 
 COPY --from=build-env /src/apps/evm/evm /usr/bin/evm
 COPY apps/evm/entrypoint.sh /usr/bin/entrypoint.sh
-RUN chmod +x /usr/bin/entrypoint.sh
+RUN chmod +x /usr/bin/entrypoint.sh && \
+    chown -R ev-node:ev-node /home/ev-node
+
+USER ev-node
 
 ENTRYPOINT ["/usr/bin/entrypoint.sh"]

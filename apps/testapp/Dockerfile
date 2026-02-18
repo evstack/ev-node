@@ -27,8 +27,14 @@ RUN go mod download && make install
 #
 FROM base
 
+RUN groupadd -g 1000 ev-node && \
+    useradd -u 1000 -g ev-node -s /bin/sh -m ev-node
+
 COPY --from=builder /go/bin/testapp /usr/bin
 
-WORKDIR /apps
+WORKDIR /home/ev-node
+RUN chown -R ev-node:ev-node /home/ev-node
+
+USER ev-node
 
 ENTRYPOINT ["testapp"]
