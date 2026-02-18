@@ -9,7 +9,7 @@ import (
 )
 
 // RequireAttribute asserts that an attribute with the given key exists and has the expected value.
-func RequireAttribute(t *testing.T, attrs []attribute.KeyValue, key string, expected interface{}) {
+func RequireAttribute(t *testing.T, attrs []attribute.KeyValue, key string, expected any) {
 	t.Helper()
 	found := false
 	for _, attr := range attrs {

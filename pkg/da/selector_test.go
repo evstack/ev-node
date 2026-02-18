@@ -29,7 +29,7 @@ func TestRoundRobinSelector_SingleAddress(t *testing.T) {
 	selector := NewRoundRobinSelector(addresses)
 
 	// All calls should return the same address
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		addr := selector.Next()
 		assert.Equal(t, "celestia1abc123", addr, "should always return the single address")
 	}
@@ -69,11 +69,11 @@ func TestRoundRobinSelector_Concurrent(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Launch concurrent goroutines
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		wg.Add(1)
 		go func(start int) {
 			defer wg.Done()
-			for j := 0; j < numCallsPerGoroutine; j++ {
+			for j := range numCallsPerGoroutine {
 				addr := selector.Next()
 				results[start+j] = addr
 			}
@@ -110,7 +110,7 @@ func TestRoundRobinSelector_WrapAround(t *testing.T) {
 
 	// Test wrap around behavior with large number of calls
 	seen := make(map[string]int)
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		addr := selector.Next()
 		seen[addr]++
 	}
@@ -124,7 +124,7 @@ func TestNoOpSelector(t *testing.T) {
 	selector := NewNoOpSelector()
 
 	// Should always return empty string
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		addr := selector.Next()
 		assert.Empty(t, addr, "NoOpSelector should always return empty string")
 	}
@@ -136,9 +136,9 @@ func TestNoOpSelector_Concurrent(t *testing.T) {
 	const numGoroutines = 50
 	var wg sync.WaitGroup
 
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		wg.Go(func() {
-			for j := 0; j < 100; j++ {
+			for range 100 {
 				addr := selector.Next()
 				assert.Empty(t, addr)
 			}

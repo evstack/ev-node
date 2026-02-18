@@ -270,10 +270,10 @@ func TestPendingCache_ConcurrentAccess(t *testing.T) {
 	wg.Add(numGoroutines * 3) // readers, writers, deleters
 
 	// Writers
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		go func(offset int) {
 			defer wg.Done()
-			for j := 0; j < numOpsPerGoroutine; j++ {
+			for j := range numOpsPerGoroutine {
 				height := uint64(offset*numOpsPerGoroutine + j + 1)
 				h, _ := types.GetRandomBlock(height, 1, "test-chain")
 				cache.add(&types.P2PSignedHeader{SignedHeader: h})
@@ -282,10 +282,10 @@ func TestPendingCache_ConcurrentAccess(t *testing.T) {
 	}
 
 	// Readers
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		go func() {
 			defer wg.Done()
-			for j := 0; j < numOpsPerGoroutine; j++ {
+			for j := range numOpsPerGoroutine {
 				_ = cache.len()
 				_ = cache.getMaxHeight()
 				_, _ = cache.head()
@@ -295,10 +295,10 @@ func TestPendingCache_ConcurrentAccess(t *testing.T) {
 	}
 
 	// Deleters (delete some items)
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		go func(offset int) {
 			defer wg.Done()
-			for j := 0; j < numOpsPerGoroutine/2; j++ {
+			for j := range numOpsPerGoroutine / 2 {
 				height := uint64(offset*numOpsPerGoroutine + j + 1)
 				cache.delete(height)
 			}
@@ -327,7 +327,7 @@ func TestStoreAdapter_Backpressure(t *testing.T) {
 	// Create many items
 	const numItems = 100
 	items := make([]*types.P2PSignedHeader, numItems)
-	for i := 0; i < numItems; i++ {
+	for i := range numItems {
 		h, _ := types.GetRandomBlock(uint64(i+1), 1, "test-chain")
 		items[i] = &types.P2PSignedHeader{SignedHeader: h}
 	}
@@ -552,10 +552,10 @@ func TestStoreAdapter_ConcurrentAppendAndRead(t *testing.T) {
 	wg.Add(numWriters + numReaders)
 
 	// Writers
-	for w := 0; w < numWriters; w++ {
+	for w := range numWriters {
 		go func(writerID int) {
 			defer wg.Done()
-			for i := 0; i < itemsPerWriter; i++ {
+			for i := range itemsPerWriter {
 				height := uint64(writerID*itemsPerWriter + i + 1)
 				h, _ := types.GetRandomBlock(height, 1, "test-chain")
 				_ = adapter.Append(ctx, &types.P2PSignedHeader{SignedHeader: h})
@@ -564,10 +564,10 @@ func TestStoreAdapter_ConcurrentAppendAndRead(t *testing.T) {
 	}
 
 	// Readers
-	for r := 0; r < numReaders; r++ {
+	for range numReaders {
 		go func() {
 			defer wg.Done()
-			for i := 0; i < itemsPerWriter*numWriters; i++ {
+			for i := range itemsPerWriter * numWriters {
 				_ = adapter.Height()
 				_, _ = adapter.Head(ctx)
 				_ = adapter.HasAt(ctx, uint64(i+1))

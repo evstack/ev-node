@@ -137,7 +137,7 @@ func TestUpdateDynamicGracePeriod_IncreaseOnHighFullness(t *testing.T) {
 	s.blockFullnessEMA.Store(&initialEMA)
 
 	// Update multiple times with very high fullness to build up the effect
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		s.updateDynamicGracePeriod(0.95)
 	}
 
@@ -169,7 +169,7 @@ func TestUpdateDynamicGracePeriod_DecreaseOnLowFullness(t *testing.T) {
 	s.blockFullnessEMA.Store(&initialEMA)
 
 	// Update multiple times with low fullness to build up the effect
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		s.updateDynamicGracePeriod(0.2)
 	}
 
@@ -201,7 +201,7 @@ func TestUpdateDynamicGracePeriod_ClampToMin(t *testing.T) {
 	s.blockFullnessEMA.Store(&initialEMA)
 
 	// Update many times with very low fullness - should eventually clamp to min
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		s.updateDynamicGracePeriod(0.0)
 	}
 
@@ -228,7 +228,7 @@ func TestUpdateDynamicGracePeriod_ClampToMax(t *testing.T) {
 	s.blockFullnessEMA.Store(&initialEMA)
 
 	// Update many times with very high fullness - should eventually clamp to max
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		s.updateDynamicGracePeriod(1.0)
 	}
 
@@ -316,7 +316,7 @@ func TestDynamicGracePeriod_Integration_HighCongestion(t *testing.T) {
 	s.blockFullnessEMA.Store(&initialEMA)
 
 	// Simulate processing many blocks with very high fullness (above threshold)
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		s.updateDynamicGracePeriod(0.95)
 	}
 
@@ -349,7 +349,7 @@ func TestDynamicGracePeriod_Integration_LowCongestion(t *testing.T) {
 	s.blockFullnessEMA.Store(&initialEMA)
 
 	// Simulate processing many blocks with very low fullness (below threshold)
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		s.updateDynamicGracePeriod(0.1)
 	}
 

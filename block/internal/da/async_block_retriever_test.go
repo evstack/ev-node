@@ -88,7 +88,7 @@ func TestAsyncBlockRetriever_FetchAndCache(t *testing.T) {
 	var err error
 
 	// Poll for up to 2 seconds for the block to be cached
-	for i := 0; i < 40; i++ {
+	for range 40 {
 		block, err = fetcher.GetCachedBlock(ctx, 100)
 		require.NoError(t, err)
 		if block != nil {

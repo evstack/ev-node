@@ -64,7 +64,7 @@ func makeSignedDataBytesWithTime(t *testing.T, chainID string, height uint64, pr
 	d := &types.Data{Metadata: &types.Metadata{ChainID: chainID, Height: height, Time: timestamp}}
 	if txs > 0 {
 		d.Txs = make(types.Txs, txs)
-		for i := 0; i < txs; i++ {
+		for i := range txs {
 			d.Txs[i] = types.Tx([]byte{byte(height), byte(i)})
 		}
 	}

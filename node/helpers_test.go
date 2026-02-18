@@ -282,7 +282,7 @@ func newTestP2PClient(config evconfig.Config, privKey crypto.PrivKey, ds datasto
 func createNodeContexts(n int) ([]context.Context, []context.CancelFunc) {
 	ctxs := make([]context.Context, n)
 	cancels := make([]context.CancelFunc, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		ctx, cancel := context.WithCancel(context.Background())
 		ctxs[i] = ctx
 		cancels[i] = cancel

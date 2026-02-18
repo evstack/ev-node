@@ -24,7 +24,7 @@ import (
 // createTestBatch creates a batch with dummy transactions for testing
 func createTestBatch(t *testing.T, txCount int) coresequencer.Batch {
 	txs := make([][]byte, txCount)
-	for i := 0; i < txCount; i++ {
+	for i := range txCount {
 		txs[i] = []byte{byte(i), byte(i + 1), byte(i + 2)}
 	}
 	return coresequencer.Batch{Transactions: txs}
@@ -353,7 +353,7 @@ func TestConcurrency(t *testing.T) {
 	addWg := new(sync.WaitGroup)
 	addWg.Add(numOperations)
 
-	for i := 0; i < numOperations; i++ {
+	for i := range numOperations {
 		go func(index int) {
 			defer addWg.Done()
 			batch := createTestBatch(t, index%10+1) // 1-10 transactions
@@ -377,7 +377,7 @@ func TestConcurrency(t *testing.T) {
 	nextCount := numOperations / 2
 	nextWg.Add(nextCount)
 
-	for i := 0; i < nextCount; i++ {
+	for range nextCount {
 		go func() {
 			defer nextWg.Done()
 			batch, err := bq.Next(ctx)
@@ -499,7 +499,7 @@ func TestBatchQueue_QueueLimit_WithNext(t *testing.T) {
 	ctx := context.Background()
 
 	// Fill the queue to capacity
-	for i := 0; i < maxSize; i++ {
+	for i := range maxSize {
 		batch := createTestBatch(t, i+1)
 		err := bq.AddBatch(ctx, batch)
 		if err != nil {
@@ -562,11 +562,11 @@ func TestBatchQueue_QueueLimit_Concurrency(t *testing.T) {
 	var errorCount int64
 
 	// Start multiple workers trying to add batches concurrently
-	for i := 0; i < numWorkers; i++ {
+	for i := range numWorkers {
 		wg.Add(1)
 		go func(workerID int) {
 			defer wg.Done()
-			for j := 0; j < batchesPerWorker; j++ {
+			for j := range batchesPerWorker {
 				batch := createTestBatch(t, workerID*batchesPerWorker+j+1)
 				err := bq.AddBatch(ctx, batch)
 				if err != nil {

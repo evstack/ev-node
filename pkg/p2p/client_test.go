@@ -296,7 +296,7 @@ func TestClientInfoMethods(t *testing.T) {
 	var hosts []host.Host
 	var err error
 
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		nodeKey, e := key.GenerateNodeKey()
 		require.NoError(e)
 		h, e := mn.AddPeer(nodeKey.PrivKey, multiaddr.StringCast("/ip4/127.0.0.1/tcp/0"))

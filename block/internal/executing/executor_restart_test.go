@@ -316,7 +316,7 @@ func TestExecutor_RestartNoPendingHeader(t *testing.T) {
 
 	lastStateRoot := initStateRoot
 	for i := range numBlocks {
-		newStateRoot := []byte(fmt.Sprintf("new_root_%d", i+1))
+		newStateRoot := fmt.Appendf(nil, "new_root_%d", i+1)
 		mockExec1.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, gen.InitialHeight+uint64(i), mock.AnythingOfType("time.Time"), lastStateRoot).
 			Return(newStateRoot, nil).Once()
 		lastStateRoot = newStateRoot

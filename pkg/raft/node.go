@@ -306,7 +306,7 @@ func (n *Node) SetApplyCallback(ch chan<- RaftApplyMsg) {
 }
 
 // Apply implements raft.FSM
-func (f *FSM) Apply(log *raft.Log) interface{} {
+func (f *FSM) Apply(log *raft.Log) any {
 	var state RaftBlockState
 	if err := proto.Unmarshal(log.Data, &state); err != nil {
 		f.logger.Error().Err(err).Msg("unmarshal block state")

@@ -74,7 +74,7 @@ func TestCachedStore_GetHeader_MultipleHeights(t *testing.T) {
 
 	// Load multiple heights
 	headers := make([]*types.SignedHeader, 5)
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		h := uint64(i + 1)
 		header, err := cachedStore.GetHeader(ctx, h)
 		require.NoError(t, err)
@@ -84,7 +84,7 @@ func TestCachedStore_GetHeader_MultipleHeights(t *testing.T) {
 	}
 
 	// Re-access all heights - should return same cached references
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		h := uint64(i + 1)
 		header, err := cachedStore.GetHeader(ctx, h)
 		require.NoError(t, err)
