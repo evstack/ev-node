@@ -72,19 +72,6 @@ func New(opts ...Option) *DummyDA {
 	return d
 }
 
-// BlobCount returns the total number of blobs stored across all heights and namespaces.
-func (d *DummyDA) BlobCount() int {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	count := 0
-	for _, nss := range d.blobs {
-		for _, blobs := range nss {
-			count += len(blobs)
-		}
-	}
-	return count
-}
-
 // Submit stores blobs and returns success or simulated failure.
 func (d *DummyDA) Submit(_ context.Context, data [][]byte, _ float64, namespace []byte, _ []byte) datypes.ResultSubmit {
 	if d.failSubmit.Load() {
