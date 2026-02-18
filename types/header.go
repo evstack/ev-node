@@ -82,6 +82,10 @@ type Header struct {
 	// representation but may still be required for backwards compatible binary
 	// serialization (e.g. legacy signing payloads).
 	Legacy *LegacyHeaderFields
+
+	// cachedHash stores a pre-computed hash to avoid repeated serialization+SHA256.
+	// Populated lazily by Hash() or explicitly by SetCachedHash().
+	cachedHash Hash
 }
 
 // New creates a new Header.

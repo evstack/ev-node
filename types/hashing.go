@@ -47,6 +47,10 @@ func (h *Header) Hash() Hash {
 		return nil
 	}
 
+	if len(h.cachedHash) > 0 {
+		return h.cachedHash
+	}
+
 	slimHash, err := h.HashSlim()
 	if err != nil {
 		return nil
@@ -62,12 +66,26 @@ func (h *Header) Hash() Hash {
 	return slimHash
 }
 
+// SetCachedHash sets a pre-computed hash on the header, bypassing recomputation.
+// Use when the hash is already known (e.g. from a P2P envelope or producer cache).
+func (h *Header) SetCachedHash(hash Hash) {
+	h.cachedHash = hash
+}
+
 // Hash returns hash of the Data
 func (d *Data) Hash() Hash {
+	if len(d.cachedHash) > 0 {
+		return d.cachedHash
+	}
 	// Ignoring the marshal error for now to satisfy the go-header interface
 	// Later on the usage of Hash should be replaced with DA commitment
 	dBytes, _ := d.MarshalBinary()
 	return leafHashOpt(sha256.New(), dBytes)
+}
+
+// SetCachedHash sets a pre-computed hash on the data, bypassing recomputation.
+func (d *Data) SetCachedHash(hash Hash) {
+	d.cachedHash = hash
 }
 
 // DACommitment returns the DA commitment of the Data excluding the Metadata
