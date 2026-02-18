@@ -631,10 +631,16 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 	// IMPORTANT: Header MUST be broadcast before data — the P2P layer validates
 	// incoming data against the current and previous header, so out-of-order
 	// delivery would cause validation failures on peers.
-	if err := e.headerBroadcaster.WriteToStoreAndBroadcast(e.ctx, &types.P2PSignedHeader{SignedHeader: header}); err != nil {
+	if err := e.headerBroadcaster.WriteToStoreAndBroadcast(e.ctx, &types.P2PSignedHeader{
+		SignedHeader:   header,
+		PrevHeaderHash: e.lastHeaderHash,
+	}); err != nil {
 		e.logger.Error().Err(err).Msg("failed to broadcast header")
 	}
-	if err := e.dataBroadcaster.WriteToStoreAndBroadcast(e.ctx, &types.P2PData{Data: data}); err != nil {
+	if err := e.dataBroadcaster.WriteToStoreAndBroadcast(e.ctx, &types.P2PData{
+		Data:         data,
+		PrevDataHash: e.lastDataHash,
+	}); err != nil {
 		e.logger.Error().Err(err).Msg("failed to broadcast data")
 	}
 

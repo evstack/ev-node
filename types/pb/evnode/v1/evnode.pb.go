@@ -657,13 +657,16 @@ func (x *Vote) GetValidatorAddress() []byte {
 
 // P2PSignedHeader
 type P2PSignedHeader struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Header        *Header                `protobuf:"bytes,1,opt,name=header,proto3" json:"header,omitempty"`
-	Signature     []byte                 `protobuf:"bytes,2,opt,name=signature,proto3" json:"signature,omitempty"`
-	Signer        *Signer                `protobuf:"bytes,3,opt,name=signer,proto3" json:"signer,omitempty"`
-	DaHeightHint  *uint64                `protobuf:"varint,4,opt,name=da_height_hint,json=daHeightHint,proto3,oneof" json:"da_height_hint,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Header       *Header                `protobuf:"bytes,1,opt,name=header,proto3" json:"header,omitempty"`
+	Signature    []byte                 `protobuf:"bytes,2,opt,name=signature,proto3" json:"signature,omitempty"`
+	Signer       *Signer                `protobuf:"bytes,3,opt,name=signer,proto3" json:"signer,omitempty"`
+	DaHeightHint *uint64                `protobuf:"varint,4,opt,name=da_height_hint,json=daHeightHint,proto3,oneof" json:"da_height_hint,omitempty"`
+	// Pre-computed hash of the previous block's header (block N-1).
+	// Allows peers to skip re-computing trusted.Hash() during Verify.
+	PrevHeaderHash []byte `protobuf:"bytes,5,opt,name=prev_header_hash,json=prevHeaderHash,proto3,oneof" json:"prev_header_hash,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *P2PSignedHeader) Reset() {
@@ -724,12 +727,22 @@ func (x *P2PSignedHeader) GetDaHeightHint() uint64 {
 	return 0
 }
 
+func (x *P2PSignedHeader) GetPrevHeaderHash() []byte {
+	if x != nil {
+		return x.PrevHeaderHash
+	}
+	return nil
+}
+
 // P2PData
 type P2PData struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Metadata      *Metadata              `protobuf:"bytes,1,opt,name=metadata,proto3" json:"metadata,omitempty"`
-	Txs           [][]byte               `protobuf:"bytes,2,rep,name=txs,proto3" json:"txs,omitempty"`
-	DaHeightHint  *uint64                `protobuf:"varint,3,opt,name=da_height_hint,json=daHeightHint,proto3,oneof" json:"da_height_hint,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Metadata     *Metadata              `protobuf:"bytes,1,opt,name=metadata,proto3" json:"metadata,omitempty"`
+	Txs          [][]byte               `protobuf:"bytes,2,rep,name=txs,proto3" json:"txs,omitempty"`
+	DaHeightHint *uint64                `protobuf:"varint,3,opt,name=da_height_hint,json=daHeightHint,proto3,oneof" json:"da_height_hint,omitempty"`
+	// Pre-computed hash of the previous block's data (block N-1).
+	// Allows peers to skip re-computing trusted.Hash() during Verify.
+	PrevDataHash  []byte `protobuf:"bytes,4,opt,name=prev_data_hash,json=prevDataHash,proto3,oneof" json:"prev_data_hash,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -785,6 +798,13 @@ func (x *P2PData) GetDaHeightHint() uint64 {
 	return 0
 }
 
+func (x *P2PData) GetPrevDataHash() []byte {
+	if x != nil {
+		return x.PrevDataHash
+	}
+	return nil
+}
+
 var File_evnode_v1_evnode_proto protoreflect.FileDescriptor
 
 const file_evnode_v1_evnode_proto_rawDesc = "" +
@@ -835,18 +855,22 @@ const file_evnode_v1_evnode_proto_rawDesc = "" +
 	"\x06height\x18\x02 \x01(\x04R\x06height\x128\n" +
 	"\ttimestamp\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12\"\n" +
 	"\rblock_id_hash\x18\x04 \x01(\fR\vblockIdHash\x12+\n" +
-	"\x11validator_address\x18\x05 \x01(\fR\x10validatorAddress\"\xc3\x01\n" +
+	"\x11validator_address\x18\x05 \x01(\fR\x10validatorAddress\"\x87\x02\n" +
 	"\x0fP2PSignedHeader\x12)\n" +
 	"\x06header\x18\x01 \x01(\v2\x11.evnode.v1.HeaderR\x06header\x12\x1c\n" +
 	"\tsignature\x18\x02 \x01(\fR\tsignature\x12)\n" +
 	"\x06signer\x18\x03 \x01(\v2\x11.evnode.v1.SignerR\x06signer\x12)\n" +
-	"\x0eda_height_hint\x18\x04 \x01(\x04H\x00R\fdaHeightHint\x88\x01\x01B\x11\n" +
-	"\x0f_da_height_hint\"\x8a\x01\n" +
+	"\x0eda_height_hint\x18\x04 \x01(\x04H\x00R\fdaHeightHint\x88\x01\x01\x12-\n" +
+	"\x10prev_header_hash\x18\x05 \x01(\fH\x01R\x0eprevHeaderHash\x88\x01\x01B\x11\n" +
+	"\x0f_da_height_hintB\x13\n" +
+	"\x11_prev_header_hash\"\xc8\x01\n" +
 	"\aP2PData\x12/\n" +
 	"\bmetadata\x18\x01 \x01(\v2\x13.evnode.v1.MetadataR\bmetadata\x12\x10\n" +
 	"\x03txs\x18\x02 \x03(\fR\x03txs\x12)\n" +
-	"\x0eda_height_hint\x18\x03 \x01(\x04H\x00R\fdaHeightHint\x88\x01\x01B\x11\n" +
-	"\x0f_da_height_hintB/Z-github.com/evstack/ev-node/types/pb/evnode/v1b\x06proto3"
+	"\x0eda_height_hint\x18\x03 \x01(\x04H\x00R\fdaHeightHint\x88\x01\x01\x12)\n" +
+	"\x0eprev_data_hash\x18\x04 \x01(\fH\x01R\fprevDataHash\x88\x01\x01B\x11\n" +
+	"\x0f_da_height_hintB\x11\n" +
+	"\x0f_prev_data_hashB/Z-github.com/evstack/ev-node/types/pb/evnode/v1b\x06proto3"
 
 var (
 	file_evnode_v1_evnode_proto_rawDescOnce sync.Once
