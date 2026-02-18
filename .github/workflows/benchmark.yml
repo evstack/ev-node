@@ -5,6 +5,7 @@ permissions: {}
   push:
     branches:
       - main
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -35,7 +36,7 @@ jobs:
           name: EVM Contract Roundtrip
           tool: 'go'
           output-file-path: test/e2e/output.txt
-          auto-push: true
+          auto-push: ${{ github.event_name != 'pull_request' }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           alert-threshold: '150%'
           fail-on-alert: true
