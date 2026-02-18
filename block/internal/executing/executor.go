@@ -90,6 +90,9 @@ type Executor struct {
 	cachedPubKey        crypto.PubKey
 	cachedValidatorHash types.Hash
 	signerInfoCached    bool
+
+	// cachedChainID avoids per-block allocation in RetrieveBatch
+	cachedChainID []byte
 }
 
 // NewExecutor creates a new block executor.
@@ -152,6 +155,7 @@ func NewExecutor(
 		txNotifyCh:        make(chan struct{}, 1),
 		errorCh:           errorCh,
 		logger:            logger.With().Str("component", "executor").Logger(),
+		cachedChainID:     []byte(genesis.ChainID),
 	}
 	e.blockProducer = e
 	return e, nil
@@ -608,7 +612,7 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 // RetrieveBatch gets the next batch of transactions from the sequencer.
 func (e *Executor) RetrieveBatch(ctx context.Context) (*BatchData, error) {
 	req := coresequencer.GetNextBatchRequest{
-		Id:            []byte(e.genesis.ChainID),
+		Id:            e.cachedChainID,
 		MaxBytes:      common.DefaultMaxBlobSize,
 		LastBatchData: [][]byte{}, // Can be populated if needed for sequencer context
 	}

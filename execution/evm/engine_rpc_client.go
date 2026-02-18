@@ -19,7 +19,7 @@ func NewEngineRPCClient(client *rpc.Client) EngineRPCClient {
 	return &engineRPCClient{client: client}
 }
 
-func (e *engineRPCClient) ForkchoiceUpdated(ctx context.Context, state engine.ForkchoiceStateV1, args map[string]any) (*engine.ForkChoiceResponse, error) {
+func (e *engineRPCClient) ForkchoiceUpdated(ctx context.Context, state engine.ForkchoiceStateV1, args interface{}) (*engine.ForkChoiceResponse, error) {
 	var result engine.ForkChoiceResponse
 	err := e.client.CallContext(ctx, &result, "engine_forkchoiceUpdatedV3", state, args)
 	if err != nil {

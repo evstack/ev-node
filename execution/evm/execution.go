@@ -152,7 +152,7 @@ func retryWithBackoffOnPayloadStatus(ctx context.Context, fn func() error, maxRe
 // EngineRPCClient abstracts Engine API RPC calls for tracing and testing.
 type EngineRPCClient interface {
 	// ForkchoiceUpdated updates the forkchoice state and optionally starts payload building.
-	ForkchoiceUpdated(ctx context.Context, state engine.ForkchoiceStateV1, args map[string]any) (*engine.ForkChoiceResponse, error)
+	ForkchoiceUpdated(ctx context.Context, state engine.ForkchoiceStateV1, args interface{}) (*engine.ForkChoiceResponse, error)
 
 	// GetPayload retrieves a previously requested execution payload.
 	GetPayload(ctx context.Context, payloadID engine.PayloadID) (*engine.ExecutionPayloadEnvelope, error)
@@ -396,7 +396,16 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 	}
 
 	// 2. Prepare payload attributes
-	txsPayload := c.filterTransactions(txs)
+	// Use zero-alloc struct instead of map to avoid reflection overhead
+	evPayloadAttrs := PayloadAttributesV3{
+		Timestamp:             timestamp.Unix(),
+		PrevRandao:            c.derivePrevRandao(blockHeight).Hex(),
+		SuggestedFeeRecipient: c.feeRecipient.Hex(),
+		Withdrawals:           emptyWithdrawals,
+		ParentBeaconBlockRoot: zeroHashHex,
+		Transactions:          PayloadTransactions(txs),
+		GasLimit:              prevGasLimit,
+	}
 
 	// Cache parent block hash for safe-block lookups.
 	c.cacheBlockHash(blockHeight-1, prevBlockHash)
@@ -410,20 +419,6 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 		FinalizedBlockHash: c.currentFinalizedBlockHash,
 	}
 	c.mu.Unlock()
-
-	// update forkchoice to get the next payload id
-	evPayloadAttrs := map[string]any{
-		// Standard Ethereum payload attributes (flattened) - using camelCase as expected by JSON
-		"timestamp":             timestamp.Unix(),
-		"prevRandao":            c.derivePrevRandao(blockHeight),
-		"suggestedFeeRecipient": c.feeRecipient,
-		"withdrawals":           emptyWithdrawals,
-		// V3 requires parentBeaconBlockRoot
-		"parentBeaconBlockRoot": zeroHashHex, // Use zero hash for evolve
-		// evolve-specific fields
-		"transactions": txsPayload,
-		"gasLimit":     prevGasLimit, // Use camelCase to match JSON conventions
-	}
 
 	c.logger.Debug().
 		Uint64("height", blockHeight).
@@ -874,20 +869,6 @@ func (c *EngineClient) reconcileExecutionAtHeight(ctx context.Context, height ui
 	return nil, nil, false, nil
 }
 
-// filterTransactions formats transactions for the payload.
-// DA transactions should already be filtered via FilterTxs before reaching here.
-// Mempool transactions are already validated when added to mempool.
-func (c *EngineClient) filterTransactions(txs [][]byte) []string {
-	validTxs := make([]string, 0, len(txs))
-	for _, tx := range txs {
-		if len(tx) == 0 {
-			continue
-		}
-		validTxs = append(validTxs, "0x"+hex.EncodeToString(tx))
-	}
-	return validTxs
-}
-
 // GetExecutionInfo returns current execution layer parameters.
 func (c *EngineClient) GetExecutionInfo(ctx context.Context) (execution.ExecutionInfo, error) {
 	if cached := c.cachedExecutionInfo.Load(); cached != nil {
@@ -1169,4 +1150,78 @@ func getAuthToken(jwtSecret []byte) (string, error) {
 		return "", fmt.Errorf("failed to sign JWT token: %w", err)
 	}
 	return authToken, nil
+}
+
+// PayloadAttributesV3 replaces the untyped map for better performance (no reflection)
+type PayloadAttributesV3 struct {
+	Timestamp             int64               `json:"timestamp"`
+	PrevRandao            string              `json:"prevRandao"`
+	SuggestedFeeRecipient string              `json:"suggestedFeeRecipient"`
+	Withdrawals           []*types.Withdrawal `json:"withdrawals"`
+	ParentBeaconBlockRoot string              `json:"parentBeaconBlockRoot"`
+	Transactions          PayloadTransactions `json:"transactions"`
+	GasLimit              uint64              `json:"gasLimit"`
+}
+
+// PayloadTransactions implements custom JSON marshaling to avoid intermediate string allocations.
+type PayloadTransactions [][]byte
+
+// MarshalJSON encodes transactions as a JSON array of hex strings directly to bytes.
+func (txs PayloadTransactions) MarshalJSON() ([]byte, error) {
+	if len(txs) == 0 {
+		return []byte("[]"), nil
+	}
+
+	// Pre-calculate full size to perform a single allocation:
+	// 2 bytes for [] + (len(txs)-1) commas + per tx: 2 quotes + 2 prefix + hex len
+	size := 2
+	count := 0
+	for _, tx := range txs {
+		if len(tx) == 0 {
+			continue
+		}
+		// comma
+		if count > 0 {
+			size++
+		}
+		// "0x..."
+		size += 4 + hex.EncodedLen(len(tx))
+		count++
+	}
+
+	if count == 0 {
+		return []byte("[]"), nil
+	}
+
+	buf := make([]byte, 0, size)
+	buf = append(buf, '[')
+	written := 0
+	for _, tx := range txs {
+		if len(tx) == 0 {
+			continue
+		}
+		if written > 0 {
+			buf = append(buf, ',')
+		}
+		buf = append(buf, '"', '0', 'x')
+
+		// Append encoded hex directly
+		n := hex.EncodedLen(len(tx))
+		start := len(buf)
+		// Ensure capacity
+		if cap(buf) < start+n {
+			// grow logic if needed, but make() with exact size should cover it
+			newBuf := make([]byte, len(buf), start+n*2)
+			copy(newBuf, buf)
+			buf = newBuf
+		}
+		// Expand length
+		buf = buf[:start+n]
+		hex.Encode(buf[start:], tx)
+
+		buf = append(buf, '"')
+		written++
+	}
+	buf = append(buf, ']')
+	return buf, nil
 }
