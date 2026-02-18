@@ -76,7 +76,7 @@ func (sh *SignedHeader) ToProto() (*pb.SignedHeader, error) {
 		}, nil
 	}
 
-	pubKey, err := crypto.MarshalPublicKey(sh.Signer.PubKey)
+	pubKey, err := sh.Signer.MarshalledPubKey()
 	if err != nil {
 		return nil, err
 	}
@@ -114,8 +114,9 @@ func (sh *SignedHeader) FromProto(other *pb.SignedHeader) error {
 			return err
 		}
 		sh.Signer = Signer{
-			Address: append([]byte(nil), other.Signer.Address...),
-			PubKey:  pubKey,
+			Address:          append([]byte(nil), other.Signer.Address...),
+			PubKey:           pubKey,
+			marshalledPubKey: append([]byte(nil), other.Signer.PubKey...),
 		}
 	} else {
 		sh.Signer = Signer{}
@@ -157,7 +158,7 @@ func (sh *SignedHeader) ToDAEnvelopeProto(envelopeSignature []byte) (*pb.DAHeade
 		}, nil
 	}
 
-	pubKey, err := crypto.MarshalPublicKey(sh.Signer.PubKey)
+	pubKey, err := sh.Signer.MarshalledPubKey()
 	if err != nil {
 		return nil, err
 	}
@@ -196,8 +197,9 @@ func (sh *SignedHeader) FromDAEnvelopeProto(envelope *pb.DAHeaderEnvelope) error
 			return err
 		}
 		sh.Signer = Signer{
-			Address: append([]byte(nil), envelope.Signer.Address...),
-			PubKey:  pubKey,
+			Address:          append([]byte(nil), envelope.Signer.Address...),
+			PubKey:           pubKey,
+			marshalledPubKey: append([]byte(nil), envelope.Signer.PubKey...),
 		}
 	} else {
 		sh.Signer = Signer{}
@@ -440,7 +442,7 @@ func (sd *SignedData) ToProto() (*pb.SignedData, error) {
 
 	var signerProto *pb.Signer
 	if sd.Signer.PubKey != nil {
-		pubKey, err := crypto.MarshalPublicKey(sd.Signer.PubKey)
+		pubKey, err := sd.Signer.MarshalledPubKey()
 		if err != nil {
 			return nil, err
 		}
@@ -481,8 +483,9 @@ func (sd *SignedData) FromProto(other *pb.SignedData) error {
 			return err
 		}
 		sd.Signer = Signer{
-			Address: append([]byte(nil), other.Signer.Address...),
-			PubKey:  pubKey,
+			Address:          append([]byte(nil), other.Signer.Address...),
+			PubKey:           pubKey,
+			marshalledPubKey: append([]byte(nil), other.Signer.PubKey...),
 		}
 	} else {
 		sd.Signer = Signer{}

@@ -155,3 +155,13 @@ func (d *Data) Validate() error {
 func (d *Data) Size() int {
 	return proto.Size(d.ToProto())
 }
+
+// TxsByteSize returns total byte size of all transactions without proto marshalling.
+// This is much cheaper than Size() and useful for metrics/reporting.
+func (d *Data) TxsByteSize() int {
+	n := 0
+	for _, tx := range d.Txs {
+		n += len(tx)
+	}
+	return n
+}
