@@ -245,7 +245,7 @@ func (d *LocalDA) Validate(ctx context.Context, ids []datypes.ID, proofs []datyp
 		return nil, errors.New("number of IDs doesn't equal to number of proofs")
 	}
 	results := make([]bool, len(ids))
-	for i := 0; i < len(ids); i++ {
+	for i := range ids {
 		results[i] = ed25519.Verify(d.pubKey, ids[i][8:], proofs[i])
 		d.logger.Debug().Interface("id", ids[i]).Bool("result", results[i]).Msg("Validate result")
 	}

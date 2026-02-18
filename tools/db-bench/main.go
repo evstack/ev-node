@@ -123,10 +123,7 @@ func runProfile(p profile, dir string, cfg config) (result, error) {
 
 	overwriteEvery := 0
 	if cfg.overwriteRatio > 0 {
-		overwriteEvery = int(math.Round(1.0 / cfg.overwriteRatio))
-		if overwriteEvery < 1 {
-			overwriteEvery = 1
-		}
+		overwriteEvery = max(int(math.Round(1.0/cfg.overwriteRatio)), 1)
 	}
 
 	kv, err := p.open(dir)
@@ -145,7 +142,7 @@ func runProfile(p profile, dir string, cfg config) (result, error) {
 
 	pending := 0
 	keysWritten := 0
-	for i := 0; i < totalWrites; i++ {
+	for i := range totalWrites {
 		keyIndex := keysWritten
 		if overwriteEvery > 0 && i%overwriteEvery == 0 && keysWritten > 0 {
 			keyIndex = i % keysWritten

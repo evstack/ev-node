@@ -120,7 +120,7 @@ func TestCheckpointStore_ConcurrentAccess(t *testing.T) {
 
 	// Test concurrent reads
 	done := make(chan bool, 10)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		go func() {
 			defer func() { done <- true }()
 			loaded, err := store.Load(ctx)
@@ -129,7 +129,7 @@ func TestCheckpointStore_ConcurrentAccess(t *testing.T) {
 		}()
 	}
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		<-done
 	}
 }
