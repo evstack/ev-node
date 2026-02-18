@@ -16,7 +16,7 @@ import (
 // Transaction Helpers
 
 // GetRandomTransaction creates and signs a random Ethereum legacy transaction using the provided private key, recipient, chain ID, gas limit, and nonce.
-func GetRandomTransaction(t *testing.T, privateKeyHex, toAddressHex, chainID string, gasLimit uint64, lastNonce *uint64) *types.Transaction {
+func GetRandomTransaction(t testing.TB, privateKeyHex, toAddressHex, chainID string, gasLimit uint64, lastNonce *uint64) *types.Transaction {
 	t.Helper()
 	privateKey, err := crypto.HexToECDSA(privateKeyHex)
 	require.NoError(t, err)

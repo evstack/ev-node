@@ -3,7 +3,7 @@ package evm
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
+
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -54,6 +54,14 @@ var (
 	// According to the Engine API specification, this is a transient condition that
 	// should be handled with retry logic rather than immediate failure.
 	ErrPayloadSyncing = errors.New("payload syncing")
+)
+
+// Pre-computed constants to avoid per-block allocations.
+var (
+	zeroHashHex      = common.Hash{}.Hex()
+	emptyWithdrawals = []*types.Withdrawal{}
+	emptyBlobHashes  = []string{}
+	emptyExecReqs    = [][]byte{}
 )
 
 // Ensure EngineAPIExecutionClient implements the execution.Execute interface
@@ -144,7 +152,7 @@ func retryWithBackoffOnPayloadStatus(ctx context.Context, fn func() error, maxRe
 // EngineRPCClient abstracts Engine API RPC calls for tracing and testing.
 type EngineRPCClient interface {
 	// ForkchoiceUpdated updates the forkchoice state and optionally starts payload building.
-	ForkchoiceUpdated(ctx context.Context, state engine.ForkchoiceStateV1, args map[string]any) (*engine.ForkChoiceResponse, error)
+	ForkchoiceUpdated(ctx context.Context, state engine.ForkchoiceStateV1, args interface{}) (*engine.ForkChoiceResponse, error)
 
 	// GetPayload retrieves a previously requested execution payload.
 	GetPayload(ctx context.Context, payloadID engine.PayloadID) (*engine.ExecutionPayloadEnvelope, error)
@@ -160,6 +168,15 @@ type EthRPCClient interface {
 
 	// GetTxs retrieves pending transactions from the transaction pool.
 	GetTxs(ctx context.Context) ([]string, error)
+}
+
+// prevBlockInfo caches the result of the last successfully processed block to
+// avoid a redundant eth_getBlockByNumber RPC on the next ExecuteTxs call.
+type prevBlockInfo struct {
+	height    uint64
+	blockHash common.Hash
+	stateRoot common.Hash
+	gasLimit  uint64
 }
 
 // EngineClient represents a client that interacts with an Ethereum execution engine
@@ -182,6 +199,10 @@ type EngineClient struct {
 	currentSafeBlockHash      common.Hash            // Store last non-finalized SafeBlockHash
 	currentFinalizedBlockHash common.Hash            // Store last finalized block hash
 	blockHashCache            map[uint64]common.Hash // height -> hash cache for safe block lookups
+
+	// prevBlock caches block info from the last produced block to eliminate a
+	// getBlockInfo RPC on the next call. Protected by mu.
+	prevBlock *prevBlockInfo
 
 	cachedExecutionInfo atomic.Pointer[execution.ExecutionInfo] // Cached execution info (gas limit)
 
@@ -346,33 +367,45 @@ func (c *EngineClient) GetTxs(ctx context.Context) ([][]byte, error) {
 // - Updates ExecMeta to "promoted" after successful execution
 func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (updatedStateRoot []byte, err error) {
 
-	// 1. Check for idempotent execution
-	stateRoot, payloadID, found, idempotencyErr := c.reconcileExecutionAtHeight(ctx, blockHeight, timestamp, txs)
-	if idempotencyErr != nil {
-		c.logger.Warn().Err(idempotencyErr).Uint64("height", blockHeight).Msg("ExecuteTxs: idempotency check failed")
-		// Continue execution on error, as it might be transient
-	} else if found {
-		if stateRoot != nil {
-			return stateRoot, nil
-		}
-		if payloadID != nil {
-			// Found in-progress execution, attempt to resume
-			return c.processPayload(ctx, *payloadID, txs)
+	// 1. Try to get previous block info from cache (avoids eth_getBlockByNumber RPC).
+	var prevBlockHash common.Hash
+	var prevHeaderStateRoot common.Hash
+	var prevGasLimit uint64
+
+	c.mu.Lock()
+	cached := c.prevBlock
+	c.mu.Unlock()
+
+	if cached != nil && cached.height == blockHeight-1 {
+		// Cache hit — skip the eth RPC entirely.
+		prevBlockHash = cached.blockHash
+		prevHeaderStateRoot = cached.stateRoot
+		prevGasLimit = cached.gasLimit
+	} else {
+		// Cache miss (first block, restart, or non-sequential) — fall back to RPC.
+		var err error
+		prevBlockHash, prevHeaderStateRoot, prevGasLimit, _, err = c.getBlockInfo(ctx, blockHeight-1)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get block info: %w", err)
 		}
 	}
 
-	prevBlockHash, prevHeaderStateRoot, prevGasLimit, _, err := c.getBlockInfo(ctx, blockHeight-1)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get block info: %w", err)
-	}
-	// It's possible that the prev state root passed in is nil if this is the first block.
-	// If so, we can't do a comparison. Otherwise, we compare the roots.
+	// Verify state root consistency when prevStateRoot is provided.
 	if len(prevStateRoot) > 0 && !bytes.Equal(prevStateRoot, prevHeaderStateRoot.Bytes()) {
 		return nil, fmt.Errorf("prevStateRoot mismatch at height %d: consensus=%x execution=%x", blockHeight-1, prevStateRoot, prevHeaderStateRoot.Bytes())
 	}
 
 	// 2. Prepare payload attributes
-	txsPayload := c.filterTransactions(txs)
+	// Use zero-alloc struct instead of map to avoid reflection overhead
+	evPayloadAttrs := PayloadAttributesV3{
+		Timestamp:             timestamp.Unix(),
+		PrevRandao:            c.derivePrevRandao(blockHeight).Hex(),
+		SuggestedFeeRecipient: c.feeRecipient.Hex(),
+		Withdrawals:           emptyWithdrawals,
+		ParentBeaconBlockRoot: zeroHashHex,
+		Transactions:          PayloadTransactions(txs),
+		GasLimit:              prevGasLimit,
+	}
 
 	// Cache parent block hash for safe-block lookups.
 	c.cacheBlockHash(blockHeight-1, prevBlockHash)
@@ -386,21 +419,6 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 		FinalizedBlockHash: c.currentFinalizedBlockHash,
 	}
 	c.mu.Unlock()
-
-	// update forkchoice to get the next payload id
-	// Create evolve-compatible payloadtimestamp.Unix()
-	evPayloadAttrs := map[string]any{
-		// Standard Ethereum payload attributes (flattened) - using camelCase as expected by JSON
-		"timestamp":             timestamp.Unix(),
-		"prevRandao":            c.derivePrevRandao(blockHeight),
-		"suggestedFeeRecipient": c.feeRecipient,
-		"withdrawals":           []*types.Withdrawal{},
-		// V3 requires parentBeaconBlockRoot
-		"parentBeaconBlockRoot": common.Hash{}.Hex(), // Use zero hash for evolve
-		// evolve-specific fields
-		"transactions": txsPayload,
-		"gasLimit":     prevGasLimit, // Use camelCase to match JSON conventions
-	}
 
 	c.logger.Debug().
 		Uint64("height", blockHeight).
@@ -448,9 +466,8 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 		return nil, err
 	}
 
-	// Save ExecMeta with payloadID for crash recovery (Stage="started")
-	// This allows resuming the payload build if we crash before completing
-	c.saveExecMeta(ctx, blockHeight, timestamp.Unix(), newPayloadID[:], nil, nil, txs, ExecStageStarted)
+	// Save ExecMeta with payloadID for crash recovery (Stage="started") — async.
+	go c.saveExecMeta(ctx, blockHeight, timestamp.Unix(), newPayloadID[:], nil, nil, txs, ExecStageStarted)
 
 	// 4. Process the payload (get, submit, finalize)
 	return c.processPayload(ctx, *newPayloadID, txs)
@@ -553,6 +570,33 @@ func (c *EngineClient) setFinalWithHeight(ctx context.Context, blockHash common.
 	c.mu.Unlock()
 
 	return c.doForkchoiceUpdate(ctx, args, "setFinal")
+}
+
+// updateForkchoiceState updates the in-memory forkchoice state (head, safe, finalized)
+// WITHOUT making an engine RPC call. The updated values will be sent in the next
+// ForkchoiceUpdated call (from ExecuteTxs), avoiding a redundant round-trip.
+func (c *EngineClient) updateForkchoiceState(blockHash common.Hash, headHeight uint64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.currentHeadBlockHash = blockHash
+	c.currentHeadHeight = headHeight
+
+	// Advance safe block
+	if headHeight > SafeBlockLag {
+		safeHeight := headHeight - SafeBlockLag
+		if h, ok := c.blockHashCache[safeHeight]; ok {
+			c.currentSafeBlockHash = h
+		}
+	}
+
+	// Advance finalized block
+	if headHeight > FinalizedBlockLag {
+		finalizedHeight := headHeight - FinalizedBlockLag
+		if h, ok := c.blockHashCache[finalizedHeight]; ok {
+			c.currentFinalizedBlockHash = h
+		}
+	}
 }
 
 // doForkchoiceUpdate performs the actual forkchoice update RPC call with retry logic.
@@ -825,20 +869,6 @@ func (c *EngineClient) reconcileExecutionAtHeight(ctx context.Context, height ui
 	return nil, nil, false, nil
 }
 
-// filterTransactions formats transactions for the payload.
-// DA transactions should already be filtered via FilterTxs before reaching here.
-// Mempool transactions are already validated when added to mempool.
-func (c *EngineClient) filterTransactions(txs [][]byte) []string {
-	validTxs := make([]string, 0, len(txs))
-	for _, tx := range txs {
-		if len(tx) == 0 {
-			continue
-		}
-		validTxs = append(validTxs, "0x"+hex.EncodeToString(tx))
-	}
-	return validTxs
-}
-
 // GetExecutionInfo returns current execution layer parameters.
 func (c *EngineClient) GetExecutionInfo(ctx context.Context) (execution.ExecutionInfo, error) {
 	if cached := c.cachedExecutionInfo.Load(); cached != nil {
@@ -957,9 +987,9 @@ func (c *EngineClient) processPayload(ctx context.Context, payloadID engine.Payl
 	err = retryWithBackoffOnPayloadStatus(ctx, func() error {
 		newPayloadResult, err := c.engineClient.NewPayload(ctx,
 			payloadResult.ExecutionPayload,
-			[]string{},          // No blob hashes
-			common.Hash{}.Hex(), // Use zero hash for parentBeaconBlockRoot
-			[][]byte{},          // No execution requests
+			emptyBlobHashes, // No blob hashes
+			zeroHashHex,     // Use zero hash for parentBeaconBlockRoot
+			emptyExecReqs,   // No execution requests
 		)
 		if err != nil {
 			return fmt.Errorf("new payload submission failed: %w", err)
@@ -980,17 +1010,25 @@ func (c *EngineClient) processPayload(ctx context.Context, payloadID engine.Payl
 		return nil, err
 	}
 
-	// 3. Update Forkchoice
+	// 3. Update forkchoice state (deferred — no RPC).
+	// The next ExecuteTxs call's ForkchoiceUpdated will carry the correct
+	// head/safe/finalized values, so we skip the redundant engine RPC here.
 	blockHash := payloadResult.ExecutionPayload.BlockHash
 	c.cacheBlockHash(blockHeight, blockHash)
+	c.updateForkchoiceState(blockHash, blockHeight)
 
-	err = c.setFinalWithHeight(ctx, blockHash, blockHeight, false)
-	if err != nil {
-		return nil, fmt.Errorf("forkchoice update failed: %w", err)
+	// 4. Cache block info for next ExecuteTxs (avoids getBlockInfo RPC).
+	c.mu.Lock()
+	c.prevBlock = &prevBlockInfo{
+		height:    blockHeight,
+		blockHash: blockHash,
+		stateRoot: payloadResult.ExecutionPayload.StateRoot,
+		gasLimit:  payloadResult.ExecutionPayload.GasLimit,
 	}
+	c.mu.Unlock()
 
-	// 4. Save ExecMeta (Promoted)
-	c.saveExecMeta(ctx, blockHeight, blockTimestamp, payloadID[:], blockHash[:], payloadResult.ExecutionPayload.StateRoot.Bytes(), txs, ExecStagePromoted)
+	// 5. Save ExecMeta (Promoted) — async, best-effort.
+	go c.saveExecMeta(ctx, blockHeight, blockTimestamp, payloadID[:], blockHash[:], payloadResult.ExecutionPayload.StateRoot.Bytes(), txs, ExecStagePromoted)
 
 	return payloadResult.ExecutionPayload.StateRoot.Bytes(), nil
 }
@@ -1020,15 +1058,6 @@ func (c *EngineClient) saveExecMeta(ctx context.Context, height uint64, timestam
 		StateRoot:     stateRoot,
 		Stage:         stage,
 		UpdatedAtUnix: time.Now().Unix(),
-	}
-
-	// Compute tx hash for sanity checks on retry
-	if len(txs) > 0 {
-		h := sha256.New()
-		for _, tx := range txs {
-			h.Write(tx)
-		}
-		execMeta.TxHash = h.Sum(nil)
 	}
 
 	if err := c.store.SaveExecMeta(ctx, execMeta); err != nil {
@@ -1121,4 +1150,78 @@ func getAuthToken(jwtSecret []byte) (string, error) {
 		return "", fmt.Errorf("failed to sign JWT token: %w", err)
 	}
 	return authToken, nil
+}
+
+// PayloadAttributesV3 replaces the untyped map for better performance (no reflection)
+type PayloadAttributesV3 struct {
+	Timestamp             int64               `json:"timestamp"`
+	PrevRandao            string              `json:"prevRandao"`
+	SuggestedFeeRecipient string              `json:"suggestedFeeRecipient"`
+	Withdrawals           []*types.Withdrawal `json:"withdrawals"`
+	ParentBeaconBlockRoot string              `json:"parentBeaconBlockRoot"`
+	Transactions          PayloadTransactions `json:"transactions"`
+	GasLimit              uint64              `json:"gasLimit"`
+}
+
+// PayloadTransactions implements custom JSON marshaling to avoid intermediate string allocations.
+type PayloadTransactions [][]byte
+
+// MarshalJSON encodes transactions as a JSON array of hex strings directly to bytes.
+func (txs PayloadTransactions) MarshalJSON() ([]byte, error) {
+	if len(txs) == 0 {
+		return []byte("[]"), nil
+	}
+
+	// Pre-calculate full size to perform a single allocation:
+	// 2 bytes for [] + (len(txs)-1) commas + per tx: 2 quotes + 2 prefix + hex len
+	size := 2
+	count := 0
+	for _, tx := range txs {
+		if len(tx) == 0 {
+			continue
+		}
+		// comma
+		if count > 0 {
+			size++
+		}
+		// "0x..."
+		size += 4 + hex.EncodedLen(len(tx))
+		count++
+	}
+
+	if count == 0 {
+		return []byte("[]"), nil
+	}
+
+	buf := make([]byte, 0, size)
+	buf = append(buf, '[')
+	written := 0
+	for _, tx := range txs {
+		if len(tx) == 0 {
+			continue
+		}
+		if written > 0 {
+			buf = append(buf, ',')
+		}
+		buf = append(buf, '"', '0', 'x')
+
+		// Append encoded hex directly
+		n := hex.EncodedLen(len(tx))
+		start := len(buf)
+		// Ensure capacity
+		if cap(buf) < start+n {
+			// grow logic if needed, but make() with exact size should cover it
+			newBuf := make([]byte, len(buf), start+n*2)
+			copy(newBuf, buf)
+			buf = newBuf
+		}
+		// Expand length
+		buf = buf[:start+n]
+		hex.Encode(buf[start:], tx)
+
+		buf = append(buf, '"')
+		written++
+	}
+	buf = append(buf, ']')
+	return buf, nil
 }

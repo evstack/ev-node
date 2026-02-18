@@ -33,7 +33,7 @@ var WorkDir = "."
 
 // SystemUnderTest is used to manage processes and logs during test execution.
 type SystemUnderTest struct {
-	t *testing.T
+	t testing.TB
 
 	outBuff *ring.Ring
 	errBuff *ring.Ring
@@ -45,7 +45,7 @@ type SystemUnderTest struct {
 }
 
 // NewSystemUnderTest constructor
-func NewSystemUnderTest(t *testing.T) *SystemUnderTest {
+func NewSystemUnderTest(t testing.TB) *SystemUnderTest {
 	r := &SystemUnderTest{
 		t:         t,
 		pids:      make(map[int]struct{}),
@@ -103,7 +103,7 @@ func (s *SystemUnderTest) ExecCmdWithLogPrefix(prefix, cmd string, args ...strin
 
 // AwaitNodeUp waits until a node is operational by checking both liveness and readiness.
 // Fails tests when node is not up within the specified timeout.
-func (s *SystemUnderTest) AwaitNodeUp(t *testing.T, rpcAddr string, timeout time.Duration) {
+func (s *SystemUnderTest) AwaitNodeUp(t testing.TB, rpcAddr string, timeout time.Duration) {
 	t.Helper()
 	t.Logf("Await node is up: %s", rpcAddr)
 	require.EventuallyWithT(t, func(t *assert.CollectT) {
@@ -120,7 +120,7 @@ func (s *SystemUnderTest) AwaitNodeUp(t *testing.T, rpcAddr string, timeout time
 }
 
 // AwaitNodeLive waits until a node is alive (liveness check only).
-func (s *SystemUnderTest) AwaitNodeLive(t *testing.T, rpcAddr string, timeout time.Duration) {
+func (s *SystemUnderTest) AwaitNodeLive(t testing.TB, rpcAddr string, timeout time.Duration) {
 	t.Helper()
 	t.Logf("Await node is live: %s", rpcAddr)
 	require.EventuallyWithT(t, func(t *assert.CollectT) {
@@ -132,7 +132,7 @@ func (s *SystemUnderTest) AwaitNodeLive(t *testing.T, rpcAddr string, timeout ti
 }
 
 // AwaitNBlocks waits until the node has produced at least `n` blocks.
-func (s *SystemUnderTest) AwaitNBlocks(t *testing.T, n uint64, rpcAddr string, timeout time.Duration) {
+func (s *SystemUnderTest) AwaitNBlocks(t testing.TB, n uint64, rpcAddr string, timeout time.Duration) {
 	t.Helper()
 	ctx, done := context.WithTimeout(context.Background(), timeout)
 	defer done()
@@ -344,7 +344,7 @@ func locateExecutable(file string) string {
 }
 
 // MustCopyFile copies the file from the source path `src` to the destination path `dest` and returns an open file handle to `dest`.
-func MustCopyFile(t *testing.T, src, dest string) *os.File {
+func MustCopyFile(t testing.TB, src, dest string) *os.File {
 	t.Helper()
 	in, err := os.Open(src) // nolint: gosec // used by tests only
 	require.NoError(t, err)
@@ -362,7 +362,7 @@ func MustCopyFile(t *testing.T, src, dest string) *os.File {
 }
 
 // NodeID generates and returns the peer ID from the node's private key.
-func NodeID(t *testing.T, nodeDir string) peer.ID {
+func NodeID(t testing.TB, nodeDir string) peer.ID {
 	t.Helper()
 	node1Key, err := key.LoadNodeKey(filepath.Join(nodeDir, "config"))
 	require.NoError(t, err)

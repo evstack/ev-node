@@ -26,7 +26,7 @@ func withTracingEngineRPCClient(inner EngineRPCClient) EngineRPCClient {
 	}
 }
 
-func (t *tracedEngineRPCClient) ForkchoiceUpdated(ctx context.Context, state engine.ForkchoiceStateV1, args map[string]any) (*engine.ForkChoiceResponse, error) {
+func (t *tracedEngineRPCClient) ForkchoiceUpdated(ctx context.Context, state engine.ForkchoiceStateV1, args interface{}) (*engine.ForkChoiceResponse, error) {
 	ctx, span := t.tracer.Start(ctx, "Engine.ForkchoiceUpdated",
 		trace.WithAttributes(
 			attribute.String("method", "engine_forkchoiceUpdatedV3"),
