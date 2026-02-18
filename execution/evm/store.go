@@ -100,9 +100,9 @@ func NewEVMStore(db ds.Batching) *EVMStore {
 
 // execMetaKey returns the datastore key for ExecMeta at a given height.
 func execMetaKey(height uint64) ds.Key {
-	heightBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(heightBytes, height)
-	return ds.NewKey(evmStorePrefix + "execmeta/" + string(heightBytes))
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], height)
+	return ds.NewKey(evmStorePrefix + "execmeta/" + string(buf[:]))
 }
 
 // GetExecMeta retrieves execution metadata for the given height.
@@ -133,7 +133,9 @@ func (s *EVMStore) GetExecMeta(ctx context.Context, height uint64) (*ExecMeta, e
 // SaveExecMeta persists execution metadata for the given height.
 func (s *EVMStore) SaveExecMeta(ctx context.Context, meta *ExecMeta) error {
 	key := execMetaKey(meta.Height)
-	data, err := proto.Marshal(meta.ToProto())
+	// Use stack-allocated buffer to avoid heap allocation for small metadata.
+	var buf [1024]byte
+	data, err := proto.MarshalOptions{}.MarshalAppend(buf[:0], meta.ToProto())
 	if err != nil {
 		return fmt.Errorf("failed to marshal exec meta: %w", err)
 	}
@@ -180,9 +182,9 @@ func (s *EVMStore) PruneExec(ctx context.Context, height uint64) error {
 	}
 
 	// Persist updated last pruned height.
-	buf := make([]byte, 8)
-	binary.BigEndian.PutUint64(buf, height)
-	if err := batch.Put(ctx, ds.NewKey(lastPrunedExecMetaKey), buf); err != nil {
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], height)
+	if err := batch.Put(ctx, ds.NewKey(lastPrunedExecMetaKey), buf[:]); err != nil {
 		return fmt.Errorf("failed to update last pruned execmeta height: %w", err)
 	}
 
