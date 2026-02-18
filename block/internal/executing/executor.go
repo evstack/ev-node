@@ -608,9 +608,6 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 		}
 		e.logger.Debug().Uint64("height", newHeight).Msg("proposed block to raft")
 	}
-	if err := e.deletePendingBlock(batch); err != nil {
-		e.logger.Warn().Err(err).Uint64("height", newHeight).Msg("failed to delete pending block metadata")
-	}
 
 	if err := batch.Commit(); err != nil {
 		return fmt.Errorf("failed to commit batch: %w", err)
@@ -885,10 +882,11 @@ func (e *Executor) recordBlockMetrics(newState types.State, data *types.Data) {
 		return
 	}
 
-	e.metrics.NumTxs.Set(float64(len(data.Txs)))
-	e.metrics.TotalTxs.Add(float64(len(data.Txs)))
-	e.metrics.TxsPerBlock.Observe(float64(len(data.Txs)))
-	e.metrics.BlockSizeBytes.Set(float64(data.Size()))
+	nTxs := float64(len(data.Txs))
+	e.metrics.NumTxs.Set(nTxs)
+	e.metrics.TotalTxs.Add(nTxs)
+	e.metrics.TxsPerBlock.Observe(nTxs)
+	e.metrics.BlockSizeBytes.Set(float64(data.TxsByteSize()))
 	e.metrics.CommittedHeight.Set(float64(data.Metadata.Height))
 }
 

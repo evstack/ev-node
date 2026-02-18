@@ -48,9 +48,6 @@ func (b *DefaultBatch) SetHeight(height uint64) error {
 
 // SaveBlockData saves block data to the batch
 func (b *DefaultBatch) SaveBlockData(header *types.SignedHeader, data *types.Data, signature *types.Signature) error {
-	height := header.Height()
-	signatureHash := *signature
-
 	headerBlob, err := header.MarshalBinary()
 	if err != nil {
 		return fmt.Errorf("failed to marshal Header to binary: %w", err)
@@ -59,6 +56,14 @@ func (b *DefaultBatch) SaveBlockData(header *types.SignedHeader, data *types.Dat
 	if err != nil {
 		return fmt.Errorf("failed to marshal Data to binary: %w", err)
 	}
+	return b.SaveBlockDataFromBytes(header, headerBlob, dataBlob, signature)
+}
+
+// SaveBlockDataFromBytes saves pre-serialized block data to the batch.
+// This avoids re-marshalling header and data when the caller already has the binary blobs.
+func (b *DefaultBatch) SaveBlockDataFromBytes(header *types.SignedHeader, headerBlob, dataBlob []byte, signature *types.Signature) error {
+	height := header.Height()
+	signatureHash := *signature
 
 	if err := b.batch.Put(b.ctx, ds.NewKey(getHeaderKey(height)), headerBlob); err != nil {
 		return fmt.Errorf("failed to put header blob in batch: %w", err)
