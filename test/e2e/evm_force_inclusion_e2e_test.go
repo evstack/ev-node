@@ -737,8 +737,11 @@ func TestEvmSequencerCatchUpBasedSequencerE2E(t *testing.T) {
 	t.Log("Phase 3: Start Based Sequencer")
 
 	// Initialize based sequencer node
+	basedSeqPassphraseFile := createPassphraseFile(t, basedSeqHome)
 	output, err = sut.RunCmd(evmSingleBinaryPath,
 		"init",
+		"--evnode.node.aggregator=true",
+		"--evnode.signer.passphrase_file", basedSeqPassphraseFile,
 		"--home", basedSeqHome,
 	)
 	require.NoError(t, err, "failed to init based sequencer", output)
@@ -757,6 +760,7 @@ func TestEvmSequencerCatchUpBasedSequencerE2E(t *testing.T) {
 		"start",
 		"--evnode.node.aggregator=true",
 		"--evnode.node.based_sequencer=true",
+		"--evnode.signer.passphrase_file", basedSeqPassphraseFile,
 		"--evm.jwt-secret-file", basedSeqJwtSecretFile,
 		"--evm.genesis-hash", genesisHash,
 		"--evnode.node.block_time", DefaultBlockTime,
