@@ -8,6 +8,7 @@ require (
 	github.com/celestiaorg/tastora v0.12.0
 	github.com/cosmos/cosmos-sdk v0.53.6
 	github.com/cosmos/ibc-go/v8 v8.8.0
+	github.com/docker/go-connections v0.5.0
 	github.com/ethereum/go-ethereum v1.16.8
 	github.com/evstack/ev-node v1.0.0-rc.3
 	github.com/evstack/ev-node/execution/evm v0.0.0-20250602130019-2a732cf903a5
@@ -15,6 +16,7 @@ require (
 	github.com/libp2p/go-libp2p v0.47.0
 	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.11.1
+	go.uber.org/zap v1.27.1
 	google.golang.org/protobuf v1.36.11
 )
 
@@ -23,6 +25,7 @@ replace (
 	github.com/evstack/ev-node/core => ../../core
 	github.com/evstack/ev-node/execution/evm => ../../execution/evm
 	github.com/evstack/ev-node/execution/evm/test => ../../execution/evm/test
+    github.com/celestiaorg/tastora => /Users/chatton/checkouts/celestiaorg/tastora
 )
 
 require (
@@ -98,7 +101,6 @@ require (
 	github.com/dgraph-io/ristretto/v2 v2.1.0 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/docker/docker v28.5.2+incompatible // indirect
-	github.com/docker/go-connections v0.5.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dunglas/httpsfv v1.1.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
@@ -299,7 +301,6 @@ require (
 	go.uber.org/fx v1.24.0 // indirect
 	go.uber.org/mock v0.6.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	go.uber.org/zap v1.27.1 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/arch v0.17.0 // indirect
