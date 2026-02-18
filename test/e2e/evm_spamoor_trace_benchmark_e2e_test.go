@@ -34,12 +34,15 @@ func TestSpamoorTraceBenchmark(t *testing.T) {
 
 	// Start sequencer (ev-node) with tracing enabled to our collector.
 	sequencerHome := filepath.Join(t.TempDir(), "sequencer")
-	setupSequencerNode(t, sut, sequencerHome, seqJWT, genesisHash, endpoints,
-		"--evnode.instrumentation.tracing=true",
-		"--evnode.instrumentation.tracing_endpoint", collector.endpoint(),
-		"--evnode.instrumentation.tracing_sample_rate", "1.0",
-		"--evnode.instrumentation.tracing_service_name", "ev-node-e2e",
-	)
+    // Target: ~1 Ggas/s with 100ms blocks => ~100M gas per block.
+    // Use tight block_time without lazy mode to enforce cadence.
+    setupSequencerNode(t, sut, sequencerHome, seqJWT, genesisHash, endpoints,
+        "--evnode.instrumentation.tracing=true",
+        "--evnode.instrumentation.tracing_endpoint", collector.endpoint(),
+        "--evnode.instrumentation.tracing_sample_rate", "1.0",
+        "--evnode.instrumentation.tracing_service_name", "ev-node-e2e",
+        "--evnode.node.block_time", "100ms",
+    )
 	t.Log("Sequencer node is up")
 
 	// Launch Spamoor container on the same Docker network; point it at reth INTERNAL ETH RPC.
@@ -79,58 +82,34 @@ func TestSpamoorTraceBenchmark(t *testing.T) {
 	requireHTTP(t, apiAddr+"/api/spammers", 30*time.Second)
 	api := NewSpamoorAPI(apiAddr)
 
-	// Configure multiple concurrent spammers to try and saturate blocks.
-	// Each spammer runs an EOA transfer scenario; collectively we aim to push block gas towards the limit.
-	baseCfg := func(tp int) string {
-		return strings.Join([]string{
-			"throughput: " + strconv.Itoa(tp),
-			"total_count: 5000",
-			"max_pending: 8000",
-			"max_wallets: 500",
-			"amount: 100",
-			"random_amount: true",
-			"random_target: true",
-			"base_fee: 20",                       // gwei
-			"tip_fee: 2",                         // gwei
-			"refill_amount: 1000000000000000000", // 1 ETH
-			"refill_balance: 500000000000000000", // 0.5 ETH
-			"refill_interval: 600",
-		}, "\n")
-	}
+	// Gasburner-only configuration below; eoatx disabled for this ceiling test.
 
-	// Spin up 3 spammers at 150 tps each (approx; Spamoor maintains a target rate), total target ~450 tps.
-	spammerIDs := make([]int, 0, 3)
-	for i := 0; i < 3; i++ {
-		cfg := baseCfg(150)
-		id, err := api.CreateSpammer("benchmark-eoatx-"+strconv.Itoa(i), "eoatx", cfg, true)
-		if err != nil {
-			t.Fatalf("failed to create/start spammer %d: %v", i, err)
-		}
-		spammerIDs = append(spammerIDs, id)
-		idx := i
-		t.Cleanup(func() { _ = api.DeleteSpammer(spammerIDs[idx]) })
-	}
+    // Start with gasburner-only to maximize gas per block and simplify inclusion checks.
+    // Aim for ~100M gas per 100ms block: set 10M gas/tx and target ~10 tx/block total across spammers.
+    spammerIDs := make([]int, 0, 4)
 
 	// Add 1-2 heavier-gas spammers using known Spamoor scenarios. We validate each config
 	// before starting to avoid failures on unsupported images.
 	// Prefer gasburnertx spammers to maximize gas usage per transaction.
-	gasBurnerCfg := strings.Join([]string{
-		"throughput: 40",
-		"total_count: 3000",
-		"max_pending: 8000",
-		"max_wallets: 200",
-		"refill_amount: 1000000000000000000", // 1 ETH
-		"refill_balance: 500000000000000000", // 0.5 ETH
-		"refill_interval: 600",
-		"base_fee: 20", // gwei
-		"tip_fee: 2",   // gwei
-	}, "\n")
-	for i := 0; i < 2; i++ {
-		name := "benchmark-gasburner-" + strconv.Itoa(i)
-		if err := api.ValidateScenarioConfig(name+"-probe", "gasburnertx", gasBurnerCfg); err != nil {
-			t.Logf("gasburnertx not supported or invalid config: %v", err)
-			break
-		}
+    gasBurnerCfg := strings.Join([]string{
+        "throughput: 200",                  // aggressive per-spammer rate (per-second), drives continuous backlog
+        "total_count: 20000",
+        "max_pending: 50000",
+        "max_wallets: 1000",
+        "gas_units_to_burn: 10000000",      // 10M gas/tx
+        "refill_amount: 5000000000000000000",  // 5 ETH
+        "refill_balance: 2000000000000000000", // 2 ETH
+        "refill_interval: 300",
+        "base_fee: 20",  // gwei (reduce to avoid fee-cap rejection)
+        "tip_fee: 5",    // gwei
+        "rebroadcast: 2",
+    }, "\n")
+    for i := 0; i < 14; i++ { // start with 14 spammers to create a stronger continuous backlog
+        name := "benchmark-gasburner-" + strconv.Itoa(i)
+        if err := api.ValidateScenarioConfig(name+"-probe", "gasburnertx", gasBurnerCfg); err != nil {
+            t.Logf("gasburnertx not supported or invalid config: %v", err)
+            break
+        }
 		id, err := api.CreateSpammer(name, "gasburnertx", gasBurnerCfg, true)
 		if err != nil {
 			t.Logf("failed to start gasburnertx: %v", err)
@@ -186,30 +165,29 @@ func TestSpamoorTraceBenchmark(t *testing.T) {
 		}
 	}
 
-	// Try to saturate block gas: dynamically ramp up spammers until utilization is high or we hit a safe cap.
-	if ec, err := ethclient.Dial(endpoints.GetSequencerEthURL()); err == nil {
-		defer ec.Close()
-		rampDeadline := time.Now().Add(60 * time.Second)
-		for len(spammerIDs) < 8 && time.Now().Before(rampDeadline) {
-			avg, peak := sampleGasUtilization(t, ec, 5*time.Second)
-			t.Logf("Ramp check: gas utilization avg=%.1f%% peak=%.1f%% spammers=%d", avg*100, peak*100, len(spammerIDs))
-			if peak >= 0.9 { // good enough
-				break
-			}
-			// Add another spammer at a higher target rate to push harder.
-			cfg := baseCfg(250)
-			id, err := api.CreateSpammer("benchmark-eoatx-ramp-"+strconv.Itoa(len(spammerIDs)), "eoatx", cfg, true)
-			if err != nil {
-				t.Logf("failed to add ramp spammer: %v", err)
-				break
-			}
-			spammerIDs = append(spammerIDs, id)
-			idx := len(spammerIDs) - 1
-			t.Cleanup(func() { _ = api.DeleteSpammer(spammerIDs[idx]) })
-			// give it a moment to start before next measurement
-			time.Sleep(3 * time.Second)
-		}
-	}
+    // Try to saturate block gas: dynamically ramp up gasburner spammers until utilization approaches ~100M/block or we hit a safe cap.
+    if ec, err := ethclient.Dial(endpoints.GetSequencerEthURL()); err == nil {
+        defer ec.Close()
+        rampDeadline := time.Now().Add(60 * time.Second)
+        for len(spammerIDs) < 20 && time.Now().Before(rampDeadline) { // ramp up further if still underutilized
+            avg, peak := sampleGasUtilization(t, ec, 5*time.Second)
+            t.Logf("Ramp check: gas utilization avg=%.1f%% peak=%.1f%% spammers=%d", avg*100, peak*100, len(spammerIDs))
+            if peak >= 0.9 { // good enough
+                break
+            }
+            // Add another gasburner spammer to push harder.
+            id, err := api.CreateSpammer("benchmark-gasburner-ramp-"+strconv.Itoa(len(spammerIDs)), "gasburnertx", gasBurnerCfg, true)
+            if err != nil {
+                t.Logf("failed to add ramp spammer: %v", err)
+                break
+            }
+            spammerIDs = append(spammerIDs, id)
+            idx := len(spammerIDs) - 1
+            t.Cleanup(func() { _ = api.DeleteSpammer(spammerIDs[idx]) })
+            // give it a moment to start before next measurement
+            time.Sleep(3 * time.Second)
+        }
+    }
 
 	if metricsText != "" {
 		sentTotal := scrapeCounter(metricsText, `^spamoor_transactions_sent_total\{.*\}\s+(\d+(?:\.\d+)?)`)
@@ -248,6 +226,25 @@ func TestSpamoorTraceBenchmark(t *testing.T) {
 		if avg < 0.05 && peak < 0.1 { // very low; dump recent block gas details for debugging
 			debugLogRecentBlockGas(t, ec, 8)
 		}
+        // Additionally compute aggregate gas/sec over a recent time window (by timestamps),
+        // which is robust even if the chain has a long history.
+        gsec, gpb, btMs := computeGasThroughputWindow(t, ec, 60) // last ~60s
+        t.Logf("Throughput window: avg_gas_block=%.0f avg_block_time=%.1fms gas_sec=%.0f", gpb, btMs, gsec)
+        // Report simple target status for 1 Ggas/s @ 100ms cadence.
+        const (
+            targetGasSec     = 1_000_000_000.0
+            minGasSec        = 0.9 * targetGasSec // 900M gas/sec
+            minBtMs          = 80.0               // acceptable block time window
+            maxBtMs          = 150.0
+            minGasPerBlock   = 90_000_000.0       // ~100M +/- 10%
+            maxGasPerBlock   = 110_000_000.0
+        )
+        hit := gsec >= minGasSec && btMs >= minBtMs && btMs <= maxBtMs && gpb >= minGasPerBlock && gpb <= maxGasPerBlock
+        if hit {
+            t.Logf("Target 1Ggas/s@100ms: PASS (gas_sec=%.0f, avg_bt=%.1fms, gas_block=%.0f)", gsec, btMs, gpb)
+        } else {
+            t.Logf("Target 1Ggas/s@100ms: NOT MET (gas_sec=%.0f, avg_bt=%.1fms, gas_block=%.0f). Thresholds: gas_sec>=900,000,000; 80ms<=avg_bt<=150ms; 90M<=gas_block<=110M.", gsec, btMs, gpb)
+        }
 		// If metrics were unavailable earlier, ensure on-chain activity by checking recent tx counts.
 		// Fail if we observe zero transactions in the last ~8 blocks.
 		if metricsText == "" {
@@ -380,4 +377,38 @@ func debugLogRecentBlockGas(t *testing.T, ec *ethclient.Client, n int) {
 		}
 		t.Logf("debug: %s %d/%d txs=%d", h.Number.String(), h.GasUsed, h.GasLimit, txc)
 	}
+}
+
+// computeGasThroughputWindow scans backwards from the latest block until it accumulates
+// approximately windowSec seconds of chain time, then returns gas/sec, avg gas/block,
+// and avg block time (ms) over that window.
+func computeGasThroughputWindow(t *testing.T, ec *ethclient.Client, windowSec int) (gasPerSec, avgGasPerBlock, avgBlockTimeMs float64) {
+    t.Helper()
+    if windowSec <= 0 { windowSec = 60 }
+    latestHeader, err := ec.HeaderByNumber(context.Background(), nil)
+    if err != nil || latestHeader == nil { return 0, 0, 0 }
+    latestNum := new(big.Int).Set(latestHeader.Number)
+    latestTS := latestHeader.Time
+
+    var sumGas uint64
+    var count int
+    var oldestTS uint64 = latestTS
+    // Walk backwards up to a cap of blocks to avoid long scans if blocks are sparse.
+    capBlocks := 5000
+    for i := 0; i < capBlocks; i++ {
+        num := new(big.Int).Sub(latestNum, big.NewInt(int64(i)))
+        if num.Sign() < 0 { break }
+        blk, err := ec.BlockByNumber(context.Background(), num)
+        if err != nil || blk == nil { break }
+        sumGas += blk.GasUsed()
+        count++
+        oldestTS = blk.Time()
+        if latestTS - oldestTS >= uint64(windowSec) { break }
+    }
+    if count < 2 || latestTS <= oldestTS { return 0, 0, 0 }
+    elapsed := float64(latestTS - oldestTS) // seconds
+    gasPerSec = float64(sumGas) / elapsed
+    avgGasPerBlock = float64(sumGas) / float64(count)
+    avgBlockTimeMs = (elapsed / float64(count-1)) * 1000.0
+    return
 }
