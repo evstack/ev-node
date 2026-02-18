@@ -122,7 +122,7 @@ func newBenchFixture(b *testing.B, totalHeights uint64, shuffledTx bool, daDelay
 
 	// prepare height events to emit
 	heightEvents := make([]common.DAHeightEvent, totalHeights)
-	for i := uint64(0); i < totalHeights; i++ {
+	for i := range totalHeights {
 		blockHeight, daHeight := i+gen.InitialHeight, i+daHeightOffset
 		_, sh := makeSignedHeaderBytes(b, gen.ChainID, blockHeight, addr, pub, signer, nil, nil, nil)
 		d := &types.Data{Metadata: &types.Metadata{ChainID: gen.ChainID, Height: blockHeight, Time: uint64(time.Now().UnixNano())}}
@@ -137,7 +137,7 @@ func newBenchFixture(b *testing.B, totalHeights uint64, shuffledTx bool, daDelay
 	// Mock DA retriever to emit exactly totalHeights events, then HFF and cancel
 	daR := NewMockDARetriever(b)
 	daR.On("PopPriorityHeight").Return(uint64(0)).Maybe()
-	for i := uint64(0); i < totalHeights; i++ {
+	for i := range totalHeights {
 		daHeight := i + daHeightOffset
 		daR.On("RetrieveFromDA", mock.Anything, daHeight).
 			Run(func(_ mock.Arguments) {

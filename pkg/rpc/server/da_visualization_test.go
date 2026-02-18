@@ -73,7 +73,7 @@ func TestRecordSubmissionMemoryLimit(t *testing.T) {
 	server := NewDAVisualizationServer(da, logger, true)
 
 	// Add 101 submissions (more than the limit of 100)
-	for i := 0; i < 101; i++ {
+	for i := range 101 {
 		result := &coreda.ResultSubmit{
 			BaseResult: coreda.BaseResult{
 				Code:      coreda.StatusSuccess,
