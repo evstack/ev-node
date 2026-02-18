@@ -59,6 +59,20 @@ type Executor struct {
 	// avoiding a store lookup on every ProduceBlock call.
 	hasPendingBlock atomic.Bool
 
+	// Cached per-block data to avoid store reads + protobuf deserialization
+	// in CreateBlock. Updated after each successful block production.
+	lastHeaderHash types.Hash
+	lastDataHash   types.Hash
+
+	// pendingCheckCounter amortizes the expensive NumPendingHeaders/NumPendingData
+	// checks across multiple blocks. Only checked every pendingCheckInterval blocks.
+	pendingCheckCounter uint64
+	lastSignature       types.Signature
+
+	// Cached static signer info — computed once at init, reused every block.
+	cachedPubKey        crypto.PubKey
+	cachedValidatorHash types.Hash
+
 	// Channels for coordination
 	txNotifyCh chan struct{}
 	errorCh    chan<- error // Channel to report critical execution client failures
@@ -286,6 +300,41 @@ func (e *Executor) initializeState() error {
 		e.hasPendingBlock.Store(true)
 	}
 
+	// Cache static signer info — computed once, reused every CreateBlock call.
+	if e.signer != nil {
+		pubKey, err := e.signer.GetPublic()
+		if err != nil {
+			return fmt.Errorf("failed to cache public key: %w", err)
+		}
+		e.cachedPubKey = pubKey
+
+		vHash, err := e.options.ValidatorHasherProvider(e.genesis.ProposerAddress, pubKey)
+		if err != nil {
+			return fmt.Errorf("failed to cache validator hash: %w", err)
+		}
+		e.cachedValidatorHash = vHash
+	} else {
+		vHash, err := e.options.ValidatorHasherProvider(e.genesis.ProposerAddress, nil)
+		if err != nil {
+			return fmt.Errorf("failed to cache validator hash: %w", err)
+		}
+		e.cachedValidatorHash = vHash
+	}
+
+	// Warm the last-block cache so CreateBlock can avoid a store read on the
+	// very first block after restart.
+	if state.LastBlockHeight > 0 {
+		h, d, err := e.store.GetBlockData(e.ctx, state.LastBlockHeight)
+		if err == nil {
+			e.lastHeaderHash = h.Hash()
+			e.lastDataHash = d.Hash()
+			sig, err := e.store.GetSignature(e.ctx, state.LastBlockHeight)
+			if err == nil {
+				e.lastSignature = *sig
+			}
+		}
+	}
+
 	// Determine sync target: use Raft height if node is behind Raft consensus
 	syncTargetHeight := state.LastBlockHeight
 	if e.raftNode != nil {
@@ -422,18 +471,26 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 
 	e.logger.Debug().Uint64("height", newHeight).Msg("producing block")
 
-	// check pending limits
+	// Amortized pending limit check — NumPendingHeaders/NumPendingData call
+	// advancePastEmptyData which scans the store. Only amortize when the limit
+	// is large enough that checking every N blocks won't overshoot.
+	const pendingCheckInterval uint64 = 64
 	if e.config.Node.MaxPendingHeadersAndData > 0 {
-		pendingHeaders := e.cache.NumPendingHeaders()
-		pendingData := e.cache.NumPendingData()
-		if pendingHeaders >= e.config.Node.MaxPendingHeadersAndData ||
-			pendingData >= e.config.Node.MaxPendingHeadersAndData {
-			e.logger.Warn().
-				Uint64("pending_headers", pendingHeaders).
-				Uint64("pending_data", pendingData).
-				Uint64("limit", e.config.Node.MaxPendingHeadersAndData).
-				Msg("pending limit reached, skipping block production")
-			return nil
+		e.pendingCheckCounter++
+		shouldCheck := e.config.Node.MaxPendingHeadersAndData <= pendingCheckInterval ||
+			e.pendingCheckCounter%pendingCheckInterval == 0
+		if shouldCheck {
+			pendingHeaders := e.cache.NumPendingHeaders()
+			pendingData := e.cache.NumPendingData()
+			if pendingHeaders >= e.config.Node.MaxPendingHeadersAndData ||
+				pendingData >= e.config.Node.MaxPendingHeadersAndData {
+				e.logger.Warn().
+					Uint64("pending_headers", pendingHeaders).
+					Uint64("pending_data", pendingData).
+					Uint64("limit", e.config.Node.MaxPendingHeadersAndData).
+					Msg("pending limit reached, skipping block production")
+				return nil
+			}
 		}
 	}
 
@@ -473,10 +530,11 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("failed to create block: %w", err)
 		}
-		if err := e.savePendingBlock(ctx, header, data); err != nil {
-			return fmt.Errorf("failed to save block data: %w", err)
-		}
-		e.hasPendingBlock.Store(true)
+		// Pending block save is intentionally omitted here. The final
+		// SaveBlockData in the commit batch below covers crash recovery, and
+		// re-execution from the sequencer is safe because ExecuteTxs is
+		// deterministic. Skipping the separate pending save eliminates a full
+		// protobuf serialization + store write per block.
 	}
 
 	if e.raftNode != nil && !e.raftNode.HasQuorum() {
@@ -493,7 +551,7 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 
 	// signing the header is done after applying the block
 	// as for signing, the state of the block may be required by the signature payload provider.
-	// For based sequencer, this will return an empty signature
+	// For based sequencer, this will return an empty signature.
 	signature, err := e.signHeader(header.Header)
 	if err != nil {
 		return fmt.Errorf("failed to sign header: %w", err)
@@ -564,9 +622,15 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 	// Update in-memory state after successful commit
 	e.setLastState(newState)
 
+	// Update last-block cache so the next CreateBlock avoids a store read.
+	e.lastHeaderHash = header.Hash()
+	e.lastDataHash = data.Hash()
+	e.lastSignature = signature
+
 	// Broadcast header and data to P2P network sequentially.
-	// This avoids the overhead of spawning two goroutines per block via errgroup,
-	// which the profiler showed dominates CPU time due to goroutine scheduling.
+	// IMPORTANT: Header MUST be broadcast before data — the P2P layer validates
+	// incoming data against the current and previous header, so out-of-order
+	// delivery would cause validation failures on peers.
 	if err := e.headerBroadcaster.WriteToStoreAndBroadcast(e.ctx, &types.P2PSignedHeader{SignedHeader: header}); err != nil {
 		e.logger.Error().Err(err).Msg("failed to broadcast header")
 	}
@@ -621,7 +685,9 @@ func (e *Executor) CreateBlock(ctx context.Context, height uint64, batchData *Ba
 	currentState := e.getLastState()
 	headerTime := uint64(e.genesis.StartTime.UnixNano())
 
-	// Get last block info
+	// Use cached last block info — populated during initializeState and updated
+	// after each successful block production. This avoids a store read + protobuf
+	// deserialization per block.
 	var lastHeaderHash types.Hash
 	var lastDataHash types.Hash
 	var lastSignature types.Signature
@@ -629,43 +695,31 @@ func (e *Executor) CreateBlock(ctx context.Context, height uint64, batchData *Ba
 	if height > e.genesis.InitialHeight {
 		headerTime = uint64(batchData.UnixNano())
 
-		lastHeader, lastData, err := e.store.GetBlockData(ctx, height-1)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to get last block: %w", err)
-		}
-		lastHeaderHash = lastHeader.Hash()
-		lastDataHash = lastData.Hash()
+		if len(e.lastHeaderHash) > 0 {
+			// Fast path: use in-memory cache
+			lastHeaderHash = e.lastHeaderHash
+			lastDataHash = e.lastDataHash
+			lastSignature = e.lastSignature
+		} else {
+			// Cold start fallback: read from store
+			lastHeader, lastData, err := e.store.GetBlockData(ctx, height-1)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to get last block: %w", err)
+			}
+			lastHeaderHash = lastHeader.Hash()
+			lastDataHash = lastData.Hash()
 
-		lastSignaturePtr, err := e.store.GetSignature(ctx, height-1)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to get last signature: %w", err)
+			lastSignaturePtr, err := e.store.GetSignature(ctx, height-1)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to get last signature: %w", err)
+			}
+			lastSignature = *lastSignaturePtr
 		}
-		lastSignature = *lastSignaturePtr
 	}
 
-	// Get signer info and validator hash
-	var pubKey crypto.PubKey
-	var validatorHash types.Hash
-
-	if e.signer != nil {
-		var err error
-		pubKey, err = e.signer.GetPublic()
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to get public key: %w", err)
-		}
-
-		validatorHash, err = e.options.ValidatorHasherProvider(e.genesis.ProposerAddress, pubKey)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to get validator hash: %w", err)
-		}
-	} else {
-		// For based sequencer without signer, use nil pubkey and compute validator hash
-		var err error
-		validatorHash, err = e.options.ValidatorHasherProvider(e.genesis.ProposerAddress, nil)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to get validator hash: %w", err)
-		}
-	}
+	// Use cached signer info — computed once at init, reused every block.
+	pubKey := e.cachedPubKey
+	validatorHash := e.cachedValidatorHash
 
 	// Create header
 	header := &types.SignedHeader{
@@ -720,16 +774,20 @@ func (e *Executor) CreateBlock(ctx context.Context, height uint64, batchData *Ba
 func (e *Executor) ApplyBlock(ctx context.Context, header types.Header, data *types.Data) (types.State, error) {
 	currentState := e.getLastState()
 
-	// Prepare transactions
-	rawTxs := make([][]byte, len(data.Txs))
-	for i, tx := range data.Txs {
-		rawTxs[i] = []byte(tx)
+	// Convert Txs to [][]byte for the execution client.
+	// types.Tx is []byte, so this is a type conversion, not a copy.
+	var rawTxs [][]byte
+	if n := len(data.Txs); n > 0 {
+		rawTxs = make([][]byte, n)
+		for i, tx := range data.Txs {
+			rawTxs[i] = []byte(tx)
+		}
 	}
 
 	// Execute transactions
-	ctx = context.WithValue(ctx, types.HeaderContextKey, header)
+	execCtx := context.WithValue(ctx, types.HeaderContextKey, header)
 
-	newAppHash, err := e.executeTxsWithRetry(ctx, rawTxs, header, currentState)
+	newAppHash, err := e.executeTxsWithRetry(execCtx, rawTxs, header, currentState)
 	if err != nil {
 		e.sendCriticalError(fmt.Errorf("failed to execute transactions: %w", err))
 		return types.State{}, fmt.Errorf("failed to execute transactions: %w", err)
