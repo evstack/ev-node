@@ -182,7 +182,7 @@ func NewSyncComponents(
 	if p, ok := exec.(coreexecutor.ExecPruner); ok {
 		execPruner = p
 	}
-	pruner := pruner.New(logger, store, execPruner, config.Pruning, config.Node.BlockTime.Duration)
+	pruner := pruner.New(logger, store, execPruner, config.Pruning, config.Node.BlockTime.Duration, config.DA.Address)
 
 	// Create submitter for sync nodes (no signer, only DA inclusion processing)
 	var daSubmitter submitting.DASubmitterAPI = submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger, headerDAHintAppender, dataDAHintAppender)
@@ -271,7 +271,7 @@ func newAggregatorComponents(
 	if p, ok := exec.(coreexecutor.ExecPruner); ok {
 		execPruner = p
 	}
-	pruner := pruner.New(logger, store, execPruner, config.Pruning, config.Node.BlockTime.Duration)
+	pruner := pruner.New(logger, store, execPruner, config.Pruning, config.Node.BlockTime.Duration, config.DA.Address)
 
 	reaper, err := reaping.NewReaper(
 		exec,
