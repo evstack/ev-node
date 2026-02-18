@@ -18,6 +18,8 @@ import (
 	"github.com/celestiaorg/tastora/framework/types"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest"
 )
 
 // Test-scoped Docker client/network mapping to avoid conflicts between tests
@@ -39,7 +41,7 @@ func randomString(n int) string {
 }
 
 // getTestScopedDockerSetup returns a Docker client and network ID that are scoped to the specific test.
-func getTestScopedDockerSetup(t *testing.T) (types.TastoraDockerClient, string) {
+func getTestScopedDockerSetup(t testing.TB) (types.TastoraDockerClient, string) {
 	t.Helper()
 
 	testKey := t.Name()
@@ -59,13 +61,22 @@ func getTestScopedDockerSetup(t *testing.T) (types.TastoraDockerClient, string) 
 }
 
 // SetupTestRethNode creates a single Reth node for testing purposes.
-func SetupTestRethNode(t *testing.T) *reth.Node {
+func SetupTestRethNode(t testing.TB) *reth.Node {
 	t.Helper()
 	ctx := context.Background()
 
 	dockerCli, dockerNetID := getTestScopedDockerSetup(t)
 
-	n, err := reth.NewNodeBuilderWithTestName(t, fmt.Sprintf("%s-%s", t.Name(), randomString(6))).
+	testName := fmt.Sprintf("%s-%s", t.Name(), randomString(6))
+	logger := zap.NewNop()
+	if testing.Verbose() {
+		logger = zaptest.NewLogger(t)
+	}
+	n, err := new(reth.NodeBuilder).
+		WithTestName(testName).
+		WithLogger(logger).
+		WithImage(reth.DefaultImage()).
+		WithBin("ev-reth").
 		WithDockerClient(dockerCli).
 		WithDockerNetworkID(dockerNetID).
 		WithGenesis([]byte(reth.DefaultEvolveGenesisJSON())).
@@ -88,7 +99,7 @@ func SetupTestRethNode(t *testing.T) *reth.Node {
 }
 
 // waitForRethContainer waits for the Reth container to be ready by polling the provided endpoints with JWT authentication.
-func waitForRethContainer(t *testing.T, jwtSecret, ethURL, engineURL string) error {
+func waitForRethContainer(t testing.TB, jwtSecret, ethURL, engineURL string) error {
 	t.Helper()
 	client := &http.Client{Timeout: 100 * time.Millisecond}
 	timer := time.NewTimer(30 * time.Second)

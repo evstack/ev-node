@@ -12,10 +12,7 @@ import (
 	"testing"
 	"time"
 
-	tastoradocker "github.com/celestiaorg/tastora/framework/docker"
-	reth "github.com/celestiaorg/tastora/framework/docker/evstack/reth"
 	spamoor "github.com/celestiaorg/tastora/framework/docker/evstack/spamoor"
-	"go.uber.org/zap"
 )
 
 // TestSpamoorBasicScenario starts a sequencer and runs a basic spamoor scenario
@@ -26,78 +23,43 @@ func TestSpamoorMetricsViaDaemon(t *testing.T) {
 	t.Parallel()
 
 	sut := NewSystemUnderTest(t)
-	workDir := t.TempDir()
 
-	// Prepare dynamic ports for rollkit + DA
-	endpoints, err := generateTestEndpoints()
-	if err != nil {
-		t.Fatalf("failed to generate endpoints: %v", err)
-	}
+	// Common EVM env (Reth + local DA ports/JWT/genesis)
+	seqJWT, _, genesisHash, endpoints, rethNode := setupCommonEVMTest(t, sut, false)
 
-	// Start local DA on chosen port
-	localDABinary := "local-da"
-	if evmSingleBinaryPath != "evm" {
-		localDABinary = filepath.Join(filepath.Dir(evmSingleBinaryPath), "local-da")
-	}
-	sut.ExecCmd(localDABinary, "-port", endpoints.DAPort)
-	t.Logf("Started local DA on port %s", endpoints.DAPort)
+	// In-process OTLP collector for ev-node traces
+	collector := newOTLPCollector(t)
+	t.Cleanup(func() { collector.close() })
 
-	// Bring up a Reth node in Docker (same network we'll use for Spamoor)
-	dockerCli, dockerNetID := tastoradocker.Setup(t)
-	logger, _ := zap.NewDevelopment()
-	t.Cleanup(func() { _ = logger.Sync() })
-
-	ctx := context.Background()
-	rethNode, err := reth.NewNodeBuilder(t).
-		WithDockerClient(dockerCli).
-		WithDockerNetworkID(dockerNetID).
-		WithLogger(logger).
-		WithGenesis([]byte(reth.DefaultEvolveGenesisJSON())).
-		Build(ctx)
-	if err != nil {
-		t.Fatalf("failed to build reth node: %v", err)
-	}
-	t.Cleanup(func() { _ = rethNode.Remove(context.Background()) })
-	if err := rethNode.Start(ctx); err != nil {
-		t.Fatalf("failed to start reth node: %v", err)
-	}
-
-	// Gather JWT and genesis hash for sequencer
-	networkInfo, err := rethNode.GetNetworkInfo(ctx)
-	if err != nil {
-		t.Fatalf("failed to get reth network info: %v", err)
-	}
-	seqJWT := rethNode.JWTSecretHex()
-	genesisHash, err := rethNode.GenesisHash(ctx)
-	if err != nil {
-		t.Fatalf("failed to get genesis hash: %v", err)
-	}
-
-	// Ensure Reth RPC is actually responding before starting spamoor
-	rethRPC := "http://127.0.0.1:" + networkInfo.External.Ports.RPC
-	requireJSONRPC(t, rethRPC, 30*time.Second)
-
-	// Fill in reth host-mapped ports for the sequencer
-	endpoints.SequencerEthPort = networkInfo.External.Ports.RPC
-	endpoints.SequencerEnginePort = networkInfo.External.Ports.Engine
-
-	// Start sequencer node (host process) connected to reth
-	sequencerHome := filepath.Join(workDir, "sequencer")
-	setupSequencerNode(t, sut, sequencerHome, seqJWT, genesisHash, endpoints)
+	// Start sequencer using shared helper and only tracing extra args
+	sequencerHome := filepath.Join(t.TempDir(), "sequencer")
+	setupSequencerNode(t, sut, sequencerHome, seqJWT, genesisHash, endpoints,
+		"--evnode.instrumentation.tracing=true",
+		"--evnode.instrumentation.tracing_endpoint", collector.endpoint(),
+		"--evnode.instrumentation.tracing_sample_rate", "1.0",
+		"--evnode.instrumentation.tracing_service_name", "ev-node-e2e",
+	)
 	t.Log("Sequencer node is up")
 
 	// Run spamoor-daemon via tastora container node using the maintained Docker image
 	// so that CI only needs Docker, not local binaries.
 	// Build spamoor container node in the SAME docker network
 	// It can reach Reth via internal IP:port
-	internalRPC := "http://" + networkInfo.Internal.IP + ":" + networkInfo.Internal.Ports.RPC
+	// Use reth INTERNAL ETH RPC so the Spamoor container talks directly over Docker network
+	ni, err := rethNode.GetNetworkInfo(context.Background())
+	if err != nil {
+		t.Fatalf("failed to get reth network info for Spamoor RPC: %v", err)
+	}
+	
+	internalRPC := "http://" + ni.Internal.RPCAddress()
 	spBuilder := spamoor.NewNodeBuilder(t.Name()).
-		WithDockerClient(dockerCli).
-		WithDockerNetworkID(dockerNetID).
-		WithLogger(logger).
+		WithDockerClient(rethNode.DockerClient).
+		WithDockerNetworkID(rethNode.NetworkID).
+		WithLogger(rethNode.Logger).
 		WithRPCHosts(internalRPC).
 		WithPrivateKey(TestPrivateKey).
 		WithHostPort(0)
+	ctx := context.Background()
 	spNode, err := spBuilder.Build(ctx)
 	if err != nil {
 		t.Skipf("cannot build spamoor container: %v", err)
@@ -191,8 +153,7 @@ func TestSpamoorMetricsViaDaemon(t *testing.T) {
 	} else {
 		t.Fatalf("no spamoor-prefixed metrics found; increase runtime/throughput or verify tx metrics are enabled")
 	}
-
-	time.Sleep(time.Hour)
+	// Done
 }
 
 // firstLines returns up to n lines of s.
