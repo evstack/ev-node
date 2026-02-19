@@ -27,7 +27,9 @@ func TestSpamoorSmoke(t *testing.T) {
 
 	// In-process OTLP/HTTP collector to capture ev-node spans.
 	collector := newOTLPCollector(t)
-	t.Cleanup(collector.close)
+	t.Cleanup(func() {
+		_ = collector.close()
+	})
 
 	// Start sequencer with tracing to our collector.
 	setupSequencerNode(t, sut, sequencerHome, seqJWT, genesisHash, endpoints,

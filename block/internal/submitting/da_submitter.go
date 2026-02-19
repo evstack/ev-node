@@ -692,7 +692,7 @@ func submitToDA[T any](
 func limitBatchBySize[T any](items []T, marshaled [][]byte, maxBytes int) ([]T, [][]byte, error) {
 	total := 0
 	count := 0
-	for i := 0; i < len(items); i++ {
+	for i := range items {
 		sz := len(marshaled[i])
 		if sz > maxBytes {
 			if i == 0 {

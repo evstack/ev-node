@@ -14,7 +14,7 @@ type Header struct {
 	Height    uint64    `json:"height,string,omitempty"`
 	LastHash  []byte    `json:"last_header_hash,omitempty"`
 	ChainID   string    `json:"chain_id,omitempty"`
-	BlockTime time.Time `json:"time,omitempty"`
+	BlockTime time.Time `json:"time"`
 }
 
 // RawHeader contains the raw tendermint header fields.

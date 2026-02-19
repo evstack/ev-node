@@ -94,7 +94,7 @@ func makeData(chainID string, height uint64, txs int) *types.Data {
 	}
 	if txs > 0 {
 		d.Txs = make(types.Txs, txs)
-		for i := 0; i < txs; i++ {
+		for i := range txs {
 			d.Txs[i] = types.Tx([]byte{byte(height), byte(i)})
 		}
 	}
@@ -918,8 +918,7 @@ func TestSyncer_Stop_SkipsDrainOnCriticalError(t *testing.T) {
 	s.hasCriticalError.Store(true)
 
 	// Start a no-op goroutine tracked by the WaitGroup so Stop() doesn't block on wg.Wait()
-	s.wg.Add(1)
-	go func() { defer s.wg.Done() }()
+	s.wg.Go(func() {})
 
 	// Stop must complete quickly — no drain, no ExecuteTxs calls
 	done := make(chan struct{})
@@ -991,8 +990,7 @@ func TestSyncer_Stop_DrainWorksWithoutCriticalError(t *testing.T) {
 		s.heightInCh <- evt
 
 		// hasCriticalError is false (default) — drain should process events including ExecuteTxs
-		s.wg.Add(1)
-		go func() { defer s.wg.Done() }()
+		s.wg.Go(func() {})
 
 		_ = s.Stop()
 
