@@ -163,6 +163,9 @@ func (r *forcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 
 		if result.Code == datypes.StatusNotFound {
 			r.logger.Debug().Uint64("height", h).Msg("no forced inclusion blobs at height")
+			syncFetchedBlocks[h] = &BlockData{
+				Timestamp: result.Timestamp,
+			}
 			continue
 		}
 
