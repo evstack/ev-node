@@ -610,7 +610,7 @@ func TestEvmSequencerCatchUpBasedSequencerE2E(t *testing.T) {
 	// ===== PHASE 1: Setup - Start Sequencer and Sync Node =====
 	t.Log("Phase 1: Setup - Start Sequencer and Sync Node")
 
-	jwtSecret, fullNodeJwtSecret, genesisHash, endpoints := setupCommonEVMTest(t, sut, true)
+	jwtSecret, fullNodeJwtSecret, genesisHash, endpoints, _ := setupCommonEVMTest(t, sut, true)
 
 	// Create passphrase and JWT secret files for sequencer
 	seqPassphraseFile := createPassphraseFile(t, sequencerHome)
