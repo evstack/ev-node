@@ -7,7 +7,7 @@ package mocks
 import (
 	"context"
 
-	da "github.com/evstack/ev-node/pkg/da/types"
+	"github.com/evstack/ev-node/pkg/da/types"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -250,7 +250,7 @@ func (_c *MockClient_GetHeaderNamespace_Call) RunAndReturn(run func() []byte) *M
 	return _c
 }
 
-// HasForcedInclusionNamespace provides a mock function for the type MockClient
+// GetLatestDAHeight provides a mock function for the type MockClient
 func (_mock *MockClient) GetLatestDAHeight(ctx context.Context) (uint64, error) {
 	ret := _mock.Called(ctx)
 
@@ -293,21 +293,24 @@ func (_c *MockClient_GetLatestDAHeight_Call) Run(run func(ctx context.Context)) 
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		run(arg0)
+		run(
+			arg0,
+		)
 	})
 	return _c
 }
 
-func (_c *MockClient_GetLatestDAHeight_Call) Return(height uint64, err error) *MockClient_GetLatestDAHeight_Call {
-	_c.Call.Return(height, err)
+func (_c *MockClient_GetLatestDAHeight_Call) Return(v uint64, err error) *MockClient_GetLatestDAHeight_Call {
+	_c.Call.Return(v, err)
 	return _c
 }
 
-func (_c *MockClient_GetLatestDAHeight_Call) RunAndReturn(run func(context.Context) (uint64, error)) *MockClient_GetLatestDAHeight_Call {
+func (_c *MockClient_GetLatestDAHeight_Call) RunAndReturn(run func(ctx context.Context) (uint64, error)) *MockClient_GetLatestDAHeight_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
+// HasForcedInclusionNamespace provides a mock function for the type MockClient
 func (_mock *MockClient) HasForcedInclusionNamespace() bool {
 	ret := _mock.Called()
 
