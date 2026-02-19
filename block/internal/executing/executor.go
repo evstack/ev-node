@@ -290,14 +290,11 @@ func (e *Executor) initializeState() error {
 		return fmt.Errorf("failed to migrate legacy pending block: %w", err)
 	}
 
-	// Detect any existing pending block and set the in-memory flag so that
-	// ProduceBlock can skip unnecessary store lookups on the happy path.
 	if _, err := e.store.GetMetadata(e.ctx, headerKey); err == nil {
 		e.hasPendingBlock.Store(true)
 	}
 
-	// Warm the last-block cache so CreateBlock can avoid a store read on the
-	// very first block after restart.
+	// Warm the last-block cache
 	if state.LastBlockHeight > 0 {
 		h, d, err := e.store.GetBlockData(e.ctx, state.LastBlockHeight)
 		if err == nil {
@@ -660,9 +657,7 @@ func (e *Executor) CreateBlock(ctx context.Context, height uint64, batchData *Ba
 	currentState := e.getLastState()
 	headerTime := uint64(e.genesis.StartTime.UnixNano())
 
-	// Use cached last block info — populated during initializeState and updated
-	// after each successful block production. This avoids a store read + protobuf
-	// deserialization per block.
+	// Get last block info
 	var lastHeaderHash types.Hash
 	var lastDataHash types.Hash
 	var lastSignature types.Signature
