@@ -84,3 +84,33 @@ func (s State) AssertValidForNextState(header *SignedHeader, data *Data) error {
 
 	return nil
 }
+
+// AssertValidSequence performs lightweight state-sequence validation for self-produced blocks.
+// It skips the expensive Validate() call (which re-computes DACommitment by re-marshaling
+// and re-hashing all transaction data) since the producer already computed the data hash
+// in CreateBlock. Only cheap structural checks are performed.
+func (s State) AssertValidSequence(header *SignedHeader) error {
+	if header.ChainID() != s.ChainID {
+		return fmt.Errorf("invalid chain ID - got %s, want %s", header.ChainID(), s.ChainID)
+	}
+
+	if len(s.LastHeaderHash) == 0 { // initial state
+		return nil
+	}
+
+	if expdHeight := s.LastBlockHeight + 1; header.Height() != expdHeight {
+		return fmt.Errorf("invalid block height - got: %d, want: %d", header.Height(), expdHeight)
+	}
+
+	if headerTime := header.Time(); s.LastBlockTime.After(headerTime) {
+		return fmt.Errorf("invalid block time - got: %v, last: %v", headerTime, s.LastBlockTime)
+	}
+	if !bytes.Equal(header.LastHeaderHash, s.LastHeaderHash) {
+		return fmt.Errorf("invalid last header hash - got: %x, want: %x", header.LastHeaderHash, s.LastHeaderHash)
+	}
+	if !bytes.Equal(header.AppHash, s.AppHash) {
+		return fmt.Errorf("invalid last app hash - got: %x, want: %x", header.AppHash, s.AppHash)
+	}
+
+	return nil
+}

@@ -552,15 +552,15 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 	// signing the header is done after applying the block
 	// as for signing, the state of the block may be required by the signature payload provider.
 	// For based sequencer, this will return an empty signature.
-	signature, err := e.signHeader(header.Header)
+	signature, _, err := e.signHeader(&header.Header)
 	if err != nil {
 		return fmt.Errorf("failed to sign header: %w", err)
 	}
 	header.Signature = signature
 
-	// Structural validation only — skip the expensive signature re-verification
-	// (ValidateBasic) since we just signed this block ourselves.
-	if err := currentState.AssertValidForNextState(header, data); err != nil {
+	// Structural validation only — skip the expensive Validate() / DACommitment()
+	// re-computation since we just produced this block ourselves.
+	if err := currentState.AssertValidSequence(header); err != nil {
 		e.sendCriticalError(fmt.Errorf("failed to validate block: %w", err))
 		e.logger.Error().Err(err).Msg("CRITICAL: Permanent block validation error - halting block production")
 		return fmt.Errorf("failed to validate block: %w", err)
@@ -620,7 +620,9 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 	e.setLastState(newState)
 
 	// Update last-block cache so the next CreateBlock avoids a store read.
-	e.lastHeaderHash = header.Hash()
+	// Reuse newState.LastHeaderHash (already computed by NextState) instead of
+	// calling header.Hash() again, which would re-marshal + re-hash.
+	e.lastHeaderHash = newState.LastHeaderHash
 	e.lastDataHash = data.Hash()
 	e.lastSignature = signature
 
@@ -805,19 +807,25 @@ func (e *Executor) ApplyBlock(ctx context.Context, header types.Header, data *ty
 	return newState, nil
 }
 
-// signHeader signs the block header
-func (e *Executor) signHeader(header types.Header) (types.Signature, error) {
+// signHeader signs the block header and returns both the signature and the
+// serialized header bytes (signing payload). The caller can reuse headerBytes
+// in SaveBlockDataFromBytes to avoid a redundant MarshalBinary call.
+func (e *Executor) signHeader(header *types.Header) (types.Signature, []byte, error) {
 	// For based sequencer, return empty signature as there is no signer
 	if e.signer == nil {
-		return types.Signature{}, nil
+		return types.Signature{}, nil, nil
 	}
 
-	bz, err := e.options.AggregatorNodeSignatureBytesProvider(&header)
+	bz, err := e.options.AggregatorNodeSignatureBytesProvider(header)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get signature payload: %w", err)
+		return nil, nil, fmt.Errorf("failed to get signature payload: %w", err)
 	}
 
-	return e.signer.Sign(bz)
+	sig, err := e.signer.Sign(bz)
+	if err != nil {
+		return nil, nil, err
+	}
+	return sig, bz, nil
 }
 
 // executeTxsWithRetry executes transactions with retry logic.

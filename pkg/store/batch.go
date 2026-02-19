@@ -43,7 +43,7 @@ func (b *DefaultBatch) SetHeight(height uint64) error {
 	}
 
 	heightBytes := encodeHeight(height)
-	return b.batch.Put(b.ctx, ds.NewKey(getHeightKey()), heightBytes)
+	return b.batch.Put(b.ctx, ds.RawKey(getHeightKey()), heightBytes)
 }
 
 // SaveBlockData saves block data to the batch
@@ -65,19 +65,19 @@ func (b *DefaultBatch) SaveBlockDataFromBytes(header *types.SignedHeader, header
 	height := header.Height()
 	signatureHash := *signature
 
-	if err := b.batch.Put(b.ctx, ds.NewKey(getHeaderKey(height)), headerBlob); err != nil {
+	if err := b.batch.Put(b.ctx, ds.RawKey(getHeaderKey(height)), headerBlob); err != nil {
 		return fmt.Errorf("failed to put header blob in batch: %w", err)
 	}
-	if err := b.batch.Put(b.ctx, ds.NewKey(getDataKey(height)), dataBlob); err != nil {
+	if err := b.batch.Put(b.ctx, ds.RawKey(getDataKey(height)), dataBlob); err != nil {
 		return fmt.Errorf("failed to put data blob in batch: %w", err)
 	}
-	if err := b.batch.Put(b.ctx, ds.NewKey(getSignatureKey(height)), signatureHash[:]); err != nil {
+	if err := b.batch.Put(b.ctx, ds.RawKey(getSignatureKey(height)), signatureHash[:]); err != nil {
 		return fmt.Errorf("failed to put signature blob in batch: %w", err)
 	}
 
 	headerHash := sha256.Sum256(headerBlob)
 	heightBytes := encodeHeight(height)
-	if err := b.batch.Put(b.ctx, ds.NewKey(getIndexKey(headerHash[:])), heightBytes); err != nil {
+	if err := b.batch.Put(b.ctx, ds.RawKey(getIndexKey(headerHash[:])), heightBytes); err != nil {
 		return fmt.Errorf("failed to put index key in batch: %w", err)
 	}
 
@@ -98,7 +98,7 @@ func (b *DefaultBatch) UpdateState(state types.State) error {
 		return fmt.Errorf("failed to marshal state to protobuf: %w", err)
 	}
 
-	return b.batch.Put(b.ctx, ds.NewKey(getStateAtHeightKey(height)), data)
+	return b.batch.Put(b.ctx, ds.RawKey(getStateAtHeightKey(height)), data)
 }
 
 // Commit commits all batched operations atomically

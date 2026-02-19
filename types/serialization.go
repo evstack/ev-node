@@ -363,6 +363,9 @@ func (d *Data) FromProto(other *pb.Data) error {
 
 // ToProto converts State into protobuf representation and returns it.
 func (s *State) ToProto() (*pb.State, error) {
+	// Avoid timestamppb.New allocation by constructing inline.
+	secs := s.LastBlockTime.Unix()
+	nanos := int32(s.LastBlockTime.Nanosecond())
 
 	return &pb.State{
 		Version: &pb.Version{
@@ -372,7 +375,7 @@ func (s *State) ToProto() (*pb.State, error) {
 		ChainId:         s.ChainID,
 		InitialHeight:   s.InitialHeight,
 		LastBlockHeight: s.LastBlockHeight,
-		LastBlockTime:   timestamppb.New(s.LastBlockTime),
+		LastBlockTime:   &timestamppb.Timestamp{Seconds: secs, Nanos: nanos},
 		DaHeight:        s.DAHeight,
 		AppHash:         s.AppHash[:],
 		LastHeaderHash:  s.LastHeaderHash[:],
