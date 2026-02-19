@@ -40,3 +40,19 @@ jobs:
           alert-threshold: '150%'
           fail-on-alert: true
           comment-on-alert: true
+
+      - name: Run Block Executor benchmarks
+        run: |
+          go test -bench=BenchmarkProduceBlock -benchmem -run='^$' \
+            ./block/internal/executing/... > block_executor_output.txt
+      - name: Store Block Executor benchmark result
+        uses: benchmark-action/github-action-benchmark@4bdcce38c94cec68da58d012ac24b7b1155efe8b # v1.20.7
+        with:
+          name: Block Executor Benchmark
+          tool: 'go'
+          output-file-path: block_executor_output.txt
+          auto-push: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          alert-threshold: '150%'
+          fail-on-alert: true
+          comment-on-alert: true
