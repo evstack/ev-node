@@ -212,10 +212,10 @@ func NewSyncComponents(
 	}, nil
 }
 
-// NewAggregatorComponents creates components for an aggregator full node that can produce and sync blocks.
+// newAggregatorComponents creates components for an aggregator full node that can produce and sync blocks.
 // Aggregator nodes have full capabilities - they can produce blocks, sync from P2P and DA,
 // and submit headers/data to DA. Requires a signer for block production and DA submission.
-func NewAggregatorComponents(
+func newAggregatorComponents(
 	config config.Config,
 	genesis genesis.Genesis,
 	store store.Store,
@@ -322,4 +322,59 @@ func NewAggregatorComponents(
 		Cache:     cacheManager,
 		errorCh:   errorCh,
 	}, nil
+}
+
+// NewAggregatorWithCatchupComponents creates aggregator components that include a Syncer
+// for DA/P2P catchup before block production begins.
+//
+// The caller should:
+//  1. Start the Syncer and wait for DA head + P2P catchup
+//  2. Stop the Syncer and set Components.Syncer = nil
+//  3. Call Components.Start() — which will start the Executor and other components
+func NewAggregatorWithCatchupComponents(
+	config config.Config,
+	genesis genesis.Genesis,
+	store store.Store,
+	exec coreexecutor.Executor,
+	sequencer coresequencer.Sequencer,
+	daClient da.Client,
+	signer signer.Signer,
+	headerSyncService *sync.HeaderSyncService,
+	dataSyncService *sync.DataSyncService,
+	logger zerolog.Logger,
+	metrics *Metrics,
+	blockOpts BlockOptions,
+	raftNode common.RaftNode,
+) (*Components, error) {
+	bc, err := newAggregatorComponents(
+		config, genesis, store, exec, sequencer, daClient, signer,
+		headerSyncService, dataSyncService, logger, metrics, blockOpts, raftNode,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a catchup syncer that shares the same cache manager
+	catchupErrCh := make(chan error, 1)
+	catchupSyncer := syncing.NewSyncer(
+		store,
+		exec,
+		daClient,
+		bc.Cache,
+		metrics,
+		config,
+		genesis,
+		headerSyncService.Store(),
+		dataSyncService.Store(),
+		logger,
+		blockOpts,
+		catchupErrCh,
+		raftNode,
+	)
+	if config.Instrumentation.IsTracingEnabled() {
+		catchupSyncer.SetBlockSyncer(syncing.WithTracingBlockSyncer(catchupSyncer))
+	}
+
+	bc.Syncer = catchupSyncer
+	return bc, nil
 }
