@@ -3,6 +3,8 @@ package executing
 import (
 	"context"
 	"crypto/rand"
+	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -34,6 +36,9 @@ func BenchmarkProduceBlock(b *testing.B) {
 		},
 		"single tx": {
 			txs: [][]byte{[]byte("tx1")},
+		},
+		"100 txs": {
+			txs: createTxs(100),
 		},
 	}
 	for name, spec := range specs {
@@ -81,13 +86,7 @@ func newBenchExecutorWithStubs(b *testing.B, txs [][]byte) *Executor {
 	}
 
 	stubExec := &stubExecClient{stateRoot: []byte("init_root")}
-	stubSeq := &stubSequencer{
-		batchResp: &coreseq.GetNextBatchResponse{
-			Batch:     &coreseq.Batch{Transactions: txs},
-			Timestamp: time.Now(),
-			BatchData: txs,
-		},
-	}
+	stubSeq := &stubSequencer{txs: txs}
 	hb := &stubBroadcaster[*types.P2PSignedHeader]{}
 	db := &stubBroadcaster[*types.P2PData]{}
 
@@ -107,22 +106,39 @@ func newBenchExecutorWithStubs(b *testing.B, txs [][]byte) *Executor {
 	return exec
 }
 
-// stubSequencer implements coreseq.Sequencer with fixed return values.
+// stubSequencer implements coreseq.Sequencer.
+// GetNextBatch returns a monotonically-increasing timestamp on every call so
+// that successive ProduceBlock iterations pass AssertValidSequence.
 type stubSequencer struct {
-	batchResp *coreseq.GetNextBatchResponse
+	txs     [][]byte
+	counter atomic.Int64 // incremented each call; used to advance the timestamp
 }
 
 func (s *stubSequencer) SubmitBatchTxs(context.Context, coreseq.SubmitBatchTxsRequest) (*coreseq.SubmitBatchTxsResponse, error) {
 	return nil, nil
 }
 func (s *stubSequencer) GetNextBatch(context.Context, coreseq.GetNextBatchRequest) (*coreseq.GetNextBatchResponse, error) {
-	return s.batchResp, nil
+	n := s.counter.Add(1)
+	ts := time.Now().Add(time.Duration(n) * time.Millisecond)
+	return &coreseq.GetNextBatchResponse{
+		Batch:     &coreseq.Batch{Transactions: s.txs},
+		Timestamp: ts,
+		BatchData: s.txs,
+	}, nil
 }
 func (s *stubSequencer) VerifyBatch(context.Context, coreseq.VerifyBatchRequest) (*coreseq.VerifyBatchResponse, error) {
 	return nil, nil
 }
 func (s *stubSequencer) SetDAHeight(uint64)  {}
 func (s *stubSequencer) GetDAHeight() uint64 { return 0 }
+
+func createTxs(n int) [][]byte {
+	txs := make([][]byte, n)
+	for i := 0; i < n; i++ {
+		txs[i] = []byte(fmt.Sprintf("tx%d", i))
+	}
+	return txs
+}
 
 // stubExecClient implements coreexec.Executor with fixed return values.
 type stubExecClient struct {
