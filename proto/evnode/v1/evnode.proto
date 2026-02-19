@@ -113,9 +113,6 @@ message P2PSignedHeader {
   bytes signature = 2;
   Signer signer = 3;
   optional uint64 da_height_hint = 4;
-  // Pre-computed hash of the previous block's header (block N-1).
-  // Allows peers to skip re-computing trusted.Hash() during Verify.
-  optional bytes prev_header_hash = 5;
 }
 
 // P2PData
@@ -123,7 +120,4 @@ message P2PData {
   Metadata metadata = 1;
   repeated bytes txs = 2;
   optional uint64 da_height_hint = 3;
-  // Pre-computed hash of the previous block's data (block N-1).
-  // Allows peers to skip re-computing trusted.Hash() during Verify.
-  optional bytes prev_data_hash = 4;
 }

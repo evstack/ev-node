@@ -33,9 +33,6 @@ type Metadata struct {
 type Data struct {
 	*Metadata
 	Txs Txs
-
-	// cachedHash stores a pre-computed hash to avoid repeated serialization+SHA256.
-	cachedHash Hash
 }
 
 // SignedData combines Data and its signature.

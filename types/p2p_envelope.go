@@ -15,12 +15,9 @@ var (
 )
 
 // P2PSignedHeader wraps SignedHeader with an optional DA height hint for P2P sync optimization.
-// PrevHeaderHash carries the producer's pre-computed hash of block N-1's header,
-// allowing peers to skip re-computing trusted.Hash() during Verify.
 type P2PSignedHeader struct {
 	*SignedHeader
-	DAHeightHint   uint64
-	PrevHeaderHash Hash
+	DAHeightHint uint64
 }
 
 // New creates a new P2PSignedHeader.
@@ -44,12 +41,7 @@ func (p *P2PSignedHeader) DAHint() uint64 {
 }
 
 // Verify verifies against an untrusted header.
-// If the untrusted header carries a PrevHeaderHash (from the producer),
-// pre-populate the trusted header's hash cache to skip re-computation.
 func (p *P2PSignedHeader) Verify(untrusted *P2PSignedHeader) error {
-	if len(untrusted.PrevHeaderHash) > 0 {
-		p.Header.SetCachedHash(untrusted.PrevHeaderHash)
-	}
 	return p.SignedHeader.Verify(untrusted.SignedHeader)
 }
 
@@ -64,9 +56,6 @@ func (p *P2PSignedHeader) MarshalBinary() ([]byte, error) {
 		Signature:    psh.Signature,
 		Signer:       psh.Signer,
 		DaHeightHint: &p.DAHeightHint,
-	}
-	if len(p.PrevHeaderHash) > 0 {
-		msg.PrevHeaderHash = p.PrevHeaderHash
 	}
 	return proto.Marshal(msg)
 }
@@ -91,19 +80,13 @@ func (p *P2PSignedHeader) UnmarshalBinary(data []byte) error {
 	if msg.DaHeightHint != nil {
 		p.DAHeightHint = *msg.DaHeightHint
 	}
-	if len(msg.PrevHeaderHash) > 0 {
-		p.PrevHeaderHash = msg.PrevHeaderHash
-	}
 	return nil
 }
 
 // P2PData wraps Data with an optional DA height hint for P2P sync optimization.
-// PrevDataHash carries the producer's pre-computed hash of block N-1's data,
-// allowing peers to skip re-computing trusted.Hash() during Verify.
 type P2PData struct {
 	*Data
 	DAHeightHint uint64
-	PrevDataHash Hash
 }
 
 // New creates a new P2PData.
@@ -127,12 +110,7 @@ func (p *P2PData) DAHint() uint64 {
 }
 
 // Verify verifies against untrusted data.
-// If the untrusted data carries a PrevDataHash (from the producer),
-// pre-populate the trusted data's hash cache to skip re-computation.
 func (p *P2PData) Verify(untrusted *P2PData) error {
-	if len(untrusted.PrevDataHash) > 0 {
-		p.Data.SetCachedHash(untrusted.PrevDataHash)
-	}
 	return p.Data.Verify(untrusted.Data)
 }
 
@@ -174,9 +152,6 @@ func (p *P2PData) MarshalBinary() ([]byte, error) {
 		Txs:          pData.Txs,
 		DaHeightHint: &p.DAHeightHint,
 	}
-	if len(p.PrevDataHash) > 0 {
-		msg.PrevDataHash = p.PrevDataHash
-	}
 	return proto.Marshal(msg)
 }
 
@@ -198,9 +173,6 @@ func (p *P2PData) UnmarshalBinary(data []byte) error {
 	}
 	if msg.DaHeightHint != nil {
 		p.DAHeightHint = *msg.DaHeightHint
-	}
-	if len(msg.PrevDataHash) > 0 {
-		p.PrevDataHash = msg.PrevDataHash
 	}
 	return nil
 }
