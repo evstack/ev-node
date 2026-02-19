@@ -631,14 +631,12 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 	// incoming data against the current and previous header, so out-of-order
 	// delivery would cause validation failures on peers.
 	if err := e.headerBroadcaster.WriteToStoreAndBroadcast(e.ctx, &types.P2PSignedHeader{
-		SignedHeader:   header,
-		PrevHeaderHash: e.lastHeaderHash,
+		SignedHeader: header,
 	}); err != nil {
 		e.logger.Error().Err(err).Msg("failed to broadcast header")
 	}
 	if err := e.dataBroadcaster.WriteToStoreAndBroadcast(e.ctx, &types.P2PData{
-		Data:         data,
-		PrevDataHash: e.lastDataHash,
+		Data: data,
 	}); err != nil {
 		e.logger.Error().Err(err).Msg("failed to broadcast data")
 	}
