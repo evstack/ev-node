@@ -505,11 +505,9 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("failed to create block: %w", err)
 		}
-		// Pending block save is intentionally omitted here. The final
-		// SaveBlockData in the commit batch below covers crash recovery, and
-		// re-execution from the sequencer is safe because ExecuteTxs is
-		// deterministic. Skipping the separate pending save eliminates a full
-		// protobuf serialization + store write per block.
+		if err := e.savePendingBlock(ctx, header, data); err != nil {
+			return fmt.Errorf("failed to save block data: %w", err)
+		}
 	}
 
 	if e.raftNode != nil && !e.raftNode.HasQuorum() {
@@ -588,7 +586,6 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 		return fmt.Errorf("failed to commit batch: %w", err)
 	}
 
-	// Clear pending block flag after successful commit
 	e.hasPendingBlock.Store(false)
 
 	// Update in-memory state after successful commit
