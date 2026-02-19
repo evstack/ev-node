@@ -30,11 +30,11 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
+	evmtest "github.com/evstack/ev-node/execution/evm/test"
 	"github.com/stretchr/testify/require"
 
 	"github.com/celestiaorg/tastora/framework/docker/evstack/reth"
 	"github.com/evstack/ev-node/execution/evm"
-	evmtest "github.com/evstack/ev-node/execution/evm/test"
 )
 
 // evmSingleBinaryPath is the path to the evm-single binary used in tests
@@ -513,7 +513,7 @@ func submitTransactionAndGetBlockNumber(t testing.TB, sequencerClients ...*ethcl
 // - daPort: optional DA port to use (if empty, uses default)
 //
 // Returns: jwtSecret, fullNodeJwtSecret (empty if needsFullNode=false), genesisHash
-func setupCommonEVMTest(t testing.TB, sut *SystemUnderTest, needsFullNode bool, _ ...string) (string, string, string, *TestEndpoints) {
+func setupCommonEVMTest(t testing.TB, sut *SystemUnderTest, needsFullNode bool) (string, string, string, *TestEndpoints, *reth.Node) {
 	t.Helper()
 
 	// Reset global nonce for each test to ensure clean state
@@ -559,7 +559,7 @@ func setupCommonEVMTest(t testing.TB, sut *SystemUnderTest, needsFullNode bool, 
 		dynEndpoints.FullNodeEnginePort = fnInfo.External.Ports.Engine
 	}
 
-	return seqJWT, fnJWT, genesisHash, dynEndpoints
+	return seqJWT, fnJWT, genesisHash, dynEndpoints, rethNode
 }
 
 // checkBlockInfoAt retrieves block information at a specific height including state root.
@@ -618,7 +618,7 @@ func setupSequencerOnlyTest(t testing.TB, sut *SystemUnderTest, nodeHome string,
 	t.Helper()
 
 	// Use common setup (no full node needed)
-	jwtSecret, _, genesisHash, endpoints := setupCommonEVMTest(t, sut, false)
+	jwtSecret, _, genesisHash, endpoints, _ := setupCommonEVMTest(t, sut, false)
 
 	// Initialize and start sequencer node
 	setupSequencerNode(t, sut, nodeHome, jwtSecret, genesisHash, endpoints, extraArgs...)
