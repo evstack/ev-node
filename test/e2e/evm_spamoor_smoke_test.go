@@ -53,11 +53,11 @@ func TestSpamoorSmoke(t *testing.T) {
 		WithRPCHosts(internalRPC).
 		WithPrivateKey(TestPrivateKey)
 
-	ctx := context.Background()
+	ctx := t.Context()
 	spNode, err := spBuilder.Build(ctx)
 	require.NoError(t, err, "failed to build sp node")
 
-	t.Cleanup(func() { _ = spNode.Remove(context.Background()) })
+	t.Cleanup(func() { _ = spNode.Remove(t.Context()) })
 	require.NoError(t, spNode.Start(ctx), "failed to start spamoor node")
 
 	// Wait for daemon readiness.
@@ -115,20 +115,16 @@ func TestSpamoorSmoke(t *testing.T) {
 	time.Sleep(60 * time.Second)
 
 	// Fetch parsed metrics and print a concise summary.
-	if mfs, err := api.GetMetrics(); err == nil && mfs != nil {
-		sent := sumCounter(mfs["spamoor_transactions_sent_total"])
-		fail := sumCounter(mfs["spamoor_transactions_failed_total"])
-		pend := sumGauge(mfs["spamoor_pending_transactions"])
-		gas := sumCounter(mfs["spamoor_block_gas_usage"])
-		t.Logf("Spamoor summary: sent=%.0f failed=%.0f pending=%.0f block_gas=%.0f", sent, fail, pend, gas)
-	} else {
-		t.Logf("metrics unavailable or parse error: %v", err)
-	}
+	metrics, err := api.GetMetrics()
+	require.NoError(t, err, "failed to get metrics")
+	sent := sumCounter(metrics["spamoor_transactions_sent_total"])
+	fail := sumCounter(metrics["spamoor_transactions_failed_total"])
 
 	time.Sleep(2 * time.Second)
 	printCollectedTraceReport(t, collector)
 
-	// TODO: test should pass / fail based on results
+	require.Greater(t, sent, float64(0), "at least one transaction should have been sent")
+	require.Zero(t, fail, "no transactions should have failed")
 }
 
 // --- helpers ---
