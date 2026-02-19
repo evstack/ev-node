@@ -47,8 +47,8 @@ func BenchmarkEvmContractRoundtrip(b *testing.B) {
 	sequencerHome := filepath.Join(workDir, "evm-bench-sequencer")
 
 	// Start an in-process OTLP/HTTP receiver to collect traces from ev-node.
-    collector := newOTLPCollector(b)
-    defer collector.close() // nolint: errcheck // test only
+	collector := newOTLPCollector(b)
+	defer collector.close() // nolint: errcheck // test only
 
 	// Start sequencer with tracing enabled, exporting to our in-process collector.
 	client, _, cleanup := setupTestSequencer(b, sequencerHome,
@@ -158,9 +158,9 @@ func (c *otlpCollector) endpoint() string {
 }
 
 func (c *otlpCollector) close() error {
-    ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-    defer cancel()
-    return c.server.Shutdown(ctx)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	return c.server.Shutdown(ctx)
 }
 
 func (c *otlpCollector) handleTraces(w http.ResponseWriter, r *http.Request) {

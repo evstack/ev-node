@@ -213,7 +213,7 @@ func setupSequencerWithFullNode(t *testing.T, sut *SystemUnderTest, sequencerHom
 	t.Helper()
 
 	// Common setup for both sequencer and full node
-    jwtSecret, fullNodeJwtSecret, genesisHash, endpoints, _ := setupCommonEVMTest(t, sut, true)
+	jwtSecret, fullNodeJwtSecret, genesisHash, endpoints, _ := setupCommonEVMTest(t, sut, true)
 
 	// Setup sequencer
 	setupSequencerNode(t, sut, sequencerHome, jwtSecret, genesisHash, endpoints)
@@ -645,7 +645,7 @@ func setupSequencerWithFullNodeLazy(t *testing.T, sut *SystemUnderTest, sequence
 	t.Helper()
 
 	// Common setup for both sequencer and full node
-    jwtSecret, fullNodeJwtSecret, genesisHash, endpoints, _ := setupCommonEVMTest(t, sut, true)
+	jwtSecret, fullNodeJwtSecret, genesisHash, endpoints, _ := setupCommonEVMTest(t, sut, true)
 
 	t.Logf("Generated test endpoints - Rollkit RPC: %s, P2P: %s, Full Node RPC: %s, P2P: %s, DA Port: %s",
 		endpoints.RollkitRPCPort, endpoints.RollkitP2PPort, endpoints.FullNodeRPCPort, endpoints.FullNodeP2PPort, endpoints.DAPort)
@@ -1039,7 +1039,7 @@ func testSequencerFullNodeRestart(t *testing.T, initialLazyMode, restartLazyMode
 	t.Logf("Test mode: initial_lazy=%t, restart_lazy=%t", initialLazyMode, restartLazyMode)
 
 	// Get JWT secrets and setup common components first
-    jwtSecret, fullNodeJwtSecret, genesisHash, endpoints, _ := setupCommonEVMTest(t, sut, true)
+	jwtSecret, fullNodeJwtSecret, genesisHash, endpoints, _ := setupCommonEVMTest(t, sut, true)
 
 	// Setup sequencer based on initial mode
 	if initialLazyMode {
