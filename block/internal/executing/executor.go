@@ -63,15 +63,11 @@ type Executor struct {
 	// in CreateBlock. Updated after each successful block production.
 	lastHeaderHash types.Hash
 	lastDataHash   types.Hash
+	lastSignature  types.Signature
 
 	// pendingCheckCounter amortizes the expensive NumPendingHeaders/NumPendingData
 	// checks across multiple blocks. Only checked every pendingCheckInterval blocks.
 	pendingCheckCounter uint64
-	lastSignature       types.Signature
-
-	// Cached static signer info — computed once at init, reused every block.
-	cachedPubKey        crypto.PubKey
-	cachedValidatorHash types.Hash
 
 	// Channels for coordination
 	txNotifyCh chan struct{}
@@ -298,27 +294,6 @@ func (e *Executor) initializeState() error {
 	// ProduceBlock can skip unnecessary store lookups on the happy path.
 	if _, err := e.store.GetMetadata(e.ctx, headerKey); err == nil {
 		e.hasPendingBlock.Store(true)
-	}
-
-	// Cache static signer info — computed once, reused every CreateBlock call.
-	if e.signer != nil {
-		pubKey, err := e.signer.GetPublic()
-		if err != nil {
-			return fmt.Errorf("failed to cache public key: %w", err)
-		}
-		e.cachedPubKey = pubKey
-
-		vHash, err := e.options.ValidatorHasherProvider(e.genesis.ProposerAddress, pubKey)
-		if err != nil {
-			return fmt.Errorf("failed to cache validator hash: %w", err)
-		}
-		e.cachedValidatorHash = vHash
-	} else {
-		vHash, err := e.options.ValidatorHasherProvider(e.genesis.ProposerAddress, nil)
-		if err != nil {
-			return fmt.Errorf("failed to cache validator hash: %w", err)
-		}
-		e.cachedValidatorHash = vHash
 	}
 
 	// Warm the last-block cache so CreateBlock can avoid a store read on the
@@ -720,9 +695,28 @@ func (e *Executor) CreateBlock(ctx context.Context, height uint64, batchData *Ba
 		}
 	}
 
-	// Use cached signer info — computed once at init, reused every block.
-	pubKey := e.cachedPubKey
-	validatorHash := e.cachedValidatorHash
+	// Get signer info and validator hash
+	var pubKey crypto.PubKey
+	var validatorHash types.Hash
+
+	if e.signer != nil {
+		var err error
+		pubKey, err = e.signer.GetPublic()
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get public key: %w", err)
+		}
+
+		validatorHash, err = e.options.ValidatorHasherProvider(e.genesis.ProposerAddress, pubKey)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get validator hash: %w", err)
+		}
+	} else {
+		var err error
+		validatorHash, err = e.options.ValidatorHasherProvider(e.genesis.ProposerAddress, nil)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get validator hash: %w", err)
+		}
+	}
 
 	// Create header
 	header := &types.SignedHeader{
