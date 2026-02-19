@@ -774,12 +774,15 @@ func (e *Executor) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, hea
 
 // ValidateBlock validates the created block.
 func (e *Executor) ValidateBlock(_ context.Context, lastState types.State, header *types.SignedHeader, data *types.Data) error {
-	// Set custom verifier for aggregator node signature
-	header.SetCustomVerifierForAggregator(e.options.AggregatorNodeSignatureBytesProvider)
-
-	// Basic header validation
-	if err := header.ValidateBasic(); err != nil {
-		return fmt.Errorf("invalid header: %w", err)
+	if e.config.Node.BasedSequencer {
+		if err := header.Header.ValidateBasic(); err != nil {
+			return fmt.Errorf("invalid header: %w", err)
+		}
+	} else {
+		header.SetCustomVerifierForAggregator(e.options.AggregatorNodeSignatureBytesProvider)
+		if err := header.ValidateBasic(); err != nil {
+			return fmt.Errorf("invalid header: %w", err)
+		}
 	}
 
 	return lastState.AssertValidForNextState(header, data)
