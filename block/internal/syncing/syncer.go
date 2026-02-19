@@ -749,6 +749,11 @@ func (s *Syncer) TrySyncNextBlock(ctx context.Context, event *common.DAHeightEve
 	}
 
 	// Verify forced inclusion transactions if configured
+	// TODO: Eventually move VerifyForcedInclusionTxs to a the DA retriever, so verification happens in the background
+	// This would allow to verify P2P blocks once the node is caught up with DA. This is tricky to implement because for
+	// P2P blocks, the DA hints are not yet available when synced to the head.
+	// Another scenario is to setup DA only nodes, made to alert others nodes when the DA layer becomes malicious.
+	// The flow below allows that.
 	if event.Source == common.SourceDA {
 		if err := s.VerifyForcedInclusionTxs(ctx, currentState.DAHeight, data); err != nil {
 			s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("forced inclusion verification failed")

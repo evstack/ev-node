@@ -686,7 +686,7 @@ based_sequencer = true # Use based sequencer
 
 ### Full Node Verification Flow
 
-1. Receive block from DA or P2P
+1. Receive block from DA
 2. Before applying block:
    a. Fetch forced inclusion txs from DA at block's DA height (epoch-based)
    b. Build map of transactions in block
@@ -698,6 +698,8 @@ based_sequencer = true # Use based sequencer
    g. If txs past grace boundary are not included: reject block, flag malicious proposer
    h. If txs within grace period: keep in pending queue, allow block
 3. Apply block if verification passes
+
+NOTE: P2P nodes only do not proceed to any verification. This is because DA inclusion happens later than block productions, and thus DA hints are added later to broadcasted blocks.
 
 **Grace Period Example** (with base grace period = 1 epoch, `DAEpochForcedInclusion = 50`):
 
@@ -721,18 +723,6 @@ based_sequencer = true # Use based sequencer
 **DA Query Frequency**:
 
 Every `DAEpochForcedInclusion` DA blocks
-
-### Security Considerations
-
-1. **Malicious Proposer Detection**: Full nodes reject blocks missing forced transactions
-2. **No Timing Attacks**: Epoch boundaries are deterministic, no time-based logic
-3. **Blob Size Limits**: Two-tier size validation prevents DoS
-   - Absolute limit (1.5MB): Blobs exceeding this are permanently rejected
-   - Batch limit (`MaxBytes`): Ensures no batch exceeds DA submission limits
-4. **Graceful Degradation**: Continues operation if forced inclusion not configured
-5. **Height Validation**: Handles "height from future" errors without state corruption
-6. **Transaction Preservation**: No valid transactions are lost due to size constraints
-7. **Strict MaxBytes Enforcement**: Batches NEVER exceed `req.MaxBytes`, preventing DA layer rejections
 
 **Attack Vectors**:
 
@@ -774,11 +764,9 @@ Accepted and Implemented
 ### Negative
 
 1. **Increased Latency**: Forced transactions subject to epoch boundaries
-2. **DA Dependency**: Requires DA layer to support multiple namespaces
+2. **DA Dependency**: Requires DA layer to be enabled on nodes for verification
 3. **Higher DA Costs**: Users pay DA posting fees for forced inclusion
-4. **Additional Complexity**: New component (DA Retriever) and verification logic with grace period tracking
-5. **Epoch Configuration**: Requires setting `DAEpochForcedInclusion` in genesis (consensus parameter)
-6. **Grace Period Adjustment**: Grace period is dynamically adjusted based on block fullness to balance censorship detection with operational reliability
+4. **Epoch Configuration**: Requires setting `DAEpochForcedInclusion` in genesis (consensus parameter)
 
 ### Neutral
 
