@@ -54,7 +54,7 @@ func TestLeaseFailoverE2E(t *testing.T) {
 	workDir := t.TempDir()
 
 	// Get JWT secrets and setup common components first
-    jwtSecret, fullNodeJwtSecret, genesisHash, testEndpoints, _ := setupCommonEVMTest(t, sut, true)
+	jwtSecret, fullNodeJwtSecret, genesisHash, testEndpoints, _ := setupCommonEVMTest(t, sut, true)
 	rethFn := evmtest.SetupTestRethNode(t)
 	jwtSecret3 := rethFn.JWTSecretHex()
 	fnInfo, err := rethFn.GetNetworkInfo(context.Background())
@@ -253,7 +253,7 @@ func TestHASequencerRollingRestartE2E(t *testing.T) {
 	workDir := t.TempDir()
 
 	// Get JWT secrets and setup common components first
-    jwtSecret, fullNodeJwtSecret, genesisHash, testEndpoints, _ := setupCommonEVMTest(t, sut, true)
+	jwtSecret, fullNodeJwtSecret, genesisHash, testEndpoints, _ := setupCommonEVMTest(t, sut, true)
 	rethFn := evmtest.SetupTestRethNode(t)
 	jwtSecret3 := rethFn.JWTSecretHex()
 	fnInfo, err := rethFn.GetNetworkInfo(context.Background())
