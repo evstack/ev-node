@@ -21,7 +21,6 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
@@ -56,6 +55,7 @@ func BenchmarkEvmContractRoundtrip(b *testing.B) {
 		"--evnode.instrumentation.tracing_endpoint", collector.endpoint(),
 		"--evnode.instrumentation.tracing_sample_rate", "1.0",
 		"--evnode.instrumentation.tracing_service_name", "ev-node-bench",
+		"--evnode.node.block_time=10ms",
 	)
 	defer cleanup()
 
@@ -102,8 +102,11 @@ func BenchmarkEvmContractRoundtrip(b *testing.B) {
 		err = client.SendTransaction(ctx, signedTxs[i])
 		require.NoError(b, err)
 
-		// 2. Wait for inclusion.
-		waitForReceipt(b, ctx, client, signedTxs[i].Hash())
+		// 2. Wait for inclusion with fast 10ms polling to reduce variance while avoiding RPC overload.
+		require.Eventually(b, func() bool {
+			receipt, err := client.TransactionReceipt(ctx, signedTxs[i].Hash())
+			return err == nil && receipt != nil
+		}, 2*time.Second, 10*time.Millisecond, "transaction %s not included", signedTxs[i].Hash().Hex())
 
 		// 3. Retrieve and verify.
 		result, err := client.CallContract(ctx, callMsg, nil)
@@ -279,16 +282,4 @@ func printCollectedTraceReport(b testing.TB, collector *otlpCollector) {
 		}
 		b.Logf("%-40s %5.1f%% %s", name, pct, bar)
 	}
-}
-
-// waitForReceipt polls for a transaction receipt until it is available.
-func waitForReceipt(t testing.TB, ctx context.Context, client *ethclient.Client, txHash common.Hash) *types.Receipt {
-	t.Helper()
-	var receipt *types.Receipt
-	var err error
-	require.Eventually(t, func() bool {
-		receipt, err = client.TransactionReceipt(ctx, txHash)
-		return err == nil && receipt != nil
-	}, 2*time.Second, 50*time.Millisecond, "transaction %s not included", txHash.Hex())
-	return receipt
 }
