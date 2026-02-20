@@ -155,7 +155,8 @@ func (c *Client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 	// Fetch block from celestia-app
 	blockResult, err := c.getBlock(ctx, height)
 	if err != nil {
-		// Handle specific errors
+		// Handle specific errors returned by the CometBFT RPC
+		// If the node is requesting a block that is in the future, we return StatusHeightFromFuture
 		if strings.Contains(err.Error(), "height") && strings.Contains(err.Error(), "future") {
 			return datypes.ResultRetrieve{
 				BaseResult: datypes.BaseResult{
@@ -166,6 +167,9 @@ func (c *Client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 				},
 			}
 		}
+
+		// Handle pruned blocks from CometBFT. The underlying error contains:
+		// "height X is not available, lowest height is Y"
 		if strings.Contains(err.Error(), "is not available, lowest height is") {
 			c.logger.Debug().Uint64("height", height).Err(err).Msg("block is pruned or unavailable")
 			return datypes.ResultRetrieve{

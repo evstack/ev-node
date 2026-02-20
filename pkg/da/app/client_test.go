@@ -495,13 +495,21 @@ func TestRPCCall(t *testing.T) {
 }
 
 func TestRPCTypes(t *testing.T) {
-	t.Run("rpcError Error() method", func(t *testing.T) {
+	t.Run("rpcError Error() method with data", func(t *testing.T) {
 		err := &rpcError{
 			Code:    -32600,
 			Message: "Invalid Request",
 			Data:    "extra data",
 		}
 		assert.Equal(t, "RPC error -32600: Invalid Request: extra data", err.Error())
+	})
+
+	t.Run("rpcError Error() method without data", func(t *testing.T) {
+		err := &rpcError{
+			Code:    -32603,
+			Message: "Internal error",
+		}
+		assert.Equal(t, "RPC error -32603: Internal error", err.Error())
 	})
 }
 
