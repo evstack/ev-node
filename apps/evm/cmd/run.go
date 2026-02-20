@@ -21,7 +21,7 @@ import (
 	"github.com/evstack/ev-node/node"
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
 	"github.com/evstack/ev-node/pkg/config"
-	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
+	danode "github.com/evstack/ev-node/pkg/da/node"
 	da "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
@@ -60,7 +60,7 @@ var RunCmd = &cobra.Command{
 			return err
 		}
 
-		blobClient, err := blobrpc.NewClient(context.Background(), nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
+		blobClient, err := danode.NewClient(context.Background(), nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
 		if err != nil {
 			return fmt.Errorf("failed to create blob client: %w", err)
 		}

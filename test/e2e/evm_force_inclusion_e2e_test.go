@@ -21,7 +21,7 @@ import (
 	"github.com/evstack/ev-node/block"
 	"github.com/evstack/ev-node/execution/evm"
 	"github.com/evstack/ev-node/pkg/config"
-	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
+	"github.com/evstack/ev-node/pkg/da/node"
 	da "github.com/evstack/ev-node/pkg/da/types"
 )
 
@@ -451,7 +451,7 @@ func TestEvmSyncerMaliciousSequencerForceInclusionE2E(t *testing.T) {
 	// Create a blobrpc client and DA client to submit directly to the correct forced inclusion namespace
 	// The sequencer is listening to "wrong-namespace" so it won't see this
 	ctx := context.Background()
-	blobClient, err := blobrpc.NewClient(ctx, endpoints.GetDAAddress(), "", "")
+	blobClient, err := NewClient(ctx, endpoints.GetDAAddress(), "", "")
 	require.NoError(t, err, "Failed to create blob RPC client")
 	defer blobClient.Close()
 

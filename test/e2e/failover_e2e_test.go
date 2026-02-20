@@ -26,7 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	evmtest "github.com/evstack/ev-node/execution/evm/test"
-	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
+	"github.com/evstack/ev-node/pkg/da/node"
 	coreda "github.com/evstack/ev-node/pkg/da/types"
 	rpcclient "github.com/evstack/ev-node/pkg/rpc/client"
 	"github.com/stretchr/testify/assert"
@@ -565,7 +565,7 @@ func verifyNoDoubleSigning(t *testing.T, clusterNodes *raftClusterNodes, genesis
 // verifyDABlocks checks that DA block heights form a continuous sequence without gaps
 func verifyDABlocks(t *testing.T, daStartHeight, lastDABlock uint64, jwtSecret string, daAddress string, genesisHeight, lastEVBlock uint64) {
 	t.Helper()
-	blobClient, err := blobrpc.NewClient(t.Context(), daAddress, jwtSecret, "")
+	blobClient, err := NewClient(t.Context(), daAddress, jwtSecret, "")
 	require.NoError(t, err)
 	defer blobClient.Close()
 
@@ -750,7 +750,7 @@ const defaultMaxBlobSize = 2 * 1024 * 1024 // 2MB
 
 func queryLastDAHeight(t *testing.T, startHeight uint64, jwtSecret string, daAddress string) uint64 {
 	t.Helper()
-	blobClient, err := blobrpc.NewClient(t.Context(), daAddress, jwtSecret, "")
+	blobClient, err := NewClient(t.Context(), daAddress, jwtSecret, "")
 	require.NoError(t, err)
 	defer blobClient.Close()
 	ns, err := libshare.NewNamespaceFromBytes(coreda.NamespaceFromString(DefaultDANamespace).Bytes())

@@ -1,4 +1,4 @@
-package jsonrpc
+package node
 
 // NOTE: This mirrors the exported JSON shape of celestia-node/state/tx_config.go
 // at release v0.28.4, pared down to avoid importing Cosmos-SDK and

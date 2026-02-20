@@ -4,7 +4,7 @@ import (
 	"encoding/hex"
 	"testing"
 
-	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
+	"github.com/evstack/ev-node/pkg/da/node"
 )
 
 func TestParseNamespace(t *testing.T) {
@@ -201,7 +201,7 @@ func TestIDSplitting(t *testing.T) {
 	copy(id[8:], commitment)
 
 	// Test splitting
-	parsedHeight, parsedCommitment := blobrpc.SplitID(id)
+	parsedHeight, parsedCommitment := SplitID(id)
 
 	if parsedHeight != height {
 		t.Errorf("SplitID() height = %d, expected %d", parsedHeight, height)

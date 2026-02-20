@@ -81,16 +81,16 @@ packages:
           dir: ./test/mocks
           pkgname: mocks
           filename: da.go
-  github.com/evstack/ev-node/pkg/da/jsonrpc:
+  github.com/evstack/ev-node/pkg/da/node:
     interfaces:
       BlobModule:
         config:
-          dir: ./pkg/da/jsonrpc/mocks
+          dir: ./pkg/da/node/mocks
           pkgname: mocks
           filename: blob_module_mock.go
       HeaderModule:
         config:
-          dir: ./pkg/da/jsonrpc/mocks
+          dir: ./pkg/da/node/mocks
           pkgname: mocks
           filename: header_module_mock.go
   github.com/evstack/ev-node/block:

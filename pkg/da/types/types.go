@@ -1,6 +1,7 @@
 package da
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"time"
@@ -81,4 +82,26 @@ func SplitID(id []byte) (uint64, []byte, error) {
 	}
 	commitment := id[8:]
 	return binary.LittleEndian.Uint64(id[:8]), commitment, nil
+}
+
+// BlobClient defines the interface for DA layer operations.
+// This is the shared interface that both node (celestia-node) and app (celestia-app) clients implement.
+type BlobClient interface {
+	// Submit submits blobs to the DA layer.
+	Submit(ctx context.Context, data [][]byte, gasPrice float64, namespace []byte, options []byte) ResultSubmit
+
+	// Retrieve retrieves blobs from the DA layer at the specified height and namespace.
+	Retrieve(ctx context.Context, height uint64, namespace []byte) ResultRetrieve
+
+	// Get retrieves blobs by their IDs.
+	Get(ctx context.Context, ids []ID, namespace []byte) ([]Blob, error)
+
+	// GetLatestDAHeight returns the latest height available on the DA layer.
+	GetLatestDAHeight(ctx context.Context) (uint64, error)
+
+	// GetProofs returns inclusion proofs for the provided IDs.
+	GetProofs(ctx context.Context, ids []ID, namespace []byte) ([]Proof, error)
+
+	// Validate validates commitments against the corresponding proofs.
+	Validate(ctx context.Context, ids []ID, proofs []Proof, namespace []byte) ([]bool, error)
 }

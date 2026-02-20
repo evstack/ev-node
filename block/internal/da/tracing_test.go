@@ -48,6 +48,9 @@ func (m *mockFullClient) GetProofs(ctx context.Context, ids []datypes.ID, namesp
 	}
 	return nil, nil
 }
+func (m *mockFullClient) GetLatestDAHeight(ctx context.Context) (uint64, error) {
+	return 0, nil
+}
 func (m *mockFullClient) Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error) {
 	if m.validateFn != nil {
 		return m.validateFn(ctx, ids, proofs, namespace)

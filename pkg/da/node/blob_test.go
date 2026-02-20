@@ -1,4 +1,4 @@
-package jsonrpc
+package node
 
 import (
 	"encoding/json"

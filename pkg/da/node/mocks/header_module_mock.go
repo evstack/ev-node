@@ -7,7 +7,7 @@ package mocks
 import (
 	"context"
 
-	"github.com/evstack/ev-node/pkg/da/jsonrpc"
+	"github.com/evstack/ev-node/pkg/da/node"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -39,23 +39,23 @@ func (_m *MockHeaderModule) EXPECT() *MockHeaderModule_Expecter {
 }
 
 // GetByHeight provides a mock function for the type MockHeaderModule
-func (_mock *MockHeaderModule) GetByHeight(context1 context.Context, v uint64) (*jsonrpc.Header, error) {
+func (_mock *MockHeaderModule) GetByHeight(context1 context.Context, v uint64) (*node.Header, error) {
 	ret := _mock.Called(context1, v)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetByHeight")
 	}
 
-	var r0 *jsonrpc.Header
+	var r0 *node.Header
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64) (*jsonrpc.Header, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64) (*node.Header, error)); ok {
 		return returnFunc(context1, v)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64) *jsonrpc.Header); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64) *node.Header); ok {
 		r0 = returnFunc(context1, v)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*jsonrpc.Header)
+			r0 = ret.Get(0).(*node.Header)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, uint64) error); ok {
@@ -96,34 +96,34 @@ func (_c *MockHeaderModule_GetByHeight_Call) Run(run func(context1 context.Conte
 	return _c
 }
 
-func (_c *MockHeaderModule_GetByHeight_Call) Return(header *jsonrpc.Header, err error) *MockHeaderModule_GetByHeight_Call {
+func (_c *MockHeaderModule_GetByHeight_Call) Return(header *node.Header, err error) *MockHeaderModule_GetByHeight_Call {
 	_c.Call.Return(header, err)
 	return _c
 }
 
-func (_c *MockHeaderModule_GetByHeight_Call) RunAndReturn(run func(context1 context.Context, v uint64) (*jsonrpc.Header, error)) *MockHeaderModule_GetByHeight_Call {
+func (_c *MockHeaderModule_GetByHeight_Call) RunAndReturn(run func(context1 context.Context, v uint64) (*node.Header, error)) *MockHeaderModule_GetByHeight_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // LocalHead provides a mock function for the type MockHeaderModule
-func (_mock *MockHeaderModule) LocalHead(context1 context.Context) (*jsonrpc.Header, error) {
+func (_mock *MockHeaderModule) LocalHead(context1 context.Context) (*node.Header, error) {
 	ret := _mock.Called(context1)
 
 	if len(ret) == 0 {
 		panic("no return value specified for LocalHead")
 	}
 
-	var r0 *jsonrpc.Header
+	var r0 *node.Header
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context) (*jsonrpc.Header, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context) (*node.Header, error)); ok {
 		return returnFunc(context1)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context) *jsonrpc.Header); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context) *node.Header); ok {
 		r0 = returnFunc(context1)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*jsonrpc.Header)
+			r0 = ret.Get(0).(*node.Header)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
@@ -158,34 +158,34 @@ func (_c *MockHeaderModule_LocalHead_Call) Run(run func(context1 context.Context
 	return _c
 }
 
-func (_c *MockHeaderModule_LocalHead_Call) Return(header *jsonrpc.Header, err error) *MockHeaderModule_LocalHead_Call {
+func (_c *MockHeaderModule_LocalHead_Call) Return(header *node.Header, err error) *MockHeaderModule_LocalHead_Call {
 	_c.Call.Return(header, err)
 	return _c
 }
 
-func (_c *MockHeaderModule_LocalHead_Call) RunAndReturn(run func(context1 context.Context) (*jsonrpc.Header, error)) *MockHeaderModule_LocalHead_Call {
+func (_c *MockHeaderModule_LocalHead_Call) RunAndReturn(run func(context1 context.Context) (*node.Header, error)) *MockHeaderModule_LocalHead_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // NetworkHead provides a mock function for the type MockHeaderModule
-func (_mock *MockHeaderModule) NetworkHead(context1 context.Context) (*jsonrpc.Header, error) {
+func (_mock *MockHeaderModule) NetworkHead(context1 context.Context) (*node.Header, error) {
 	ret := _mock.Called(context1)
 
 	if len(ret) == 0 {
 		panic("no return value specified for NetworkHead")
 	}
 
-	var r0 *jsonrpc.Header
+	var r0 *node.Header
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context) (*jsonrpc.Header, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context) (*node.Header, error)); ok {
 		return returnFunc(context1)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context) *jsonrpc.Header); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context) *node.Header); ok {
 		r0 = returnFunc(context1)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*jsonrpc.Header)
+			r0 = ret.Get(0).(*node.Header)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
@@ -220,12 +220,12 @@ func (_c *MockHeaderModule_NetworkHead_Call) Run(run func(context1 context.Conte
 	return _c
 }
 
-func (_c *MockHeaderModule_NetworkHead_Call) Return(header *jsonrpc.Header, err error) *MockHeaderModule_NetworkHead_Call {
+func (_c *MockHeaderModule_NetworkHead_Call) Return(header *node.Header, err error) *MockHeaderModule_NetworkHead_Call {
 	_c.Call.Return(header, err)
 	return _c
 }
 
-func (_c *MockHeaderModule_NetworkHead_Call) RunAndReturn(run func(context1 context.Context) (*jsonrpc.Header, error)) *MockHeaderModule_NetworkHead_Call {
+func (_c *MockHeaderModule_NetworkHead_Call) RunAndReturn(run func(context1 context.Context) (*node.Header, error)) *MockHeaderModule_NetworkHead_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -30,7 +30,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/gov"
 	"github.com/cosmos/ibc-go/v8/modules/apps/transfer"
 	libshare "github.com/celestiaorg/go-square/v3/share"
-	"github.com/evstack/ev-node/pkg/da/jsonrpc"
+	"github.com/evstack/ev-node/pkg/da/node"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/stretchr/testify/require"
 )

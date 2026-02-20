@@ -16,7 +16,7 @@ import (
 	"github.com/evstack/ev-node/node"
 	"github.com/evstack/ev-node/pkg/cmd"
 	"github.com/evstack/ev-node/pkg/config"
-	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
+	danode "github.com/evstack/ev-node/pkg/da/node"
 	da "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p/key"
@@ -111,7 +111,7 @@ func createSequencer(
 	genesis genesis.Genesis,
 	executor execution.Executor,
 ) (coresequencer.Sequencer, error) {
-	blobClient, err := blobrpc.NewClient(ctx, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
+	blobClient, err := danode.NewClient(ctx, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create blob client: %w", err)
 	}

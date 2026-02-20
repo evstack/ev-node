@@ -1,4 +1,6 @@
-package da
+// Package app provides a DA client that communicates directly with celestia-app
+// via CometBFT RPC, without requiring celestia-node.
+package app
 
 import (
 	"bytes"
@@ -17,7 +19,6 @@ import (
 	"github.com/celestiaorg/go-square/v3/inclusion"
 	"github.com/celestiaorg/go-square/v3/share"
 	"github.com/celestiaorg/go-square/v3/tx"
-	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/rs/zerolog"
 
 	datypes "github.com/evstack/ev-node/pkg/da/types"
@@ -27,40 +28,33 @@ import (
 // This matches the value used in celestia-app.
 const subtreeRootThreshold = 64
 
-// CelestiaAppConfig contains configuration for the celestia-app DA client.
-type CelestiaAppConfig struct {
+// defaultMaxBlobSize is the default maximum blob size (5MB).
+const defaultMaxBlobSize = 5 * 1024 * 1024
+
+// Config contains configuration for the celestia-app DA client.
+type Config struct {
 	// RPCAddress is the CometBFT RPC endpoint (e.g., "http://localhost:26657")
 	RPCAddress string
 	// Logger for logging
 	Logger zerolog.Logger
 	// DefaultTimeout for RPC calls
 	DefaultTimeout time.Duration
-	// Namespace for headers
-	Namespace string
-	// DataNamespace for data blobs
-	DataNamespace string
-	// ForcedInclusionNamespace for forced inclusion blobs (optional)
-	ForcedInclusionNamespace string
 }
 
-// celestiaAppClient implements the FullClient interface using celestia-app's CometBFT RPC.
+// Client implements the datypes.BlobClient interface using celestia-app's CometBFT RPC.
 // This client communicates directly with celestia-app without requiring celestia-node.
-type celestiaAppClient struct {
-	rpcAddress         string
-	logger             zerolog.Logger
-	defaultTimeout     time.Duration
-	namespaceBz        []byte
-	dataNamespaceBz    []byte
-	forcedNamespaceBz  []byte
-	hasForcedNamespace bool
-	httpClient         *http.Client
+type Client struct {
+	rpcAddress     string
+	logger         zerolog.Logger
+	defaultTimeout time.Duration
+	httpClient     *http.Client
 }
 
-// Ensure celestiaAppClient implements the FullClient interface.
-var _ FullClient = (*celestiaAppClient)(nil)
+// Ensure Client implements the datypes.BlobClient interface.
+var _ datypes.BlobClient = (*Client)(nil)
 
-// NewCelestiaAppClient creates a new DA client that communicates directly with celestia-app.
-func NewCelestiaAppClient(cfg CelestiaAppConfig) FullClient {
+// NewClient creates a new DA client that communicates directly with celestia-app.
+func NewClient(cfg Config) *Client {
 	if cfg.RPCAddress == "" {
 		return nil
 	}
@@ -68,28 +62,18 @@ func NewCelestiaAppClient(cfg CelestiaAppConfig) FullClient {
 		cfg.DefaultTimeout = 60 * time.Second
 	}
 
-	hasForcedNamespace := cfg.ForcedInclusionNamespace != ""
-	var forcedNamespaceBz []byte
-	if hasForcedNamespace {
-		forcedNamespaceBz = datypes.NamespaceFromString(cfg.ForcedInclusionNamespace).Bytes()
-	}
-
-	return &celestiaAppClient{
-		rpcAddress:         cfg.RPCAddress,
-		logger:             cfg.Logger.With().Str("component", "celestia_app_client").Logger(),
-		defaultTimeout:     cfg.DefaultTimeout,
-		namespaceBz:        datypes.NamespaceFromString(cfg.Namespace).Bytes(),
-		dataNamespaceBz:    datypes.NamespaceFromString(cfg.DataNamespace).Bytes(),
-		forcedNamespaceBz:  forcedNamespaceBz,
-		hasForcedNamespace: hasForcedNamespace,
-		httpClient:         &http.Client{Timeout: cfg.DefaultTimeout},
+	return &Client{
+		rpcAddress:     cfg.RPCAddress,
+		logger:         cfg.Logger.With().Str("component", "celestia_app_client").Logger(),
+		defaultTimeout: cfg.DefaultTimeout,
+		httpClient:     &http.Client{Timeout: cfg.DefaultTimeout},
 	}
 }
 
 // Submit submits blobs to the DA layer via celestia-app.
 // Note: This requires transaction signing which is not implemented in this basic version.
 // For full implementation, integration with a signer/keyring would be needed.
-func (c *celestiaAppClient) Submit(ctx context.Context, data [][]byte, _ float64, namespace []byte, options []byte) datypes.ResultSubmit {
+func (c *Client) Submit(ctx context.Context, data [][]byte, _ float64, namespace []byte, options []byte) datypes.ResultSubmit {
 	// Calculate blob size
 	var blobSize uint64
 	for _, b := range data {
@@ -109,7 +93,7 @@ func (c *celestiaAppClient) Submit(ctx context.Context, data [][]byte, _ float64
 
 	// Check blob sizes
 	for i, raw := range data {
-		if uint64(len(raw)) > common.DefaultMaxBlobSize {
+		if uint64(len(raw)) > defaultMaxBlobSize {
 			return datypes.ResultSubmit{
 				BaseResult: datypes.BaseResult{
 					Code:    datypes.StatusTooBig,
@@ -155,7 +139,7 @@ func (c *celestiaAppClient) Submit(ctx context.Context, data [][]byte, _ float64
 
 // Retrieve retrieves blobs from the DA layer at the specified height and namespace.
 // It fetches the block via CometBFT RPC and extracts blob transactions.
-func (c *celestiaAppClient) Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
+func (c *Client) Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
 	ns, err := share.NewNamespaceFromBytes(namespace)
 	if err != nil {
 		return datypes.ResultRetrieve{
@@ -258,7 +242,7 @@ type extractedBlob struct {
 
 // extractBlobsFromTx attempts to extract blobs from a transaction.
 // It parses the BlobTx format from go-square and filters by namespace.
-func (c *celestiaAppClient) extractBlobsFromTx(txBytes []byte, targetNs share.Namespace, height uint64) []extractedBlob {
+func (c *Client) extractBlobsFromTx(txBytes []byte, targetNs share.Namespace, height uint64) []extractedBlob {
 	var result []extractedBlob
 
 	// Attempt to unmarshal as a BlobTx
@@ -306,7 +290,7 @@ func (c *celestiaAppClient) extractBlobsFromTx(txBytes []byte, targetNs share.Na
 
 // Get retrieves blobs by their IDs.
 // Note: This implementation fetches the block and extracts the specific blobs.
-func (c *celestiaAppClient) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
+func (c *Client) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -349,7 +333,7 @@ func (c *celestiaAppClient) Get(ctx context.Context, ids []datypes.ID, namespace
 }
 
 // GetLatestDAHeight returns the latest height available on the DA layer.
-func (c *celestiaAppClient) GetLatestDAHeight(ctx context.Context) (uint64, error) {
+func (c *Client) GetLatestDAHeight(ctx context.Context) (uint64, error) {
 	status, err := c.getStatus(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get status: %w", err)
@@ -362,30 +346,10 @@ func (c *celestiaAppClient) GetLatestDAHeight(ctx context.Context) (uint64, erro
 	return height, nil
 }
 
-// GetHeaderNamespace returns the header namespace bytes.
-func (c *celestiaAppClient) GetHeaderNamespace() []byte {
-	return c.namespaceBz
-}
-
-// GetDataNamespace returns the data namespace bytes.
-func (c *celestiaAppClient) GetDataNamespace() []byte {
-	return c.dataNamespaceBz
-}
-
-// GetForcedInclusionNamespace returns the forced inclusion namespace bytes.
-func (c *celestiaAppClient) GetForcedInclusionNamespace() []byte {
-	return c.forcedNamespaceBz
-}
-
-// HasForcedInclusionNamespace reports whether forced inclusion namespace is configured.
-func (c *celestiaAppClient) HasForcedInclusionNamespace() bool {
-	return c.hasForcedNamespace
-}
-
 // GetProofs returns inclusion proofs for the provided IDs.
 // Note: celestia-app doesn't provide proofs directly - they need to be computed
 // from the block data or obtained from celestia-node.
-func (c *celestiaAppClient) GetProofs(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error) {
+func (c *Client) GetProofs(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error) {
 	if len(ids) == 0 {
 		return []datypes.Proof{}, nil
 	}
@@ -402,7 +366,7 @@ func (c *celestiaAppClient) GetProofs(ctx context.Context, ids []datypes.ID, nam
 
 // Validate validates commitments against the corresponding proofs.
 // Note: This requires proof generation which is not implemented.
-func (c *celestiaAppClient) Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error) {
+func (c *Client) Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error) {
 	if len(ids) != len(proofs) {
 		return nil, errors.New("number of IDs and proofs must match")
 	}
@@ -459,7 +423,7 @@ type statusResult struct {
 }
 
 // getBlock fetches a block at the specified height via CometBFT RPC.
-func (c *celestiaAppClient) getBlock(ctx context.Context, height uint64) (*blockResult, error) {
+func (c *Client) getBlock(ctx context.Context, height uint64) (*blockResult, error) {
 	params := map[string]interface{}{
 		"height": fmt.Sprintf("%d", height),
 	}
@@ -478,7 +442,7 @@ func (c *celestiaAppClient) getBlock(ctx context.Context, height uint64) (*block
 }
 
 // getStatus fetches the node status via CometBFT RPC.
-func (c *celestiaAppClient) getStatus(ctx context.Context) (*statusResult, error) {
+func (c *Client) getStatus(ctx context.Context) (*statusResult, error) {
 	resp, err := c.rpcCall(ctx, "status", nil)
 	if err != nil {
 		return nil, err
@@ -493,7 +457,7 @@ func (c *celestiaAppClient) getStatus(ctx context.Context) (*statusResult, error
 }
 
 // rpcCall makes a JSON-RPC call to the celestia-app CometBFT endpoint.
-func (c *celestiaAppClient) rpcCall(ctx context.Context, method string, params interface{}) (*rpcResponse, error) {
+func (c *Client) rpcCall(ctx context.Context, method string, params interface{}) (*rpcResponse, error) {
 	reqBody := map[string]interface{}{
 		"jsonrpc": "2.0",
 		"id":      1,
