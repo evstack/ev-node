@@ -22,7 +22,6 @@ type mockBlockProducer struct {
 	retrieveBatchFn func(ctx context.Context) (*BatchData, error)
 	createBlockFn   func(ctx context.Context, height uint64, batchData *BatchData) (*types.SignedHeader, *types.Data, error)
 	applyBlockFn    func(ctx context.Context, header types.Header, data *types.Data) (types.State, error)
-	validateBlockFn func(ctx context.Context, lastState types.State, header *types.SignedHeader, data *types.Data) error
 }
 
 func (m *mockBlockProducer) ProduceBlock(ctx context.Context) error {
@@ -51,13 +50,6 @@ func (m *mockBlockProducer) ApplyBlock(ctx context.Context, header types.Header,
 		return m.applyBlockFn(ctx, header, data)
 	}
 	return types.State{}, nil
-}
-
-func (m *mockBlockProducer) ValidateBlock(ctx context.Context, lastState types.State, header *types.SignedHeader, data *types.Data) error {
-	if m.validateBlockFn != nil {
-		return m.validateBlockFn(ctx, lastState, header, data)
-	}
-	return nil
 }
 
 func setupBlockProducerTrace(t *testing.T, inner BlockProducer) (BlockProducer, *tracetest.SpanRecorder) {
@@ -262,63 +254,6 @@ func TestTracedBlockProducer_ApplyBlock_Error(t *testing.T) {
 	span := spans[0]
 	require.Equal(t, codes.Error, span.Status().Code)
 	require.Equal(t, "execution failed", span.Status().Description)
-}
-
-func TestTracedBlockProducer_ValidateBlock_Success(t *testing.T) {
-	mock := &mockBlockProducer{
-		validateBlockFn: func(ctx context.Context, lastState types.State, header *types.SignedHeader, data *types.Data) error {
-			return nil
-		},
-	}
-	producer, sr := setupBlockProducerTrace(t, mock)
-	ctx := context.Background()
-
-	header := &types.SignedHeader{
-		Header: types.Header{
-			BaseHeader: types.BaseHeader{
-				Height: 75,
-			},
-		},
-	}
-
-	err := producer.ValidateBlock(ctx, types.State{}, header, &types.Data{})
-	require.NoError(t, err)
-
-	spans := sr.Ended()
-	require.Len(t, spans, 1)
-	span := spans[0]
-	require.Equal(t, "BlockExecutor.ValidateBlock", span.Name())
-	require.Equal(t, codes.Unset, span.Status().Code)
-
-	attrs := span.Attributes()
-	testutil.RequireAttribute(t, attrs, "block.height", int64(75))
-}
-
-func TestTracedBlockProducer_ValidateBlock_Error(t *testing.T) {
-	mock := &mockBlockProducer{
-		validateBlockFn: func(ctx context.Context, lastState types.State, header *types.SignedHeader, data *types.Data) error {
-			return errors.New("validation failed")
-		},
-	}
-	producer, sr := setupBlockProducerTrace(t, mock)
-	ctx := context.Background()
-
-	header := &types.SignedHeader{
-		Header: types.Header{
-			BaseHeader: types.BaseHeader{
-				Height: 75,
-			},
-		},
-	}
-
-	err := producer.ValidateBlock(ctx, types.State{}, header, &types.Data{})
-	require.Error(t, err)
-
-	spans := sr.Ended()
-	require.Len(t, spans, 1)
-	span := spans[0]
-	require.Equal(t, codes.Error, span.Status().Code)
-	require.Equal(t, "validation failed", span.Status().Description)
 }
 
 // TestTracedBlockProducer_RetrieveBatch_ErrorWithValue verifies that when the inner

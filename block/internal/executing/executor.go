@@ -10,20 +10,19 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/evstack/ev-node/pkg/raft"
-	"github.com/ipfs/go-datastore"
-	"github.com/libp2p/go-libp2p/core/crypto"
-	"github.com/rs/zerolog"
-
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/raft"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
+	"github.com/ipfs/go-datastore"
+	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/rs/zerolog"
 )
 
 var _ BlockProducer = (*Executor)(nil)
@@ -181,6 +180,9 @@ func (e *Executor) Stop() error {
 	e.wg.Wait()
 
 	e.logger.Info().Msg("executor stopped")
+	if !e.hasPendingBlock.Load() {
+		_ = e.deletePendingBlock(context.Background()) // nolint: gocritic // not critical
+	}
 	return nil
 }
 
@@ -446,7 +448,7 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 	// Amortized pending limit check — NumPendingHeaders/NumPendingData call
 	// advancePastEmptyData which scans the store. Only amortize when the limit
 	// is large enough that checking every N blocks won't overshoot.
-	const pendingCheckInterval uint64 = 64
+	const pendingCheckInterval uint64 = 64 // arbitrary but good value
 	if e.config.Node.MaxPendingHeadersAndData > 0 {
 		e.pendingCheckCounter++
 		shouldCheck := e.config.Node.MaxPendingHeadersAndData <= pendingCheckInterval ||
@@ -840,19 +842,6 @@ func (e *Executor) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, hea
 	}
 
 	return nil, nil
-}
-
-// ValidateBlock validates the created block.
-func (e *Executor) ValidateBlock(_ context.Context, lastState types.State, header *types.SignedHeader, data *types.Data) error {
-	// Set custom verifier for aggregator node signature
-	header.SetCustomVerifierForAggregator(e.options.AggregatorNodeSignatureBytesProvider)
-
-	// Basic header validation
-	if err := header.ValidateBasic(); err != nil {
-		return fmt.Errorf("invalid header: %w", err)
-	}
-
-	return lastState.AssertValidForNextState(header, data)
 }
 
 // sendCriticalError sends a critical error to the error channel without blocking
