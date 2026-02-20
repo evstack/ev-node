@@ -22,10 +22,9 @@ import (
 	"github.com/evstack/ev-node/test/mocks"
 )
 
-// MockFullDAClient combines MockClient and MockVerifier to implement FullDAClient
-type MockFullDAClient struct {
+// MockDAClient wraps MockClient for the consolidated Client interface
+type MockDAClient struct {
 	*mocks.MockClient
-	*mocks.MockVerifier
 }
 
 // createDefaultMockExecutor creates a MockExecutor with default passthrough behavior for FilterTxs and GetExecutionInfo
@@ -64,9 +63,8 @@ func createTestSequencer(t *testing.T, mockRetriever *common.MockForcedInclusion
 	db := syncds.MutexWrap(ds.NewMapDatastore())
 
 	// Create mock DA client
-	mockDAClient := &MockFullDAClient{
+	mockDAClient := &MockDAClient{
 		MockClient:   mocks.NewMockClient(t),
-		MockVerifier: mocks.NewMockVerifier(t),
 	}
 	// Mock the forced inclusion namespace call
 	mockDAClient.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
@@ -462,9 +460,8 @@ func TestBasedSequencer_CheckpointPersistence(t *testing.T) {
 	db := syncds.MutexWrap(ds.NewMapDatastore())
 
 	// Create mock DA client
-	mockDAClient := &MockFullDAClient{
+	mockDAClient := &MockDAClient{
 		MockClient:   mocks.NewMockClient(t),
-		MockVerifier: mocks.NewMockVerifier(t),
 	}
 	mockDAClient.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
 	mockDAClient.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
@@ -489,9 +486,8 @@ func TestBasedSequencer_CheckpointPersistence(t *testing.T) {
 	assert.Equal(t, 2, len(resp.Batch.Transactions))
 
 	// Create a new sequencer with the same datastore (simulating restart)
-	mockDAClient2 := &MockFullDAClient{
+	mockDAClient2 := &MockDAClient{
 		MockClient:   mocks.NewMockClient(t),
-		MockVerifier: mocks.NewMockVerifier(t),
 	}
 	mockDAClient2.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
 	mockDAClient2.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
@@ -534,9 +530,8 @@ func TestBasedSequencer_CrashRecoveryMidEpoch(t *testing.T) {
 	db := syncds.MutexWrap(ds.NewMapDatastore())
 
 	// Create mock DA client
-	mockDAClient := &MockFullDAClient{
+	mockDAClient := &MockDAClient{
 		MockClient:   mocks.NewMockClient(t),
-		MockVerifier: mocks.NewMockVerifier(t),
 	} // On restart, the epoch is re-fetched but we must NOT reset TxIndex
 
 	mockDAClient.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
@@ -595,9 +590,8 @@ func TestBasedSequencer_CrashRecoveryMidEpoch(t *testing.T) {
 	// === SIMULATE CRASH: Create new sequencer with same DB ===
 	// The in-memory cache is lost, but checkpoint is persisted
 
-	mockDAClient2 := &MockFullDAClient{
+	mockDAClient2 := &MockDAClient{
 		MockClient:   mocks.NewMockClient(t),
-		MockVerifier: mocks.NewMockVerifier(t),
 	}
 	mockDAClient2.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
 	mockDAClient2.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
@@ -917,9 +911,8 @@ func TestBasedSequencer_GetNextBatch_GasFilteringPreservesUnprocessedTxs(t *test
 
 	// Create sequencer with custom executor
 	db := syncds.MutexWrap(ds.NewMapDatastore())
-	mockDAClient := &MockFullDAClient{
+	mockDAClient := &MockDAClient{
 		MockClient:   mocks.NewMockClient(t),
-		MockVerifier: mocks.NewMockVerifier(t),
 	}
 	mockDAClient.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
 	mockDAClient.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()

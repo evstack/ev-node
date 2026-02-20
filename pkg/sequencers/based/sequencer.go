@@ -41,7 +41,7 @@ type BasedSequencer struct {
 
 // NewBasedSequencer creates a new based sequencer instance
 func NewBasedSequencer(
-	daClient block.FullDAClient,
+	daClient block.DAClient,
 	cfg config.Config,
 	db ds.Batching,
 	genesis genesis.Genesis,

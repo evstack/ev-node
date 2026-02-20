@@ -63,7 +63,7 @@ func (m *mockFullClient) GetForcedInclusionNamespace() []byte { return []byte{0x
 func (m *mockFullClient) HasForcedInclusionNamespace() bool   { return true }
 
 // setup a tracer provider + span recorder
-func setupDATrace(t *testing.T, inner FullClient) (FullClient, *tracetest.SpanRecorder) {
+func setupDATrace(t *testing.T, inner Client) (Client, *tracetest.SpanRecorder) {
 	t.Helper()
 	sr := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))

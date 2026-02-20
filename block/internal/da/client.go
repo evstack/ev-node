@@ -29,11 +29,11 @@ type client struct {
 	hasForcedNamespace bool
 }
 
-// Ensure client implements the FullClient interface.
-var _ FullClient = (*client)(nil)
+// Ensure client implements the Client interface.
+var _ Client = (*client)(nil)
 
 // NewClient creates a new unified DA client wrapper.
-func NewClient(cfg Config) FullClient {
+func NewClient(cfg Config) Client {
 	if cfg.Client == nil {
 		return nil
 	}

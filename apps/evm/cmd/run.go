@@ -148,7 +148,7 @@ func createSequencer(
 	datastore datastore.Batching,
 	nodeConfig config.Config,
 	genesis genesis.Genesis,
-	daClient block.FullDAClient,
+	daClient block.DAClient,
 	executor execution.Executor,
 ) (coresequencer.Sequencer, error) {
 	if nodeConfig.Node.BasedSequencer {

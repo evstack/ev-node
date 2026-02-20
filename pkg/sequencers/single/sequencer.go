@@ -36,7 +36,7 @@ type Sequencer struct {
 	cfg     config.Config
 
 	Id       []byte
-	daClient block.FullDAClient
+	daClient block.DAClient
 
 	batchTime time.Duration
 	queue     *BatchQueue // single queue for immediate availability
@@ -57,7 +57,7 @@ type Sequencer struct {
 func NewSequencer(
 	logger zerolog.Logger,
 	db ds.Batching,
-	daClient block.FullDAClient,
+	daClient block.DAClient,
 	cfg config.Config,
 	id []byte,
 	maxQueueSize int,

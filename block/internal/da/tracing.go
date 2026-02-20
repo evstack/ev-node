@@ -12,14 +12,14 @@ import (
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
-// tracedClient decorates a FullClient with OpenTelemetry spans.
+// tracedClient decorates a Client with OpenTelemetry spans.
 type tracedClient struct {
-	inner  FullClient
+	inner  Client
 	tracer trace.Tracer
 }
 
 // WithTracingClient decorates the provided client with tracing spans.
-func WithTracingClient(inner FullClient) FullClient {
+func WithTracingClient(inner Client) Client {
 	return &tracedClient{inner: inner, tracer: otel.Tracer("ev-node/da")}
 }
 
