@@ -2,6 +2,9 @@ package factory
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/rs/zerolog"
@@ -11,139 +14,197 @@ import (
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
+// mockNodeServer creates a mock celestia-node server
+func mockNodeServer() *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			JSONRPC string          `json:"jsonrpc"`
+			Method  string          `json:"method"`
+			Params  json.RawMessage `json:"params"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		// node.Ready response
+		if req.Method == "node.Ready" {
+			resp := map[string]interface{}{
+				"jsonrpc": "2.0",
+				"id":      1,
+				"result":  true,
+			}
+			json.NewEncoder(w).Encode(resp)
+			return
+		}
+
+		// Return method not found for other methods
+		resp := map[string]interface{}{
+			"jsonrpc": "2.0",
+			"id":      1,
+			"error": map[string]interface{}{
+				"code":    -32601,
+				"message": "method not found",
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+}
+
+// mockAppServer creates a mock celestia-app server
+func mockAppServer() *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			JSONRPC string          `json:"jsonrpc"`
+			Method  string          `json:"method"`
+			Params  json.RawMessage `json:"params"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		// status response
+		if req.Method == "status" {
+			resp := map[string]interface{}{
+				"jsonrpc": "2.0",
+				"id":      1,
+				"result": map[string]interface{}{
+					"node_info": map[string]interface{}{
+						"network": "celestia-local",
+					},
+					"sync_info": map[string]interface{}{
+						"latest_block_height": "100",
+					},
+				},
+			}
+			json.NewEncoder(w).Encode(resp)
+			return
+		}
+
+		// Return method not found for other methods
+		resp := map[string]interface{}{
+			"jsonrpc": "2.0",
+			"id":      1,
+			"error": map[string]interface{}{
+				"code":    -32601,
+				"message": "method not found",
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+}
+
 func TestDetectClientType(t *testing.T) {
+	ctx := context.Background()
+
 	tests := []struct {
-		name     string
-		address  string
-		expected ClientType
+		name         string
+		setupServer  func() *httptest.Server
+		expectedType ClientType
 	}{
 		{
-			name:     "celestia-app default port",
-			address:  "http://localhost:26657",
-			expected: ClientTypeApp,
+			name:         "detects celestia-node endpoint",
+			setupServer:  mockNodeServer,
+			expectedType: ClientTypeNode,
 		},
 		{
-			name:     "celestia-app with IP",
-			address:  "http://127.0.0.1:26657",
-			expected: ClientTypeApp,
-		},
-		{
-			name:     "celestia-node default port",
-			address:  "http://localhost:26658",
-			expected: ClientTypeNode,
-		},
-		{
-			name:     "celestia-node with IP",
-			address:  "http://127.0.0.1:26658",
-			expected: ClientTypeNode,
-		},
-		{
-			name:     "custom port",
-			address:  "http://localhost:8080",
-			expected: ClientTypeNode,
-		},
-		{
-			name:     "https with port 26657",
-			address:  "https://example.com:26657",
-			expected: ClientTypeApp,
-		},
-		{
-			name:     "https with custom port",
-			address:  "https://example.com:443",
-			expected: ClientTypeNode,
-		},
-		{
-			name:     "http default port",
-			address:  "http://localhost",
-			expected: ClientTypeNode,
-		},
-		{
-			name:     "https default port",
-			address:  "https://localhost",
-			expected: ClientTypeNode,
-		},
-		{
-			name:     "without scheme port 26657",
-			address:  "localhost:26657",
-			expected: ClientTypeApp,
-		},
-		{
-			name:     "without scheme port 26658",
-			address:  "localhost:26658",
-			expected: ClientTypeNode,
-		},
-		{
-			name:     "invalid URL defaults to node",
-			address:  "://invalid",
-			expected: ClientTypeNode,
+			name:         "detects celestia-app endpoint",
+			setupServer:  mockAppServer,
+			expectedType: ClientTypeApp,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := detectClientType(tt.address)
-			assert.Equal(t, tt.expected, result)
+			server := tt.setupServer()
+			defer server.Close()
+
+			result := detectClientType(ctx, server.URL)
+			assert.Equal(t, tt.expectedType, result)
 		})
 	}
 }
 
+func TestDetectClientType_NoServer(t *testing.T) {
+	ctx := context.Background()
+
+	// When no server is running, should default to node client
+	result := detectClientType(ctx, "http://localhost:59999")
+	assert.Equal(t, ClientTypeNode, result)
+}
+
 func TestIsNodeAddress(t *testing.T) {
+	ctx := context.Background()
+
 	tests := []struct {
-		name     string
-		address  string
-		expected bool
+		name        string
+		setupServer func() *httptest.Server
+		expected    bool
 	}{
-		{"port 26657", "http://localhost:26657", false},
-		{"port 26658", "http://localhost:26658", true},
-		{"custom port", "http://localhost:8080", true},
+		{
+			name:        "node endpoint returns true",
+			setupServer: mockNodeServer,
+			expected:    true,
+		},
+		{
+			name:        "app endpoint returns false",
+			setupServer: mockAppServer,
+			expected:    false,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := IsNodeAddress(tt.address)
+			server := tt.setupServer()
+			defer server.Close()
+
+			result := IsNodeAddress(ctx, server.URL)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
 func TestIsAppAddress(t *testing.T) {
+	ctx := context.Background()
+
 	tests := []struct {
-		name     string
-		address  string
-		expected bool
+		name        string
+		setupServer func() *httptest.Server
+		expected    bool
 	}{
-		{"port 26657", "http://localhost:26657", true},
-		{"port 26658", "http://localhost:26658", false},
-		{"custom port", "http://localhost:8080", false},
+		{
+			name:        "node endpoint returns false",
+			setupServer: mockNodeServer,
+			expected:    false,
+		},
+		{
+			name:        "app endpoint returns true",
+			setupServer: mockAppServer,
+			expected:    true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := IsAppAddress(tt.address)
+			server := tt.setupServer()
+			defer server.Close()
+
+			result := IsAppAddress(ctx, server.URL)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
 func TestValidateAddress(t *testing.T) {
+	ctx := context.Background()
+
 	tests := []struct {
 		name        string
 		address     string
 		expectError bool
 		expectType  ClientType
 	}{
-		{
-			name:        "valid node address",
-			address:     "http://localhost:26658",
-			expectError: false,
-			expectType:  ClientTypeNode,
-		},
-		{
-			name:        "valid app address",
-			address:     "http://localhost:26657",
-			expectError: false,
-			expectType:  ClientTypeApp,
-		},
 		{
 			name:        "empty address",
 			address:     "",
@@ -163,7 +224,7 @@ func TestValidateAddress(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			clientType, err := ValidateAddress(tt.address)
+			clientType, err := ValidateAddress(ctx, tt.address)
 			if tt.expectError {
 				require.Error(t, err)
 			} else {
@@ -177,12 +238,11 @@ func TestValidateAddress(t *testing.T) {
 func TestNewClient_AggregatorMode(t *testing.T) {
 	// In aggregator mode, should always use node client regardless of address
 	cfg := Config{
-		Address:      "http://localhost:26657", // This would normally be app client
+		Address:      "http://localhost:26657",
 		Logger:       zerolog.Nop(),
 		IsAggregator: true,
 	}
 
-	// Create a context for the test
 	ctx := context.Background()
 
 	// The node client is created successfully even without a real server
@@ -192,7 +252,6 @@ func TestNewClient_AggregatorMode(t *testing.T) {
 	assert.NotNil(t, client)
 
 	// Verify it's a node client by checking that Validate doesn't return "not supported" error
-	// Call with non-empty IDs to trigger actual validation logic
 	ids := []datypes.ID{[]byte("test-id")}
 	proofs := []datypes.Proof{[]byte("test-proof")}
 	_, err = client.Validate(ctx, ids, proofs, []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00})
@@ -205,20 +264,17 @@ func TestNewClient_ForceType(t *testing.T) {
 	tests := []struct {
 		name              string
 		forceType         ClientType
-		address           string
 		expectUnsupported bool // true if we expect "not supported" error
 	}{
 		{
 			name:              "force node",
 			forceType:         ClientTypeNode,
-			address:           "http://localhost:26657", // Would normally be app
-			expectUnsupported: false,                    // Node client supports all operations
+			expectUnsupported: false,
 		},
 		{
 			name:              "force app",
 			forceType:         ClientTypeApp,
-			address:           "http://localhost:26658", // Would normally be node
-			expectUnsupported: true,                     // App client doesn't support proofs
+			expectUnsupported: true,
 		},
 	}
 
@@ -227,7 +283,7 @@ func TestNewClient_ForceType(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := Config{
-				Address:   tt.address,
+				Address:   "http://localhost:59999", // Non-existent server
 				Logger:    zerolog.Nop(),
 				ForceType: tt.forceType,
 			}
@@ -244,7 +300,6 @@ func TestNewClient_ForceType(t *testing.T) {
 				assert.Contains(t, err.Error(), "not supported")
 			} else {
 				// Node client doesn't return "not supported" (will fail to connect instead)
-				// If err is nil (empty ids case), that's fine too
 				if err != nil {
 					assert.NotContains(t, err.Error(), "not supported")
 				}
@@ -254,34 +309,32 @@ func TestNewClient_ForceType(t *testing.T) {
 }
 
 func TestNewClient_AutoDetection(t *testing.T) {
+	ctx := context.Background()
+
 	tests := []struct {
 		name              string
-		address           string
+		setupServer       func() *httptest.Server
 		expectUnsupported bool // true if we expect app client (which doesn't support proofs)
 	}{
 		{
-			name:              "port 26657 uses app client",
-			address:           "http://localhost:26657",
+			name:              "detects app client",
+			setupServer:       mockAppServer,
 			expectUnsupported: true,
 		},
 		{
-			name:              "port 26658 uses node client",
-			address:           "http://localhost:26658",
-			expectUnsupported: false,
-		},
-		{
-			name:              "custom port uses node client",
-			address:           "http://localhost:8080",
+			name:              "detects node client",
+			setupServer:       mockNodeServer,
 			expectUnsupported: false,
 		},
 	}
 
-	ctx := context.Background()
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			server := tt.setupServer()
+			defer server.Close()
+
 			cfg := Config{
-				Address: tt.address,
+				Address: server.URL,
 				Logger:  zerolog.Nop(),
 			}
 
@@ -297,11 +350,30 @@ func TestNewClient_AutoDetection(t *testing.T) {
 				assert.Contains(t, err.Error(), "not supported")
 			} else {
 				// Node client doesn't return "not supported" (will fail to connect instead)
-				// If err is nil (empty ids case), that's fine too
 				if err != nil {
 					assert.NotContains(t, err.Error(), "not supported")
 				}
 			}
 		})
+	}
+}
+
+func TestNewClient_AutoDetection_NoServer(t *testing.T) {
+	ctx := context.Background()
+
+	// When no server is running, defaults to node client
+	cfg := Config{
+		Address: "http://localhost:59999",
+		Logger:  zerolog.Nop(),
+	}
+
+	client, err := NewClient(ctx, cfg)
+	require.NoError(t, err)
+	assert.NotNil(t, client)
+
+	// Verify it's a node client (doesn't return "not supported")
+	_, err = client.GetProofs(ctx, nil, nil)
+	if err != nil {
+		assert.NotContains(t, err.Error(), "not supported")
 	}
 }
