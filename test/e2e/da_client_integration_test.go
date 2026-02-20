@@ -208,17 +208,17 @@ func TestClient_SubmitAndGetBlobAgainstRealNode(t *testing.T) {
 	})
 	require.NoError(t, err, "bridge RPC reachable")
 
-	client, err := NewClient(ctx, rpcAddr, "", "")
+	client, err := node.NewClient(ctx, rpcAddr, "", "")
 	require.NoError(t, err, "new da client")
 	t.Cleanup(client.Close)
 
 	ns := libshare.MustNewV0Namespace([]byte("evnode"))
-	blb, err := NewBlobV0(ns, []byte("integration-data"))
+	blb, err := node.NewBlobV0(ns, []byte("integration-data"))
 	require.NoError(t, err, "build blob")
 
 	var height uint64
 	for attempt := 0; attempt < 3; attempt++ {
-		height, err = client.Blob.Submit(ctx, []*Blob{blb}, &SubmitOptions{
+		height, err = client.Blob.Submit(ctx, []*node.Blob{blb}, &node.SubmitOptions{
 			GasPrice:      0.1,
 			IsGasPriceSet: true,
 			Gas:           2_000_000,

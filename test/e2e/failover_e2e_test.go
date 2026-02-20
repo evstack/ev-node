@@ -565,7 +565,7 @@ func verifyNoDoubleSigning(t *testing.T, clusterNodes *raftClusterNodes, genesis
 // verifyDABlocks checks that DA block heights form a continuous sequence without gaps
 func verifyDABlocks(t *testing.T, daStartHeight, lastDABlock uint64, jwtSecret string, daAddress string, genesisHeight, lastEVBlock uint64) {
 	t.Helper()
-	blobClient, err := NewClient(t.Context(), daAddress, jwtSecret, "")
+	blobClient, err := node.NewClient(t.Context(), daAddress, jwtSecret, "")
 	require.NoError(t, err)
 	defer blobClient.Close()
 
@@ -750,7 +750,7 @@ const defaultMaxBlobSize = 2 * 1024 * 1024 // 2MB
 
 func queryLastDAHeight(t *testing.T, startHeight uint64, jwtSecret string, daAddress string) uint64 {
 	t.Helper()
-	blobClient, err := NewClient(t.Context(), daAddress, jwtSecret, "")
+	blobClient, err := node.NewClient(t.Context(), daAddress, jwtSecret, "")
 	require.NoError(t, err)
 	defer blobClient.Close()
 	ns, err := libshare.NewNamespaceFromBytes(coreda.NamespaceFromString(DefaultDANamespace).Bytes())

@@ -201,7 +201,7 @@ func TestIDSplitting(t *testing.T) {
 	copy(id[8:], commitment)
 
 	// Test splitting
-	parsedHeight, parsedCommitment := SplitID(id)
+	parsedHeight, parsedCommitment := node.SplitID(id)
 
 	if parsedHeight != height {
 		t.Errorf("SplitID() height = %d, expected %d", parsedHeight, height)

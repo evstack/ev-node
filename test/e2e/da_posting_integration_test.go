@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	libshare "github.com/celestiaorg/go-square/v3/share"
 	tastoradocker "github.com/celestiaorg/tastora/framework/docker"
 	tastoraconsts "github.com/celestiaorg/tastora/framework/docker/consts"
 	"github.com/celestiaorg/tastora/framework/docker/container"
@@ -29,7 +30,6 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/bank"
 	"github.com/cosmos/cosmos-sdk/x/gov"
 	"github.com/cosmos/ibc-go/v8/modules/apps/transfer"
-	libshare "github.com/celestiaorg/go-square/v3/share"
 	"github.com/evstack/ev-node/pkg/da/node"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/stretchr/testify/require"
@@ -240,7 +240,7 @@ func TestEvNode_PostsToDA(t *testing.T) {
 
 	// 6) Assert data landed on DA via celestia-node blob RPC (namespace ev-data)
 	daRPCAddr := fmt.Sprintf("http://%s", bridgeNetInfo.Internal.RPCAddress())
-	daClient, err := jsonrpc.NewClient(ctx, daRPCAddr, authToken, "")
+	daClient, err := node.NewClient(ctx, daRPCAddr, authToken, "")
 	require.NoError(t, err, "new da client")
 	defer daClient.Close()
 

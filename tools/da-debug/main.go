@@ -212,7 +212,7 @@ func searchForHeight(ctx context.Context, client *node.Client, startHeight uint6
 	return nil
 }
 
-func queryHeight(ctx context.Context, client *Client, height uint64, namespace []byte) error {
+func queryHeight(ctx context.Context, client *node.Client, height uint64, namespace []byte) error {
 	ns, err := share.NewNamespaceFromBytes(namespace)
 	if err != nil {
 		return fmt.Errorf("invalid namespace: %w", err)
@@ -486,7 +486,7 @@ func tryDecodeData(bz []byte) *types.SignedData {
 	return &signedData
 }
 
-func createDAClient() (*Client, func(), error) {
+func createDAClient() (*node.Client, func(), error) {
 	logger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr}).Level(zerolog.InfoLevel)
 	if verbose {
 		logger = logger.Level(zerolog.DebugLevel)
@@ -495,7 +495,7 @@ func createDAClient() (*Client, func(), error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	client, err := NewClient(ctx, daURL, authToken, "")
+	client, err := node.NewClient(ctx, daURL, authToken, "")
 	if err != nil {
 		return nil, func() {}, fmt.Errorf("failed to create DA client: %w", err)
 	}
