@@ -196,45 +196,6 @@ func TestIsAppAddress(t *testing.T) {
 	}
 }
 
-func TestValidateAddress(t *testing.T) {
-	ctx := context.Background()
-
-	tests := []struct {
-		name        string
-		address     string
-		expectError bool
-		expectType  ClientType
-	}{
-		{
-			name:        "empty address",
-			address:     "",
-			expectError: true,
-		},
-		{
-			name:        "whitespace address",
-			address:     "   ",
-			expectError: true,
-		},
-		{
-			name:        "address without host",
-			address:     "http://",
-			expectError: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			clientType, err := ValidateAddress(ctx, tt.address)
-			if tt.expectError {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				assert.Equal(t, tt.expectType, clientType)
-			}
-		})
-	}
-}
-
 func TestNewClient_AggregatorMode(t *testing.T) {
 	// In aggregator mode, should always use node client regardless of address
 	cfg := Config{

@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -62,6 +61,9 @@ type Config struct {
 // Note: celestia-app client does not support proof operations
 // (GetProofs/Validate). Use celestia-node client for full functionality.
 func NewClient(ctx context.Context, cfg Config) (datypes.BlobClient, error) {
+	// Sanitize address to remove any surrounding quotes that might have been included from config
+	cfg.Address = strings.Trim(strings.TrimSpace(cfg.Address), "\"'")
+
 	// Always use node client in aggregator mode
 	if cfg.IsAggregator {
 		cfg.Logger.Debug().
@@ -272,28 +274,4 @@ func IsNodeAddress(ctx context.Context, address string) bool {
 // It makes an HTTP request to detect the service type.
 func IsAppAddress(ctx context.Context, address string) bool {
 	return detectClientType(ctx, address) == ClientTypeApp
-}
-
-// ValidateAddress checks if the address is valid and returns the detected client type.
-// It makes an HTTP request to detect the service type.
-func ValidateAddress(ctx context.Context, address string) (ClientType, error) {
-	if strings.TrimSpace(address) == "" {
-		return ClientTypeAuto, fmt.Errorf("DA address cannot be empty")
-	}
-
-	// Try to parse as URL
-	u, err := url.Parse(address)
-	if err != nil {
-		// Try with http:// prefix
-		u, err = url.Parse("http://" + address)
-		if err != nil {
-			return ClientTypeAuto, fmt.Errorf("invalid DA address format: %w", err)
-		}
-	}
-
-	if u.Host == "" {
-		return ClientTypeAuto, fmt.Errorf("DA address must include host")
-	}
-
-	return detectClientType(ctx, address), nil
 }

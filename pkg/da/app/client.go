@@ -166,6 +166,17 @@ func (c *Client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 				},
 			}
 		}
+		if strings.Contains(err.Error(), "is not available, lowest height is") {
+			c.logger.Debug().Uint64("height", height).Err(err).Msg("block is pruned or unavailable")
+			return datypes.ResultRetrieve{
+				BaseResult: datypes.BaseResult{
+					Code:      datypes.StatusNotFound,
+					Message:   datypes.ErrBlobNotFound.Error(),
+					Height:    height,
+					Timestamp: time.Now(),
+				},
+			}
+		}
 		c.logger.Error().Err(err).Uint64("height", height).Msg("failed to get block")
 		return datypes.ResultRetrieve{
 			BaseResult: datypes.BaseResult{
@@ -375,6 +386,9 @@ type rpcError struct {
 }
 
 func (e *rpcError) Error() string {
+	if e.Data != "" {
+		return fmt.Sprintf("RPC error %d: %s: %s", e.Code, e.Message, e.Data)
+	}
 	return fmt.Sprintf("RPC error %d: %s", e.Code, e.Message)
 }
 

@@ -147,7 +147,7 @@ func TestClient_Retrieve(t *testing.T) {
 
 		client := createTestClient(server.URL)
 		result := client.Retrieve(ctx, 100, ns.Bytes())
-		assert.Equal(t, datypes.StatusError, result.Code)
+		assert.Equal(t, datypes.StatusNotFound, result.Code)
 	})
 
 	t.Run("future height", func(t *testing.T) {
@@ -501,7 +501,7 @@ func TestRPCTypes(t *testing.T) {
 			Message: "Invalid Request",
 			Data:    "extra data",
 		}
-		assert.Equal(t, "RPC error -32600: Invalid Request", err.Error())
+		assert.Equal(t, "RPC error -32600: Invalid Request: extra data", err.Error())
 	})
 }
 
