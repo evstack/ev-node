@@ -21,7 +21,7 @@ import (
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/node"
 	rollconf "github.com/evstack/ev-node/pkg/config"
-	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
+	"github.com/evstack/ev-node/pkg/da/factory"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
@@ -107,11 +107,15 @@ func StartNode(
 		}()
 	}
 
-	blobClient, err := blobrpc.NewClient(ctx, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
+	blobClient, err := factory.NewClient(ctx, factory.Config{
+		Address:      nodeConfig.DA.Address,
+		AuthToken:    nodeConfig.DA.AuthToken,
+		Logger:       logger,
+		IsAggregator: nodeConfig.Node.Aggregator,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to create blob client: %w", err)
 	}
-	defer blobClient.Close()
 	daClient := block.NewDAClient(blobClient, nodeConfig, logger)
 
 	// create a new remote signer

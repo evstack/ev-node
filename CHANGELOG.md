@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Support fetching from Celestia App instead of only Celestia Node. [#3095](https://github.com/evstack/ev-node/pull/3095)
 - Node pruning support. [#2984](https://github.com/evstack/ev-node/pull/2984)
   - Two different sort of pruning implemented:
     _Classic pruning_ (`all`): prunes given `HEAD-n` blocks from the databases, including store metadatas.

@@ -13,7 +13,7 @@ import (
 	evblock "github.com/evstack/ev-node/block"
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
 	rollconf "github.com/evstack/ev-node/pkg/config"
-	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
+	"github.com/evstack/ev-node/pkg/da/node"
 	da "github.com/evstack/ev-node/pkg/da/types"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/types"
@@ -116,7 +116,7 @@ func postTxRunE(cmd *cobra.Command, args []string) error {
 
 	logger.Info().Str("namespace", namespace).Float64("gas_price", gasPrice).Int("tx_size", len(txData)).Msg("posting transaction to DA layer")
 
-	daClient, err := blobrpc.NewClient(
+	daClient, err := node.NewClient(
 		cmd.Context(),
 		nodeConfig.DA.Address,
 		nodeConfig.DA.AuthToken,

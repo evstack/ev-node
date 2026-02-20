@@ -23,16 +23,14 @@ import (
 	"github.com/evstack/ev-node/test/testda"
 )
 
-// MockFullDAClient combines MockClient and MockVerifier to implement FullDAClient
-type MockFullDAClient struct {
+// MockDAClient wraps MockClient for the consolidated Client interface
+type MockDAClient struct {
 	*mocks.MockClient
-	*mocks.MockVerifier
 }
 
-func newMockFullDAClient(t *testing.T) *MockFullDAClient {
-	return &MockFullDAClient{
-		MockClient:   mocks.NewMockClient(t),
-		MockVerifier: mocks.NewMockVerifier(t),
+func newMockDAClient(t *testing.T) *MockDAClient {
+	return &MockDAClient{
+		MockClient: mocks.NewMockClient(t),
 	}
 }
 
@@ -70,7 +68,7 @@ func createDefaultMockExecutor(t *testing.T) *mocks.MockExecutor {
 }
 
 // newTestSequencer creates a sequencer for tests that don't need full initialization
-func newTestSequencer(t *testing.T, db ds.Batching, daClient block.FullDAClient) *Sequencer {
+func newTestSequencer(t *testing.T, db ds.Batching, daClient block.DAClient) *Sequencer {
 	logger := zerolog.Nop()
 
 	gen := genesis.Genesis{
@@ -372,7 +370,7 @@ func TestSequencer_GetNextBatch_ForcedInclusionAndBatch_MaxBytes(t *testing.T) {
 	defer db.Close()
 
 	// Create mock DA client with forced inclusion namespace
-	mockDA := newMockFullDAClient(t)
+	mockDA := newMockDAClient(t)
 	forcedInclusionNS := []byte("forced-inclusion")
 
 	// Setup namespace methods
@@ -461,7 +459,7 @@ func TestSequencer_GetNextBatch_ForcedInclusion_ExceedsMaxBytes(t *testing.T) {
 	defer db.Close()
 
 	// Create mock DA client
-	mockDA := newMockFullDAClient(t)
+	mockDA := newMockDAClient(t)
 	forcedInclusionNS := []byte("forced-inclusion")
 
 	mockDA.MockClient.On("GetHeaderNamespace").Return([]byte("header")).Maybe()
@@ -541,7 +539,7 @@ func TestSequencer_GetNextBatch_AlwaysCheckPendingForcedInclusion(t *testing.T) 
 	defer db.Close()
 
 	// Create mock DA client
-	mockDA := newMockFullDAClient(t)
+	mockDA := newMockDAClient(t)
 	forcedInclusionNS := []byte("forced-inclusion")
 
 	mockDA.MockClient.On("GetHeaderNamespace").Return([]byte("header")).Maybe()
@@ -879,7 +877,7 @@ func TestSequencer_CheckpointPersistence_CrashRecovery(t *testing.T) {
 	defer db.Close()
 
 	// Create mock DA client
-	mockDA := newMockFullDAClient(t)
+	mockDA := newMockDAClient(t)
 	forcedInclusionNS := []byte("forced-inclusion")
 
 	mockDA.MockClient.On("GetHeaderNamespace").Return([]byte("header")).Maybe()
@@ -978,7 +976,7 @@ func TestSequencer_GetNextBatch_EmptyDABatch_IncreasesDAHeight(t *testing.T) {
 	ctx := context.Background()
 
 	// Create mock DA client
-	mockDA := newMockFullDAClient(t)
+	mockDA := newMockDAClient(t)
 	forcedInclusionNS := []byte("forced-inclusion")
 
 	mockDA.MockClient.On("GetHeaderNamespace").Return([]byte("header")).Maybe()
@@ -1061,7 +1059,7 @@ func TestSequencer_GetNextBatch_WithGasFiltering(t *testing.T) {
 		DAEpochForcedInclusion: 1,
 	}
 
-	mockDA := newMockFullDAClient(t)
+	mockDA := newMockDAClient(t)
 
 	// Setup DA to return forced inclusion transactions
 	forcedTxs := [][]byte{
@@ -1172,7 +1170,7 @@ func TestSequencer_GetNextBatch_GasFilterError(t *testing.T) {
 		DAEpochForcedInclusion: 1,
 	}
 
-	mockDA := newMockFullDAClient(t)
+	mockDA := newMockDAClient(t)
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return([]byte("forced")).Maybe()
 	mockDA.MockClient.On("MaxBlobSize", mock.Anything).Return(uint64(1000000), nil).Maybe()
@@ -1234,7 +1232,7 @@ func TestSequencer_GetNextBatch_GasFilteringPreservesUnprocessedTxs(t *testing.T
 		DAEpochForcedInclusion: 1,
 	}
 
-	mockDA := newMockFullDAClient(t)
+	mockDA := newMockDAClient(t)
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return([]byte("forced")).Maybe()
 	mockDA.MockClient.On("MaxBlobSize", mock.Anything).Return(uint64(1000000), nil).Maybe()

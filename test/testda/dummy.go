@@ -208,7 +208,12 @@ func (d *DummyDA) SetSubmitFailure(shouldFail bool) {
 	d.failSubmit.Store(shouldFail)
 }
 
-// Height returns the current DA height.
+// GetLatestDAHeight returns the current DA height.
+func (d *DummyDA) GetLatestDAHeight(_ context.Context) (uint64, error) {
+	return d.height.Load(), nil
+}
+
+// Height returns the current DA height (convenience method).
 func (d *DummyDA) Height() uint64 {
 	return d.height.Load()
 }

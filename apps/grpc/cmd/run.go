@@ -16,7 +16,7 @@ import (
 	"github.com/evstack/ev-node/node"
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
 	"github.com/evstack/ev-node/pkg/config"
-	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
+	"github.com/evstack/ev-node/pkg/da/factory"
 	da "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	rollgenesis "github.com/evstack/ev-node/pkg/genesis"
@@ -108,7 +108,12 @@ func createSequencer(
 	genesis genesis.Genesis,
 	executor execution.Executor,
 ) (coresequencer.Sequencer, error) {
-	blobClient, err := blobrpc.NewClient(ctx, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
+	blobClient, err := factory.NewClient(ctx, factory.Config{
+		Address:      nodeConfig.DA.Address,
+		AuthToken:    nodeConfig.DA.AuthToken,
+		Logger:       logger,
+		IsAggregator: nodeConfig.Node.Aggregator,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create blob client: %w", err)
 	}

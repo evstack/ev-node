@@ -6,8 +6,9 @@ import (
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
 	"github.com/evstack/ev-node/pkg/config"
-	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 	"github.com/rs/zerolog"
+
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
 // BlockOptions defines the options for creating block components
@@ -34,25 +35,16 @@ func NopMetrics() *Metrics {
 // DAClient is the interface representing the DA client for public use.
 type DAClient = da.Client
 
-// DAVerifier is the interface for DA proof verification operations.
-type DAVerifier = da.Verifier
-
-// FullDAClient combines DAClient and DAVerifier interfaces.
-// This is the complete interface implemented by the concrete DA client.
-type FullDAClient = da.FullClient
-
-// NewDAClient creates a new DA client backed by the blob JSON-RPC API.
-// The returned client implements both DAClient and DAVerifier interfaces.
+// NewDAClient creates a new DA client backed by the provided BlobClient implementation.
 func NewDAClient(
-	blobRPC *blobrpc.Client,
+	client datypes.BlobClient,
 	config config.Config,
 	logger zerolog.Logger,
-) FullDAClient {
+) DAClient {
 	base := da.NewClient(da.Config{
-		DA:                       blobRPC,
+		Client:                   client,
 		Logger:                   logger,
 		Namespace:                config.DA.GetNamespace(),
-		DefaultTimeout:           config.DA.RequestTimeout.Duration,
 		DataNamespace:            config.DA.GetDataNamespace(),
 		ForcedInclusionNamespace: config.DA.GetForcedInclusionNamespace(),
 	})

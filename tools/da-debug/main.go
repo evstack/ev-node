@@ -14,7 +14,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/celestiaorg/go-square/v3/share"
-	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
+	"github.com/evstack/ev-node/pkg/da/node"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/types"
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
@@ -141,7 +141,7 @@ func runSearch(cmd *cobra.Command, args []string, searchHeight, searchRange uint
 	return searchForHeight(ctx, client, startHeight, namespace, searchHeight, searchRange)
 }
 
-func searchForHeight(ctx context.Context, client *blobrpc.Client, startHeight uint64, namespace []byte, targetHeight, searchRange uint64) error {
+func searchForHeight(ctx context.Context, client *node.Client, startHeight uint64, namespace []byte, targetHeight, searchRange uint64) error {
 	fmt.Printf("Searching for height %d in DA heights %d-%d...\n", targetHeight, startHeight, startHeight+searchRange-1)
 	fmt.Println()
 
@@ -212,7 +212,7 @@ func searchForHeight(ctx context.Context, client *blobrpc.Client, startHeight ui
 	return nil
 }
 
-func queryHeight(ctx context.Context, client *blobrpc.Client, height uint64, namespace []byte) error {
+func queryHeight(ctx context.Context, client *node.Client, height uint64, namespace []byte) error {
 	ns, err := share.NewNamespaceFromBytes(namespace)
 	if err != nil {
 		return fmt.Errorf("invalid namespace: %w", err)
@@ -486,7 +486,7 @@ func tryDecodeData(bz []byte) *types.SignedData {
 	return &signedData
 }
 
-func createDAClient() (*blobrpc.Client, func(), error) {
+func createDAClient() (*node.Client, func(), error) {
 	logger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr}).Level(zerolog.InfoLevel)
 	if verbose {
 		logger = logger.Level(zerolog.DebugLevel)
@@ -495,7 +495,7 @@ func createDAClient() (*blobrpc.Client, func(), error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	client, err := blobrpc.NewClient(ctx, daURL, authToken, "")
+	client, err := node.NewClient(ctx, daURL, authToken, "")
 	if err != nil {
 		return nil, func() {}, fmt.Errorf("failed to create DA client: %w", err)
 	}
