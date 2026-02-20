@@ -78,12 +78,12 @@ func (e *Executor) savePendingBlock(ctx context.Context, header *types.SignedHea
 }
 
 // deletePendingBlock removes pending block metadata
-func (e *Executor) deletePendingBlock(batch store.Batch) error {
-	if err := batch.Delete(ds.NewKey(store.GetMetaKey(headerKey))); err != nil {
+func (e *Executor) deletePendingBlock(ctx context.Context) error {
+	if err := e.store.DeleteMetadata(ctx, headerKey); err != nil {
 		return fmt.Errorf("delete pending header: %w", err)
 	}
 
-	if err := batch.Delete(ds.NewKey(store.GetMetaKey(dataKey))); err != nil {
+	if err := e.store.DeleteMetadata(ctx, dataKey); err != nil {
 		return fmt.Errorf("delete pending data: %w", err)
 	}
 	return nil
