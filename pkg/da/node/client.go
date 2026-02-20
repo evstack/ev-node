@@ -4,6 +4,7 @@ package node
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -193,18 +194,20 @@ func (c *Client) GetProofs(ctx context.Context, ids []datypes.ID, namespace []by
 	for i, id := range ids {
 		height, commitment := SplitID(id)
 		if commitment == nil {
-			return nil, nil
+			return nil, fmt.Errorf("invalid ID: nil commitment")
 		}
 
 		proof, err := c.Blob.GetProof(ctx, height, ns, commitment)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to get proof for height %d: %w", height, err)
 		}
 
-		// Serialize proof - for now just use the proof as-is
-		// In a real implementation, you'd marshal the proof properly
-		proofs[i] = []byte{} // Placeholder
-		_ = proof
+		// Serialize proof to JSON
+		proofBytes, err := json.Marshal(proof)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal proof: %w", err)
+		}
+		proofs[i] = proofBytes
 	}
 
 	return proofs, nil
@@ -213,7 +216,7 @@ func (c *Client) GetProofs(ctx context.Context, ids []datypes.ID, namespace []by
 // Validate validates commitments against the corresponding proofs.
 func (c *Client) Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error) {
 	if len(ids) != len(proofs) {
-		return nil, nil
+		return nil, fmt.Errorf("ids and proofs length mismatch: %d vs %d", len(ids), len(proofs))
 	}
 
 	if len(ids) == 0 {
@@ -229,14 +232,18 @@ func (c *Client) Validate(ctx context.Context, ids []datypes.ID, proofs []datype
 	for i, id := range ids {
 		height, commitment := SplitID(id)
 		if commitment == nil {
+			results[i] = false
 			continue
 		}
 
-		// Deserialize proof - placeholder
-		var proof *Proof
-		_ = proofs[i] // Would unmarshal here
+		// Deserialize proof from JSON
+		var proof Proof
+		if err := json.Unmarshal(proofs[i], &proof); err != nil {
+			results[i] = false
+			continue
+		}
 
-		included, err := c.Blob.Included(ctx, height, ns, proof, commitment)
+		included, err := c.Blob.Included(ctx, height, ns, &proof, commitment)
 		if err != nil {
 			results[i] = false
 		} else {
