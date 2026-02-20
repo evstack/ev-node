@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -142,7 +143,7 @@ func TestClient_Retrieve(t *testing.T) {
 					Message: "Internal error: height 100 is not available, lowest height is 1",
 				},
 			}
-			json.NewEncoder(w).Encode(resp)
+			_ = json.NewEncoder(w).Encode(resp)
 		})
 
 		client := createTestClient(server.URL)
@@ -160,7 +161,7 @@ func TestClient_Retrieve(t *testing.T) {
 					Message: "height 999999 is from future",
 				},
 			}
-			json.NewEncoder(w).Encode(resp)
+			_ = json.NewEncoder(w).Encode(resp)
 		})
 
 		client := createTestClient(server.URL)
@@ -200,7 +201,7 @@ func TestClient_Retrieve(t *testing.T) {
 				ID:      1,
 				Result:  resultBytes,
 			}
-			json.NewEncoder(w).Encode(resp)
+			_ = json.NewEncoder(w).Encode(resp)
 		})
 
 		client := createTestClient(server.URL)
@@ -386,7 +387,7 @@ func TestClient_Validate(t *testing.T) {
 	t.Run("returns not supported error", func(t *testing.T) {
 		id := make([]byte, 10)
 		binary.LittleEndian.PutUint64(id, 100)
-		proof := datypes.Proof([]byte("proof"))
+		proof := datypes.Proof("proof")
 		results, err := client.Validate(ctx, []datypes.ID{id}, []datypes.Proof{proof}, ns.Bytes())
 		require.Error(t, err)
 		assert.Nil(t, results)
@@ -466,7 +467,8 @@ func TestRPCCall(t *testing.T) {
 		client := createTestClient(server.URL)
 		_, err := client.rpcCall(ctx, "test_method", nil)
 		require.Error(t, err)
-		rpcErr, ok := err.(*rpcError)
+		rpcErr := &rpcError{}
+		ok := errors.As(err, &rpcErr)
 		require.True(t, ok)
 		assert.Equal(t, -32600, rpcErr.Code)
 		assert.Equal(t, "Invalid Request", rpcErr.Message)
@@ -484,7 +486,7 @@ func TestRPCCall(t *testing.T) {
 
 	t.Run("invalid json response", func(t *testing.T) {
 		server := setupMockServer(t, func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte("not valid json"))
+			_, _ = w.Write([]byte("not valid json"))
 		})
 
 		client := createTestClient(server.URL)

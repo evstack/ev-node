@@ -365,13 +365,13 @@ func (c *Client) GetLatestDAHeight(ctx context.Context) (uint64, error) {
 // Note: celestia-app doesn't provide proofs directly - they need to be computed
 // from the block data or obtained from celestia-node.
 func (c *Client) GetProofs(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error) {
-	return nil, errors.New("GetProofs not supported: celestia-app client does not support proof generation.")
+	return nil, errors.New("GetProofs not supported: celestia-app client does not support proof generation")
 }
 
 // Validate validates commitments against the corresponding proofs.
 // Note: This requires proof generation which is not implemented.
 func (c *Client) Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error) {
-	return nil, errors.New("Validate not supported: celestia-app client does not support proof validation.")
+	return nil, errors.New("Validate not supported: celestia-app client does not support proof validation")
 }
 
 // RPC Types for CometBFT JSON-RPC responses

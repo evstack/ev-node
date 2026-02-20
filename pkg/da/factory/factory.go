@@ -37,7 +37,7 @@ type Config struct {
 	// Address is the DA endpoint address (e.g., "http://localhost:26657" or "http://localhost:26658")
 	Address string
 	// AuthToken is the authentication token for celestia-node (optional)
-	AuthToken string
+	AuthToken string //nolint:gosec // auth token
 	// AuthHeaderName is the name of the auth header (optional, defaults to "Authorization")
 	AuthHeaderName string
 	// Logger for logging

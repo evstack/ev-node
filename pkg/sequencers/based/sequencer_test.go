@@ -64,7 +64,7 @@ func createTestSequencer(t *testing.T, mockRetriever *common.MockForcedInclusion
 
 	// Create mock DA client
 	mockDAClient := &MockDAClient{
-		MockClient:   mocks.NewMockClient(t),
+		MockClient: mocks.NewMockClient(t),
 	}
 	// Mock the forced inclusion namespace call
 	mockDAClient.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
@@ -461,7 +461,7 @@ func TestBasedSequencer_CheckpointPersistence(t *testing.T) {
 
 	// Create mock DA client
 	mockDAClient := &MockDAClient{
-		MockClient:   mocks.NewMockClient(t),
+		MockClient: mocks.NewMockClient(t),
 	}
 	mockDAClient.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
 	mockDAClient.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
@@ -487,7 +487,7 @@ func TestBasedSequencer_CheckpointPersistence(t *testing.T) {
 
 	// Create a new sequencer with the same datastore (simulating restart)
 	mockDAClient2 := &MockDAClient{
-		MockClient:   mocks.NewMockClient(t),
+		MockClient: mocks.NewMockClient(t),
 	}
 	mockDAClient2.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
 	mockDAClient2.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
@@ -531,7 +531,7 @@ func TestBasedSequencer_CrashRecoveryMidEpoch(t *testing.T) {
 
 	// Create mock DA client
 	mockDAClient := &MockDAClient{
-		MockClient:   mocks.NewMockClient(t),
+		MockClient: mocks.NewMockClient(t),
 	} // On restart, the epoch is re-fetched but we must NOT reset TxIndex
 
 	mockDAClient.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
@@ -591,7 +591,7 @@ func TestBasedSequencer_CrashRecoveryMidEpoch(t *testing.T) {
 	// The in-memory cache is lost, but checkpoint is persisted
 
 	mockDAClient2 := &MockDAClient{
-		MockClient:   mocks.NewMockClient(t),
+		MockClient: mocks.NewMockClient(t),
 	}
 	mockDAClient2.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
 	mockDAClient2.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
@@ -912,7 +912,7 @@ func TestBasedSequencer_GetNextBatch_GasFilteringPreservesUnprocessedTxs(t *test
 	// Create sequencer with custom executor
 	db := syncds.MutexWrap(ds.NewMapDatastore())
 	mockDAClient := &MockDAClient{
-		MockClient:   mocks.NewMockClient(t),
+		MockClient: mocks.NewMockClient(t),
 	}
 	mockDAClient.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
 	mockDAClient.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
