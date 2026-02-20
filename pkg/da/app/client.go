@@ -350,39 +350,13 @@ func (c *Client) GetLatestDAHeight(ctx context.Context) (uint64, error) {
 // Note: celestia-app doesn't provide proofs directly - they need to be computed
 // from the block data or obtained from celestia-node.
 func (c *Client) GetProofs(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error) {
-	if len(ids) == 0 {
-		return []datypes.Proof{}, nil
-	}
-
-	// TODO: Implement proof generation
-	// This would require:
-	// 1. Fetching the block and ExtendedDataSquare
-	// 2. Computing the NMT proofs for each blob
-	// 3. This is complex and typically done by celestia-node
-	//
-	// For now, return an error indicating this is not supported
-	return nil, errors.New("GetProofs not implemented: proof generation requires celestia-node or full EDS computation")
+	return nil, errors.New("GetProofs not supported: celestia-app client does not support proof generation.")
 }
 
 // Validate validates commitments against the corresponding proofs.
 // Note: This requires proof generation which is not implemented.
 func (c *Client) Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error) {
-	if len(ids) != len(proofs) {
-		return nil, errors.New("number of IDs and proofs must match")
-	}
-
-	if len(ids) == 0 {
-		return []bool{}, nil
-	}
-
-	// TODO: Implement proof validation
-	// This would require:
-	// 1. Parsing the proofs
-	// 2. Verifying NMT inclusion
-	// 3. This is typically done by celestia-node
-	//
-	// For now, return an error indicating this is not supported
-	return nil, errors.New("Validate not implemented: proof validation requires celestia-node")
+	return nil, errors.New("Validate not supported: celestia-app client does not support proof validation.")
 }
 
 // RPC Types for CometBFT JSON-RPC responses
