@@ -27,6 +27,14 @@ import (
 
 var _ BlockProducer = (*Executor)(nil)
 
+// lastBlockInfo contains cached per-block data to avoid store reads + protobuf
+// deserialization in CreateBlock.
+type lastBlockInfo struct {
+	headerHash types.Hash
+	dataHash   types.Hash
+	signature  types.Signature
+}
+
 // Executor handles block production, transaction processing, and state management
 type Executor struct {
 	// Core components
@@ -58,14 +66,10 @@ type Executor struct {
 	// avoiding a store lookup on every ProduceBlock call.
 	hasPendingBlock atomic.Bool
 
-	// Cached per-block data to avoid store reads + protobuf deserialization
-	// in CreateBlock. Updated after each successful block production.
-	lastHeaderHash types.Hash
-	lastDataHash   types.Hash
-	lastSignature  types.Signature
+	// Cached per-block data
+	lastBlockInfo atomic.Pointer[lastBlockInfo]
 
 	// pendingCheckCounter amortizes the expensive NumPendingHeaders/NumPendingData
-	// checks across multiple blocks. Only checked every pendingCheckInterval blocks.
 	pendingCheckCounter uint64
 
 	// Channels for coordination
@@ -300,12 +304,15 @@ func (e *Executor) initializeState() error {
 	if state.LastBlockHeight > 0 {
 		h, d, err := e.store.GetBlockData(e.ctx, state.LastBlockHeight)
 		if err == nil {
-			e.lastHeaderHash = h.Hash()
-			e.lastDataHash = d.Hash()
+			info := &lastBlockInfo{
+				headerHash: h.Hash(),
+				dataHash:   d.Hash(),
+			}
 			sig, err := e.store.GetSignature(e.ctx, state.LastBlockHeight)
 			if err == nil {
-				e.lastSignature = *sig
+				info.signature = *sig
 			}
+			e.lastBlockInfo.Store(info)
 		}
 	}
 
@@ -591,11 +598,11 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 	e.setLastState(newState)
 
 	// Update last-block cache so the next CreateBlock avoids a store read.
-	// Reuse newState.LastHeaderHash (already computed by NextState) instead of
-	// calling header.Hash() again, which would re-marshal + re-hash.
-	e.lastHeaderHash = newState.LastHeaderHash
-	e.lastDataHash = data.Hash()
-	e.lastSignature = signature
+	e.lastBlockInfo.Store(&lastBlockInfo{
+		headerHash: newState.LastHeaderHash,
+		dataHash:   data.Hash(),
+		signature:  signature,
+	})
 
 	// Broadcast header and data to P2P network sequentially.
 	// IMPORTANT: Header MUST be broadcast before data — the P2P layer validates
@@ -659,7 +666,6 @@ func (e *Executor) CreateBlock(ctx context.Context, height uint64, batchData *Ba
 	currentState := e.getLastState()
 	headerTime := uint64(e.genesis.StartTime.UnixNano())
 
-	// Get last block info
 	var lastHeaderHash types.Hash
 	var lastDataHash types.Hash
 	var lastSignature types.Signature
@@ -667,11 +673,11 @@ func (e *Executor) CreateBlock(ctx context.Context, height uint64, batchData *Ba
 	if height > e.genesis.InitialHeight {
 		headerTime = uint64(batchData.UnixNano())
 
-		if len(e.lastHeaderHash) > 0 {
+		if info := e.lastBlockInfo.Load(); info != nil {
 			// Fast path: use in-memory cache
-			lastHeaderHash = e.lastHeaderHash
-			lastDataHash = e.lastDataHash
-			lastSignature = e.lastSignature
+			lastHeaderHash = info.headerHash
+			lastDataHash = info.dataHash
+			lastSignature = info.signature
 		} else {
 			// Cold start fallback: read from store
 			lastHeader, lastData, err := e.store.GetBlockData(ctx, height-1)
