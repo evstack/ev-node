@@ -13,6 +13,10 @@ type Batch interface {
 	// SaveBlockData atomically saves the block header, data, and signature
 	SaveBlockData(header *types.SignedHeader, data *types.Data, signature *types.Signature) error
 
+	// SaveBlockDataFromBytes is like SaveBlockData but accepts pre-serialized header and data bytes,
+	// avoiding re-marshalling when the caller already has the binary blobs.
+	SaveBlockDataFromBytes(header *types.SignedHeader, headerBlob, dataBlob []byte, signature *types.Signature) error
+
 	// SetHeight sets the height in the batch
 	SetHeight(height uint64) error
 

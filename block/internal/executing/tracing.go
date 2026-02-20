@@ -103,19 +103,3 @@ func (t *tracedBlockProducer) ApplyBlock(ctx context.Context, header types.Heade
 	)
 	return state, nil
 }
-
-func (t *tracedBlockProducer) ValidateBlock(ctx context.Context, lastState types.State, header *types.SignedHeader, data *types.Data) error {
-	ctx, span := t.tracer.Start(ctx, "BlockExecutor.ValidateBlock",
-		trace.WithAttributes(
-			attribute.Int64("block.height", int64(header.Height())),
-		),
-	)
-	defer span.End()
-
-	err := t.inner.ValidateBlock(ctx, lastState, header, data)
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-	}
-	return err
-}
