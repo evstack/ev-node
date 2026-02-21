@@ -15,7 +15,7 @@ lint: vet
 	@echo "--> Running golangci-lint"
 	@golangci-lint run
 	@echo "--> Running markdownlint"
-	@markdownlint --config .markdownlint.yaml '**/*.md'
+	@npx markdownlint-cli --config .markdownlint.yaml '**/*.md'
 	@echo "--> Running hadolint"
 	@hadolint test/docker/mockserv.Dockerfile
 	@echo "--> Running yamllint"
@@ -31,7 +31,7 @@ lint-fix:
 	@echo "--> Formatting go"
 	@golangci-lint run --fix
 	@echo "--> Formatting markdownlint"
-	@markdownlint --config .markdownlint.yaml --ignore './changelog.md' '**/*.md' -f
+	@npx markdownlint-cli --config .markdownlint.yaml --ignore './changelog.md' '**/*.md' -f
 .PHONY: lint-fix
 
 ## vet: Run go vet
