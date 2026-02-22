@@ -10,6 +10,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ipfs/go-datastore"
+	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/rs/zerolog"
+
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
@@ -20,9 +24,6 @@ import (
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
-	"github.com/ipfs/go-datastore"
-	"github.com/libp2p/go-libp2p/core/crypto"
-	"github.com/rs/zerolog"
 )
 
 var _ BlockProducer = (*Executor)(nil)

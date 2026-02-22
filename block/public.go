@@ -3,11 +3,12 @@ package block
 import (
 	"context"
 
+	"github.com/rs/zerolog"
+
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
 	"github.com/evstack/ev-node/pkg/config"
 	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
-	"github.com/rs/zerolog"
 )
 
 // BlockOptions defines the options for creating block components

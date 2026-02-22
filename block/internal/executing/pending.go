@@ -6,9 +6,10 @@ import (
 	"errors"
 	"fmt"
 
+	ds "github.com/ipfs/go-datastore"
+
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
-	ds "github.com/ipfs/go-datastore"
 )
 
 const (

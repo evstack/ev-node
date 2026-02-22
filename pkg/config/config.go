@@ -11,11 +11,12 @@ import (
 	"time"
 
 	"github.com/celestiaorg/go-square/v3/share"
-	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
+
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
 const (

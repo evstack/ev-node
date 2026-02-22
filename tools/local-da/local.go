@@ -13,9 +13,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rs/zerolog"
+
 	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
-	"github.com/rs/zerolog"
 )
 
 // DefaultMaxBlobSize is the default max blob size

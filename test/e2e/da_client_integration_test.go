@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	sdkmath "cosmossdk.io/math"
 	libshare "github.com/celestiaorg/go-square/v3/share"
 	tastoradocker "github.com/celestiaorg/tastora/framework/docker"
 	tastoraconsts "github.com/celestiaorg/tastora/framework/docker/consts"
@@ -26,10 +27,9 @@ import (
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	govmodule "github.com/cosmos/cosmos-sdk/x/gov"
 	"github.com/cosmos/ibc-go/v8/modules/apps/transfer"
-	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 	"github.com/stretchr/testify/require"
 
-	sdkmath "cosmossdk.io/math"
+	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 )
 
 var configurePrefixOnce sync.Once
