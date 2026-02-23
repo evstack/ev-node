@@ -39,7 +39,7 @@ func TestSpamoorSmoke(t *testing.T) {
 	env := setupCommonEVMEnv(t, sut, dcli, netID,
 		WithRethOpts(func(b *reth.NodeBuilder) {
 			b.WithEnv(
-				"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT="+jg.IngestHTTPEndpoint()+"/v1/traces",
+				"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT="+jg.Internal.IngestHTTPEndpoint()+"/v1/traces",
 				"OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=http",
 				"RUST_LOG=info",
 				"OTEL_SDK_DISABLED=false",
@@ -48,10 +48,8 @@ func TestSpamoorSmoke(t *testing.T) {
 	)
 	sequencerHome := filepath.Join(t.TempDir(), "sequencer")
 
-	// ev-node runs on the host, so use Jaeger's host-mapped OTLP/HTTP port (external address).
-	jinfo, err := jg.GetNetworkInfo(ctx)
-	require.NoError(t, err, "failed to get jaeger network info")
-	otlpHTTP := fmt.Sprintf("http://127.0.0.1:%s", jinfo.External.Ports.HTTP)
+	// ev-node runs on the host, so use Jaeger's external OTLP/HTTP endpoint.
+	otlpHTTP := jg.External.IngestHTTPEndpoint()
 
 	// Start sequencer with tracing to Jaeger collector.
 	setupSequencerNode(t, sut, sequencerHome, env.SequencerJWT, env.GenesisHash, env.Endpoints,
@@ -162,13 +160,13 @@ func TestSpamoorSmoke(t *testing.T) {
 	traceCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
 	ok, err := jg.External.WaitForTraces(traceCtx, "ev-node-smoke", 1, 2*time.Second)
-	require.NoError(t, err, "error while waiting for Jaeger traces; UI: %s", jg.QueryHostURL())
-	require.True(t, ok, "expected at least one trace in Jaeger; UI: %s", jg.QueryHostURL())
+	require.NoError(t, err, "error while waiting for Jaeger traces; UI: %s", jg.External.QueryURL())
+	require.True(t, ok, "expected at least one trace in Jaeger; UI: %s", jg.External.QueryURL())
 
 	// Also wait for traces from ev-reth and print a small sample.
 	ok, err = jg.External.WaitForTraces(traceCtx, "ev-reth", 1, 2*time.Second)
-	require.NoError(t, err, "error while waiting for ev-reth traces; UI: %s", jg.External.URL())
-	require.True(t, ok, "expected at least one trace from ev-reth; UI: %s", jg.External.URL())
+	require.NoError(t, err, "error while waiting for ev-reth traces; UI: %s", jg.External.QueryURL())
+	require.True(t, ok, "expected at least one trace from ev-reth; UI: %s", jg.External.QueryURL())
 
 	// fetch traces and print reports for both services.
 	// use a large limit to fetch all traces from the test run.
@@ -185,9 +183,21 @@ func TestSpamoorSmoke(t *testing.T) {
 	// assert expected ev-node span names are present.
 	// these spans reliably appear during block production with transactions flowing.
 	expectedSpans := []string{
-		"Engine.ForkchoiceUpdated",
-		"Executor.SetFinal",
+		"BlockExecutor.ProduceBlock",
+		"BlockExecutor.ApplyBlock",
+		"BlockExecutor.CreateBlock",
+		"BlockExecutor.ValidateBlock",
+		"BlockExecutor.RetrieveBatch",
 		"Executor.ExecuteTxs",
+		"Executor.SetFinal",
+		"Engine.ForkchoiceUpdated",
+		"Engine.NewPayload",
+		"Engine.GetPayload",
+		"Eth.GetBlockByNumber",
+		"Sequencer.GetNextBatch",
+		"DASubmitter.SubmitHeaders",
+		"DASubmitter.SubmitData",
+		"DA.Submit",
 	}
 	opNames := make(map[string]struct{}, len(evNodeSpans))
 	for _, s := range evNodeSpans {
@@ -195,6 +205,19 @@ func TestSpamoorSmoke(t *testing.T) {
 	}
 	for _, name := range expectedSpans {
 		require.Contains(t, opNames, name, "expected span %q not found in ev-node-smoke traces", name)
+	}
+
+	// assert expected ev-reth span names are present.
+	expectedRethSpans := []string{
+		"Storage trie",
+		"cache_for",
+	}
+	rethOpNames := make(map[string]struct{}, len(evRethSpans))
+	for _, s := range evRethSpans {
+		rethOpNames[s.operationName] = struct{}{}
+	}
+	for _, name := range expectedRethSpans {
+		require.Contains(t, rethOpNames, name, "expected span %q not found in ev-reth traces", name)
 	}
 
 	require.Greater(t, sent, float64(0), "at least one transaction should have been sent")
