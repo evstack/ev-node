@@ -3,16 +3,16 @@
 package e2e
 
 import (
-    "context"
-    "crypto/ecdsa"
-    "math/big"
-    "path/filepath"
-    "testing"
-    "time"
+	"context"
+	"crypto/ecdsa"
+	"math/big"
+	"path/filepath"
+	"testing"
+	"time"
 
-    tastoradocker "github.com/celestiaorg/tastora/framework/docker"
-    "github.com/ethereum/go-ethereum"
-    "github.com/ethereum/go-ethereum/common"
+	tastoradocker "github.com/celestiaorg/tastora/framework/docker"
+	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -50,7 +50,7 @@ func TestEvmContractDeploymentAndInteraction(t *testing.T) {
 	workDir := t.TempDir()
 	sequencerHome := filepath.Join(workDir, "evm-sequencer")
 
-    client, _, cleanup := setupTestSequencer(t, sequencerHome)
+	client, _, cleanup := setupTestSequencer(t, sequencerHome)
 	defer cleanup()
 
 	ctx := t.Context()
@@ -242,10 +242,10 @@ func TestEvmContractEvents(t *testing.T) {
 // setupTestSequencer sets up a single sequencer node for testing.
 // Returns the ethclient, genesis hash, and a cleanup function.
 func setupTestSequencer(t testing.TB, homeDir string, extraArgs ...string) (*ethclient.Client, string, func()) {
-    sut := NewSystemUnderTest(t)
+	sut := NewSystemUnderTest(t)
 
-    dcli, netID := tastoradocker.Setup(t)
-    genesisHash, seqEthURL := setupSequencerOnlyTest(t, sut, homeDir, dcli, netID, extraArgs...)
+	dcli, netID := tastoradocker.Setup(t)
+	genesisHash, seqEthURL := setupSequencerOnlyTest(t, sut, homeDir, dcli, netID, extraArgs...)
 	t.Logf("Sequencer started at %s (Genesis: %s)", seqEthURL, genesisHash)
 
 	client, err := ethclient.Dial(seqEthURL)

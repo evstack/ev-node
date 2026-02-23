@@ -521,7 +521,7 @@ func WithFullNode() SetupOpt {
 	}
 }
 
-// setupCommonEVMEnv creates and initializes ev-reth instances, while also initalizing the local ev-node instance
+// setupCommonEVMEnv creates and initializes ev-reth instances, while also initializing the local ev-node instance
 // managed by sut. If a full node is also required, we can use the WithFullNode() additional option.
 func setupCommonEVMEnv(t testing.TB, sut *SystemUnderTest, client tastoratypes.TastoraDockerClient, networkID string, opts ...SetupOpt) *EVMEnv {
 	t.Helper()
@@ -551,9 +551,7 @@ func setupCommonEVMEnv(t testing.TB, sut *SystemUnderTest, client tastoratypes.T
 
 	require.NotNil(t, client, "docker client is required")
 	require.NotEmpty(t, networkID, "docker networkID is required")
-	dcli := client
-	netID := networkID
-	rethNode := evmtest.SetupTestRethNode(t, dcli, netID, cfg.rethOpts...)
+	rethNode := evmtest.SetupTestRethNode(t, client, networkID, cfg.rethOpts...)
 
 	networkInfo, err := rethNode.GetNetworkInfo(context.Background())
 	require.NoError(t, err, "failed to get reth network info")
@@ -563,7 +561,7 @@ func setupCommonEVMEnv(t testing.TB, sut *SystemUnderTest, client tastoratypes.T
 	var fnJWT string
 	var rethFn *reth.Node
 	if cfg.needsFullNode {
-		rethFn = evmtest.SetupTestRethNode(t, dcli, netID, cfg.rethOpts...)
+		rethFn = evmtest.SetupTestRethNode(t, client, networkID, cfg.rethOpts...)
 		fnJWT = rethFn.JWTSecretHex()
 	}
 

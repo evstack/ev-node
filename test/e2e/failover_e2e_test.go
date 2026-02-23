@@ -55,8 +55,8 @@ func TestLeaseFailoverE2E(t *testing.T) {
 	workDir := t.TempDir()
 
 	// Get JWT secrets and setup common components first
-    dockerClient, networkID := tastoradocker.Setup(t)
-    env := setupCommonEVMEnv(t, sut, dockerClient, networkID, WithFullNode())
+	dockerClient, networkID := tastoradocker.Setup(t)
+	env := setupCommonEVMEnv(t, sut, dockerClient, networkID, WithFullNode())
 	// Use a fresh reth node on the same Docker network as used by the env setup.
 	rethFn := evmtest.SetupTestRethNode(t, dockerClient, networkID)
 	jwtSecret3 := rethFn.JWTSecretHex()
@@ -256,9 +256,9 @@ func TestHASequencerRollingRestartE2E(t *testing.T) {
 	workDir := t.TempDir()
 
 	// Get Docker and common environment
-	dcli, netID := tastoradocker.Setup(t)
-    env := setupCommonEVMEnv(t, sut, dcli, netID, WithFullNode())
-	rethFn := evmtest.SetupTestRethNode(t, dcli, netID)
+	dockerClient, networkID := tastoradocker.Setup(t)
+	env := setupCommonEVMEnv(t, sut, dockerClient, networkID, WithFullNode())
+	rethFn := evmtest.SetupTestRethNode(t, dockerClient, networkID)
 	jwtSecret3 := rethFn.JWTSecretHex()
 	fnInfo, err := rethFn.GetNetworkInfo(context.Background())
 	require.NoError(t, err, "failed to get full node reth network info")

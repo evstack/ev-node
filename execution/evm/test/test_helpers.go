@@ -60,11 +60,10 @@ func SetupTestRethNode(t testing.TB, client types.TastoraDockerClient, networkID
 	}
 
 	n, err := b.Build(ctx)
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = n.Remove(context.Background())
 	})
-
-	require.NoError(t, err)
 	require.NoError(t, n.Start(ctx))
 
 	ni, err := n.GetNetworkInfo(ctx)
