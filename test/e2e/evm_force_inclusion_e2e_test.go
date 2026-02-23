@@ -79,8 +79,7 @@ func setupSequencerWithForceInclusion(t *testing.T, sut *SystemUnderTest, nodeHo
 
 	// Use common setup (no full node needed initially)
 	dcli, netID := tastoradocker.Setup(t)
-    env := setupCommonEVMEnv(t, sut, dcli, netID)
-	// Use env fields inline below to reduce local vars
+	env := setupCommonEVMEnv(t, sut, dcli, netID)
 
 	// Create passphrase file
 	passphraseFile := createPassphraseFile(t, nodeHome)
@@ -195,8 +194,8 @@ func TestEvmFullNodeForceInclusionE2E(t *testing.T) {
 	// --- Start Sequencer Setup ---
 	// We manually setup sequencer here because we need the force inclusion flag,
 	// and we need to capture variables for full node setup.
-    dcli2, netID2 := tastoradocker.Setup(t)
-    env := setupCommonEVMEnv(t, sut, dcli2, netID2, WithFullNode())
+	dockerClient, networkID := tastoradocker.Setup(t)
+	env := setupCommonEVMEnv(t, sut, dockerClient, networkID, WithFullNode())
 
 	passphraseFile := createPassphraseFile(t, sequencerHome)
 	jwtSecretFile := createJWTSecretFile(t, sequencerHome, env.SequencerJWT)
@@ -288,7 +287,8 @@ func setupMaliciousSequencer(t *testing.T, sut *SystemUnderTest, nodeHome string
 	t.Helper()
 
 	// Use common setup with full node support
-	env := setupCommonEVMEnv(t, sut, WithFullNode())
+	dockerClient, networkID := tastoradocker.Setup(t)
+	env := setupCommonEVMEnv(t, sut, dockerClient, networkID, WithFullNode())
 	// Use env fields inline below to reduce local vars
 
 	passphraseFile := createPassphraseFile(t, nodeHome)

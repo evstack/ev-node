@@ -1041,7 +1041,6 @@ func testSequencerFullNodeRestart(t *testing.T, initialLazyMode, restartLazyMode
 	t.Logf("Phase 1: Setting up sequencer (initial_lazy=%t) and full node with P2P connections...", initialLazyMode)
 	t.Logf("Test mode: initial_lazy=%t, restart_lazy=%t", initialLazyMode, restartLazyMode)
 
-	// Get Docker client/network and common environment
 	dcli, netID := tastoradocker.Setup(t)
 	env := setupCommonEVMEnv(t, sut, dcli, netID, WithFullNode())
 

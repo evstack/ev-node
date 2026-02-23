@@ -20,8 +20,6 @@ import (
 	"go.uber.org/zap/zaptest"
 )
 
-// (Docker client/network are now provided by callers)
-
 // RethNodeOpt allows tests to customize the reth node builder before building.
 type RethNodeOpt func(b *reth.NodeBuilder)
 
