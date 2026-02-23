@@ -24,10 +24,13 @@ import (
 
 // Test-scoped Docker client/network mapping to avoid conflicts between tests
 var (
-	dockerClients  = make(map[string]types.TastoraDockerClient)
-	dockerNetworks = make(map[string]string)
-	dockerMutex    sync.RWMutex
+    dockerClients  = make(map[string]types.TastoraDockerClient)
+    dockerNetworks = make(map[string]string)
+    dockerMutex    sync.RWMutex
 )
+
+// RethNodeOpt allows tests to customize the reth node builder before building.
+type RethNodeOpt func(b *reth.NodeBuilder)
 
 const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
@@ -42,26 +45,31 @@ func randomString(n int) string {
 
 // getTestScopedDockerSetup returns a Docker client and network ID that are scoped to the specific test.
 func getTestScopedDockerSetup(t testing.TB) (types.TastoraDockerClient, string) {
-	t.Helper()
+    t.Helper()
 
-	testKey := t.Name()
-	dockerMutex.Lock()
-	defer dockerMutex.Unlock()
+    testKey := t.Name()
+    dockerMutex.Lock()
+    defer dockerMutex.Unlock()
 
-	dockerCli, exists := dockerClients[testKey]
-	if !exists {
-		cli, netID := docker.Setup(t)
-		dockerClients[testKey] = cli
-		dockerNetworks[testKey] = netID
-		dockerCli = cli
-	}
-	dockerNetID := dockerNetworks[testKey]
+    dockerCli, exists := dockerClients[testKey]
+    if !exists {
+        cli, netID := docker.Setup(t)
+        dockerClients[testKey] = cli
+        dockerNetworks[testKey] = netID
+        dockerCli = cli
+    }
+    dockerNetID := dockerNetworks[testKey]
 
-	return dockerCli, dockerNetID
+    return dockerCli, dockerNetID
 }
 
+// SetExtraRethEnvForTest sets additional environment variables to be applied
+// when building the test-scoped reth node for the given test name.
+// Call this before SetupTestRethNode in the same test.
+// (no global setters; prefer passing RethNodeOpt to SetupTestRethNode)
+
 // SetupTestRethNode creates a single Reth node for testing purposes.
-func SetupTestRethNode(t testing.TB) *reth.Node {
+func SetupTestRethNode(t testing.TB, opts ...RethNodeOpt) *reth.Node {
 	t.Helper()
 	ctx := context.Background()
 
@@ -72,15 +80,20 @@ func SetupTestRethNode(t testing.TB) *reth.Node {
 	if testing.Verbose() {
 		logger = zaptest.NewLogger(t)
 	}
-	n, err := new(reth.NodeBuilder).
-		WithTestName(testName).
-		WithLogger(logger).
-		WithImage(reth.DefaultImage()).
-		WithBin("ev-reth").
-		WithDockerClient(dockerCli).
-		WithDockerNetworkID(dockerNetID).
-		WithGenesis([]byte(reth.DefaultEvolveGenesisJSON())).
-		Build(ctx)
+    b := new(reth.NodeBuilder).
+        WithTestName(testName).
+        WithLogger(logger).
+        WithImage(reth.DefaultImage()).
+        WithBin("ev-reth").
+        WithDockerClient(dockerCli).
+        WithDockerNetworkID(dockerNetID).
+        WithGenesis([]byte(reth.DefaultEvolveGenesisJSON()))
+    for _, opt := range opts {
+        if opt != nil {
+            opt(b)
+        }
+    }
+    n, err := b.Build(ctx)
 	t.Cleanup(func() {
 		_ = n.Remove(context.Background())
 	})

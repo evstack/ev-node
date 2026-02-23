@@ -4,7 +4,7 @@ go 1.25.6
 
 require (
 	cosmossdk.io/math v1.5.3
-	github.com/celestiaorg/tastora v0.12.0
+	github.com/celestiaorg/tastora v0.15.0
 	github.com/ethereum/go-ethereum v1.16.8
 	github.com/evstack/ev-node/execution/evm v1.0.0-rc.3
 	github.com/libp2p/go-libp2p v0.47.0

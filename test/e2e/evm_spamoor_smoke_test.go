@@ -7,12 +7,17 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	tastoradocker "github.com/celestiaorg/tastora/framework/docker"
+	reth "github.com/celestiaorg/tastora/framework/docker/evstack/reth"
 	spamoor "github.com/celestiaorg/tastora/framework/docker/evstack/spamoor"
+	jaeger "github.com/celestiaorg/tastora/framework/docker/jaeger"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap/zaptest"
 )
 
 // TestSpamoorSmoke spins up reth + sequencer and a Spamoor node, starts a few
@@ -21,20 +26,47 @@ func TestSpamoorSmoke(t *testing.T) {
 	t.Parallel()
 
 	sut := NewSystemUnderTest(t)
+	// Prepare a shared docker client and network for Jaeger and reth.
+	ctx := t.Context()
+	dcli, netID := tastoradocker.Setup(t)
+	jcfg := jaeger.Config{Logger: zaptest.NewLogger(t), DockerClient: dcli, DockerNetworkID: netID}
+	jg, err := jaeger.New(ctx, jcfg, t.Name(), 0)
+	require.NoError(t, err, "failed to create jaeger node")
+	t.Cleanup(func() { _ = jg.Remove(t.Context()) })
+	require.NoError(t, jg.Start(ctx), "failed to start jaeger node")
+
 	// Bring up reth + local DA and start sequencer with default settings.
-	seqJWT, _, genesisHash, endpoints, rethNode := setupCommonEVMTest(t, sut, false)
+	seqJWT, _, genesisHash, endpoints, rethNode := setupCommonEVMTest(t, sut, false,
+		func(b *reth.NodeBuilder) {
+			b.WithDockerClient(dcli).
+				WithDockerNetworkID(netID).
+				WithEnv(
+					"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT="+jg.IngestHTTPEndpoint()+"/v1/traces",
+					"OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=http",
+					"RUST_LOG=info",
+					"OTEL_SDK_DISABLED=false",
+				)
+		},
+	)
 	sequencerHome := filepath.Join(t.TempDir(), "sequencer")
 
-	// In-process OTLP/HTTP collector to capture ev-node spans.
-	collector := newOTLPCollector(t)
-	t.Cleanup(func() {
-		_ = collector.close()
-	})
+	// ev-node runs on the host, so use Jaeger's host-mapped OTLP/HTTP port (external address).
+	jinfo, err := jg.GetNetworkInfo(ctx)
+	require.NoError(t, err, "failed to get jaeger network info")
+	otlpHTTP := fmt.Sprintf("http://127.0.0.1:%s", jinfo.External.Ports.HTTP)
 
-	// Start sequencer with tracing to our collector.
+	// Configure ev-reth to export traces to Jaeger (Rust OTLP exporter expects explicit /v1/traces path).
+	//evmtest.SetExtraRethEnvForTest(t.Name(),
+	//	"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT="+jg.IngestHTTPEndpoint()+"/v1/traces",
+	//	"OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=http",
+	//	"RUST_LOG=info",
+	//	"OTEL_SDK_DISABLED=false",
+	//)
+
+	// Start sequencer with tracing to Jaeger collector.
 	setupSequencerNode(t, sut, sequencerHome, seqJWT, genesisHash, endpoints,
 		"--evnode.instrumentation.tracing=true",
-		"--evnode.instrumentation.tracing_endpoint", collector.endpoint(),
+		"--evnode.instrumentation.tracing_endpoint", otlpHTTP,
 		"--evnode.instrumentation.tracing_sample_rate", "1.0",
 		"--evnode.instrumentation.tracing_service_name", "ev-node-smoke",
 	)
@@ -45,6 +77,11 @@ func TestSpamoorSmoke(t *testing.T) {
 	require.NoError(t, err, "failed to get network info")
 
 	internalRPC := "http://" + ni.Internal.RPCAddress()
+	// Preferred typed clients from tastora's reth node helpers
+	ethCli, err := rethNode.GetEthClient(ctx)
+	require.NoError(t, err, "failed to get ethclient")
+	rpcCli, err := rethNode.GetRPCClient(ctx)
+	require.NoError(t, err, "failed to get rpc client")
 
 	spBuilder := spamoor.NewNodeBuilder(t.Name()).
 		WithDockerClient(rethNode.DockerClient).
@@ -53,7 +90,7 @@ func TestSpamoorSmoke(t *testing.T) {
 		WithRPCHosts(internalRPC).
 		WithPrivateKey(TestPrivateKey)
 
-	ctx := t.Context()
+	ctx = t.Context()
 	spNode, err := spBuilder.Build(ctx)
 	require.NoError(t, err, "failed to build sp node")
 
@@ -120,8 +157,31 @@ func TestSpamoorSmoke(t *testing.T) {
 	sent := sumCounter(metrics["spamoor_transactions_sent_total"])
 	fail := sumCounter(metrics["spamoor_transactions_failed_total"])
 
-	time.Sleep(2 * time.Second)
-	printCollectedTraceReport(t, collector)
+	// Probe ev-reth via JSON-RPC as proxy metrics: head height should advance; peer count should be >= 0.
+	h1, err := ethCli.BlockNumber(ctx)
+	require.NoError(t, err, "failed to query initial block number")
+	time.Sleep(5 * time.Second)
+	h2, err := ethCli.BlockNumber(ctx)
+	require.NoError(t, err, "failed to query subsequent block number")
+	var peerCountHex string
+	require.NoError(t, rpcCli.CallContext(ctx, &peerCountHex, "net_peerCount"))
+	t.Logf("reth head: %d -> %d, net_peerCount=%s", h1, h2, strings.TrimSpace(peerCountHex))
+
+	// Verify Jaeger received traces from ev-node.
+	// Service name is set above via --evnode.instrumentation.tracing_service_name "ev-node-smoke".
+	traceCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+	ok, err := jg.External.WaitForTraces(traceCtx, "ev-node-smoke", 1, 2*time.Second)
+	require.NoError(t, err, "error while waiting for Jaeger traces; UI: %s", jg.QueryHostURL())
+	require.True(t, ok, "expected at least one trace in Jaeger; UI: %s", jg.QueryHostURL())
+
+	// Also wait for traces from ev-reth and print a small sample.
+	ok, err = jg.External.WaitForTraces(traceCtx, "ev-reth", 1, 2*time.Second)
+	require.NoError(t, err, "error while waiting for ev-reth traces; UI: %s", jg.External.URL())
+	require.True(t, ok, "expected at least one trace from ev-reth; UI: %s", jg.External.URL())
+	if traces, err := jg.External.Traces(traceCtx, "ev-reth", 3); err == nil && len(traces) > 0 {
+		t.Logf("sample ev-reth traces: %v", traces[0])
+	}
 
 	require.Greater(t, sent, float64(0), "at least one transaction should have been sent")
 	require.Zero(t, fail, "no transactions should have failed")

@@ -513,7 +513,7 @@ func submitTransactionAndGetBlockNumber(t testing.TB, sequencerClients ...*ethcl
 // - daPort: optional DA port to use (if empty, uses default)
 //
 // Returns: jwtSecret, fullNodeJwtSecret (empty if needsFullNode=false), genesisHash
-func setupCommonEVMTest(t testing.TB, sut *SystemUnderTest, needsFullNode bool) (string, string, string, *TestEndpoints, *reth.Node) {
+func setupCommonEVMTest(t testing.TB, sut *SystemUnderTest, needsFullNode bool, rethOpts ...evmtest.RethNodeOpt) (string, string, string, *TestEndpoints, *reth.Node) {
 	t.Helper()
 
 	// Reset global nonce for each test to ensure clean state
@@ -531,7 +531,7 @@ func setupCommonEVMTest(t testing.TB, sut *SystemUnderTest, needsFullNode bool) 
 	sut.ExecCmd(localDABinary, "-port", dynEndpoints.DAPort)
 	t.Logf("Started local DA on port %s", dynEndpoints.DAPort)
 
-	rethNode := evmtest.SetupTestRethNode(t)
+    rethNode := evmtest.SetupTestRethNode(t, rethOpts...)
 
 	networkInfo, err := rethNode.GetNetworkInfo(context.Background())
 	require.NoError(t, err, "failed to get reth network info")
@@ -540,8 +540,8 @@ func setupCommonEVMTest(t testing.TB, sut *SystemUnderTest, needsFullNode bool) 
 
 	var fnJWT string
 	var rethFn *reth.Node
-	if needsFullNode {
-		rethFn = evmtest.SetupTestRethNode(t)
+    if needsFullNode {
+        rethFn = evmtest.SetupTestRethNode(t, rethOpts...)
 		fnJWT = rethFn.JWTSecretHex()
 	}
 
