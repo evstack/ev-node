@@ -11,7 +11,6 @@ import (
 	"net"
 	"net/http"
 	"path/filepath"
-	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -203,81 +202,24 @@ func (c *otlpCollector) getSpans() []*tracepb.Span {
 	return cp
 }
 
-// printCollectedTraceReport aggregates collected spans by operation name and
-// prints a timing breakdown.
+// otlpSpanAdapter wraps an OTLP protobuf span to implement traceSpan.
+type otlpSpanAdapter struct {
+	span *tracepb.Span
+}
+
+func (a otlpSpanAdapter) SpanName() string { return a.span.GetName() }
+func (a otlpSpanAdapter) SpanDuration() time.Duration {
+	return time.Duration(a.span.GetEndTimeUnixNano()-a.span.GetStartTimeUnixNano()) * time.Nanosecond
+}
+
 func printCollectedTraceReport(b testing.TB, collector *otlpCollector) {
 	b.Helper()
-
-	spans := collector.getSpans()
-	if len(spans) == 0 {
-		b.Logf("WARNING: no spans collected from ev-node")
-		return
+	raw := collector.getSpans()
+	spans := make([]traceSpan, len(raw))
+	for i, s := range raw {
+		spans[i] = otlpSpanAdapter{span: s}
 	}
-
-	type stats struct {
-		count int
-		total time.Duration
-		min   time.Duration
-		max   time.Duration
-	}
-	m := make(map[string]*stats)
-
-	for _, span := range spans {
-		// Duration: end - start in nanoseconds.
-		d := time.Duration(span.GetEndTimeUnixNano()-span.GetStartTimeUnixNano()) * time.Nanosecond
-		if d <= 0 {
-			continue
-		}
-		name := span.GetName()
-		s, ok := m[name]
-		if !ok {
-			s = &stats{min: d, max: d}
-			m[name] = s
-		}
-		s.count++
-		s.total += d
-		if d < s.min {
-			s.min = d
-		}
-		if d > s.max {
-			s.max = d
-		}
-	}
-
-	// Sort by total time descending.
-	names := make([]string, 0, len(m))
-	for name := range m {
-		names = append(names, name)
-	}
-	sort.Slice(names, func(i, j int) bool {
-		return m[names[i]].total > m[names[j]].total
-	})
-
-	// Calculate overall total for percentages.
-	var overallTotal time.Duration
-	for _, s := range m {
-		overallTotal += s.total
-	}
-
-	b.Logf("\n--- ev-node Trace Breakdown (%d spans collected) ---", len(spans))
-	b.Logf("%-40s %6s %12s %12s %12s %7s", "OPERATION", "COUNT", "AVG", "MIN", "MAX", "% TOTAL")
-	for _, name := range names {
-		s := m[name]
-		avg := s.total / time.Duration(s.count)
-		pct := float64(s.total) / float64(overallTotal) * 100
-		b.Logf("%-40s %6d %12s %12s %12s %6.1f%%", name, s.count, avg, s.min, s.max, pct)
-	}
-
-	b.Logf("\n--- Time Distribution ---")
-	for _, name := range names {
-		s := m[name]
-		pct := float64(s.total) / float64(overallTotal) * 100
-		bar := ""
-		for range int(pct / 2) {
-			bar += "█"
-		}
-		b.Logf("%-40s %5.1f%% %s", name, pct, bar)
-	}
+	printTraceReport(b, "ev-node", spans)
 }
 
 // waitForReceipt polls for a transaction receipt until it is available.

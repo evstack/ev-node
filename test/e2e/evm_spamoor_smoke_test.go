@@ -169,8 +169,32 @@ func TestSpamoorSmoke(t *testing.T) {
 	ok, err = jg.External.WaitForTraces(traceCtx, "ev-reth", 1, 2*time.Second)
 	require.NoError(t, err, "error while waiting for ev-reth traces; UI: %s", jg.External.URL())
 	require.True(t, ok, "expected at least one trace from ev-reth; UI: %s", jg.External.URL())
-	if traces, err := jg.External.Traces(traceCtx, "ev-reth", 3); err == nil && len(traces) > 0 {
-		t.Logf("sample ev-reth traces: %v", traces[0])
+
+	// fetch traces and print reports for both services.
+	// use a large limit to fetch all traces from the test run.
+	evNodeTraces, err := jg.External.Traces(traceCtx, "ev-node-smoke", 10000)
+	require.NoError(t, err, "failed to fetch ev-node-smoke traces from Jaeger")
+	evNodeSpans := extractSpansFromTraces(evNodeTraces)
+	printTraceReport(t, "ev-node-smoke", toTraceSpans(evNodeSpans))
+
+	evRethTraces, err := jg.External.Traces(traceCtx, "ev-reth", 10000)
+	require.NoError(t, err, "failed to fetch ev-reth traces from Jaeger")
+	evRethSpans := extractSpansFromTraces(evRethTraces)
+	printTraceReport(t, "ev-reth", toTraceSpans(evRethSpans))
+
+	// assert expected ev-node span names are present.
+	// these spans reliably appear during block production with transactions flowing.
+	expectedSpans := []string{
+		"Engine.ForkchoiceUpdated",
+		"Executor.SetFinal",
+		"Executor.ExecuteTxs",
+	}
+	opNames := make(map[string]struct{}, len(evNodeSpans))
+	for _, s := range evNodeSpans {
+		opNames[s.operationName] = struct{}{}
+	}
+	for _, name := range expectedSpans {
+		require.Contains(t, opNames, name, "expected span %q not found in ev-node-smoke traces", name)
 	}
 
 	require.Greater(t, sent, float64(0), "at least one transaction should have been sent")
@@ -213,15 +237,47 @@ func sumCounter(f *dto.MetricFamily) float64 {
 	}
 	return sum
 }
-func sumGauge(f *dto.MetricFamily) float64 {
-	if f == nil || f.GetType() != dto.MetricType_GAUGE {
-		return 0
-	}
-	var sum float64
-	for _, m := range f.GetMetric() {
-		if m.GetGauge() != nil && m.GetGauge().Value != nil {
-			sum += m.GetGauge().GetValue()
+
+// jaegerSpan holds the fields we extract from Jaeger's untyped JSON response.
+type jaegerSpan struct {
+	operationName string
+	duration      float64 // microseconds
+}
+
+func (j jaegerSpan) SpanName() string            { return j.operationName }
+func (j jaegerSpan) SpanDuration() time.Duration { return time.Duration(j.duration) * time.Microsecond }
+
+// extractSpansFromTraces walks Jaeger's []any response and pulls out span operation names and durations.
+func extractSpansFromTraces(traces []any) []jaegerSpan {
+	var out []jaegerSpan
+	for _, t := range traces {
+		traceMap, ok := t.(map[string]any)
+		if !ok {
+			continue
+		}
+		spans, ok := traceMap["spans"].([]any)
+		if !ok {
+			continue
+		}
+		for _, s := range spans {
+			spanMap, ok := s.(map[string]any)
+			if !ok {
+				continue
+			}
+			name, _ := spanMap["operationName"].(string)
+			dur, _ := spanMap["duration"].(float64)
+			if name != "" {
+				out = append(out, jaegerSpan{operationName: name, duration: dur})
+			}
 		}
 	}
-	return sum
+	return out
+}
+
+func toTraceSpans(spans []jaegerSpan) []traceSpan {
+	out := make([]traceSpan, len(spans))
+	for i, s := range spans {
+		out[i] = s
+	}
+	return out
 }
