@@ -27,7 +27,25 @@ Ev-node is the sequencer that creates blocks, propagates them to other peers, an
 | Header Namespace | Required. Namespace for block headers. |
 | Data Namespace | Required. Namespace for block data. Two namespaces are recommended, but one can be used. |
 | Forced Inclusion Namespace | Optional. For censorship resistance. |
-| DA Block Time | Controls blob submission frequency. Should be **higher** than the underlying DA block time. |
+| DA Block Time | Used for syncing with the DA layer. Set this to the block time of the underlying DA chain. |
+
+#### Batching Strategy
+
+Blob submission to the DA layer is controlled by the batching strategy, not the DA block time. Choose a strategy based on your latency vs. cost trade-off:
+
+| Strategy | Behavior |
+|---|---|
+| `immediate` | Submits as soon as any items are available. Lowest latency, highest cost. |
+| `size` | Waits until the batch reaches a size threshold (fraction of max blob size). |
+| `time` | Waits for a time interval (`batch_max_delay`) before submitting. Default strategy. |
+| `adaptive` | Submits when either the size threshold or the max delay is reached, whichever comes first. |
+
+Related configuration flags:
+
+- `da.batching_strategy` -- Strategy name (default: `time`)
+- `da.batch_size_threshold` -- Fraction of max blob size before submitting, 0.0-1.0 (default: 0.8). Applies to `size` and `adaptive`.
+- `da.batch_max_delay` -- Maximum wait time before submitting regardless of size (default: DA block time). Applies to `time` and `adaptive`.
+- `da.batch_min_items` -- Minimum items to accumulate before considering submission (default: 1).
 
 #### DA Account Funding
 
