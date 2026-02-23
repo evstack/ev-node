@@ -79,7 +79,7 @@ func TestExecutor_RestartUsesPendingHeader(t *testing.T) {
 	require.NoError(t, exec1.initializeState())
 
 	// Set up context for first executor
-	exec1.ctx, exec1.cancel = context.WithCancel(context.Background())
+	exec1.ctx, exec1.cancel = context.WithCancel(t.Context())
 
 	// First executor produces a block normally
 	mockSeq1.EXPECT().GetNextBatch(mock.Anything, mock.AnythingOfType("sequencer.GetNextBatchRequest")).
@@ -101,12 +101,12 @@ func TestExecutor_RestartUsesPendingHeader(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify first block was produced
-	h1, err := memStore.Height(context.Background())
+	h1, err := memStore.Height(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, uint64(1), h1)
 
 	// Store the produced block data for later verification
-	originalHeader, originalData, err := memStore.GetBlockData(context.Background(), 1)
+	originalHeader, originalData, err := memStore.GetBlockData(t.Context(), 1)
 	require.NoError(t, err)
 	assert.Equal(t, 2, len(originalData.Txs), "first block should have 2 transactions")
 
@@ -158,11 +158,7 @@ func TestExecutor_RestartUsesPendingHeader(t *testing.T) {
 	pendingHeader.DataHash = pendingData.DACommitment()
 
 	// Save pending block data (this is what would happen during a crash)
-	batch, err := memStore.NewBatch(context.Background())
-	require.NoError(t, err)
-	err = batch.SaveBlockData(pendingHeader, pendingData, &types.Signature{})
-	require.NoError(t, err)
-	err = batch.Commit()
+	err = exec1.savePendingBlock(t.Context(), pendingHeader, pendingData)
 	require.NoError(t, err)
 
 	// Stop first executor (simulating crash/restart)
@@ -199,7 +195,7 @@ func TestExecutor_RestartUsesPendingHeader(t *testing.T) {
 	require.NoError(t, exec2.initializeState())
 
 	// Set up context for second executor
-	exec2.ctx, exec2.cancel = context.WithCancel(context.Background())
+	exec2.ctx, exec2.cancel = context.WithCancel(t.Context())
 	defer exec2.cancel()
 
 	// Verify that the state is at height 1 (pending block at height 2 wasn't committed)
@@ -221,12 +217,12 @@ func TestExecutor_RestartUsesPendingHeader(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify height advanced to 2
-	h2, err := memStore.Height(context.Background())
+	h2, err := memStore.Height(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, uint64(2), h2, "height should advance to 2 using pending block")
 
 	// Verify the block at height 2 matches the pending block data
-	finalHeader, finalData, err := memStore.GetBlockData(context.Background(), 2)
+	finalHeader, finalData, err := memStore.GetBlockData(t.Context(), 2)
 	require.NoError(t, err)
 	assert.Equal(t, 3, len(finalData.Txs), "should use pending block with 3 transactions")
 	assert.Equal(t, []byte("pending_tx1"), []byte(finalData.Txs[0]))
@@ -320,7 +316,7 @@ func TestExecutor_RestartNoPendingHeader(t *testing.T) {
 
 	lastStateRoot := initStateRoot
 	for i := range numBlocks {
-		newStateRoot := []byte(fmt.Sprintf("new_root_%d", i+1))
+		newStateRoot := fmt.Appendf(nil, "new_root_%d", i+1)
 		mockExec1.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, gen.InitialHeight+uint64(i), mock.AnythingOfType("time.Time"), lastStateRoot).
 			Return(newStateRoot, nil).Once()
 		lastStateRoot = newStateRoot
@@ -388,7 +384,7 @@ func TestExecutor_RestartNoPendingHeader(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify normal operation
-	h, err := memStore.Height(context.Background())
+	h, err := memStore.Height(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, uint64(numBlocks+1), h)
 

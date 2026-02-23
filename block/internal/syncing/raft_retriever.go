@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/rs/zerolog"
+
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/raft"
 	"github.com/evstack/ev-node/types"
-	"github.com/rs/zerolog"
 )
 
 // eventProcessor handles DA height events. Used for syncing.
@@ -71,11 +72,9 @@ func (r *raftRetriever) Start(ctx context.Context) error {
 	applyCh := make(chan raft.RaftApplyMsg, 100)
 	r.raftNode.SetApplyCallback(applyCh)
 
-	r.wg.Add(1)
-	go func() {
-		defer r.wg.Done()
+	r.wg.Go(func() {
 		r.raftApplyLoop(ctx, applyCh)
-	}()
+	})
 	return nil
 }
 

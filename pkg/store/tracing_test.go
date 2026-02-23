@@ -30,6 +30,8 @@ type tracingMockStore struct {
 	setMetadataFn         func(ctx context.Context, key string, value []byte) error
 	deleteMetadataFn      func(ctx context.Context, key string) error
 	rollbackFn            func(ctx context.Context, height uint64, aggregator bool) error
+	pruneBlocksFn         func(ctx context.Context, height uint64) error
+	deleteStateAtHeightFn func(ctx context.Context, height uint64) error
 	newBatchFn            func(ctx context.Context) (Batch, error)
 }
 
@@ -124,6 +126,20 @@ func (m *tracingMockStore) Rollback(ctx context.Context, height uint64, aggregat
 	return nil
 }
 
+func (m *tracingMockStore) PruneBlocks(ctx context.Context, height uint64) error {
+	if m.pruneBlocksFn != nil {
+		return m.pruneBlocksFn(ctx, height)
+	}
+	return nil
+}
+
+func (m *tracingMockStore) DeleteStateAtHeight(ctx context.Context, height uint64) error {
+	if m.deleteStateAtHeightFn != nil {
+		return m.deleteStateAtHeightFn(ctx, height)
+	}
+	return nil
+}
+
 func (m *tracingMockStore) Close() error {
 	return nil
 }
@@ -149,6 +165,11 @@ func (b *tracingMockBatch) SaveBlockData(header *types.SignedHeader, data *types
 		return b.saveBlockDataFn(header, data, signature)
 	}
 	return nil
+}
+
+func (b *tracingMockBatch) SaveBlockDataFromBytes(header *types.SignedHeader, _, _ []byte, signature *types.Signature) error {
+	// Delegate to SaveBlockData for test mocking purposes.
+	return b.SaveBlockData(header, nil, signature)
 }
 
 func (b *tracingMockBatch) SetHeight(height uint64) error {

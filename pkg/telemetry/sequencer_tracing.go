@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/hex"
 
-	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+
+	coresequencer "github.com/evstack/ev-node/core/sequencer"
 )
 
 var _ coresequencer.Sequencer = (*tracedSequencer)(nil)

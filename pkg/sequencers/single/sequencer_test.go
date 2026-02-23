@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/evstack/ev-node/core/execution"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
@@ -15,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/evstack/ev-node/block"
+	"github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
@@ -775,7 +775,7 @@ func TestSequencer_DAFailureAndQueueThrottling_Integration(t *testing.T) {
 
 	// Phase 1: Normal operation - send some batches successfully
 	t.Log("Phase 1: Normal operation")
-	for i := 0; i < queueSize; i++ {
+	for i := range queueSize {
 		batch := createTestBatch(t, i+1)
 		req := coresequencer.SubmitBatchTxsRequest{
 			Id:    []byte("test-chain"),
@@ -825,7 +825,7 @@ func TestSequencer_DAFailureAndQueueThrottling_Integration(t *testing.T) {
 
 	// Add batches until queue is full again
 	batchesAdded := 0
-	for i := 0; i < 10; i++ { // Try to add many batches
+	for i := range 10 { // Try to add many batches
 		batch := createTestBatch(t, 100+i)
 		req := coresequencer.SubmitBatchTxsRequest{
 			Id:    []byte("test-chain"),
@@ -1299,7 +1299,7 @@ func TestSequencer_GetNextBatch_GasFilteringPreservesUnprocessedTxs(t *testing.T
 
 	// Process multiple batches to consume all forced txs
 	// Use maxBytes=120 to fetch only 2 txs at a time (each is 50 bytes)
-	for i := 0; i < 5; i++ { // Max 5 iterations to prevent infinite loop
+	for i := range 5 { // Max 5 iterations to prevent infinite loop
 		req := coresequencer.GetNextBatchRequest{
 			Id:       []byte("test-gas-preserve"),
 			MaxBytes: 120, // Limits to ~2 txs per batch

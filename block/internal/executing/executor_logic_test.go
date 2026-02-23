@@ -5,6 +5,7 @@ import (
 	crand "crypto/rand"
 	"errors"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/ipfs/go-datastore"
@@ -12,6 +13,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/evstack/ev-node/block/internal/cache"
@@ -24,7 +26,6 @@ import (
 	"github.com/evstack/ev-node/pkg/store"
 	testmocks "github.com/evstack/ev-node/test/mocks"
 	"github.com/evstack/ev-node/types"
-	"github.com/stretchr/testify/mock"
 )
 
 // buildTestSigner returns a signer and its address for use in tests
@@ -42,177 +43,80 @@ func buildTestSigner(t *testing.T) (signerAddr []byte, tSigner types.Signer, s p
 }
 
 func TestProduceBlock_EmptyBatch_SetsEmptyDataHash(t *testing.T) {
-	ds := sync.MutexWrap(datastore.NewMapDatastore())
-	memStore := store.New(ds)
+	fx := setupTestExecutor(t, 1000)
+	defer fx.Cancel()
 
-	cacheManager, err := cache.NewManager(config.DefaultConfig(), memStore, zerolog.Nop())
-	require.NoError(t, err)
-
-	metrics := common.NopMetrics()
-
-	// signer and genesis with correct proposer
-	addr, _, signerWrapper := buildTestSigner(t)
-
-	cfg := config.DefaultConfig()
-	cfg.Node.BlockTime = config.DurationWrapper{Duration: 10 * time.Millisecond}
-	cfg.Node.MaxPendingHeadersAndData = 1000
-
-	gen := genesis.Genesis{
-		ChainID:         "test-chain",
-		InitialHeight:   1,
-		StartTime:       time.Now().Add(-time.Second),
-		ProposerAddress: addr,
-	}
-
-	// Use mocks for executor and sequencer
-	mockExec := testmocks.NewMockExecutor(t)
-	mockSeq := testmocks.NewMockSequencer(t)
-
-	// Broadcasters are required by produceBlock; use generated mocks
-	hb := common.NewMockBroadcaster[*types.P2PSignedHeader](t)
-	hb.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
-	db := common.NewMockBroadcaster[*types.P2PData](t)
-	db.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
-
-	exec, err := NewExecutor(
-		memStore,
-		mockExec,
-		mockSeq,
-		signerWrapper,
-		cacheManager,
-		metrics,
-		cfg,
-		gen,
-		hb,
-		db,
-		zerolog.Nop(),
-		common.DefaultBlockOptions(),
-		make(chan error, 1),
-		nil,
-	)
-	require.NoError(t, err)
-
-	// Expect InitChain to be called
-	initStateRoot := []byte("init_root")
-	mockExec.EXPECT().InitChain(mock.Anything, mock.AnythingOfType("time.Time"), gen.InitialHeight, gen.ChainID).
-		Return(initStateRoot, nil).Once()
-	mockSeq.EXPECT().SetDAHeight(uint64(0)).Return().Once()
-
-	// initialize state (creates genesis block in store and sets state)
-	require.NoError(t, exec.initializeState())
-
-	// Set up context for the executor (normally done in Start method)
-	exec.ctx, exec.cancel = context.WithCancel(context.Background())
-	defer exec.cancel()
-
-	// sequencer returns empty batch
-	mockSeq.EXPECT().GetNextBatch(mock.Anything, mock.AnythingOfType("sequencer.GetNextBatchRequest")).
+	fx.MockSeq.EXPECT().GetNextBatch(mock.Anything, mock.AnythingOfType("sequencer.GetNextBatchRequest")).
 		RunAndReturn(func(ctx context.Context, req coreseq.GetNextBatchRequest) (*coreseq.GetNextBatchResponse, error) {
 			return &coreseq.GetNextBatchResponse{Batch: &coreseq.Batch{Transactions: nil}, Timestamp: time.Now()}, nil
 		}).Once()
 
-	// executor ExecuteTxs called with empty txs and previous state root
-	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.AnythingOfType("time.Time"), initStateRoot).
+	fx.MockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.AnythingOfType("time.Time"), fx.InitStateRoot).
 		Return([]byte("new_root"), nil).Once()
 
-	mockSeq.EXPECT().GetDAHeight().Return(uint64(0)).Once()
+	fx.MockSeq.EXPECT().GetDAHeight().Return(uint64(0)).Once()
 
-	// produce one block
-	err = exec.ProduceBlock(exec.ctx)
+	err := fx.Exec.ProduceBlock(fx.Exec.ctx)
 	require.NoError(t, err)
 
-	// Verify height and stored block
-	h, err := memStore.Height(context.Background())
+	h, err := fx.MemStore.Height(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, uint64(1), h)
 
-	sh, data, err := memStore.GetBlockData(context.Background(), 1)
+	sh, data, err := fx.MemStore.GetBlockData(context.Background(), 1)
 	require.NoError(t, err)
-	// Expect empty txs and special empty data hash marker
 	assert.Equal(t, 0, len(data.Txs))
 	assert.EqualValues(t, common.DataHashForEmptyTxs, sh.DataHash)
+}
 
-	// Broadcasters should have been called with the produced header and data
-	// The testify mock framework tracks calls automatically
+func TestProduceBlock_OutputPassesValidation(t *testing.T) {
+	specs := map[string]struct {
+		txs [][]byte
+	}{
+		"empty batch": {txs: nil},
+		"single tx":   {txs: [][]byte{[]byte("tx1")}},
+		"multi txs":   {txs: [][]byte{[]byte("tx1"), []byte("tx2"), []byte("tx3")}},
+		"large tx":    {txs: [][]byte{make([]byte, 10000)}},
+	}
+
+	for name, spec := range specs {
+		t.Run(name, func(t *testing.T) {
+			assertProduceBlockInvariantWithTxs(t, spec.txs)
+		})
+	}
+}
+
+func FuzzProduceBlock_OutputPassesValidation(f *testing.F) {
+	f.Add([]byte("tx1"), []byte("tx2"))
+	f.Add([]byte{}, []byte{})
+	f.Add(make([]byte, 1000), make([]byte, 2000))
+
+	f.Fuzz(func(t *testing.T, tx1, tx2 []byte) {
+		txs := [][]byte{tx1, tx2}
+		assertProduceBlockInvariantWithTxs(t, txs)
+	})
 }
 
 func TestPendingLimit_SkipsProduction(t *testing.T) {
-	ds := sync.MutexWrap(datastore.NewMapDatastore())
-	memStore := store.New(ds)
+	fx := setupTestExecutor(t, 1)
+	defer fx.Cancel()
 
-	cacheManager, err := cache.NewManager(config.DefaultConfig(), memStore, zerolog.Nop())
-	require.NoError(t, err)
-
-	metrics := common.NopMetrics()
-
-	addr, _, signerWrapper := buildTestSigner(t)
-
-	cfg := config.DefaultConfig()
-	cfg.Node.BlockTime = config.DurationWrapper{Duration: 10 * time.Millisecond}
-	cfg.Node.MaxPendingHeadersAndData = 1 // low limit to trigger skip quickly
-
-	gen := genesis.Genesis{
-		ChainID:         "test-chain",
-		InitialHeight:   1,
-		StartTime:       time.Now().Add(-time.Second),
-		ProposerAddress: addr,
-	}
-
-	mockExec := testmocks.NewMockExecutor(t)
-	mockSeq := testmocks.NewMockSequencer(t)
-	hb := common.NewMockBroadcaster[*types.P2PSignedHeader](t)
-	hb.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
-	db := common.NewMockBroadcaster[*types.P2PData](t)
-	db.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
-
-	exec, err := NewExecutor(
-		memStore,
-		mockExec,
-		mockSeq,
-		signerWrapper,
-		cacheManager,
-		metrics,
-		cfg,
-		gen,
-		hb,
-		db,
-		zerolog.Nop(),
-		common.DefaultBlockOptions(),
-		make(chan error, 1),
-		nil,
-	)
-	require.NoError(t, err)
-
-	mockExec.EXPECT().InitChain(mock.Anything, mock.AnythingOfType("time.Time"), gen.InitialHeight, gen.ChainID).
-		Return([]byte("i0"), nil).Once()
-	mockSeq.EXPECT().SetDAHeight(uint64(0)).Return().Once()
-	require.NoError(t, exec.initializeState())
-
-	// Set up context for the executor (normally done in Start method)
-	exec.ctx, exec.cancel = context.WithCancel(context.Background())
-	defer exec.cancel()
-
-	// First production should succeed
-	// Return empty batch again
-	mockSeq.EXPECT().GetNextBatch(mock.Anything, mock.AnythingOfType("sequencer.GetNextBatchRequest")).
+	fx.MockSeq.EXPECT().GetNextBatch(mock.Anything, mock.AnythingOfType("sequencer.GetNextBatchRequest")).
 		RunAndReturn(func(ctx context.Context, req coreseq.GetNextBatchRequest) (*coreseq.GetNextBatchResponse, error) {
 			return &coreseq.GetNextBatchResponse{Batch: &coreseq.Batch{Transactions: nil}, Timestamp: time.Now()}, nil
 		}).Once()
-	// ExecuteTxs with empty
-	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.AnythingOfType("time.Time"), []byte("i0")).
+	fx.MockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.AnythingOfType("time.Time"), fx.InitStateRoot).
 		Return([]byte("i1"), nil).Once()
 
-	mockSeq.EXPECT().GetDAHeight().Return(uint64(0)).Once()
+	fx.MockSeq.EXPECT().GetDAHeight().Return(uint64(0)).Once()
 
-	require.NoError(t, exec.ProduceBlock(exec.ctx))
-	h1, err := memStore.Height(context.Background())
+	require.NoError(t, fx.Exec.ProduceBlock(fx.Exec.ctx))
+	h1, err := fx.MemStore.Height(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, uint64(1), h1)
 
-	// With limit=1 and lastSubmitted default 0, pending >= 1 so next production should be skipped
-	// No new expectations; ProduceBlock should return early before hitting sequencer
-	require.NoError(t, exec.ProduceBlock(exec.ctx))
-	h2, err := memStore.Height(context.Background())
+	require.NoError(t, fx.Exec.ProduceBlock(fx.Exec.ctx))
+	h2, err := fx.MemStore.Height(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, h1, h2, "height should not change when production is skipped")
 }
@@ -281,49 +185,160 @@ func TestExecutor_executeTxsWithRetry(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+			synctest.Test(t, func(t *testing.T) {
+				ctx := context.Background()
+				execCtx := ctx
 
-			ctx := context.Background()
-			execCtx := ctx
-
-			// For context cancellation test, create a cancellable context
-			if tt.name == "context cancelled during retry" {
-				var cancel context.CancelFunc
-				execCtx, cancel = context.WithCancel(ctx)
-				// Cancel context after first failure to simulate cancellation during retry
-				go func() {
-					time.Sleep(100 * time.Millisecond)
-					cancel()
-				}()
-			}
-
-			mockExec := testmocks.NewMockExecutor(t)
-			tt.setupMock(mockExec)
-
-			e := &Executor{
-				exec:   mockExec,
-				ctx:    execCtx,
-				logger: zerolog.Nop(),
-			}
-
-			rawTxs := [][]byte{[]byte("tx1"), []byte("tx2")}
-			header := types.Header{
-				BaseHeader: types.BaseHeader{Height: 100, Time: uint64(time.Now().UnixNano())},
-			}
-			currentState := types.State{AppHash: []byte("current-hash")}
-
-			result, err := e.executeTxsWithRetry(ctx, rawTxs, header, currentState)
-
-			if tt.expectSuccess {
-				require.NoError(t, err)
-				assert.Equal(t, tt.expectHash, result)
-			} else {
-				require.Error(t, err)
-				if tt.expectError != "" {
-					assert.Contains(t, err.Error(), tt.expectError)
+				// For context cancellation test, create a cancellable context
+				if tt.name == "context cancelled during retry" {
+					var cancel context.CancelFunc
+					execCtx, cancel = context.WithCancel(ctx)
+					// Cancel context after first failure to simulate cancellation during retry
+					go func() {
+						time.Sleep(100 * time.Millisecond)
+						cancel()
+					}()
 				}
-			}
 
-			mockExec.AssertExpectations(t)
+				mockExec := testmocks.NewMockExecutor(t)
+				tt.setupMock(mockExec)
+
+				e := &Executor{
+					exec:   mockExec,
+					ctx:    execCtx,
+					logger: zerolog.Nop(),
+				}
+
+				rawTxs := [][]byte{[]byte("tx1"), []byte("tx2")}
+				header := types.Header{
+					BaseHeader: types.BaseHeader{Height: 100, Time: uint64(time.Now().UnixNano())},
+				}
+				currentState := types.State{AppHash: []byte("current-hash")}
+
+				result, err := e.executeTxsWithRetry(ctx, rawTxs, header, currentState)
+
+				if tt.expectSuccess {
+					require.NoError(t, err)
+					assert.Equal(t, tt.expectHash, result)
+				} else {
+					require.Error(t, err)
+					if tt.expectError != "" {
+						assert.Contains(t, err.Error(), tt.expectError)
+					}
+				}
+
+				mockExec.AssertExpectations(t)
+			})
 		})
 	}
+}
+
+type executorTestFixture struct {
+	MemStore      store.Store
+	MockExec      *testmocks.MockExecutor
+	MockSeq       *testmocks.MockSequencer
+	Exec          *Executor
+	Cancel        context.CancelFunc
+	InitStateRoot []byte
+}
+
+func setupTestExecutor(t *testing.T, pendingLimit uint64) executorTestFixture {
+	t.Helper()
+
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	memStore := store.New(ds)
+
+	cacheManager, err := cache.NewManager(config.DefaultConfig(), memStore, zerolog.Nop())
+	require.NoError(t, err)
+
+	metrics := common.NopMetrics()
+
+	addr, _, signerWrapper := buildTestSigner(t)
+
+	cfg := config.DefaultConfig()
+	cfg.Node.BlockTime = config.DurationWrapper{Duration: 10 * time.Millisecond}
+	cfg.Node.MaxPendingHeadersAndData = pendingLimit
+
+	gen := genesis.Genesis{
+		ChainID:         "test-chain",
+		InitialHeight:   1,
+		StartTime:       time.Now().Add(-time.Second),
+		ProposerAddress: addr,
+	}
+
+	mockExec := testmocks.NewMockExecutor(t)
+	mockSeq := testmocks.NewMockSequencer(t)
+
+	hb := common.NewMockBroadcaster[*types.P2PSignedHeader](t)
+	hb.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
+	db := common.NewMockBroadcaster[*types.P2PData](t)
+	db.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
+
+	exec, err := NewExecutor(
+		memStore, mockExec, mockSeq, signerWrapper, cacheManager, metrics, cfg, gen, hb, db,
+		zerolog.Nop(), common.DefaultBlockOptions(), make(chan error, 1), nil,
+	)
+	require.NoError(t, err)
+
+	initStateRoot := []byte("init_root")
+	mockExec.EXPECT().InitChain(mock.Anything, mock.AnythingOfType("time.Time"), gen.InitialHeight, gen.ChainID).
+		Return(initStateRoot, nil).Once()
+	mockSeq.EXPECT().SetDAHeight(uint64(0)).Return().Once()
+
+	require.NoError(t, exec.initializeState())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	exec.ctx = ctx
+
+	return executorTestFixture{
+		MemStore:      memStore,
+		MockExec:      mockExec,
+		MockSeq:       mockSeq,
+		Exec:          exec,
+		Cancel:        cancel,
+		InitStateRoot: initStateRoot,
+	}
+}
+
+func assertProduceBlockInvariantWithTxs(t *testing.T, txs [][]byte) {
+	t.Helper()
+	fx := setupTestExecutor(t, 1000)
+	defer fx.Cancel()
+
+	timestamp := time.Now().Add(time.Duration(1+len(txs)*2) * time.Millisecond)
+
+	newRoot := make([]byte, 32)
+	for i, tx := range txs {
+		if len(tx) > 0 {
+			newRoot[(i+int(tx[0]))%32] ^= byte(len(tx))
+		}
+	}
+	newRoot[31] ^= byte(len(txs))
+
+	fx.MockSeq.EXPECT().GetNextBatch(mock.Anything, mock.AnythingOfType("sequencer.GetNextBatchRequest")).
+		RunAndReturn(func(ctx context.Context, req coreseq.GetNextBatchRequest) (*coreseq.GetNextBatchResponse, error) {
+			return &coreseq.GetNextBatchResponse{Batch: &coreseq.Batch{Transactions: txs}, Timestamp: timestamp}, nil
+		}).Once()
+
+	fx.MockExec.EXPECT().ExecuteTxs(mock.Anything, txs, uint64(1), mock.AnythingOfType("time.Time"), fx.InitStateRoot).
+		Return(newRoot, nil).Once()
+	fx.MockSeq.EXPECT().GetDAHeight().Return(uint64(0)).Once()
+
+	prevState := fx.Exec.getLastState()
+
+	err := fx.Exec.ProduceBlock(fx.Exec.ctx)
+	require.NoError(t, err)
+
+	h, err := fx.MemStore.Height(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, uint64(1), h)
+
+	header, data, err := fx.MemStore.GetBlockData(context.Background(), h)
+	require.NoError(t, err)
+
+	err = header.ValidateBasicWithData(data)
+	require.NoError(t, err, "Produced header failed ValidateBasicWithData")
+
+	err = prevState.AssertValidForNextState(header, data)
+	require.NoError(t, err, "Produced block failed AssertValidForNextState")
 }

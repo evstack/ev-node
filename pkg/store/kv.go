@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"path"
 	"path/filepath"
 	"strings"
 
@@ -42,8 +41,18 @@ func GetPrefixEntries(ctx context.Context, store ds.Datastore, prefix string) (d
 
 // GenerateKey creates a key from a slice of string fields, joining them with slashes.
 func GenerateKey(fields []string) string {
-	key := "/" + strings.Join(fields, "/")
-	return path.Clean(key)
+	// Pre-calculate total size to avoid re-allocation.
+	n := 0
+	for _, f := range fields {
+		n += 1 + len(f) // '/' + field
+	}
+	var b strings.Builder
+	b.Grow(n)
+	for _, f := range fields {
+		b.WriteByte('/')
+		b.WriteString(f)
+	}
+	return b.String()
 }
 
 // rootify works just like in cosmos-sdk

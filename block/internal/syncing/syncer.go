@@ -14,12 +14,12 @@ import (
 	"time"
 
 	"github.com/celestiaorg/go-header"
-	coreexecutor "github.com/evstack/ev-node/core/execution"
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
+	coreexecutor "github.com/evstack/ev-node/core/execution"
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
@@ -115,12 +115,16 @@ type Syncer struct {
 	gracePeriodConfig         forcedInclusionGracePeriodConfig
 
 	// Lifecycle
-	ctx    context.Context
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
+	ctx              context.Context
+	cancel           context.CancelFunc
+	wg               sync.WaitGroup
+	hasCriticalError atomic.Bool
 
 	// P2P wait coordination
 	p2pWaitState atomic.Value // stores p2pWaitState
+
+	// DA head-reached signal for recovery mode (stays true once DA head is seen)
+	daHeadReached atomic.Bool
 
 	// blockSyncer is the interface used for block sync operations.
 	// defaults to self, but can be wrapped with tracing.
@@ -254,28 +258,32 @@ func (s *Syncer) Stop() error {
 	s.cancelP2PWait(0)
 	s.wg.Wait()
 
-	drainCtx, drainCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer drainCancel()
+	// Skip draining if we're shutting down due to a critical error (e.g. execution
+	// client unavailable).
+	if !s.hasCriticalError.Load() {
+		drainCtx, drainCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer drainCancel()
 
-	drained := 0
-drainLoop:
-	for {
-		select {
-		case event, ok := <-s.heightInCh:
-			if !ok {
+		drained := 0
+	drainLoop:
+		for {
+			select {
+			case event, ok := <-s.heightInCh:
+				if !ok {
+					break drainLoop
+				}
+				s.processHeightEvent(drainCtx, &event)
+				drained++
+			case <-drainCtx.Done():
+				s.logger.Warn().Int("remaining", len(s.heightInCh)).Msg("timeout draining height events during shutdown")
+				break drainLoop
+			default:
 				break drainLoop
 			}
-			s.processHeightEvent(drainCtx, &event)
-			drained++
-		case <-drainCtx.Done():
-			s.logger.Warn().Int("remaining", len(s.heightInCh)).Msg("timeout draining height events during shutdown")
-			break drainLoop
-		default:
-			break drainLoop
 		}
-	}
-	if drained > 0 {
-		s.logger.Info().Int("count", drained).Msg("drained pending height events during shutdown")
+		if drained > 0 {
+			s.logger.Info().Int("count", drained).Msg("drained pending height events during shutdown")
+		}
 	}
 
 	s.logger.Info().Msg("syncer stopped")
@@ -400,6 +408,7 @@ func (s *Syncer) daWorkerLoop() {
 		var backoff time.Duration
 		if err == nil {
 			// No error, means we are caught up.
+			s.daHeadReached.Store(true)
 			backoff = s.config.DA.BlockTime.Duration
 		} else {
 			// Error, back off for a shorter duration.
@@ -415,6 +424,12 @@ func (s *Syncer) daWorkerLoop() {
 		case <-time.After(backoff):
 		}
 	}
+}
+
+// HasReachedDAHead returns true once the DA worker has reached the DA head.
+// Once set, it stays true.
+func (s *Syncer) HasReachedDAHead() bool {
+	return s.daHeadReached.Load()
 }
 
 func (s *Syncer) fetchDAUntilCaughtUp() error {
@@ -680,7 +695,7 @@ func (s *Syncer) processHeightEvent(ctx context.Context, event *common.DAHeightE
 			Msg("failed to sync next block")
 		// If the error is not due to a validation error, re-store the event as pending
 		switch {
-		case errors.Is(err, errInvalidBlock):
+		case errors.Is(err, errInvalidBlock) || s.hasCriticalError.Load():
 			// do not reschedule
 		case errors.Is(err, errMaliciousProposer):
 			s.sendCriticalError(fmt.Errorf("sequencer malicious. Restart the node with --node.aggregator --node.based_sequencer or keep the chain halted: %w", err))
@@ -1132,6 +1147,7 @@ func (s *Syncer) VerifyForcedInclusionTxs(ctx context.Context, currentState type
 
 // sendCriticalError sends a critical error to the error channel without blocking
 func (s *Syncer) sendCriticalError(err error) {
+	s.hasCriticalError.Store(true)
 	if s.errorCh != nil {
 		select {
 		case s.errorCh <- err:

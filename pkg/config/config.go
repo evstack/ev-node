@@ -11,11 +11,12 @@ import (
 	"time"
 
 	"github.com/celestiaorg/go-square/v3/share"
-	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
+
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
 const (
@@ -51,6 +52,8 @@ const (
 	FlagReadinessMaxBlocksBehind = FlagPrefixEvnode + "node.readiness_max_blocks_behind"
 	// FlagScrapeInterval is a flag for specifying the reaper scrape interval
 	FlagScrapeInterval = FlagPrefixEvnode + "node.scrape_interval"
+	// FlagCatchupTimeout is a flag for waiting for P2P catchup before starting block production
+	FlagCatchupTimeout = FlagPrefixEvnode + "node.catchup_timeout"
 	// FlagClearCache is a flag for clearing the cache
 	FlagClearCache = FlagPrefixEvnode + "clear_cache"
 
@@ -170,6 +173,11 @@ const (
 	FlagRaftHeartbeatTimeout = FlagPrefixEvnode + "raft.heartbeat_timeout"
 	// FlagRaftLeaderLeaseTimeout is a flag for specifying leader lease timeout
 	FlagRaftLeaderLeaseTimeout = FlagPrefixEvnode + "raft.leader_lease_timeout"
+
+	// Pruning configuration flags
+	FlagPruningMode       = FlagPrefixEvnode + "pruning.pruning_mode"
+	FlagPruningKeepRecent = FlagPrefixEvnode + "pruning.pruning_keep_recent"
+	FlagPruningInterval   = FlagPrefixEvnode + "pruning.pruning_interval"
 )
 
 // Config stores Rollkit configuration.
@@ -202,12 +210,15 @@ type Config struct {
 
 	// Raft consensus configuration
 	Raft RaftConfig `mapstructure:"raft" yaml:"raft"`
+
+	// Pruning configuration
+	Pruning PruningConfig `mapstructure:"pruning" yaml:"pruning"`
 }
 
 // DAConfig contains all Data Availability configuration parameters
 type DAConfig struct {
 	Address                  string          `mapstructure:"address" yaml:"address" comment:"Address of the data availability layer service (host:port). This is the endpoint where Rollkit will connect to submit and retrieve data."`
-	AuthToken                string          `mapstructure:"auth_token" yaml:"auth_token" comment:"Authentication token for the data availability layer service. Required if the DA service needs authentication."`
+	AuthToken                string          `mapstructure:"auth_token" yaml:"auth_token" comment:"Authentication token for the data availability layer service. Required if the DA service needs authentication."` //nolint:gosec // this is ok.
 	SubmitOptions            string          `mapstructure:"submit_options" yaml:"submit_options" comment:"Additional options passed to the DA layer when submitting data. Format depends on the specific DA implementation being used."`
 	SigningAddresses         []string        `mapstructure:"signing_addresses" yaml:"signing_addresses" comment:"List of addresses to use for DA submissions. When multiple addresses are provided, they will be used in round-robin fashion to prevent sequence mismatches. Useful for high-throughput chains."`
 	Namespace                string          `mapstructure:"namespace" yaml:"namespace" comment:"Namespace ID used when submitting blobs to the DA layer. When a DataNamespace is provided, only the header is sent to this namespace."`
@@ -257,6 +268,7 @@ type NodeConfig struct {
 	LazyMode                 bool            `mapstructure:"lazy_mode" yaml:"lazy_mode" comment:"Enables lazy aggregation mode, where blocks are only produced when transactions are available or after LazyBlockTime. Optimizes resources by avoiding empty block creation during periods of inactivity."`
 	LazyBlockInterval        DurationWrapper `mapstructure:"lazy_block_interval" yaml:"lazy_block_interval" comment:"Maximum interval between blocks in lazy aggregation mode (LazyAggregator). Ensures blocks are produced periodically even without transactions to keep the chain active. Generally larger than BlockTime."`
 	ScrapeInterval           DurationWrapper `mapstructure:"scrape_interval" yaml:"scrape_interval" comment:"Interval at which the reaper polls the execution layer for new transactions. Lower values reduce transaction detection latency but increase RPC load. Examples: \"250ms\", \"500ms\", \"1s\"."`
+	CatchupTimeout           DurationWrapper `mapstructure:"catchup_timeout" yaml:"catchup_timeout" comment:"When set, the aggregator syncs from DA and P2P before producing blocks. Value specifies time to wait for P2P catchup. Requires aggregator mode."`
 
 	// Readiness / health configuration
 	ReadinessWindowSeconds   uint64 `mapstructure:"readiness_window_seconds" yaml:"readiness_window_seconds" comment:"Time window in seconds used to calculate ReadinessMaxBlocksBehind based on block time. Default: 15 seconds."`
@@ -288,6 +300,49 @@ type SignerConfig struct {
 type RPCConfig struct {
 	Address               string `mapstructure:"address" yaml:"address" comment:"Address to bind the RPC server to (host:port). Default: 127.0.0.1:7331"`
 	EnableDAVisualization bool   `mapstructure:"enable_da_visualization" yaml:"enable_da_visualization" comment:"Enable DA visualization endpoints for monitoring blob submissions. Default: false"`
+}
+
+const (
+	PruningModeDisabled = "disabled"
+	PruningModeAll      = "all"
+	PruningModeMetadata = "metadata"
+)
+
+// PruningConfig contains all pruning configuration parameters
+type PruningConfig struct {
+	Mode       string          `mapstructure:"pruning_mode" yaml:"pruning_mode" comment:"Pruning mode for stored block data and block metadata. Options: 'all' (prune all but recent blocks and their metatadas), 'metadata' (prune all but recent blocks metadatas), 'disabled' (keep all blocks and blocks metadata). Default: 'disabled'."`
+	KeepRecent uint64          `mapstructure:"pruning_keep_recent" yaml:"pruning_keep_recent" comment:"Number of most recent blocks/blocks metadata to retain when pruning is enabled. Must be > 0."`
+	Interval   DurationWrapper `mapstructure:"pruning_interval" yaml:"pruning_interval" comment:"Run pruning every N minutes. Examples: \"5m\", \"10m\", \"24h\"."`
+}
+
+// IsPruningEnabled returns true if pruning is enabled (i.e. pruning mode is not 'disabled')
+func (c PruningConfig) IsPruningEnabled() bool {
+	return c.Mode != PruningModeDisabled && len(c.Mode) > 0
+}
+
+// Validate pruning configuration
+func (c PruningConfig) Validate(blockTime time.Duration) error {
+	if c.Mode != PruningModeDisabled && c.Mode != PruningModeAll && c.Mode != PruningModeMetadata {
+		return fmt.Errorf("invalid pruning mode: %s; must be one of '%s', '%s', or '%s'", c.Mode, PruningModeDisabled, PruningModeAll, PruningModeMetadata)
+	}
+
+	if c.Mode == PruningModeDisabled {
+		return nil
+	}
+
+	if c.Interval.Duration == 0 {
+		return fmt.Errorf("pruning_interval must be >= 1s when pruning is enabled")
+	}
+
+	if c.Interval.Duration < blockTime {
+		return fmt.Errorf("pruning_interval (%v) must be greater than or equal to block time (%v)", c.Interval.Duration, blockTime)
+	}
+
+	if c.KeepRecent == 0 {
+		return fmt.Errorf("pruning_keep_recent must be > 0 when pruning is enabled; use pruning_enabled=false to keep all blocks")
+	}
+
+	return nil
 }
 
 // RaftConfig contains all Raft consensus configuration parameters
@@ -351,6 +406,15 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("based sequencer mode requires aggregator mode to be enabled")
 	}
 
+	// Validate catchup timeout requires aggregator mode
+	if c.Node.CatchupTimeout.Duration > 0 && !c.Node.Aggregator {
+		return fmt.Errorf("catchup timeout requires aggregator mode to be enabled")
+	}
+
+	if c.Node.CatchupTimeout.Duration > 0 && c.Raft.Enable {
+		return fmt.Errorf("catchup timeout and Raft consensus are mutually exclusive; disable one of them")
+	}
+
 	// Validate namespaces
 	if err := validateNamespace(c.DA.GetNamespace()); err != nil {
 		return fmt.Errorf("could not validate namespace (%s): %w", c.DA.GetNamespace(), err)
@@ -373,9 +437,15 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("LazyBlockInterval (%v) must be greater than BlockTime (%v) in lazy mode",
 			c.Node.LazyBlockInterval.Duration, c.Node.BlockTime.Duration)
 	}
+
 	if err := c.Raft.Validate(); err != nil {
 		return err
 	}
+
+	if err := c.Pruning.Validate(c.Node.BlockTime.Duration); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -436,6 +506,7 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().Uint64(FlagReadinessWindowSeconds, def.Node.ReadinessWindowSeconds, "time window in seconds for calculating readiness threshold based on block time (default: 15s)")
 	cmd.Flags().Uint64(FlagReadinessMaxBlocksBehind, def.Node.ReadinessMaxBlocksBehind, "how many blocks behind best-known head the node can be and still be considered ready (0 = must be at head)")
 	cmd.Flags().Duration(FlagScrapeInterval, def.Node.ScrapeInterval.Duration, "interval at which the reaper polls the execution layer for new transactions")
+	cmd.Flags().Duration(FlagCatchupTimeout, def.Node.CatchupTimeout.Duration, "sync from DA and P2P before producing blocks. Value specifies time to wait for P2P catchup. Requires aggregator mode.")
 
 	// Data Availability configuration flags
 	cmd.Flags().String(FlagDAAddress, def.DA.Address, "DA address (host:port)")
@@ -481,7 +552,6 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().String(FlagSignerPath, def.Signer.SignerPath, "path to the signer file or address")
 	cmd.Flags().String(FlagSignerPassphraseFile, "", "path to file containing the signer passphrase (required for file signer and if aggregator is enabled)")
 
-	// flag constraints
 	cmd.MarkFlagsMutuallyExclusive(FlagLight, FlagAggregator)
 
 	// Raft configuration flags
@@ -495,6 +565,12 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().Duration(FlagRaftSendTimeout, def.Raft.SendTimeout, "max duration to wait for a message to be sent to a peer")
 	cmd.Flags().Duration(FlagRaftHeartbeatTimeout, def.Raft.HeartbeatTimeout, "time between leader heartbeats to followers")
 	cmd.Flags().Duration(FlagRaftLeaderLeaseTimeout, def.Raft.LeaderLeaseTimeout, "duration of the leader lease")
+	cmd.MarkFlagsMutuallyExclusive(FlagCatchupTimeout, FlagRaftEnable)
+
+	// Pruning configuration flags
+	cmd.Flags().String(FlagPruningMode, def.Pruning.Mode, "pruning mode for stored block data and metadata (disabled, all, metadata)")
+	cmd.Flags().Uint64(FlagPruningKeepRecent, def.Pruning.KeepRecent, "number of most recent blocks and their metadata to retain when pruning is enabled (must be > 0)")
+	cmd.Flags().Duration(FlagPruningInterval, def.Pruning.Interval.Duration, "interval at which pruning is performed when pruning is enabled")
 }
 
 // Load loads the node configuration in the following order of precedence:

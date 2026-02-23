@@ -228,6 +228,21 @@ func (t *tracedStore) DeleteMetadata(ctx context.Context, key string) error {
 	return nil
 }
 
+func (t *tracedStore) DeleteStateAtHeight(ctx context.Context, height uint64) error {
+	ctx, span := t.tracer.Start(ctx, "Store.DeleteStateAtHeight",
+		trace.WithAttributes(attribute.Int64("height", int64(height))),
+	)
+	defer span.End()
+
+	if err := t.inner.DeleteStateAtHeight(ctx, height); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return err
+	}
+
+	return nil
+}
+
 func (t *tracedStore) Rollback(ctx context.Context, height uint64, aggregator bool) error {
 	ctx, span := t.tracer.Start(ctx, "Store.Rollback",
 		trace.WithAttributes(
@@ -238,6 +253,22 @@ func (t *tracedStore) Rollback(ctx context.Context, height uint64, aggregator bo
 	defer span.End()
 
 	err := t.inner.Rollback(ctx, height, aggregator)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return err
+	}
+
+	return nil
+}
+
+func (t *tracedStore) PruneBlocks(ctx context.Context, height uint64) error {
+	ctx, span := t.tracer.Start(ctx, "Store.PruneBlocks",
+		trace.WithAttributes(attribute.Int64("height", int64(height))),
+	)
+	defer span.End()
+
+	err := t.inner.PruneBlocks(ctx, height)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
@@ -284,6 +315,22 @@ func (b *tracedBatch) SaveBlockData(header *types.SignedHeader, data *types.Data
 	defer span.End()
 
 	err := b.inner.SaveBlockData(header, data, signature)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return err
+	}
+
+	return nil
+}
+
+func (b *tracedBatch) SaveBlockDataFromBytes(header *types.SignedHeader, headerBlob, dataBlob []byte, signature *types.Signature) error {
+	_, span := b.tracer.Start(b.ctx, "Batch.SaveBlockDataFromBytes",
+		trace.WithAttributes(attribute.Int64("height", int64(header.Height()))),
+	)
+	defer span.End()
+
+	err := b.inner.SaveBlockDataFromBytes(header, headerBlob, dataBlob, signature)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())

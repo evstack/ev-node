@@ -12,6 +12,7 @@ import (
 	"github.com/evstack/ev-node/block/internal/common"
 	da "github.com/evstack/ev-node/block/internal/da"
 	"github.com/evstack/ev-node/block/internal/executing"
+	"github.com/evstack/ev-node/block/internal/pruner"
 	"github.com/evstack/ev-node/block/internal/reaping"
 	"github.com/evstack/ev-node/block/internal/submitting"
 	"github.com/evstack/ev-node/block/internal/syncing"
@@ -29,6 +30,7 @@ import (
 // Components represents the block-related components
 type Components struct {
 	Executor  *executing.Executor
+	Pruner    *pruner.Pruner
 	Reaper    *reaping.Reaper
 	Syncer    *syncing.Syncer
 	Submitter *submitting.Submitter
@@ -58,6 +60,11 @@ func (bc *Components) Start(ctx context.Context) error {
 	if bc.Executor != nil {
 		if err := bc.Executor.Start(ctxWithCancel); err != nil {
 			return fmt.Errorf("failed to start executor: %w", err)
+		}
+	}
+	if bc.Pruner != nil {
+		if err := bc.Pruner.Start(ctxWithCancel); err != nil {
+			return fmt.Errorf("failed to start pruner: %w", err)
 		}
 	}
 	if bc.Reaper != nil {
@@ -94,6 +101,11 @@ func (bc *Components) Stop() error {
 	if bc.Executor != nil {
 		if err := bc.Executor.Stop(); err != nil {
 			errs = errors.Join(errs, fmt.Errorf("failed to stop executor: %w", err))
+		}
+	}
+	if bc.Pruner != nil {
+		if err := bc.Pruner.Stop(); err != nil {
+			errs = errors.Join(errs, fmt.Errorf("failed to stop pruner: %w", err))
 		}
 	}
 	if bc.Reaper != nil {
@@ -166,6 +178,12 @@ func NewSyncComponents(
 		syncer.SetBlockSyncer(syncing.WithTracingBlockSyncer(syncer))
 	}
 
+	var execPruner coreexecutor.ExecPruner
+	if p, ok := exec.(coreexecutor.ExecPruner); ok {
+		execPruner = p
+	}
+	pruner := pruner.New(logger, store, execPruner, config.Pruning, config.Node.BlockTime.Duration, config.DA.Address)
+
 	// Create submitter for sync nodes (no signer, only DA inclusion processing)
 	var daSubmitter submitting.DASubmitterAPI = submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger, headerDAHintAppender, dataDAHintAppender)
 	if config.Instrumentation.IsTracingEnabled() {
@@ -189,14 +207,15 @@ func NewSyncComponents(
 		Syncer:    syncer,
 		Submitter: submitter,
 		Cache:     cacheManager,
+		Pruner:    pruner,
 		errorCh:   errorCh,
 	}, nil
 }
 
-// NewAggregatorComponents creates components for an aggregator full node that can produce and sync blocks.
+// newAggregatorComponents creates components for an aggregator full node that can produce and sync blocks.
 // Aggregator nodes have full capabilities - they can produce blocks, sync from P2P and DA,
 // and submit headers/data to DA. Requires a signer for block production and DA submission.
-func NewAggregatorComponents(
+func newAggregatorComponents(
 	config config.Config,
 	genesis genesis.Genesis,
 	store store.Store,
@@ -248,6 +267,12 @@ func NewAggregatorComponents(
 		executor.SetBlockProducer(executing.WithTracingBlockProducer(executor))
 	}
 
+	var execPruner coreexecutor.ExecPruner
+	if p, ok := exec.(coreexecutor.ExecPruner); ok {
+		execPruner = p
+	}
+	pruner := pruner.New(logger, store, execPruner, config.Pruning, config.Node.BlockTime.Duration, config.DA.Address)
+
 	reaper, err := reaping.NewReaper(
 		exec,
 		sequencer,
@@ -264,6 +289,7 @@ func NewAggregatorComponents(
 	if config.Node.BasedSequencer { // no submissions needed for bases sequencer
 		return &Components{
 			Executor: executor,
+			Pruner:   pruner,
 			Reaper:   reaper,
 			Cache:    cacheManager,
 			errorCh:  errorCh,
@@ -290,9 +316,65 @@ func NewAggregatorComponents(
 
 	return &Components{
 		Executor:  executor,
+		Pruner:    pruner,
 		Reaper:    reaper,
 		Submitter: submitter,
 		Cache:     cacheManager,
 		errorCh:   errorCh,
 	}, nil
+}
+
+// NewAggregatorWithCatchupComponents creates aggregator components that include a Syncer
+// for DA/P2P catchup before block production begins.
+//
+// The caller should:
+//  1. Start the Syncer and wait for DA head + P2P catchup
+//  2. Stop the Syncer and set Components.Syncer = nil
+//  3. Call Components.Start() — which will start the Executor and other components
+func NewAggregatorWithCatchupComponents(
+	config config.Config,
+	genesis genesis.Genesis,
+	store store.Store,
+	exec coreexecutor.Executor,
+	sequencer coresequencer.Sequencer,
+	daClient da.Client,
+	signer signer.Signer,
+	headerSyncService *sync.HeaderSyncService,
+	dataSyncService *sync.DataSyncService,
+	logger zerolog.Logger,
+	metrics *Metrics,
+	blockOpts BlockOptions,
+	raftNode common.RaftNode,
+) (*Components, error) {
+	bc, err := newAggregatorComponents(
+		config, genesis, store, exec, sequencer, daClient, signer,
+		headerSyncService, dataSyncService, logger, metrics, blockOpts, raftNode,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a catchup syncer that shares the same cache manager
+	catchupErrCh := make(chan error, 1)
+	catchupSyncer := syncing.NewSyncer(
+		store,
+		exec,
+		daClient,
+		bc.Cache,
+		metrics,
+		config,
+		genesis,
+		headerSyncService.Store(),
+		dataSyncService.Store(),
+		logger,
+		blockOpts,
+		catchupErrCh,
+		raftNode,
+	)
+	if config.Instrumentation.IsTracingEnabled() {
+		catchupSyncer.SetBlockSyncer(syncing.WithTracingBlockSyncer(catchupSyncer))
+	}
+
+	bc.Syncer = catchupSyncer
+	return bc, nil
 }

@@ -3,7 +3,6 @@ package p2p
 import (
 	"context"
 	"crypto/rand"
-	"errors"
 	"fmt"
 	"net"
 	"path/filepath"
@@ -25,11 +24,10 @@ import (
 
 type testNet []*Client
 
-func (tn testNet) Close() (err error) {
+func (tn testNet) Close() {
 	for i := range tn {
-		err = errors.Join(err, tn[i].Close())
+		_ = tn[i].Close()
 	}
-	return
 }
 
 func (tn testNet) WaitForDHT() {
@@ -72,7 +70,7 @@ func startTestNetwork(ctx context.Context, t *testing.T, n int, conf map[int]hos
 	require := require.New(t)
 
 	mnet := mocknet.New()
-	for i := 0; i < n; i++ {
+	for i := range n {
 		var descr hostDescr
 		if d, ok := conf[i]; ok {
 			descr = d

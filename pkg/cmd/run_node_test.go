@@ -8,6 +8,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ipfs/go-datastore"
+	"github.com/rs/zerolog"
+	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/node"
@@ -16,10 +22,6 @@ import (
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/signer"
 	filesigner "github.com/evstack/ev-node/pkg/signer/file"
-	"github.com/ipfs/go-datastore"
-	"github.com/rs/zerolog"
-	"github.com/spf13/cobra"
-	"github.com/stretchr/testify/assert"
 )
 
 func createTestComponents(_ context.Context, t *testing.T) (coreexecutor.Executor, coresequencer.Sequencer, signer.Signer, *key.NodeKey, datastore.Batching, func()) {
@@ -33,7 +35,11 @@ func createTestComponents(_ context.Context, t *testing.T) (coreexecutor.Executo
 	// Create a dummy P2P client and datastore for testing
 	ds := datastore.NewMapDatastore()
 
-	return executor, sequencer, keyProvider, nil, ds, func() {}
+	// Generate a dummy node key for the P2P client
+	nodeKey, err := key.GenerateNodeKey()
+	require.NoError(t, err)
+
+	return executor, sequencer, keyProvider, nodeKey, ds, func() {}
 }
 
 func TestParseFlags(t *testing.T) {

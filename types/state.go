@@ -56,12 +56,20 @@ func (s *State) NextState(header Header, stateRoot []byte) (State, error) {
 // AssertValidForNextState performs common validation of a header and data against the current state.
 // It assumes any context-specific basic header checks and verifier setup have already been performed
 func (s State) AssertValidForNextState(header *SignedHeader, data *Data) error {
-	if header.ChainID() != s.ChainID {
-		return fmt.Errorf("invalid chain ID - got %s, want %s", header.ChainID(), s.ChainID)
+	if err := s.AssertValidSequence(header); err != nil {
+		return err
 	}
 
 	if err := Validate(header, data); err != nil {
 		return fmt.Errorf("header-data validation failed: %w", err)
+	}
+	return nil
+}
+
+// AssertValidSequence performs lightweight state-sequence validation for self-produced blocks.
+func (s State) AssertValidSequence(header *SignedHeader) error {
+	if header.ChainID() != s.ChainID {
+		return fmt.Errorf("invalid chain ID - got %s, want %s", header.ChainID(), s.ChainID)
 	}
 
 	if len(s.LastHeaderHash) == 0 { // initial state

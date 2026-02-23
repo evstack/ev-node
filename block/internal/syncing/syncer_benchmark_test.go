@@ -6,6 +6,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ipfs/go-datastore"
+	dssync "github.com/ipfs/go-datastore/sync"
+	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/pkg/config"
@@ -14,12 +21,6 @@ import (
 	testmocks "github.com/evstack/ev-node/test/mocks"
 	extmocks "github.com/evstack/ev-node/test/mocks/external"
 	"github.com/evstack/ev-node/types"
-	"github.com/ipfs/go-datastore"
-	dssync "github.com/ipfs/go-datastore/sync"
-	"github.com/rs/zerolog"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
 )
 
 const daHeightOffset = 100
@@ -122,7 +123,7 @@ func newBenchFixture(b *testing.B, totalHeights uint64, shuffledTx bool, daDelay
 
 	// prepare height events to emit
 	heightEvents := make([]common.DAHeightEvent, totalHeights)
-	for i := uint64(0); i < totalHeights; i++ {
+	for i := range totalHeights {
 		blockHeight, daHeight := i+gen.InitialHeight, i+daHeightOffset
 		_, sh := makeSignedHeaderBytes(b, gen.ChainID, blockHeight, addr, pub, signer, nil, nil, nil)
 		d := &types.Data{Metadata: &types.Metadata{ChainID: gen.ChainID, Height: blockHeight, Time: uint64(time.Now().UnixNano())}}
@@ -137,7 +138,7 @@ func newBenchFixture(b *testing.B, totalHeights uint64, shuffledTx bool, daDelay
 	// Mock DA retriever to emit exactly totalHeights events, then HFF and cancel
 	daR := NewMockDARetriever(b)
 	daR.On("PopPriorityHeight").Return(uint64(0)).Maybe()
-	for i := uint64(0); i < totalHeights; i++ {
+	for i := range totalHeights {
 		daHeight := i + daHeightOffset
 		daR.On("RetrieveFromDA", mock.Anything, daHeight).
 			Run(func(_ mock.Arguments) {

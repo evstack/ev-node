@@ -3,10 +3,10 @@ package common
 import (
 	"context"
 
-	"github.com/evstack/ev-node/types"
+	"github.com/celestiaorg/go-header"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 
-	"github.com/celestiaorg/go-header"
+	"github.com/evstack/ev-node/types"
 )
 
 type (

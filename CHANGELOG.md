@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Node pruning support. [#2984](https://github.com/evstack/ev-node/pull/2984)
+  - Two different sort of pruning implemented:
+    _Classic pruning_ (`all`): prunes given `HEAD-n` blocks from the databases, including store metadatas.
+    _Auto Storage Optimization_ (`metadata`): prunes only the state metadatas, keeps all blocks.
+    By using one or the other, you are losing the ability to rollback or replay transactions earlier than `HEAD-n`.
+    When using _classic pruning_, you aren't able to fetch blocks prior to `HEAD-n`.
+
+### Changes
+
+- Store pending blocks separately from executed blocks key. [#3073](https://github.com/evstack/ev-node/pull/3073)
+
+## v1.0.0-rc.4
+
+### Changes
+
+- Skip draining when exec client unavailable. [#3060](https://github.com/evstack/ev-node/pull/3060)
+
 ## v1.0.0-rc.3
 
 ### Added

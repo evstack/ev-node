@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
+	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -25,7 +27,6 @@ import (
 	"github.com/evstack/ev-node/pkg/store"
 	testmocks "github.com/evstack/ev-node/test/mocks"
 	"github.com/evstack/ev-node/types"
-	"github.com/libp2p/go-libp2p/core/crypto"
 )
 
 func TestSubmitter_setFinalWithRetry(t *testing.T) {
@@ -77,29 +78,30 @@ func TestSubmitter_setFinalWithRetry(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+			synctest.Test(t, func(t *testing.T) {
+				ctx := context.Background()
+				exec := testmocks.NewMockExecutor(t)
+				tt.setupMock(exec)
 
-			ctx := context.Background()
-			exec := testmocks.NewMockExecutor(t)
-			tt.setupMock(exec)
-
-			s := &Submitter{
-				exec:   exec,
-				ctx:    ctx,
-				logger: zerolog.Nop(),
-			}
-
-			err := s.setFinalWithRetry(100)
-
-			if tt.expectSuccess {
-				require.NoError(t, err)
-			} else {
-				require.Error(t, err)
-				if tt.expectError != "" {
-					assert.Contains(t, err.Error(), tt.expectError)
+				s := &Submitter{
+					exec:   exec,
+					ctx:    ctx,
+					logger: zerolog.Nop(),
 				}
-			}
 
-			exec.AssertExpectations(t)
+				err := s.setFinalWithRetry(100)
+
+				if tt.expectSuccess {
+					require.NoError(t, err)
+				} else {
+					require.Error(t, err)
+					if tt.expectError != "" {
+						assert.Contains(t, err.Error(), tt.expectError)
+					}
+				}
+
+				exec.AssertExpectations(t)
+			})
 		})
 	}
 }

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-
 	"sync/atomic"
 
 	lru "github.com/hashicorp/golang-lru/v2"

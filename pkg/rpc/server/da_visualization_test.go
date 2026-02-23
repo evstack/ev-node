@@ -10,11 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/evstack/ev-node/pkg/config"
-	coreda "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/evstack/ev-node/pkg/config"
+	coreda "github.com/evstack/ev-node/pkg/da/types"
 )
 
 type stubDAVizClient struct{}
@@ -73,7 +74,7 @@ func TestRecordSubmissionMemoryLimit(t *testing.T) {
 	server := NewDAVisualizationServer(da, logger, true)
 
 	// Add 101 submissions (more than the limit of 100)
-	for i := 0; i < 101; i++ {
+	for i := range 101 {
 		result := &coreda.ResultSubmit{
 			BaseResult: coreda.BaseResult{
 				Code:      coreda.StatusSuccess,

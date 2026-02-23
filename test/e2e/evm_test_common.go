@@ -28,11 +28,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/celestiaorg/tastora/framework/docker/evstack/reth"
+	tastoratypes "github.com/celestiaorg/tastora/framework/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/stretchr/testify/require"
 
-	"github.com/celestiaorg/tastora/framework/docker/evstack/reth"
 	"github.com/evstack/ev-node/execution/evm"
 	evmtest "github.com/evstack/ev-node/execution/evm/test"
 )
@@ -55,7 +56,7 @@ func getAvailablePort() (int, net.Listener, error) {
 }
 
 // same as getAvailablePort but fails test if not successful
-func mustGetAvailablePort(t *testing.T) int {
+func mustGetAvailablePort(t testing.TB) int {
 	t.Helper()
 	port, listener, err := getAvailablePort()
 	require.NoError(t, err)
@@ -221,7 +222,7 @@ const (
 // createPassphraseFile creates a temporary passphrase file and returns its path.
 // The file is created in the provided directory with secure permissions (0600).
 // If the directory doesn't exist, it will be created with 0755 permissions.
-func createPassphraseFile(t *testing.T, dir string) string {
+func createPassphraseFile(t testing.TB, dir string) string {
 	t.Helper()
 	// Ensure the directory exists
 	err := os.MkdirAll(dir, 0755)
@@ -236,7 +237,7 @@ func createPassphraseFile(t *testing.T, dir string) string {
 // createJWTSecretFile creates a temporary JWT secret file and returns its path.
 // The file is created in the provided directory with secure permissions (0600).
 // If the directory doesn't exist, it will be created with 0755 permissions.
-func createJWTSecretFile(t *testing.T, dir, jwtSecret string) string {
+func createJWTSecretFile(t testing.TB, dir, jwtSecret string) string {
 	t.Helper()
 	// Ensure the directory exists
 	err := os.MkdirAll(dir, 0755)
@@ -256,7 +257,7 @@ func createJWTSecretFile(t *testing.T, dir, jwtSecret string) string {
 // - rpcPort: Optional RPC port to use (if empty, uses default port)
 //
 // Returns: The full P2P address (e.g., /ip4/127.0.0.1/tcp/7676/p2p/12D3KooW...)
-func getNodeP2PAddress(t *testing.T, sut *SystemUnderTest, nodeHome string, rpcPort ...string) string {
+func getNodeP2PAddress(t testing.TB, sut *SystemUnderTest, nodeHome string, rpcPort ...string) string {
 	t.Helper()
 
 	// Build command arguments
@@ -313,7 +314,7 @@ func getNodeP2PAddress(t *testing.T, sut *SystemUnderTest, nodeHome string, rpcP
 // - jwtSecret: JWT secret for authenticating with EVM engine
 // - genesisHash: Hash of the genesis block for chain validation
 // - endpoints: TestEndpoints struct containing unique port assignments
-func setupSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string, endpoints *TestEndpoints) {
+func setupSequencerNode(t testing.TB, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string, endpoints *TestEndpoints, extraArgs ...string) {
 	t.Helper()
 
 	// Create passphrase file
@@ -350,6 +351,7 @@ func setupSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSe
 		"--evm.engine-url", endpoints.GetSequencerEngineURL(),
 		"--evm.eth-url", endpoints.GetSequencerEthURL(),
 	}
+	args = append(args, extraArgs...)
 	sut.ExecCmd(evmSingleBinaryPath, args...)
 	sut.AwaitNodeUp(t, endpoints.GetRollkitRPCAddress(), NodeStartupTimeout)
 }
@@ -357,7 +359,7 @@ func setupSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSe
 // setupSequencerNodeLazy initializes and starts the sequencer node in lazy mode.
 // In lazy mode, blocks are only produced when transactions are available,
 // not on a regular timer.
-func setupSequencerNodeLazy(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string, endpoints *TestEndpoints) {
+func setupSequencerNodeLazy(t testing.TB, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string, endpoints *TestEndpoints) {
 	t.Helper()
 
 	// Create passphrase file
@@ -378,6 +380,7 @@ func setupSequencerNodeLazy(t *testing.T, sut *SystemUnderTest, sequencerHome, j
 	// Use helper methods to get complete URLs
 	args := []string{
 		"start",
+		"--evnode.log.level", "debug",
 		"--evnode.log.format", "json",
 		"--evm.jwt-secret-file", jwtSecretFile,
 		"--evm.genesis-hash", genesisHash,
@@ -416,7 +419,7 @@ func setupSequencerNodeLazy(t *testing.T, sut *SystemUnderTest, sequencerHome, j
 // - genesisHash: Hash of the genesis block for chain validation
 // - sequencerP2PAddress: P2P address of the sequencer node to connect to
 // - endpoints: TestEndpoints struct containing unique port assignments
-func setupFullNode(t *testing.T, sut *SystemUnderTest, fullNodeHome, sequencerHome, fullNodeJwtSecret, genesisHash, sequencerP2PAddress string, endpoints *TestEndpoints) {
+func setupFullNode(t testing.TB, sut *SystemUnderTest, fullNodeHome, sequencerHome, fullNodeJwtSecret, genesisHash, sequencerP2PAddress string, endpoints *TestEndpoints) {
 	t.Helper()
 
 	// Initialize full node
@@ -440,6 +443,7 @@ func setupFullNode(t *testing.T, sut *SystemUnderTest, fullNodeHome, sequencerHo
 	// Use helper methods to get complete URLs
 	args := []string{
 		"start",
+		"--evnode.log.level", "debug",
 		"--evnode.log.format", "json",
 		"--home", fullNodeHome,
 		"--evm.jwt-secret-file", fullNodeJwtSecretFile,
@@ -476,7 +480,7 @@ var globalNonce uint64 = 0
 //
 // This is used in full node sync tests to verify that both nodes
 // include the same transaction in the same block number.
-func submitTransactionAndGetBlockNumber(t *testing.T, sequencerClients ...*ethclient.Client) (common.Hash, uint64) {
+func submitTransactionAndGetBlockNumber(t testing.TB, sequencerClients ...*ethclient.Client) (common.Hash, uint64) {
 	t.Helper()
 
 	// Submit transaction to sequencer EVM with unique nonce
@@ -502,16 +506,33 @@ func submitTransactionAndGetBlockNumber(t *testing.T, sequencerClients ...*ethcl
 	return tx.Hash(), txBlockNumber
 }
 
-// setupCommonEVMTest performs common setup for EVM tests including DA and EVM engine initialization.
-// This helper reduces code duplication across multiple test functions.
-//
-// Parameters:
-// - needsFullNode: whether to set up a full node EVM engine in addition to sequencer
-// - daPort: optional DA port to use (if empty, uses default)
-//
-// Returns: jwtSecret, fullNodeJwtSecret (empty if needsFullNode=false), genesisHash
-func setupCommonEVMTest(t *testing.T, sut *SystemUnderTest, needsFullNode bool, _ ...string) (string, string, string, *TestEndpoints) {
+// SetupOpt customizes the common EVM test setup without adding positional params.
+type SetupOpt func(*setupConfig)
+
+type setupConfig struct {
+	needsFullNode bool
+	rethOpts      []evmtest.RethNodeOpt
+}
+
+// WithFullNode enables bringing up an additional full node in the test setup.
+func WithFullNode() SetupOpt {
+	return func(c *setupConfig) {
+		c.needsFullNode = true
+	}
+}
+
+// setupCommonEVMEnv creates and initializes ev-reth instances, while also initializing the local ev-node instance
+// managed by sut. If a full node is also required, we can use the WithFullNode() additional option.
+func setupCommonEVMEnv(t testing.TB, sut *SystemUnderTest, client tastoratypes.TastoraDockerClient, networkID string, opts ...SetupOpt) *EVMEnv {
 	t.Helper()
+
+	// Configuration via functional options
+	cfg := setupConfig{needsFullNode: false}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&cfg)
+		}
+	}
 
 	// Reset global nonce for each test to ensure clean state
 	globalNonce = 0
@@ -528,7 +549,9 @@ func setupCommonEVMTest(t *testing.T, sut *SystemUnderTest, needsFullNode bool, 
 	sut.ExecCmd(localDABinary, "-port", dynEndpoints.DAPort)
 	t.Logf("Started local DA on port %s", dynEndpoints.DAPort)
 
-	rethNode := evmtest.SetupTestRethNode(t)
+	require.NotNil(t, client, "docker client is required")
+	require.NotEmpty(t, networkID, "docker networkID is required")
+	rethNode := evmtest.SetupTestRethNode(t, client, networkID, cfg.rethOpts...)
 
 	networkInfo, err := rethNode.GetNetworkInfo(context.Background())
 	require.NoError(t, err, "failed to get reth network info")
@@ -537,8 +560,8 @@ func setupCommonEVMTest(t *testing.T, sut *SystemUnderTest, needsFullNode bool, 
 
 	var fnJWT string
 	var rethFn *reth.Node
-	if needsFullNode {
-		rethFn = evmtest.SetupTestRethNode(t)
+	if cfg.needsFullNode {
+		rethFn = evmtest.SetupTestRethNode(t, client, networkID, cfg.rethOpts...)
 		fnJWT = rethFn.JWTSecretHex()
 	}
 
@@ -549,14 +572,31 @@ func setupCommonEVMTest(t *testing.T, sut *SystemUnderTest, needsFullNode bool, 
 	// Populate endpoints with both dynamic rollkit ports and dynamic engine ports
 	dynEndpoints.SequencerEthPort = networkInfo.External.Ports.RPC
 	dynEndpoints.SequencerEnginePort = networkInfo.External.Ports.Engine
-	if needsFullNode {
+	if cfg.needsFullNode {
 		fnInfo, err := rethFn.GetNetworkInfo(context.Background())
 		require.NoError(t, err, "failed to get full node reth network info")
 		dynEndpoints.FullNodeEthPort = fnInfo.External.Ports.RPC
 		dynEndpoints.FullNodeEnginePort = fnInfo.External.Ports.Engine
 	}
 
-	return seqJWT, fnJWT, genesisHash, dynEndpoints
+	return &EVMEnv{
+		SequencerJWT: seqJWT,
+		FullNodeJWT:  fnJWT,
+		GenesisHash:  genesisHash,
+		Endpoints:    dynEndpoints,
+		RethNode:     rethNode,
+	}
+}
+
+// EVMEnv is a cohesive result for common EVM test setup.
+// It consolidates the return values into a single struct
+// to improve readability and extensibility at call sites.
+type EVMEnv struct {
+	SequencerJWT string
+	FullNodeJWT  string
+	GenesisHash  string
+	Endpoints    *TestEndpoints
+	RethNode     *reth.Node
 }
 
 // checkBlockInfoAt retrieves block information at a specific height including state root.
@@ -568,7 +608,7 @@ func setupCommonEVMTest(t *testing.T, sut *SystemUnderTest, needsFullNode bool, 
 // - blockHeight: Height of the block to retrieve (use nil for latest)
 //
 // Returns: block hash, state root, transaction count, block number, and error
-func checkBlockInfoAt(t *testing.T, ethURL string, blockHeight *uint64) (common.Hash, common.Hash, int, uint64, error) {
+func checkBlockInfoAt(t testing.TB, ethURL string, blockHeight *uint64) (common.Hash, common.Hash, int, uint64, error) {
 	t.Helper()
 
 	ctx := context.Background()
@@ -611,17 +651,16 @@ func checkBlockInfoAt(t *testing.T, ethURL string, blockHeight *uint64) (common.
 // - nodeHome: Directory path for sequencer node data
 //
 // Returns: genesisHash for the sequencer
-func setupSequencerOnlyTest(t *testing.T, sut *SystemUnderTest, nodeHome string) (string, string) {
+func setupSequencerOnlyTest(t testing.TB, sut *SystemUnderTest, nodeHome string, client tastoratypes.TastoraDockerClient, networkID string, extraArgs ...string) (string, string) {
 	t.Helper()
 
 	// Use common setup (no full node needed)
-	jwtSecret, _, genesisHash, endpoints := setupCommonEVMTest(t, sut, false)
-
+	env := setupCommonEVMEnv(t, sut, client, networkID)
 	// Initialize and start sequencer node
-	setupSequencerNode(t, sut, nodeHome, jwtSecret, genesisHash, endpoints)
+	setupSequencerNode(t, sut, nodeHome, env.SequencerJWT, env.GenesisHash, env.Endpoints, extraArgs...)
 	t.Log("Sequencer node is up")
 
-	return genesisHash, endpoints.GetSequencerEthURL()
+	return env.GenesisHash, env.Endpoints.GetSequencerEthURL()
 }
 
 // restartDAAndSequencer restarts both the local DA and sequencer node.
@@ -633,7 +672,7 @@ func setupSequencerOnlyTest(t *testing.T, sut *SystemUnderTest, nodeHome string)
 // - sequencerHome: Directory path for sequencer node data
 // - jwtSecret: JWT secret for sequencer's EVM engine authentication
 // - genesisHash: Hash of the genesis block for chain validation
-func restartDAAndSequencer(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string, endpoints *TestEndpoints) {
+func restartDAAndSequencer(t testing.TB, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string, endpoints *TestEndpoints) {
 	t.Helper()
 
 	// First restart the local DA
@@ -683,7 +722,7 @@ func restartDAAndSequencer(t *testing.T, sut *SystemUnderTest, sequencerHome, jw
 // - sequencerHome: Directory path for sequencer node data
 // - jwtSecret: JWT secret for sequencer's EVM engine authentication
 // - genesisHash: Hash of the genesis block for chain validation
-func restartDAAndSequencerLazy(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string, endpoints *TestEndpoints) {
+func restartDAAndSequencerLazy(t testing.TB, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string, endpoints *TestEndpoints) {
 	t.Helper()
 
 	// First restart the local DA
@@ -734,7 +773,7 @@ func restartDAAndSequencerLazy(t *testing.T, sut *SystemUnderTest, sequencerHome
 // - sequencerHome: Directory path for sequencer node data
 // - jwtSecret: JWT secret for sequencer's EVM engine authentication
 // - genesisHash: Hash of the genesis block for chain validation
-func restartSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string) {
+func restartSequencerNode(t testing.TB, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string) {
 	t.Helper()
 
 	// Start sequencer node (without init - node already exists)
@@ -770,7 +809,7 @@ func restartSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwt
 // - nodeName: Human-readable name for logging (e.g., "sequencer", "full node")
 //
 // This function ensures that during lazy mode idle periods, no automatic block production occurs.
-func verifyNoBlockProduction(t *testing.T, client *ethclient.Client, duration time.Duration, nodeName string) {
+func verifyNoBlockProduction(t testing.TB, client *ethclient.Client, duration time.Duration, nodeName string) {
 	t.Helper()
 
 	ctx := context.Background()

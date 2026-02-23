@@ -69,6 +69,7 @@ func DefaultConfig() Config {
 			ReadinessWindowSeconds:   defaultReadinessWindowSeconds,
 			ReadinessMaxBlocksBehind: calculateReadinessMaxBlocksBehind(defaultBlockTime.Duration, defaultReadinessWindowSeconds),
 			ScrapeInterval:           DurationWrapper{1 * time.Second},
+			CatchupTimeout:           DurationWrapper{0},
 		},
 		DA: DAConfig{
 			Address:                  "http://localhost:7980",
@@ -102,6 +103,11 @@ func DefaultConfig() Config {
 			HeartbeatTimeout:   350 * time.Millisecond,
 			LeaderLeaseTimeout: 175 * time.Millisecond,
 			RaftDir:            filepath.Join(DefaultRootDir, "raft"),
+		},
+		Pruning: PruningConfig{
+			Mode:       PruningModeDisabled,
+			KeepRecent: 100_000,
+			Interval:   DurationWrapper{15 * time.Minute},
 		},
 	}
 }

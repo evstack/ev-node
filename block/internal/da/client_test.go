@@ -8,13 +8,14 @@ import (
 	"time"
 
 	"github.com/celestiaorg/go-square/v3/share"
-	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
-	"github.com/evstack/ev-node/pkg/da/jsonrpc/mocks"
-	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
+	"github.com/evstack/ev-node/pkg/da/jsonrpc/mocks"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
 func makeBlobRPCClient(blobModule *mocks.MockBlobModule, headerModule *mocks.MockHeaderModule) *blobrpc.Client {
@@ -185,7 +186,7 @@ func TestClient_Get(t *testing.T) {
 
 		blobs := make([]*blobrpc.Blob, 3)
 		ids := make([]datypes.ID, 3)
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			blb, err := blobrpc.NewBlobV0(ns, []byte{byte(i)})
 			require.NoError(t, err)
 			blobs[i] = blb
@@ -203,7 +204,7 @@ func TestClient_Get(t *testing.T) {
 		result, err := cl.Get(context.Background(), ids, nsBz)
 		require.NoError(t, err)
 		require.Len(t, result, 3)
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			assert.Equal(t, blobs[i].Data(), result[i])
 		}
 	})
@@ -235,7 +236,7 @@ func TestClient_GetProofs(t *testing.T) {
 	blobModule := mocks.NewMockBlobModule(t)
 
 	ids := make([]datypes.ID, 3)
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		blb, _ := blobrpc.NewBlobV0(ns, []byte{byte(i)})
 		ids[i] = blobrpc.MakeID(uint64(200+i), blb.Commitment)
 		blobModule.On("GetProof", mock.Anything, uint64(200+i), ns, blb.Commitment).Return(&blobrpc.Proof{}, nil).Once()
@@ -263,7 +264,7 @@ func TestClient_Validate(t *testing.T) {
 
 		ids := make([]datypes.ID, 3)
 		proofs := make([]datypes.Proof, 3)
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			blb, _ := blobrpc.NewBlobV0(ns, []byte{byte(i)})
 			ids[i] = blobrpc.MakeID(uint64(300+i), blb.Commitment)
 			proofBz, _ := json.Marshal(&blobrpc.Proof{})
@@ -281,7 +282,7 @@ func TestClient_Validate(t *testing.T) {
 		results, err := cl.Validate(context.Background(), ids, proofs, nsBz)
 		require.NoError(t, err)
 		require.Len(t, results, 3)
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			assert.Equal(t, i%2 == 0, results[i])
 		}
 	})

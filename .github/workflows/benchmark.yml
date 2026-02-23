@@ -1,0 +1,58 @@
+---
+name: Benchmarks
+permissions: {}
+"on":
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  evm-benchmark:
+    name: EVM Contract Benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Set up Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: ./go.mod
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
+      - name: Build binaries
+        run: make build-evm build-da
+      - name: Run EVM benchmarks
+        run: |
+          cd test/e2e && go test -tags evm -bench=. -benchmem -run='^$' \
+            -timeout=10m --evm-binary=../../build/evm | tee output.txt
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@4bdcce38c94cec68da58d012ac24b7b1155efe8b # v1.20.7
+        with:
+          name: EVM Contract Roundtrip
+          tool: 'go'
+          output-file-path: test/e2e/output.txt
+          auto-push: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          alert-threshold: '150%'
+          fail-on-alert: true
+          comment-on-alert: true
+
+      - name: Run Block Executor benchmarks
+        run: |
+          go test -bench=BenchmarkProduceBlock -benchmem -run='^$' \
+            ./block/internal/executing/... > block_executor_output.txt
+      - name: Store Block Executor benchmark result
+        uses: benchmark-action/github-action-benchmark@4bdcce38c94cec68da58d012ac24b7b1155efe8b # v1.20.7
+        with:
+          name: Block Executor Benchmark
+          tool: 'go'
+          output-file-path: block_executor_output.txt
+          auto-push: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          alert-threshold: '150%'
+          fail-on-alert: true
+          comment-on-alert: true

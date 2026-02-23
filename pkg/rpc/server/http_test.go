@@ -7,13 +7,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/evstack/ev-node/pkg/config"
-	"github.com/evstack/ev-node/test/mocks"
-	"github.com/evstack/ev-node/types"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	"github.com/evstack/ev-node/pkg/config"
+	"github.com/evstack/ev-node/test/mocks"
+	"github.com/evstack/ev-node/types"
 )
 
 func TestRegisterCustomHTTPEndpoints(t *testing.T) {
@@ -120,7 +121,7 @@ func TestHealthReady_aggregatorBlockDelay(t *testing.T) {
 
 			req, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/health/ready", nil)
 			require.NoError(t, err)
-			resp, err := http.DefaultClient.Do(req)
+			resp, err := http.DefaultClient.Do(req) //nolint:gosec // ok to use default client in tests
 			require.NoError(t, err)
 			t.Cleanup(func() { _ = resp.Body.Close() })
 

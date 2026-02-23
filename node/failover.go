@@ -8,21 +8,20 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/rs/zerolog"
+	"golang.org/x/sync/errgroup"
+
 	"github.com/evstack/ev-node/block"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p"
-	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/raft"
 	rpcserver "github.com/evstack/ev-node/pkg/rpc/server"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
 	evsync "github.com/evstack/ev-node/pkg/sync"
-	ds "github.com/ipfs/go-datastore"
-	"github.com/rs/zerolog"
-	"golang.org/x/sync/errgroup"
 )
 
 // failoverState collect the components to reset when switching modes.
@@ -34,14 +33,17 @@ type failoverState struct {
 	dataSyncService   *evsync.DataSyncService
 	rpcServer         *http.Server
 	bc                *block.Components
+
+	// catchup fields — used when the aggregator needs to sync before producing
+	catchupEnabled bool
+	catchupTimeout time.Duration
+	daBlockTime    time.Duration
+	store          store.Store
 }
 
 func newSyncMode(
 	nodeConfig config.Config,
-	nodeKey *key.NodeKey,
 	genesis genesispkg.Genesis,
-	rootDB ds.Batching,
-	daStore store.Store,
 	exec coreexecutor.Executor,
 	da block.DAClient,
 	logger zerolog.Logger,
@@ -49,6 +51,7 @@ func newSyncMode(
 	blockMetrics *block.Metrics,
 	nodeOpts NodeOptions,
 	raftNode *raft.Node,
+	p2pClient *p2p.Client,
 ) (*failoverState, error) {
 	blockComponentsFn := func(headerSyncService *evsync.HeaderSyncService, dataSyncService *evsync.DataSyncService) (*block.Components, error) {
 		return block.NewSyncComponents(
@@ -67,16 +70,13 @@ func newSyncMode(
 			raftNode,
 		)
 	}
-	return setupFailoverState(nodeConfig, nodeKey, rootDB, daStore, genesis, logger, rktStore, blockComponentsFn, raftNode)
+	return setupFailoverState(nodeConfig, genesis, logger, rktStore, blockComponentsFn, raftNode, p2pClient, false)
 }
 
 func newAggregatorMode(
 	nodeConfig config.Config,
-	nodeKey *key.NodeKey,
 	signer signer.Signer,
 	genesis genesispkg.Genesis,
-	rootDB ds.Batching,
-	daStore store.Store,
 	exec coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
 	da block.DAClient,
@@ -85,10 +85,10 @@ func newAggregatorMode(
 	blockMetrics *block.Metrics,
 	nodeOpts NodeOptions,
 	raftNode *raft.Node,
+	p2pClient *p2p.Client,
 ) (*failoverState, error) {
-
 	blockComponentsFn := func(headerSyncService *evsync.HeaderSyncService, dataSyncService *evsync.DataSyncService) (*block.Components, error) {
-		return block.NewAggregatorComponents(
+		return block.NewAggregatorWithCatchupComponents(
 			nodeConfig,
 			genesis,
 			rktStore,
@@ -104,32 +104,25 @@ func newAggregatorMode(
 			raftNode,
 		)
 	}
-
-	return setupFailoverState(nodeConfig, nodeKey, rootDB, daStore, genesis, logger, rktStore, blockComponentsFn, raftNode)
+	return setupFailoverState(nodeConfig, genesis, logger, rktStore, blockComponentsFn, raftNode, p2pClient, true)
 }
 
 func setupFailoverState(
 	nodeConfig config.Config,
-	nodeKey *key.NodeKey,
-	rootDB ds.Batching,
-	daStore store.Store,
 	genesis genesispkg.Genesis,
 	logger zerolog.Logger,
 	rktStore store.Store,
 	buildComponentsFn func(headerSyncService *evsync.HeaderSyncService, dataSyncService *evsync.DataSyncService) (*block.Components, error),
 	raftNode *raft.Node,
+	p2pClient *p2p.Client,
+	isAggregator bool,
 ) (*failoverState, error) {
-	p2pClient, err := p2p.NewClient(nodeConfig.P2P, nodeKey.PrivKey, rootDB, genesis.ChainID, logger, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	headerSyncService, err := evsync.NewHeaderSyncService(daStore, nodeConfig, genesis, p2pClient, logger.With().Str("component", "HeaderSyncService").Logger())
+	headerSyncService, err := evsync.NewHeaderSyncService(rktStore, nodeConfig, genesis, p2pClient, logger.With().Str("component", "HeaderSyncService").Logger())
 	if err != nil {
 		return nil, fmt.Errorf("error while initializing HeaderSyncService: %w", err)
 	}
 
-	dataSyncService, err := evsync.NewDataSyncService(daStore, nodeConfig, genesis, p2pClient, logger.With().Str("component", "DataSyncService").Logger())
+	dataSyncService, err := evsync.NewDataSyncService(rktStore, nodeConfig, genesis, p2pClient, logger.With().Str("component", "DataSyncService").Logger())
 	if err != nil {
 		return nil, fmt.Errorf("error while initializing DataSyncService: %w", err)
 	}
@@ -166,6 +159,12 @@ func setupFailoverState(
 		return nil, fmt.Errorf("build follower components: %w", err)
 	}
 
+	// Catchup only applies to aggregator nodes that need to sync before
+	catchupEnabled := isAggregator && nodeConfig.Node.CatchupTimeout.Duration > 0
+	if isAggregator && !catchupEnabled {
+		bc.Syncer = nil
+	}
+
 	return &failoverState{
 		logger:            logger,
 		p2pClient:         p2pClient,
@@ -173,6 +172,10 @@ func setupFailoverState(
 		dataSyncService:   dataSyncService,
 		rpcServer:         rpcServer,
 		bc:                bc,
+		store:             rktStore,
+		catchupEnabled:    catchupEnabled,
+		catchupTimeout:    nodeConfig.Node.CatchupTimeout.Duration,
+		daBlockTime:       nodeConfig.DA.BlockTime.Duration,
 	}, nil
 }
 
@@ -203,20 +206,31 @@ func (f *failoverState) Run(pCtx context.Context) (multiErr error) {
 		return nil
 	})
 
-	if err := f.p2pClient.Start(ctx); err != nil {
-		return fmt.Errorf("start p2p: %w", err)
-	}
-	defer f.p2pClient.Close() // nolint: errcheck
-
-	if err := f.headerSyncService.Start(ctx); err != nil {
-		return fmt.Errorf("error while starting header sync service: %w", err)
+	// start header and data sync services concurrently to avoid cumulative startup delay.
+	syncWg, syncCtx := errgroup.WithContext(ctx)
+	syncWg.Go(func() error {
+		if err := f.headerSyncService.Start(syncCtx); err != nil {
+			return fmt.Errorf("header sync service: %w", err)
+		}
+		return nil
+	})
+	syncWg.Go(func() error {
+		if err := f.dataSyncService.Start(syncCtx); err != nil {
+			return fmt.Errorf("data sync service: %w", err)
+		}
+		return nil
+	})
+	if err := syncWg.Wait(); err != nil {
+		return err
 	}
 	defer stopService(f.headerSyncService.Stop, "header sync")
-
-	if err := f.dataSyncService.Start(ctx); err != nil {
-		return fmt.Errorf("error while starting data sync service: %w", err)
-	}
 	defer stopService(f.dataSyncService.Stop, "data sync")
+
+	if f.catchupEnabled && f.bc.Syncer != nil {
+		if err := f.runCatchupPhase(ctx); err != nil {
+			return err
+		}
+	}
 
 	wg.Go(func() error {
 		defer func() {
@@ -233,6 +247,85 @@ func (f *failoverState) Run(pCtx context.Context) (multiErr error) {
 	return wg.Wait()
 }
 
+// runCatchupPhase starts the catchup syncer, waits until DA head is reached and P2P
+// is caught up, then stops the syncer so the executor can take over.
+func (f *failoverState) runCatchupPhase(ctx context.Context) error {
+	f.logger.Info().Msg("catchup: syncing from DA and P2P before producing blocks")
+
+	if err := f.bc.Syncer.Start(ctx); err != nil {
+		return fmt.Errorf("catchup syncer start: %w", err)
+	}
+	defer f.bc.Syncer.Stop() // nolint:errcheck // not critical
+
+	caughtUp, err := f.waitForCatchup(ctx)
+	if err != nil {
+		return err
+	}
+	if !caughtUp {
+		return ctx.Err()
+	}
+	f.logger.Info().Msg("catchup: fully caught up, stopping syncer and starting block production")
+	f.bc.Syncer = nil
+	return nil
+}
+
+// waitForCatchup polls DA and P2P catchup status until both sources indicate the node is caught up.
+func (f *failoverState) waitForCatchup(ctx context.Context) (bool, error) {
+	pollInterval := f.daBlockTime
+	if pollInterval <= 0 {
+		pollInterval = time.Second / 10
+	}
+
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+
+	var timeoutCh <-chan time.Time
+	if f.catchupTimeout > 0 {
+		f.logger.Debug().Dur("p2p_timeout", f.catchupTimeout).Msg("P2P catchup timeout configured")
+		timeoutCh = time.After(f.catchupTimeout)
+	} else {
+		f.logger.Debug().Msg("P2P catchup timeout disabled, relying on DA only")
+	}
+	ignoreP2P := false
+
+	for {
+		select {
+		case <-ctx.Done():
+			return false, nil
+		case <-timeoutCh:
+			f.logger.Info().Msg("catchup: P2P timeout reached, ignoring P2P status")
+			ignoreP2P = true
+			timeoutCh = nil
+		case <-ticker.C:
+			daCaughtUp := f.bc.Syncer != nil && f.bc.Syncer.HasReachedDAHead()
+
+			storeHeight, err := f.store.Height(ctx)
+			if err != nil {
+				f.logger.Warn().Err(err).Msg("failed to get store height during catchup")
+				continue
+			}
+
+			maxP2PHeight := max(
+				f.headerSyncService.Store().Height(),
+				f.dataSyncService.Store().Height(),
+			)
+
+			p2pCaughtUp := ignoreP2P || (maxP2PHeight > 0 && storeHeight >= maxP2PHeight)
+			if !ignoreP2P && f.catchupTimeout == 0 && maxP2PHeight == 0 {
+				p2pCaughtUp = true
+			}
+
+			if daCaughtUp && p2pCaughtUp {
+				f.logger.Info().
+					Uint64("store_height", storeHeight).
+					Uint64("max_p2p_height", maxP2PHeight).
+					Msg("catchup: fully caught up")
+				return true, nil
+			}
+		}
+	}
+}
+
 func (f *failoverState) IsSynced(s *raft.RaftBlockState) (int, error) {
 	if f.bc.Syncer != nil {
 		return f.bc.Syncer.IsSyncedWithRaft(s)
@@ -247,8 +340,6 @@ func (f *failoverState) Recover(ctx context.Context, state *raft.RaftBlockState)
 	if f.bc.Syncer != nil {
 		return f.bc.Syncer.RecoverFromRaft(ctx, state)
 	}
-	// For aggregator mode without syncer (e.g. based sequencer only?), recovery logic might differ or be implicit.
-	// But failure to recover means we are stuck.
 	return errors.New("recovery not supported in this mode")
 }
 

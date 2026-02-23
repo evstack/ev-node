@@ -7,11 +7,13 @@ import (
 	"testing"
 	"time"
 
+	tastoradocker "github.com/celestiaorg/tastora/framework/docker"
 	"github.com/ethereum/go-ethereum/common"
 	ethTypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
 	"github.com/evstack/ev-node/execution/evm"
@@ -58,8 +60,10 @@ func TestEngineExecution(t *testing.T) {
 	genesisStateRoot := common.HexToHash(GENESIS_STATEROOT)
 	GenesisStateRoot := genesisStateRoot[:]
 
+	dockerClient, dockerNetworkID := tastoradocker.Setup(t)
+
 	t.Run("Build chain", func(tt *testing.T) {
-		rethNode := SetupTestRethNode(t)
+		rethNode := SetupTestRethNode(t, dockerClient, dockerNetworkID)
 
 		ni, err := rethNode.GetNetworkInfo(context.TODO())
 		require.NoError(tt, err)
@@ -75,6 +79,7 @@ func TestEngineExecution(t *testing.T) {
 			common.Address{},
 			store,
 			false,
+			zerolog.Nop(),
 		)
 		require.NoError(tt, err)
 
@@ -156,7 +161,7 @@ func TestEngineExecution(t *testing.T) {
 
 	// start new container and try to sync
 	t.Run("Sync chain", func(tt *testing.T) {
-		rethNode := SetupTestRethNode(t)
+		rethNode := SetupTestRethNode(t, dockerClient, dockerNetworkID)
 
 		ni, err := rethNode.GetNetworkInfo(context.TODO())
 		require.NoError(tt, err)
@@ -172,6 +177,7 @@ func TestEngineExecution(t *testing.T) {
 			common.Address{},
 			store,
 			false,
+			zerolog.Nop(),
 		)
 		require.NoError(tt, err)
 

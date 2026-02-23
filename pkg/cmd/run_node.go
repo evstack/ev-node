@@ -23,6 +23,7 @@ import (
 	rollconf "github.com/evstack/ev-node/pkg/config"
 	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/signer/file"
@@ -163,6 +164,11 @@ func StartNode(
 		executor = telemetry.WithTracingExecutor(executor)
 	}
 
+	p2pClient, err := p2p.NewClient(nodeConfig.P2P, nodeKey.PrivKey, datastore, genesis.ChainID, logger, nil)
+	if err != nil {
+		return fmt.Errorf("create p2p client: %w", err)
+	}
+
 	// Create and start the node
 	rollnode, err := node.NewNode(
 		nodeConfig,
@@ -170,7 +176,7 @@ func StartNode(
 		sequencer,
 		daClient,
 		signer,
-		nodeKey,
+		p2pClient,
 		genesis,
 		datastore,
 		metrics,
@@ -216,20 +222,22 @@ func StartNode(
 		logger.Info().Msg("shutting down node...")
 		cancel()
 	case err := <-errCh:
-		logger.Error().Err(err).Msg("node error")
+		if err != nil && !errors.Is(err, context.Canceled) {
+			logger.Error().Err(err).Msg("node error")
+		}
 		cancel()
 		return err
 	}
 
-	// Wait for node to finish shutting down
+	// Wait for node to finish shutting down after signal
 	select {
-	case <-time.After(5 * time.Second):
-		logger.Info().Msg("Node shutdown timed out")
 	case err := <-errCh:
 		if err != nil && !errors.Is(err, context.Canceled) {
 			logger.Error().Err(err).Msg("Error during shutdown")
 			return err
 		}
+	case <-time.After(10 * time.Second):
+		return fmt.Errorf("shutdown timeout exceeded")
 	}
 
 	return nil

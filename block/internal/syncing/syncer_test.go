@@ -7,13 +7,9 @@ import (
 	"errors"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
-	"github.com/evstack/ev-node/core/execution"
-	datypes "github.com/evstack/ev-node/pkg/da/types"
-	"github.com/evstack/ev-node/pkg/genesis"
-	signerpkg "github.com/evstack/ev-node/pkg/signer"
-	"github.com/evstack/ev-node/pkg/signer/noop"
 	"github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p/core/crypto"
@@ -24,7 +20,12 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
+	"github.com/evstack/ev-node/core/execution"
 	"github.com/evstack/ev-node/pkg/config"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
+	"github.com/evstack/ev-node/pkg/genesis"
+	signerpkg "github.com/evstack/ev-node/pkg/signer"
+	"github.com/evstack/ev-node/pkg/signer/noop"
 	"github.com/evstack/ev-node/pkg/store"
 	testmocks "github.com/evstack/ev-node/test/mocks"
 	extmocks "github.com/evstack/ev-node/test/mocks/external"
@@ -93,7 +94,7 @@ func makeData(chainID string, height uint64, txs int) *types.Data {
 	}
 	if txs > 0 {
 		d.Txs = make(types.Txs, txs)
-		for i := 0; i < txs; i++ {
+		for i := range txs {
 			d.Txs[i] = types.Tx([]byte{byte(height), byte(i)})
 		}
 	}
@@ -539,36 +540,37 @@ func TestSyncer_executeTxsWithRetry(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+			synctest.Test(t, func(t *testing.T) {
+				ctx := t.Context()
+				exec := testmocks.NewMockExecutor(t)
+				tt.setupMock(exec)
 
-			ctx := t.Context()
-			exec := testmocks.NewMockExecutor(t)
-			tt.setupMock(exec)
-
-			s := &Syncer{
-				exec:   exec,
-				ctx:    ctx,
-				logger: zerolog.Nop(),
-			}
-
-			rawTxs := [][]byte{[]byte("tx1"), []byte("tx2")}
-			header := types.Header{
-				BaseHeader: types.BaseHeader{Height: 100, Time: uint64(time.Now().UnixNano())},
-			}
-			currentState := types.State{AppHash: []byte("current-hash")}
-
-			result, err := s.executeTxsWithRetry(ctx, rawTxs, header, currentState)
-
-			if tt.expectSuccess {
-				require.NoError(t, err)
-				assert.Equal(t, tt.expectHash, result)
-			} else {
-				require.Error(t, err)
-				if tt.expectError != "" {
-					assert.Contains(t, err.Error(), tt.expectError)
+				s := &Syncer{
+					exec:   exec,
+					ctx:    ctx,
+					logger: zerolog.Nop(),
 				}
-			}
 
-			exec.AssertExpectations(t)
+				rawTxs := [][]byte{[]byte("tx1"), []byte("tx2")}
+				header := types.Header{
+					BaseHeader: types.BaseHeader{Height: 100, Time: uint64(time.Now().UnixNano())},
+				}
+				currentState := types.State{AppHash: []byte("current-hash")}
+
+				result, err := s.executeTxsWithRetry(ctx, rawTxs, header, currentState)
+
+				if tt.expectSuccess {
+					require.NoError(t, err)
+					assert.Equal(t, tt.expectHash, result)
+				} else {
+					require.Error(t, err)
+					if tt.expectError != "" {
+						assert.Contains(t, err.Error(), tt.expectError)
+					}
+				}
+
+				exec.AssertExpectations(t)
+			})
 		})
 	}
 }
@@ -795,4 +797,204 @@ func TestProcessHeightEvent_SkipsDAHintWhenAlreadyFetched(t *testing.T) {
 	// Verify that the priority height WAS queued since it's above daRetrieverHeight
 	priorityHeight = s.daRetriever.PopPriorityHeight()
 	assert.Equal(t, uint64(200), priorityHeight, "should queue DA hint that is above current daRetrieverHeight")
+}
+
+// TestProcessHeightEvent_ExecutionFailure_DoesNotReschedule verifies that when
+// ExecuteTxs fails after all retries (execution client unavailable), the event
+// is NOT re-queued as pending.
+func TestProcessHeightEvent_ExecutionFailure_DoesNotReschedule(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ds := dssync.MutexWrap(datastore.NewMapDatastore())
+		st := store.New(ds)
+
+		cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+		require.NoError(t, err)
+
+		addr, pub, signer := buildSyncTestSigner(t)
+
+		cfg := config.DefaultConfig()
+		gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+
+		mockExec := testmocks.NewMockExecutor(t)
+		mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), nil).Once()
+
+		// ExecuteTxs fails on all attempts — simulates unavailable execution client
+		mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.Anything, mock.Anything).
+			Return([]byte(nil), errors.New("connection refused")).Times(common.MaxRetriesBeforeHalt)
+
+		errChan := make(chan error, 1)
+		s := NewSyncer(
+			st,
+			mockExec,
+			nil,
+			cm,
+			common.NopMetrics(),
+			cfg,
+			gen,
+			extmocks.NewMockStore[*types.P2PSignedHeader](t),
+			extmocks.NewMockStore[*types.P2PData](t),
+			zerolog.Nop(),
+			common.DefaultBlockOptions(),
+			errChan,
+			nil,
+		)
+
+		require.NoError(t, s.initializeState())
+		s.ctx = t.Context()
+
+		lastState := s.getLastState()
+		data := makeData(gen.ChainID, 1, 0)
+		_, hdr := makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, lastState.AppHash, data, nil)
+
+		evt := common.DAHeightEvent{Header: hdr, Data: data, DaHeight: 1}
+		s.processHeightEvent(t.Context(), &evt)
+
+		// A critical error must have been sent
+		select {
+		case critErr := <-errChan:
+			assert.ErrorContains(t, critErr, "failed to execute transactions")
+		default:
+			t.Fatal("expected a critical error on errorCh, got none")
+		}
+
+		// The hasCriticalError flag must be set
+		assert.True(t, s.hasCriticalError.Load(), "hasCriticalError should be true after execution failure")
+
+		// The event must NOT have been re-queued as pending
+		pending := cm.GetNextPendingEvent(1)
+		assert.Nil(t, pending, "event should not be re-queued as pending after execution client failure")
+	})
+}
+
+// TestSyncer_Stop_SkipsDrainOnCriticalError verifies that Syncer.Stop skips the
+// drain loop when hasCriticalError is set.
+func TestSyncer_Stop_SkipsDrainOnCriticalError(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	require.NoError(t, err)
+
+	addr, pub, signer := buildSyncTestSigner(t)
+
+	cfg := config.DefaultConfig()
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+
+	// The executor should NOT be called during Stop's drain.
+	mockExec := testmocks.NewMockExecutor(t)
+	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), nil).Once()
+
+	errChan := make(chan error, 1)
+	s := NewSyncer(
+		st,
+		mockExec,
+		nil,
+		cm,
+		common.NopMetrics(),
+		cfg,
+		gen,
+		extmocks.NewMockStore[*types.P2PSignedHeader](t),
+		extmocks.NewMockStore[*types.P2PData](t),
+		zerolog.Nop(),
+		common.DefaultBlockOptions(),
+		errChan,
+		nil,
+	)
+
+	require.NoError(t, s.initializeState())
+
+	ctx, cancel := context.WithCancel(t.Context())
+	s.ctx = ctx
+	s.cancel = cancel
+
+	// Enqueue events into heightInCh that would trigger ExecuteTxs if drained
+	lastState := s.getLastState()
+	data := makeData(gen.ChainID, 1, 0)
+	_, hdr := makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, lastState.AppHash, data, nil)
+	evt := common.DAHeightEvent{Header: hdr, Data: data, DaHeight: 1}
+	s.heightInCh <- evt
+
+	// Simulate that a critical error was already reported (execution client died)
+	s.hasCriticalError.Store(true)
+
+	// Start a no-op goroutine tracked by the WaitGroup so Stop() doesn't block on wg.Wait()
+	s.wg.Go(func() {})
+
+	// Stop must complete quickly — no drain, no ExecuteTxs calls
+	done := make(chan struct{})
+	go func() {
+		_ = s.Stop()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Stop returned promptly — drain was correctly skipped
+	case <-time.After(2 * time.Second):
+		t.Fatal("Syncer.Stop() hung — drain was not skipped despite critical error")
+	}
+
+	// ExecuteTxs should never have been called (only InitChain was expected)
+	mockExec.AssertExpectations(t)
+}
+
+// TestSyncer_Stop_DrainWorksWithoutCriticalError is a sanity check confirming
+// that the drain still runs (including ExecuteTxs) when there is no critical error.
+func TestSyncer_Stop_DrainWorksWithoutCriticalError(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ds := dssync.MutexWrap(datastore.NewMapDatastore())
+		st := store.New(ds)
+
+		cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+		require.NoError(t, err)
+
+		addr, pub, signer := buildSyncTestSigner(t)
+
+		cfg := config.DefaultConfig()
+		gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+
+		mockExec := testmocks.NewMockExecutor(t)
+		mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), nil).Once()
+		// The drain must call ExecuteTxs for a height-1 event that has not been processed yet.
+		mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.Anything, mock.Anything).
+			Return([]byte("app1"), nil).Once()
+
+		errChan := make(chan error, 1)
+		s := NewSyncer(
+			st,
+			mockExec,
+			nil,
+			cm,
+			common.NopMetrics(),
+			cfg,
+			gen,
+			extmocks.NewMockStore[*types.P2PSignedHeader](t),
+			extmocks.NewMockStore[*types.P2PData](t),
+			zerolog.Nop(),
+			common.DefaultBlockOptions(),
+			errChan,
+			nil,
+		)
+
+		require.NoError(t, s.initializeState())
+
+		ctx, cancel := context.WithCancel(t.Context())
+		s.ctx = ctx
+		s.cancel = cancel
+
+		// Build a valid height-1 event that will actually reach ExecuteTxs during drain
+		lastState := s.getLastState()
+		data := makeData(gen.ChainID, 1, 0)
+		_, hdr := makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, lastState.AppHash, data, nil)
+		evt := common.DAHeightEvent{Header: hdr, Data: data, DaHeight: 1}
+		s.heightInCh <- evt
+
+		// hasCriticalError is false (default) — drain should process events including ExecuteTxs
+		s.wg.Go(func() {})
+
+		_ = s.Stop()
+
+		// Verify ExecuteTxs was actually called during drain
+		mockExec.AssertExpectations(t)
+	})
 }

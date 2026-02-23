@@ -6,10 +6,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/evstack/ev-node/apps/grpc/cmd"
 	evcmd "github.com/evstack/ev-node/pkg/cmd"
 	"github.com/evstack/ev-node/pkg/config"
-
-	"github.com/evstack/ev-node/apps/grpc/cmd"
 )
 
 func main() {
