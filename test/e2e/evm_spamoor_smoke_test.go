@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	tastoradocker "github.com/celestiaorg/tastora/framework/docker"
 	spamoor "github.com/celestiaorg/tastora/framework/docker/evstack/spamoor"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
@@ -22,7 +23,8 @@ func TestSpamoorSmoke(t *testing.T) {
 
 	sut := NewSystemUnderTest(t)
 	// Bring up reth + local DA and start sequencer with default settings.
-	seqJWT, _, genesisHash, endpoints, rethNode := setupCommonEVMTest(t, sut, false)
+	dcli, netID := tastoradocker.Setup(t)
+	env := setupCommonEVMEnv(t, sut, dcli, netID)
 	sequencerHome := filepath.Join(t.TempDir(), "sequencer")
 
 	// In-process OTLP/HTTP collector to capture ev-node spans.
@@ -32,7 +34,7 @@ func TestSpamoorSmoke(t *testing.T) {
 	})
 
 	// Start sequencer with tracing to our collector.
-	setupSequencerNode(t, sut, sequencerHome, seqJWT, genesisHash, endpoints,
+	setupSequencerNode(t, sut, sequencerHome, env.SequencerJWT, env.GenesisHash, env.Endpoints,
 		"--evnode.instrumentation.tracing=true",
 		"--evnode.instrumentation.tracing_endpoint", collector.endpoint(),
 		"--evnode.instrumentation.tracing_sample_rate", "1.0",
@@ -41,15 +43,15 @@ func TestSpamoorSmoke(t *testing.T) {
 	t.Log("Sequencer node is up")
 
 	// Start Spamoor within the same Docker network, targeting reth internal RPC.
-	ni, err := rethNode.GetNetworkInfo(context.Background())
+	ni, err := env.RethNode.GetNetworkInfo(context.Background())
 	require.NoError(t, err, "failed to get network info")
 
 	internalRPC := "http://" + ni.Internal.RPCAddress()
 
 	spBuilder := spamoor.NewNodeBuilder(t.Name()).
-		WithDockerClient(rethNode.DockerClient).
-		WithDockerNetworkID(rethNode.NetworkID).
-		WithLogger(rethNode.Logger).
+		WithDockerClient(env.RethNode.DockerClient).
+		WithDockerNetworkID(env.RethNode.NetworkID).
+		WithLogger(env.RethNode.Logger).
 		WithRPCHosts(internalRPC).
 		WithPrivateKey(TestPrivateKey)
 
