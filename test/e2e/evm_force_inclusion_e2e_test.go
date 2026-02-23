@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	tastoradocker "github.com/celestiaorg/tastora/framework/docker"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/rs/zerolog"
@@ -77,13 +78,14 @@ func setupSequencerWithForceInclusion(t *testing.T, sut *SystemUnderTest, nodeHo
 	t.Helper()
 
 	// Use common setup (no full node needed initially)
-	jwtSecret, _, genesisHash, endpoints, _ := setupCommonEVMTest(t, sut, false)
+	dcli, netID := tastoradocker.Setup(t)
+	env := setupCommonEVMEnv(t, sut, dcli, netID)
 
 	// Create passphrase file
 	passphraseFile := createPassphraseFile(t, nodeHome)
 
 	// Create JWT secret file
-	jwtSecretFile := createJWTSecretFile(t, nodeHome, jwtSecret)
+	jwtSecretFile := createJWTSecretFile(t, nodeHome, env.SequencerJWT)
 
 	// Initialize sequencer node
 	output, err := sut.RunCmd(evmSingleBinaryPath,
@@ -102,25 +104,25 @@ func setupSequencerWithForceInclusion(t *testing.T, sut *SystemUnderTest, nodeHo
 	args := []string{
 		"start",
 		"--evm.jwt-secret-file", jwtSecretFile,
-		"--evm.genesis-hash", genesisHash,
+		"--evm.genesis-hash", env.GenesisHash,
 		"--evnode.node.block_time", DefaultBlockTime,
 		"--evnode.node.aggregator=true",
 		"--evnode.signer.passphrase_file", passphraseFile,
 		"--home", nodeHome,
 		"--evnode.da.block_time", DefaultDABlockTime,
-		"--evnode.da.address", endpoints.GetDAAddress(),
+		"--evnode.da.address", env.Endpoints.GetDAAddress(),
 		"--evnode.da.namespace", DefaultDANamespace,
 		"--evnode.da.forced_inclusion_namespace", "forced-inc",
-		"--evnode.rpc.address", endpoints.GetRollkitRPCListen(),
-		"--evnode.p2p.listen_address", endpoints.GetRollkitP2PAddress(),
-		"--evm.engine-url", endpoints.GetSequencerEngineURL(),
-		"--evm.eth-url", endpoints.GetSequencerEthURL(),
+		"--evnode.rpc.address", env.Endpoints.GetRollkitRPCListen(),
+		"--evnode.p2p.listen_address", env.Endpoints.GetRollkitP2PAddress(),
+		"--evm.engine-url", env.Endpoints.GetSequencerEngineURL(),
+		"--evm.eth-url", env.Endpoints.GetSequencerEthURL(),
 		"--force-inclusion-server", fiAddr,
 	}
 	sut.ExecCmd(evmSingleBinaryPath, args...)
-	sut.AwaitNodeUp(t, endpoints.GetRollkitRPCAddress(), NodeStartupTimeout)
+	sut.AwaitNodeUp(t, env.Endpoints.GetRollkitRPCAddress(), NodeStartupTimeout)
 
-	return genesisHash, endpoints.GetSequencerEthURL()
+	return env.GenesisHash, env.Endpoints.GetSequencerEthURL()
 }
 
 func TestEvmSequencerForceInclusionE2E(t *testing.T) {
@@ -192,10 +194,11 @@ func TestEvmFullNodeForceInclusionE2E(t *testing.T) {
 	// --- Start Sequencer Setup ---
 	// We manually setup sequencer here because we need the force inclusion flag,
 	// and we need to capture variables for full node setup.
-	jwtSecret, fullNodeJwtSecret, genesisHash, endpoints, _ := setupCommonEVMTest(t, sut, true)
+	dockerClient, networkID := tastoradocker.Setup(t)
+	env := setupCommonEVMEnv(t, sut, dockerClient, networkID, WithFullNode())
 
 	passphraseFile := createPassphraseFile(t, sequencerHome)
-	jwtSecretFile := createJWTSecretFile(t, sequencerHome, jwtSecret)
+	jwtSecretFile := createJWTSecretFile(t, sequencerHome, env.SequencerJWT)
 
 	output, err := sut.RunCmd(evmSingleBinaryPath,
 		"init",
@@ -212,38 +215,38 @@ func TestEvmFullNodeForceInclusionE2E(t *testing.T) {
 	seqArgs := []string{
 		"start",
 		"--evm.jwt-secret-file", jwtSecretFile,
-		"--evm.genesis-hash", genesisHash,
+		"--evm.genesis-hash", env.GenesisHash,
 		"--evnode.node.block_time", DefaultBlockTime,
 		"--evnode.node.aggregator=true",
 		"--evnode.signer.passphrase_file", passphraseFile,
 		"--home", sequencerHome,
 		"--evnode.da.block_time", DefaultDABlockTime,
-		"--evnode.da.address", endpoints.GetDAAddress(),
+		"--evnode.da.address", env.Endpoints.GetDAAddress(),
 		"--evnode.da.namespace", DefaultDANamespace,
 		"--evnode.da.forced_inclusion_namespace", "forced-inc",
-		"--evnode.rpc.address", endpoints.GetRollkitRPCListen(),
-		"--evnode.p2p.listen_address", endpoints.GetRollkitP2PAddress(),
-		"--evm.engine-url", endpoints.GetSequencerEngineURL(),
-		"--evm.eth-url", endpoints.GetSequencerEthURL(),
+		"--evnode.rpc.address", env.Endpoints.GetRollkitRPCListen(),
+		"--evnode.p2p.listen_address", env.Endpoints.GetRollkitP2PAddress(),
+		"--evm.engine-url", env.Endpoints.GetSequencerEngineURL(),
+		"--evm.eth-url", env.Endpoints.GetSequencerEthURL(),
 		"--force-inclusion-server", fiAddr,
 	}
 	sut.ExecCmd(evmSingleBinaryPath, seqArgs...)
-	sut.AwaitNodeUp(t, endpoints.GetRollkitRPCAddress(), NodeStartupTimeout)
+	sut.AwaitNodeUp(t, env.Endpoints.GetRollkitRPCAddress(), NodeStartupTimeout)
 	t.Log("Sequencer is up with force inclusion enabled")
 	// --- End Sequencer Setup ---
 
 	// --- Start Full Node Setup ---
 	// Reuse setupFullNode helper which handles genesis copying and node startup
-	setupFullNode(t, sut, fullNodeHome, sequencerHome, fullNodeJwtSecret, genesisHash, endpoints.GetRollkitP2PAddress(), endpoints)
+	setupFullNode(t, sut, fullNodeHome, sequencerHome, env.FullNodeJWT, env.GenesisHash, env.Endpoints.GetRollkitP2PAddress(), env.Endpoints)
 	t.Log("Full node is up")
 	// --- End Full Node Setup ---
 
 	// Connect to clients
-	seqClient, err := ethclient.Dial(endpoints.GetSequencerEthURL())
+	seqClient, err := ethclient.Dial(env.Endpoints.GetSequencerEthURL())
 	require.NoError(t, err)
 	defer seqClient.Close()
 
-	fnClient, err := ethclient.Dial(endpoints.GetFullNodeEthURL())
+	fnClient, err := ethclient.Dial(env.Endpoints.GetFullNodeEthURL())
 	require.NoError(t, err)
 	defer fnClient.Close()
 
@@ -284,10 +287,12 @@ func setupMaliciousSequencer(t *testing.T, sut *SystemUnderTest, nodeHome string
 	t.Helper()
 
 	// Use common setup with full node support
-	jwtSecret, fullNodeJwtSecret, genesisHash, endpoints, _ := setupCommonEVMTest(t, sut, true)
+	dockerClient, networkID := tastoradocker.Setup(t)
+	env := setupCommonEVMEnv(t, sut, dockerClient, networkID, WithFullNode())
+	// Use env fields inline below to reduce local vars
 
 	passphraseFile := createPassphraseFile(t, nodeHome)
-	jwtSecretFile := createJWTSecretFile(t, nodeHome, jwtSecret)
+	jwtSecretFile := createJWTSecretFile(t, nodeHome, env.SequencerJWT)
 
 	output, err := sut.RunCmd(evmSingleBinaryPath,
 		"init",
@@ -303,25 +308,25 @@ func setupMaliciousSequencer(t *testing.T, sut *SystemUnderTest, nodeHome string
 	seqArgs := []string{
 		"start",
 		"--evm.jwt-secret-file", jwtSecretFile,
-		"--evm.genesis-hash", genesisHash,
+		"--evm.genesis-hash", env.GenesisHash,
 		"--evnode.node.block_time", DefaultBlockTime,
 		"--evnode.node.aggregator=true",
 		"--evnode.signer.passphrase_file", passphraseFile,
 		"--home", nodeHome,
 		"--evnode.da.block_time", DefaultDABlockTime,
-		"--evnode.da.address", endpoints.GetDAAddress(),
+		"--evnode.da.address", env.Endpoints.GetDAAddress(),
 		"--evnode.da.namespace", DefaultDANamespace,
 		// CRITICAL: Set sequencer to listen to WRONG namespace - it won't see forced txs
 		"--evnode.da.forced_inclusion_namespace", "wrong-namespace",
-		"--evnode.rpc.address", endpoints.GetRollkitRPCListen(),
-		"--evnode.p2p.listen_address", endpoints.GetRollkitP2PAddress(),
-		"--evm.engine-url", endpoints.GetSequencerEngineURL(),
-		"--evm.eth-url", endpoints.GetSequencerEthURL(),
+		"--evnode.rpc.address", env.Endpoints.GetRollkitRPCListen(),
+		"--evnode.p2p.listen_address", env.Endpoints.GetRollkitP2PAddress(),
+		"--evm.engine-url", env.Endpoints.GetSequencerEngineURL(),
+		"--evm.eth-url", env.Endpoints.GetSequencerEthURL(),
 	}
 	sut.ExecCmd(evmSingleBinaryPath, seqArgs...)
-	sut.AwaitNodeUp(t, endpoints.GetRollkitRPCAddress(), NodeStartupTimeout)
+	sut.AwaitNodeUp(t, env.Endpoints.GetRollkitRPCAddress(), NodeStartupTimeout)
 
-	return genesisHash, fullNodeJwtSecret, endpoints
+	return env.GenesisHash, env.FullNodeJWT, env.Endpoints
 }
 
 // setupFullNodeWithForceInclusionCheck sets up a full node that WILL verify forced inclusion txs

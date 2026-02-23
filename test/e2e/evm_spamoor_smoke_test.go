@@ -35,18 +35,16 @@ func TestSpamoorSmoke(t *testing.T) {
 	t.Cleanup(func() { _ = jg.Remove(t.Context()) })
 	require.NoError(t, jg.Start(ctx), "failed to start jaeger node")
 
-	// Bring up reth + local DA and start sequencer with default settings.
-	seqJWT, _, genesisHash, endpoints, rethNode := setupCommonEVMTest(t, sut, false,
-		func(b *reth.NodeBuilder) {
-			b.WithDockerClient(dcli).
-				WithDockerNetworkID(netID).
-				WithEnv(
-					"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT="+jg.IngestHTTPEndpoint()+"/v1/traces",
-					"OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=http",
-					"RUST_LOG=info",
-					"OTEL_SDK_DISABLED=false",
-				)
-		},
+	// Bring up reth + local DA on the same docker network as Jaeger so reth can export traces.
+	env := setupCommonEVMEnv(t, sut, dcli, netID,
+		WithRethOpts(func(b *reth.NodeBuilder) {
+			b.WithEnv(
+				"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT="+jg.IngestHTTPEndpoint()+"/v1/traces",
+				"OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=http",
+				"RUST_LOG=info",
+				"OTEL_SDK_DISABLED=false",
+			)
+		}),
 	)
 	sequencerHome := filepath.Join(t.TempDir(), "sequencer")
 
@@ -55,16 +53,8 @@ func TestSpamoorSmoke(t *testing.T) {
 	require.NoError(t, err, "failed to get jaeger network info")
 	otlpHTTP := fmt.Sprintf("http://127.0.0.1:%s", jinfo.External.Ports.HTTP)
 
-	// Configure ev-reth to export traces to Jaeger (Rust OTLP exporter expects explicit /v1/traces path).
-	//evmtest.SetExtraRethEnvForTest(t.Name(),
-	//	"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT="+jg.IngestHTTPEndpoint()+"/v1/traces",
-	//	"OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=http",
-	//	"RUST_LOG=info",
-	//	"OTEL_SDK_DISABLED=false",
-	//)
-
 	// Start sequencer with tracing to Jaeger collector.
-	setupSequencerNode(t, sut, sequencerHome, seqJWT, genesisHash, endpoints,
+	setupSequencerNode(t, sut, sequencerHome, env.SequencerJWT, env.GenesisHash, env.Endpoints,
 		"--evnode.instrumentation.tracing=true",
 		"--evnode.instrumentation.tracing_endpoint", otlpHTTP,
 		"--evnode.instrumentation.tracing_sample_rate", "1.0",
@@ -73,20 +63,20 @@ func TestSpamoorSmoke(t *testing.T) {
 	t.Log("Sequencer node is up")
 
 	// Start Spamoor within the same Docker network, targeting reth internal RPC.
-	ni, err := rethNode.GetNetworkInfo(context.Background())
+	ni, err := env.RethNode.GetNetworkInfo(context.Background())
 	require.NoError(t, err, "failed to get network info")
 
 	internalRPC := "http://" + ni.Internal.RPCAddress()
 	// Preferred typed clients from tastora's reth node helpers
-	ethCli, err := rethNode.GetEthClient(ctx)
+	ethCli, err := env.RethNode.GetEthClient(ctx)
 	require.NoError(t, err, "failed to get ethclient")
-	rpcCli, err := rethNode.GetRPCClient(ctx)
+	rpcCli, err := env.RethNode.GetRPCClient(ctx)
 	require.NoError(t, err, "failed to get rpc client")
 
 	spBuilder := spamoor.NewNodeBuilder(t.Name()).
-		WithDockerClient(rethNode.DockerClient).
-		WithDockerNetworkID(rethNode.NetworkID).
-		WithLogger(rethNode.Logger).
+		WithDockerClient(env.RethNode.DockerClient).
+		WithDockerNetworkID(env.RethNode.NetworkID).
+		WithLogger(env.RethNode.Logger).
 		WithRPCHosts(internalRPC).
 		WithPrivateKey(TestPrivateKey)
 

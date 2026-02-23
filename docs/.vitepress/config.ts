@@ -269,6 +269,10 @@ function sidebarHome() {
               text: "Testnet",
               link: "/guides/deploy/testnet",
             },
+            {
+              text: "Mainnet",
+              link: "/guides/deploy/mainnet",
+            },
           ],
         },
         {
