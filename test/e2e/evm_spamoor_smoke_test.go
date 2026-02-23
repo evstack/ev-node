@@ -3,16 +3,17 @@
 package e2e
 
 import (
-	"context"
-	"fmt"
-	"net/http"
-	"path/filepath"
-	"testing"
-	"time"
+    "context"
+    "fmt"
+    "net/http"
+    "path/filepath"
+    "testing"
+    "time"
 
-	spamoor "github.com/celestiaorg/tastora/framework/docker/evstack/spamoor"
-	dto "github.com/prometheus/client_model/go"
-	"github.com/stretchr/testify/require"
+    tastoradocker "github.com/celestiaorg/tastora/framework/docker"
+    spamoor "github.com/celestiaorg/tastora/framework/docker/evstack/spamoor"
+    dto "github.com/prometheus/client_model/go"
+    "github.com/stretchr/testify/require"
 )
 
 // TestSpamoorSmoke spins up reth + sequencer and a Spamoor node, starts a few
@@ -21,9 +22,10 @@ func TestSpamoorSmoke(t *testing.T) {
 	t.Parallel()
 
 	sut := NewSystemUnderTest(t)
-	// Bring up reth + local DA and start sequencer with default settings.
-	seqJWT, _, genesisHash, endpoints, rethNode := setupCommonEVMTest(t, sut, false)
-	sequencerHome := filepath.Join(t.TempDir(), "sequencer")
+    // Bring up reth + local DA and start sequencer with default settings.
+    dcli, netID := tastoradocker.Setup(t)
+    env := setupCommonEVMEnv(t, sut, dcli, netID)
+    sequencerHome := filepath.Join(t.TempDir(), "sequencer")
 
 	// In-process OTLP/HTTP collector to capture ev-node spans.
 	collector := newOTLPCollector(t)
@@ -32,7 +34,7 @@ func TestSpamoorSmoke(t *testing.T) {
 	})
 
 	// Start sequencer with tracing to our collector.
-	setupSequencerNode(t, sut, sequencerHome, seqJWT, genesisHash, endpoints,
+    setupSequencerNode(t, sut, sequencerHome, env.SequencerJWT, env.GenesisHash, env.Endpoints,
 		"--evnode.instrumentation.tracing=true",
 		"--evnode.instrumentation.tracing_endpoint", collector.endpoint(),
 		"--evnode.instrumentation.tracing_sample_rate", "1.0",
@@ -41,15 +43,15 @@ func TestSpamoorSmoke(t *testing.T) {
 	t.Log("Sequencer node is up")
 
 	// Start Spamoor within the same Docker network, targeting reth internal RPC.
-	ni, err := rethNode.GetNetworkInfo(context.Background())
+    ni, err := env.RethNode.GetNetworkInfo(context.Background())
 	require.NoError(t, err, "failed to get network info")
 
 	internalRPC := "http://" + ni.Internal.RPCAddress()
 
-	spBuilder := spamoor.NewNodeBuilder(t.Name()).
-		WithDockerClient(rethNode.DockerClient).
-		WithDockerNetworkID(rethNode.NetworkID).
-		WithLogger(rethNode.Logger).
+    spBuilder := spamoor.NewNodeBuilder(t.Name()).
+        WithDockerClient(env.RethNode.DockerClient).
+        WithDockerNetworkID(env.RethNode.NetworkID).
+        WithLogger(env.RethNode.Logger).
 		WithRPCHosts(internalRPC).
 		WithPrivateKey(TestPrivateKey)
 
