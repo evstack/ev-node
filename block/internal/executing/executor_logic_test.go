@@ -13,6 +13,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/evstack/ev-node/block/internal/cache"
@@ -25,7 +26,6 @@ import (
 	"github.com/evstack/ev-node/pkg/store"
 	testmocks "github.com/evstack/ev-node/test/mocks"
 	"github.com/evstack/ev-node/types"
-	"github.com/stretchr/testify/mock"
 )
 
 // buildTestSigner returns a signer and its address for use in tests

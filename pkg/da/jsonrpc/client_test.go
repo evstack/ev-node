@@ -5,11 +5,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	libshare "github.com/celestiaorg/go-square/v3/share"
 	fcjsonrpc "github.com/filecoin-project/go-jsonrpc"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	libshare "github.com/celestiaorg/go-square/v3/share"
 	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 	"github.com/evstack/ev-node/pkg/da/jsonrpc/mocks"
 )

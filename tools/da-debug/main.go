@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/celestiaorg/go-square/v3/share"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/celestiaorg/go-square/v3/share"
 	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/types"

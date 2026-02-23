@@ -12,7 +12,6 @@ import (
 	"github.com/rs/zerolog"
 
 	coreexecutor "github.com/evstack/ev-node/core/execution"
-
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/store"
 )

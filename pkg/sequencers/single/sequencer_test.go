@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/evstack/ev-node/core/execution"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
@@ -15,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/evstack/ev-node/block"
+	"github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"

@@ -9,11 +9,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
+	"gotest.tools/v3/assert"
+
 	"github.com/evstack/ev-node/pkg/config"
 	da "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
-	"github.com/rs/zerolog"
-	"gotest.tools/v3/assert"
 )
 
 // mockDA implements block/internal/da.Client for testing

@@ -15,8 +15,9 @@ import (
 	tastoratypes "github.com/celestiaorg/tastora/framework/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/evstack/ev-node/execution/evm"
 	"github.com/stretchr/testify/suite"
+
+	"github.com/evstack/ev-node/execution/evm"
 )
 
 const (

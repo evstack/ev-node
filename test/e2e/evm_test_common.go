@@ -28,13 +28,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/celestiaorg/tastora/framework/docker/evstack/reth"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
-	evmtest "github.com/evstack/ev-node/execution/evm/test"
 	"github.com/stretchr/testify/require"
 
-	"github.com/celestiaorg/tastora/framework/docker/evstack/reth"
 	"github.com/evstack/ev-node/execution/evm"
+	evmtest "github.com/evstack/ev-node/execution/evm/test"
 )
 
 // evmSingleBinaryPath is the path to the evm-single binary used in tests

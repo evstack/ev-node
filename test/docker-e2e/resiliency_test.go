@@ -10,10 +10,9 @@ import (
 	"testing"
 	"time"
 
-	tastoratypes "github.com/celestiaorg/tastora/framework/types"
-
 	da "github.com/celestiaorg/tastora/framework/docker/dataavailability"
 	"github.com/celestiaorg/tastora/framework/docker/evstack"
+	tastoratypes "github.com/celestiaorg/tastora/framework/types"
 	"github.com/docker/docker/api/types/container"
 )
 

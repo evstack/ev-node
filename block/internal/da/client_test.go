@@ -8,13 +8,14 @@ import (
 	"time"
 
 	"github.com/celestiaorg/go-square/v3/share"
-	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
-	"github.com/evstack/ev-node/pkg/da/jsonrpc/mocks"
-	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
+	"github.com/evstack/ev-node/pkg/da/jsonrpc/mocks"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
 func makeBlobRPCClient(blobModule *mocks.MockBlobModule, headerModule *mocks.MockHeaderModule) *blobrpc.Client {

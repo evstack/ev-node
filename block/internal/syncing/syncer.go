@@ -14,12 +14,12 @@ import (
 	"time"
 
 	"github.com/celestiaorg/go-header"
-	coreexecutor "github.com/evstack/ev-node/core/execution"
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
+	coreexecutor "github.com/evstack/ev-node/core/execution"
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"

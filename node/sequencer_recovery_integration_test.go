@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/rs/zerolog"
@@ -20,6 +19,7 @@ import (
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	evconfig "github.com/evstack/ev-node/pkg/config"
+	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	signer "github.com/evstack/ev-node/pkg/signer/noop"
 	"github.com/evstack/ev-node/pkg/store"

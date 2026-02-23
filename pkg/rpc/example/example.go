@@ -8,11 +8,12 @@ import (
 	"os"
 	"time"
 
+	"github.com/rs/zerolog"
+
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/rpc/client"
 	"github.com/evstack/ev-node/pkg/rpc/server"
 	"github.com/evstack/ev-node/pkg/store"
-	"github.com/rs/zerolog"
 )
 
 // StartStoreServer starts a Store RPC server with the provided store instance
