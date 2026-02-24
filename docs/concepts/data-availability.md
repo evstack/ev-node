@@ -14,7 +14,7 @@ Evolve uses external DA layers to provide these guarantees, rather than storing 
 
 ## How Evolve Handles Data Availability
 
-Evolve is DA-agnostic and can integrate with different DA layers:
+Evolve currently supports two DA modes:
 
 ### Local DA
 
@@ -27,10 +27,6 @@ Evolve is DA-agnostic and can integrate with different DA layers:
 - **Use case**: Production deployments
 - **Guarantee**: Data availability sampling (DAS)
 - **Latency**: ~12 seconds to finality
-
-### Custom DA
-
-Implement the [DA interface](/reference/interfaces/da) to integrate any DA layer.
 
 ## DA Flow
 

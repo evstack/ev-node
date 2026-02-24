@@ -91,11 +91,11 @@ If a sequencer fails to include forced inclusion transactions past their epoch b
 
 When a malicious sequencer is detected (censoring forced inclusion transactions):
 
-**All nodes must restart the chain in based sequencing mode:**
+Nodes may require a coordinated restart into based sequencing mode, depending on governance and operator policy.
 
 ```bash
-# Restart with based sequencing enabled
-./evnode start --node.aggregator --node.based_sequencer
+# One possible coordinated recovery action
+./evnode start --evnode.node.aggregator --evnode.node.based_sequencer
 ```
 
 **In based sequencing mode:**
@@ -107,10 +107,11 @@ When a malicious sequencer is detected (censoring forced inclusion transactions)
 
 **Important considerations:**
 
+- Operators should agree on the last valid state and restart timing before the cutover.
 - All full nodes should coordinate the switch to based mode
 - The chain continues from the last valid state
 - Users submit transactions directly to the DA layer going forward
-- This is a one-way transition - moving back to single sequencer requires social consensus
+- Returning to single sequencer mode requires explicit governance and operational coordination
 
 See [Based Sequencing documentation](./based.md) for details on operating in this mode.
 

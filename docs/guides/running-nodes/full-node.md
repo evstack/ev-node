@@ -83,6 +83,7 @@ Key points about this command:
 - `chain_id` is generally the `$CHAIN_ID`, which is `gm` in this case.
 - The ports and addresses are different from the sequencer node to avoid conflicts. Not everything may be necessary for your setup.
 - We use the `P2P_ID` environment variable to set the seed node.
+- You can set the same values in your app config file instead of passing every option via CLI flags.
 
 ## Verifying Full Node Operation
 

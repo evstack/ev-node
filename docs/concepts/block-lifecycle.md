@@ -433,7 +433,7 @@ For more details on DA integration, see the [Data Availability specification](./
 #### Out-of-Order Chain Blocks on DA
 
 Evolve should support blocks arriving out-of-order on DA, like so:
-![out-of-order blocks](./out-of-order-blocks.png)
+![out-of-order blocks](../reference/specs/out-of-order-blocks.png)
 
 ### Block Sync Service (Syncer Component)
 
@@ -650,7 +650,7 @@ The components communicate through well-defined interfaces:
 
 ### P2P and Synchronization
 
-- Block sync over the P2P network works only when a full node is connected to the P2P network by specifying the initial seeds to connect to via `P2PConfig.Seeds` configuration parameter when starting the full node
+- Block sync over the P2P network works only when a full node is connected to the P2P network by specifying peers via the `P2PConfig.Peers` configuration parameter when starting the full node
 - Node's context is passed down to all components to support graceful shutdown and cancellation
 
 ## Metrics

@@ -17,10 +17,17 @@ curl http://localhost:26657/status
 
 ### View Logs
 
-If running ev-node as a systemd service:
+Use the log command that matches your runtime:
 
 ```bash
+# systemd service
 journalctl -u evnode -f
+
+# foreground process
+./evnode start ... 2>&1 | tee evnode.log
+
+# docker container
+docker logs -f <container_name>
 ```
 
 ## Common Issues

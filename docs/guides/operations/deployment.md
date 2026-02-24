@@ -4,6 +4,8 @@ description: This page provides an overview of some common ways to deploy chains
 
 # 🚀 Deploying Your Chain
 
+This page is a deployment index. Use it to choose the right deployment guide for your current stage, then follow the linked step-by-step guide.
+
 One of the benefits of building chains with Evolve is the flexibility you have as a developer to choose things like the DA layer, the settlement scheme, and the execution environment.
 
 You can learn more about Evolve architecture [here](../../learn/specs/overview.md).
@@ -39,6 +41,15 @@ When you're ready to test with real network conditions, you can deploy to testne
 Choose the deployment approach that matches your current needs:
 
 - [🌐 Testnet Deployment](./testnet.md) - Deploy on testnet with external DA networks
+
+## ✅ Before You Deploy
+
+Use this checklist before moving from local development to shared environments:
+
+1. Confirm DA connectivity and funding.
+2. Configure monitoring and alerting.
+3. Validate backup and recovery procedures.
+4. Run a multi-node failover drill.
 
 :::warning Disclaimer
 These examples are for educational purposes only. Before deploying your chain for production use you should fully understand the services you are deploying and your choice in deployment method.

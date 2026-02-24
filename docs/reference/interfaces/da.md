@@ -2,6 +2,8 @@
 
 The DA (Data Availability) interface defines how ev-node submits and retrieves data from the DA layer.
 
+This page is an overview. The source of truth for exact interfaces is the current DA interface implementation in this repository.
+
 ## Client Interface
 
 ```go

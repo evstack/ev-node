@@ -2,6 +2,8 @@
 
 Build a minimal custom executor to understand how ev-node integrates with execution layers.
 
+This page is a fast entry point. For a method-by-method implementation walkthrough, continue with [Implement Executor Interface](/getting-started/custom/implement-executor).
+
 ## Prerequisites
 
 - Go 1.22+

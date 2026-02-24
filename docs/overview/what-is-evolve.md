@@ -6,13 +6,13 @@ Built on Celestia, Evolve offers L1-level control with L2-level performance.
 
 This isn't a toolkit. It's a launch stack.
 
-No fees. No middlemen. No revenue share.
+No fees, no middlemen, no revenue share.
 
 ## What is Evolve
 
 Evolve is a launch stack for L1s. It gives you full control over execution — without CometBFT, validator ops, or lock-in.
 
-It's [open-source](https://github.com/evstack/ev-node), production-ready, and fully composable.
+Evolve is [open-source](https://github.com/evstack/ev-node), production-ready, and fully composable.
 
 At its core is \`ev-node\`, a modular node that exposes an [Execution interface](https://github.com/evstack/ev-node/blob/main/core/execution/execution.go), — letting you bring any VM or execution logic, including Cosmos SDK or custom-built runtimes.
 
@@ -60,7 +60,7 @@ With Evolve, developers can benefit from:
 
 - **Scalability:** Evolve chains are deployed on specialized data availability layers like Celestia, which directly leverages the scalability of the DA layer. Additionally, chain transactions are executed off-chain rather than on the data availability layer. This means chains have their own dedicated computational resources, rather than sharing computational resources with other applications.
 
-- **Customizability:** Evolve is built as an open source modular framework, to make it easier for developers to reuse the four main components and customize their chains. These components are data availability layers, execution environments, proof systems, and sequencer schemes.
+- **Customizability:** Evolve is built as an open-source modular framework, to make it easier for developers to reuse the four main components and customize their chains. These components are data availability layers, execution environments, proof systems, and sequencer schemes.
 
 - **Faster time-to-market:** Evolve eliminates the need to bootstrap a validator set, manage a consensus network, incur high economic costs, and face other trade-offs that come with deploying a legacy layer 1\. Evolve's goal is to make deploying a chain as easy as it is to deploy a smart contract, cutting the time it takes to bring blockchain products to market from months (or even years) to just minutes.
 

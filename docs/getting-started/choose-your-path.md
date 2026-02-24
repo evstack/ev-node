@@ -2,6 +2,8 @@
 
 Evolve supports three execution environments. Your choice depends on your existing codebase, target users, and development resources.
 
+Use this as a decision page, then jump into the selected quickstart.
+
 ## Quick Comparison
 
 |                      | EVM (ev-reth)                      | Cosmos SDK (ev-abci)        | Custom Executor     |

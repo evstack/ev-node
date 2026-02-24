@@ -17,9 +17,19 @@ Follow the [Celestia documentation](https://docs.celestia.org/how-to-guides/ligh
 
 **Quick start:**
 
+> Warning: Piping a remote script directly into a shell is a supply-chain risk. Review and verify the installer before execution in production environments.
+
 ```bash
 # Install celestia-node
 curl -sL https://docs.celestia.org/install.sh | bash
+```
+
+Safer flow (download, inspect, then execute):
+
+```bash
+curl -fsSL -o install-celestia.sh https://docs.celestia.org/install.sh
+less install-celestia.sh
+bash install-celestia.sh
 
 # Initialize (choose your network)
 celestia light init --p2p.network mocha
@@ -137,7 +147,7 @@ Search by your namespace or account address to see submitted blobs.
 
 ### Gas Price
 
-By default, ev-node uses automatic gas price detection. You can override this with a manual value if needed:
+By default, ev-node uses automatic gas price detection. Keep the default unless you have an operational reason to override it:
 
 ```bash
 --evnode.da.gas_price 0.01
