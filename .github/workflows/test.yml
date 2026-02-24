@@ -12,9 +12,9 @@ jobs:
     name: Build All ev-node Binaries
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
       - name: set up go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v6.2.0
         with:
           go-version-file: ./go.mod
       - name: Build all ev-node binaries
@@ -24,8 +24,8 @@ jobs:
     name: Go Mod Tidy Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/setup-go@v6.2.0
         with:
           go-version-file: ./go.mod
       - run: make deps
@@ -39,9 +39,9 @@ jobs:
       contents: read
       packages: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
       - name: set up go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v6.2.0
         with:
           go-version-file: ./go.mod
       - name: Run unit test
@@ -56,9 +56,9 @@ jobs:
     name: Run Integration Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
       - name: set up go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v6.2.0
         with:
           go-version-file: ./go.mod
       - name: Run integration test
@@ -77,9 +77,9 @@ jobs:
       contents: read
       packages: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
       - name: set up go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v6.2.0
         with:
           go-version-file: ./go.mod
       - name: Set up Docker Buildx
@@ -101,9 +101,9 @@ jobs:
     needs: build_all-apps
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
       - name: set up go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v6.2.0
         with:
           go-version-file: ./go.mod
       - name: EVM Tests
@@ -116,7 +116,7 @@ jobs:
     permissions:
       actions: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
       - name: Download unit test coverage report
         uses: actions/download-artifact@v7
         with:
