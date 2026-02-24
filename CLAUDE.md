@@ -109,6 +109,7 @@ go test -race ./package/...
 - Wrap errors with context using `fmt.Errorf`
 - Return errors early
 - Use custom error types for domain-specific errors
+- Never start an error message with "failed to"
 
 ### Logging
 

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/celestiaorg/go-square/v3/share"
+	"github.com/evstack/ev-node/pkg/da"
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block/internal/common"
@@ -89,7 +90,23 @@ func (c *client) Submit(ctx context.Context, data [][]byte, _ float64, namespace
 
 	blobs := make([]*blobrpc.Blob, len(data))
 	for i, raw := range data {
-		if uint64(len(raw)) > common.DefaultMaxBlobSize {
+		// Compress blob data before submission to reduce bandwidth and storage costs
+		compressed, compErr := da.Compress(raw)
+		if compErr != nil {
+			return datypes.ResultSubmit{
+				BaseResult: datypes.BaseResult{
+					Code:    datypes.StatusError,
+					Message: fmt.Sprintf("compress blob %d: %v", i, compErr),
+				},
+			}
+		}
+		c.logger.Debug().
+			Int("original_size", len(raw)).
+			Int("compressed_size", len(compressed)).
+			Float64("ratio", float64(len(compressed))/float64(len(raw))).
+			Msg("compressed blob for DA submission")
+
+		if uint64(len(compressed)) > common.DefaultMaxBlobSize {
 			return datypes.ResultSubmit{
 				BaseResult: datypes.BaseResult{
 					Code:    datypes.StatusTooBig,
@@ -97,7 +114,7 @@ func (c *client) Submit(ctx context.Context, data [][]byte, _ float64, namespace
 				},
 			}
 		}
-		blobs[i], err = blobrpc.NewBlobV0(ns, raw)
+		blobs[i], err = blobrpc.NewBlobV0(ns, compressed)
 		if err != nil {
 			return datypes.ResultSubmit{
 				BaseResult: datypes.BaseResult{
@@ -278,12 +295,22 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 		}
 	}
 
-	// Extract IDs and data from the blobs.
+	// Extract IDs and data from the blobs, decompressing if needed.
 	ids := make([]datypes.ID, len(blobs))
 	data := make([]datypes.Blob, len(blobs))
 	for i, b := range blobs {
 		ids[i] = blobrpc.MakeID(height, b.Commitment)
-		data[i] = b.Data()
+		decompressed, decompErr := da.Decompress(b.Data())
+		if decompErr != nil {
+			return datypes.ResultRetrieve{
+				BaseResult: datypes.BaseResult{
+					Code:    datypes.StatusError,
+					Message: fmt.Sprintf("decompress blob %d at height %d: %v", i, height, decompErr),
+					Height:  height,
+				},
+			}
+		}
+		data[i] = decompressed
 	}
 
 	c.logger.Debug().Int("num_blobs", len(blobs)).Msg("retrieved blobs")
@@ -361,7 +388,11 @@ func (c *client) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([
 		if b == nil {
 			continue
 		}
-		res = append(res, b.Data())
+		decompressed, decompErr := da.Decompress(b.Data())
+		if decompErr != nil {
+			return nil, fmt.Errorf("decompress blob: %w", decompErr)
+		}
+		res = append(res, decompressed)
 	}
 
 	return res, nil
