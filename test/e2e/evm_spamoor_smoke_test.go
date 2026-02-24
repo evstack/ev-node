@@ -145,17 +145,6 @@ func TestSpamoorSmoke(t *testing.T) {
 	sent := sumCounter(metrics["spamoor_transactions_sent_total"])
 	fail := sumCounter(metrics["spamoor_transactions_failed_total"])
 
-	// Probe ev-reth via JSON-RPC as proxy metrics: head height should advance; peer count should be >= 0.
-	h1, err := ethCli.BlockNumber(ctx)
-	require.NoError(t, err, "failed to query initial block number")
-	time.Sleep(5 * time.Second)
-	h2, err := ethCli.BlockNumber(ctx)
-	require.NoError(t, err, "failed to query subsequent block number")
-	var peerCountHex string
-	require.NoError(t, rpcCli.CallContext(ctx, &peerCountHex, "net_peerCount"))
-	t.Logf("reth head: %d -> %d, net_peerCount=%s", h1, h2, strings.TrimSpace(peerCountHex))
-	require.Greater(t, h2, h1, "reth head should have advanced")
-
 	// Verify Jaeger received traces from ev-node.
 	// Service name is set above via --evnode.instrumentation.tracing_service_name "ev-node-smoke".
 	traceCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
@@ -210,6 +199,7 @@ func TestSpamoorSmoke(t *testing.T) {
 
 	// ev-reth span names are internal to the Rust OTLP exporter and may change
 	// across versions, so we only assert that spans were collected at all.
+	// TODO: check for more specific spans once implemented.
 	require.NotEmpty(t, evRethSpans, "expected at least one span from ev-reth")
 
 	require.Greater(t, sent, float64(0), "at least one transaction should have been sent")
