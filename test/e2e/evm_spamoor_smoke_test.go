@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -65,11 +64,6 @@ func TestSpamoorSmoke(t *testing.T) {
 	require.NoError(t, err, "failed to get network info")
 
 	internalRPC := "http://" + ni.Internal.RPCAddress()
-	// Preferred typed clients from tastora's reth node helpers
-	ethCli, err := env.RethNode.GetEthClient(ctx)
-	require.NoError(t, err, "failed to get ethclient")
-	rpcCli, err := env.RethNode.GetRPCClient(ctx)
-	require.NoError(t, err, "failed to get rpc client")
 
 	spBuilder := spamoor.NewNodeBuilder(t.Name()).
 		WithDockerClient(env.RethNode.DockerClient).
