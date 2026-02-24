@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1771933022659,
+  "lastUpdate": 1771933034503,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -1626,6 +1626,102 @@ window.BENCHMARK_DATA = {
             "value": 81,
             "unit": "allocs/op",
             "extra": "24892 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "github.qpeyb@simplelogin.fr",
+            "name": "Cian Hatton",
+            "username": "chatton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "67e18bdae65f2b2e919d34f51e4a58c08459c386",
+          "message": "chore: gather spans from both ev-node and ev-reth in spamoor test (#3099)\n\n* wip: passing test, but hacky\n\n* chore: refactor test setup to allow for injection of docker client\n\n* chore: fix test compilation errors, removed useless comments\n\n* chore: addresing PR feedback\n\n* chore: create common trace printing code\n\n* chore: adding assertions on addtional spans\n\n* deps: tidy all\n\n* chore: address PR feedback\n\n* chore: removed unnessesdary test\n\n* chore: removed unused imports\n\n* chore: removed non-existant trace",
+          "timestamp": "2026-02-24T11:17:08Z",
+          "tree_id": "6b532ff738799a952fe7418571ac0dd81cb24e33",
+          "url": "https://github.com/evstack/ev-node/commit/67e18bdae65f2b2e919d34f51e4a58c08459c386"
+        },
+        "date": 1771933031467,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 37144,
+            "unit": "ns/op\t    7006 B/op\t      71 allocs/op",
+            "extra": "32186 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 37144,
+            "unit": "ns/op",
+            "extra": "32186 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 7006,
+            "unit": "B/op",
+            "extra": "32186 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 71,
+            "unit": "allocs/op",
+            "extra": "32186 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 37917,
+            "unit": "ns/op\t    7462 B/op\t      81 allocs/op",
+            "extra": "31525 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 37917,
+            "unit": "ns/op",
+            "extra": "31525 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 7462,
+            "unit": "B/op",
+            "extra": "31525 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 81,
+            "unit": "allocs/op",
+            "extra": "31525 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 48823,
+            "unit": "ns/op\t   26147 B/op\t      81 allocs/op",
+            "extra": "25281 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 48823,
+            "unit": "ns/op",
+            "extra": "25281 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 26147,
+            "unit": "B/op",
+            "extra": "25281 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 81,
+            "unit": "allocs/op",
+            "extra": "25281 times\n4 procs"
           }
         ]
       }
