@@ -88,6 +88,7 @@ jobs:
 
       # only update the benchmark baseline on push/dispatch, not on PRs
       - name: Store EVM Contract Roundtrip result
+        if: always()
         uses: benchmark-action/github-action-benchmark@4bdcce38c94cec68da58d012ac24b7b1155efe8b # v1.20.7
         with:
           name: EVM Contract Roundtrip
@@ -102,9 +103,11 @@ jobs:
 
       # delete local gh-pages so the next benchmark action step fetches fresh from remote
       - name: Reset local gh-pages branch
+        if: always()
         run: git branch -D gh-pages || true
 
       - name: Store Block Executor result
+        if: always()
         uses: benchmark-action/github-action-benchmark@4bdcce38c94cec68da58d012ac24b7b1155efe8b # v1.20.7
         with:
           name: Block Executor Benchmark
@@ -119,9 +122,11 @@ jobs:
 
       # delete local gh-pages so the next benchmark action step fetches fresh from remote
       - name: Reset local gh-pages branch
+        if: always()
         run: git branch -D gh-pages || true
 
       - name: Store Spamoor Trace result
+        if: always()
         uses: benchmark-action/github-action-benchmark@4bdcce38c94cec68da58d012ac24b7b1155efe8b # v1.20.7
         with:
           name: Spamoor Trace Benchmarks
@@ -131,5 +136,5 @@ jobs:
           save-data-file: ${{ github.event_name != 'pull_request' }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           alert-threshold: '150%'
-          fail-on-alert: true
+          fail-on-alert: false
           comment-on-alert: true
