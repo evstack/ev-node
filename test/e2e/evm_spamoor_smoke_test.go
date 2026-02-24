@@ -38,10 +38,14 @@ func TestSpamoorSmoke(t *testing.T) {
 	// Bring up reth + local DA on the same docker network as Jaeger so reth can export traces.
 	env := setupCommonEVMEnv(t, sut, dcli, netID,
 		WithRethOpts(func(b *reth.NodeBuilder) {
-			b.WithEnv(
+			b.WithTag("pr-140").WithEnv(
+				// set both base and signal-specific env vars for compatibility:
+				// ev-reth reads OTEL_EXPORTER_OTLP_ENDPOINT, other OTLP SDKs may use the _TRACES_ variant.
+				"OTEL_EXPORTER_OTLP_ENDPOINT="+jg.Internal.IngestHTTPEndpoint()+"/v1/traces",
 				"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT="+jg.Internal.IngestHTTPEndpoint()+"/v1/traces",
+				"OTEL_EXPORTER_OTLP_PROTOCOL=http",
 				"OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=http",
-				"RUST_LOG=info",
+				"RUST_LOG=debug",
 				"OTEL_SDK_DISABLED=false",
 			)
 		}),
@@ -165,14 +169,15 @@ func TestSpamoorSmoke(t *testing.T) {
 	evRethSpans := extractSpansFromTraces(evRethTraces)
 	printTraceReport(t, "ev-reth", toTraceSpans(evRethSpans))
 
-	// write benchmark JSON for ev-node spans when output path is configured
+	// write benchmark JSON for ev-node and ev-reth spans when output path is configured
 	if outputPath := os.Getenv("BENCH_JSON_OUTPUT"); outputPath != "" {
-		writeTraceBenchmarkJSON(t, "SpamoorSmoke", toTraceSpans(evNodeSpans), outputPath)
+		allSpans := append(toTraceSpans(evNodeSpans), toTraceSpans(evRethSpans)...)
+		writeTraceBenchmarkJSON(t, "SpamoorSmoke", allSpans, outputPath)
 	}
 
 	// assert expected ev-node span names are present.
 	// these spans reliably appear during block production with transactions flowing.
-	expectedSpans := []string{
+	expectedEvNodeSpans := []string{
 		"BlockExecutor.ProduceBlock",
 		"BlockExecutor.ApplyBlock",
 		"BlockExecutor.CreateBlock",
@@ -188,18 +193,28 @@ func TestSpamoorSmoke(t *testing.T) {
 		"DASubmitter.SubmitData",
 		"DA.Submit",
 	}
-	opNames := make(map[string]struct{}, len(evNodeSpans))
+	evNodeOpNames := make(map[string]struct{}, len(evNodeSpans))
 	for _, s := range evNodeSpans {
-		opNames[s.operationName] = struct{}{}
+		evNodeOpNames[s.operationName] = struct{}{}
 	}
-	for _, name := range expectedSpans {
-		require.Contains(t, opNames, name, "expected span %q not found in ev-node-smoke traces", name)
+	for _, name := range expectedEvNodeSpans {
+		require.Contains(t, evNodeOpNames, name, "expected span %q not found in ev-node-smoke traces", name)
 	}
 
-	// ev-reth span names are internal to the Rust OTLP exporter and may change
-	// across versions, so we only assert that spans were collected at all.
-	// TODO: check for more specific spans once implemented.
-	require.NotEmpty(t, evRethSpans, "expected at least one span from ev-reth")
+	// assert expected ev-reth span names are present.
+	expectedEvRethSpans := []string{
+		"build_payload",
+		"execute_tx",
+		"try_build",
+		"validate_transaction",
+	}
+	evRethOpNames := make(map[string]struct{}, len(evRethSpans))
+	for _, s := range evRethSpans {
+		evRethOpNames[s.operationName] = struct{}{}
+	}
+	for _, name := range expectedEvRethSpans {
+		require.Contains(t, evRethOpNames, name, "expected span %q not found in ev-reth traces", name)
+	}
 
 	require.Greater(t, sent, float64(0), "at least one transaction should have been sent")
 	require.Zero(t, fail, "no transactions should have failed")
