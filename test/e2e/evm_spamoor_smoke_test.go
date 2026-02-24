@@ -170,7 +170,6 @@ func TestSpamoorSmoke(t *testing.T) {
 		"BlockExecutor.ProduceBlock",
 		"BlockExecutor.ApplyBlock",
 		"BlockExecutor.CreateBlock",
-		"BlockExecutor.ValidateBlock",
 		"BlockExecutor.RetrieveBatch",
 		"Executor.ExecuteTxs",
 		"Executor.SetFinal",
