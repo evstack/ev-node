@@ -466,7 +466,7 @@ func setupFullNode(t testing.TB, sut *SystemUnderTest, fullNodeHome, sequencerHo
 }
 
 // Global nonce counter to ensure unique nonces across multiple transaction submissions
-var globalNonce uint64 = 0
+var globalNonce uint64
 
 // submitTransactionAndGetBlockNumber submits a transaction to the sequencer and returns inclusion details.
 // This function:
@@ -593,6 +593,7 @@ func setupCommonEVMEnv(t testing.TB, sut *SystemUnderTest, client tastoratypes.T
 		GenesisHash:  genesisHash,
 		Endpoints:    dynEndpoints,
 		RethNode:     rethNode,
+		FullNode:     rethFn,
 	}
 }
 
@@ -605,6 +606,7 @@ type EVMEnv struct {
 	GenesisHash  string
 	Endpoints    *TestEndpoints
 	RethNode     *reth.Node
+	FullNode     *reth.Node
 }
 
 // checkBlockInfoAt retrieves block information at a specific height including state root.

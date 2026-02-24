@@ -61,7 +61,7 @@ func TestSpamoorSmoke(t *testing.T) {
 	t.Log("Sequencer node is up")
 
 	// Start Spamoor within the same Docker network, targeting reth internal RPC.
-	ni, err := env.RethNode.GetNetworkInfo(context.Background())
+	ni, err := env.RethNode.GetNetworkInfo(ctx)
 	require.NoError(t, err, "failed to get network info")
 
 	internalRPC := "http://" + ni.Internal.RPCAddress()
@@ -78,7 +78,6 @@ func TestSpamoorSmoke(t *testing.T) {
 		WithRPCHosts(internalRPC).
 		WithPrivateKey(TestPrivateKey)
 
-	ctx = t.Context()
 	spNode, err := spBuilder.Build(ctx)
 	require.NoError(t, err, "failed to build sp node")
 
@@ -136,7 +135,8 @@ func TestSpamoorSmoke(t *testing.T) {
 		t.Cleanup(func() { _ = api.DeleteSpammer(idToDelete) })
 	}
 
-	// Allow additional time to accumulate activity.
+	// allow spamoor enough time to generate transaction throughput
+	// so that the expected tracing spans appear in Jaeger.
 	time.Sleep(60 * time.Second)
 
 	// Fetch parsed metrics and print a concise summary.
@@ -154,6 +154,7 @@ func TestSpamoorSmoke(t *testing.T) {
 	var peerCountHex string
 	require.NoError(t, rpcCli.CallContext(ctx, &peerCountHex, "net_peerCount"))
 	t.Logf("reth head: %d -> %d, net_peerCount=%s", h1, h2, strings.TrimSpace(peerCountHex))
+	require.Greater(t, h2, h1, "reth head should have advanced")
 
 	// Verify Jaeger received traces from ev-node.
 	// Service name is set above via --evnode.instrumentation.tracing_service_name "ev-node-smoke".
@@ -207,18 +208,9 @@ func TestSpamoorSmoke(t *testing.T) {
 		require.Contains(t, opNames, name, "expected span %q not found in ev-node-smoke traces", name)
 	}
 
-	// assert expected ev-reth span names are present.
-	expectedRethSpans := []string{
-		"Storage trie",
-		"cache_for",
-	}
-	rethOpNames := make(map[string]struct{}, len(evRethSpans))
-	for _, s := range evRethSpans {
-		rethOpNames[s.operationName] = struct{}{}
-	}
-	for _, name := range expectedRethSpans {
-		require.Contains(t, rethOpNames, name, "expected span %q not found in ev-reth traces", name)
-	}
+	// ev-reth span names are internal to the Rust OTLP exporter and may change
+	// across versions, so we only assert that spans were collected at all.
+	require.NotEmpty(t, evRethSpans, "expected at least one span from ev-reth")
 
 	require.Greater(t, sent, float64(0), "at least one transaction should have been sent")
 	require.Zero(t, fail, "no transactions should have failed")
