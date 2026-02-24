@@ -44,6 +44,7 @@ import (
 func BenchmarkEvmContractRoundtrip(b *testing.B) {
 	workDir := b.TempDir()
 	sequencerHome := filepath.Join(workDir, "evm-bench-sequencer")
+	const blockTime = 5 * time.Millisecond
 
 	// Start an in-process OTLP/HTTP receiver to collect traces from ev-node.
 	collector := newOTLPCollector(b)
@@ -55,7 +56,7 @@ func BenchmarkEvmContractRoundtrip(b *testing.B) {
 		"--evnode.instrumentation.tracing_endpoint", collector.endpoint(),
 		"--evnode.instrumentation.tracing_sample_rate", "1.0",
 		"--evnode.instrumentation.tracing_service_name", "ev-node-bench",
-		"--evnode.node.block_time=10ms",
+		"--evnode.node.block_time="+blockTime.String(),
 	)
 	defer cleanup()
 
@@ -102,11 +103,11 @@ func BenchmarkEvmContractRoundtrip(b *testing.B) {
 		err = client.SendTransaction(ctx, signedTxs[i])
 		require.NoError(b, err)
 
-		// 2. Wait for inclusion with fast 10ms polling to reduce variance while avoiding RPC overload.
+		// 2. Wait for inclusion with fast polling to reduce variance while avoiding RPC overload.
 		require.Eventually(b, func() bool {
 			receipt, err := client.TransactionReceipt(ctx, signedTxs[i].Hash())
 			return err == nil && receipt != nil
-		}, 2*time.Second, 10*time.Millisecond, "transaction %s not included", signedTxs[i].Hash().Hex())
+		}, 2*time.Second, blockTime/2, "transaction %s not included", signedTxs[i].Hash().Hex())
 
 		// 3. Retrieve and verify.
 		result, err := client.CallContract(ctx, callMsg, nil)
