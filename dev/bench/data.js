@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1771926757399,
+  "lastUpdate": 1771926813868,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -566,6 +566,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 11725,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "fce49c0cdedfab67fc359846dcecf27e76793d98",
+          "message": "build(deps): Bump goreleaser/goreleaser-action from 6 to 7 (#3101)\n\nBumps [goreleaser/goreleaser-action](https://github.com/goreleaser/goreleaser-action) from 6 to 7.\n- [Release notes](https://github.com/goreleaser/goreleaser-action/releases)\n- [Commits](https://github.com/goreleaser/goreleaser-action/compare/v6...v7)\n\n---\nupdated-dependencies:\n- dependency-name: goreleaser/goreleaser-action\n  dependency-version: '7'\n  dependency-type: direct:production\n  update-type: version-update:semver-major\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-02-24T10:49:51+01:00",
+          "tree_id": "c36646a47791d7a593806c673cb79b4e379d9fa3",
+          "url": "https://github.com/evstack/ev-node/commit/fce49c0cdedfab67fc359846dcecf27e76793d98"
+        },
+        "date": 1771926810013,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 853094756,
+            "unit": "ns/op\t 1919504 B/op\t   11660 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 853094756,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 1919504,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 11660,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
