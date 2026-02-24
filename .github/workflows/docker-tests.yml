@@ -22,9 +22,9 @@ jobs:
     name: Docker E2E Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
       - name: set up go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v6.2.0
         with:
           go-version-file: ./test/docker-e2e/go.mod
       - name: Run Docker E2E Tests
@@ -39,9 +39,9 @@ jobs:
       contents: read
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
       - name: set up go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v6.2.0
         with:
           go-version-file: ./test/docker-e2e/go.mod
       - name: Run Docker Upgrade E2E Tests
@@ -56,9 +56,9 @@ jobs:
       contents: read
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
       - name: set up go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v6.2.0
         with:
           go-version-file: ./test/docker-e2e/go.mod
       - name: Run Docker Compat E2E Tests
