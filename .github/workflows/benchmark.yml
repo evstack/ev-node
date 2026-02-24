@@ -99,6 +99,10 @@ jobs:
           fail-on-alert: true
           comment-on-alert: true
 
+      # delete local gh-pages so the next benchmark action step fetches fresh from remote
+      - name: Reset local gh-pages branch
+        run: git branch -D gh-pages || true
+
       - name: Store Block Executor result
         uses: benchmark-action/github-action-benchmark@4bdcce38c94cec68da58d012ac24b7b1155efe8b # v1.20.7
         with:
@@ -111,6 +115,10 @@ jobs:
           alert-threshold: '150%'
           fail-on-alert: true
           comment-on-alert: true
+
+      # delete local gh-pages so the next benchmark action step fetches fresh from remote
+      - name: Reset local gh-pages branch
+        run: git branch -D gh-pages || true
 
       - name: Store Spamoor Trace result
         uses: benchmark-action/github-action-benchmark@4bdcce38c94cec68da58d012ac24b7b1155efe8b # v1.20.7
