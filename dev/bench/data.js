@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1771940456286,
+  "lastUpdate": 1771940581681,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -758,6 +758,52 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 11702,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "chatton",
+            "username": "chatton",
+            "email": "github.qpeyb@simplelogin.fr"
+          },
+          "committer": {
+            "name": "chatton",
+            "username": "chatton",
+            "email": "github.qpeyb@simplelogin.fr"
+          },
+          "id": "f4a09a2eae5966e209b287614b4ea4c0cf51858b",
+          "message": "ci: run benchmarks on PRs without updating baseline",
+          "timestamp": "2026-02-24T13:35:00Z",
+          "url": "https://github.com/evstack/ev-node/commit/f4a09a2eae5966e209b287614b4ea4c0cf51858b"
+        },
+        "date": 1771940578795,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 877725048,
+            "unit": "ns/op\t 1944456 B/op\t   11694 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 877725048,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 1944456,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 11694,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
