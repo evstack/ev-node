@@ -34,7 +34,7 @@ func TestCompressDecompress_RoundTrip(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			compressed, err := Compress(tt.data)
+			compressed, err := Compress(tt.data, LevelDefault)
 			require.NoError(t, err)
 
 			assert.True(t, IsCompressed(compressed), "compressed data should have magic prefix")
@@ -47,12 +47,46 @@ func TestCompressDecompress_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestCompress_AllLevelsRoundTrip(t *testing.T) {
+	data := bytes.Repeat([]byte("adaptive compression level test "), 5000)
+	levels := []struct {
+		name  string
+		level CompressionLevel
+	}{
+		{"fastest", LevelFastest},
+		{"default", LevelDefault},
+		{"best", LevelBest},
+	}
+
+	var sizes []int
+	for _, lvl := range levels {
+		t.Run(lvl.name, func(t *testing.T) {
+			compressed, err := Compress(data, lvl.level)
+			require.NoError(t, err)
+			assert.True(t, IsCompressed(compressed))
+
+			sizes = append(sizes, len(compressed))
+
+			decompressed, err := Decompress(compressed)
+			require.NoError(t, err)
+			assert.Equal(t, data, decompressed)
+
+			t.Logf("level=%s compressed=%d ratio=%.4f", lvl.name, len(compressed), float64(len(compressed))/float64(len(data)))
+		})
+	}
+
+	// Best should produce equal or smaller output than Fastest
+	if len(sizes) == 3 {
+		assert.LessOrEqual(t, sizes[2], sizes[0], "LevelBest should compress at least as well as LevelFastest")
+	}
+}
+
 func TestCompress_Empty(t *testing.T) {
-	compressed, err := Compress(nil)
+	compressed, err := Compress(nil, LevelDefault)
 	require.NoError(t, err)
 	assert.Nil(t, compressed)
 
-	compressed, err = Compress([]byte{})
+	compressed, err = Compress([]byte{}, LevelDefault)
 	require.NoError(t, err)
 	assert.Empty(t, compressed)
 }
@@ -112,9 +146,8 @@ func TestIsCompressed(t *testing.T) {
 }
 
 func TestCompress_AchievesCompression(t *testing.T) {
-	// Highly compressible data should achieve meaningful compression
 	data := bytes.Repeat([]byte("rollkit block data with repeated content "), 10000)
-	compressed, err := Compress(data)
+	compressed, err := Compress(data, LevelDefault)
 	require.NoError(t, err)
 
 	ratio := float64(len(compressed)) / float64(len(data))
@@ -123,12 +156,11 @@ func TestCompress_AchievesCompression(t *testing.T) {
 }
 
 func TestCompress_RandomDataStillWorks(t *testing.T) {
-	// Random data won't compress well but should still round-trip correctly
 	data := make([]byte, 4096)
 	_, err := rand.Read(data)
 	require.NoError(t, err)
 
-	compressed, err := Compress(data)
+	compressed, err := Compress(data, LevelFastest)
 	require.NoError(t, err)
 
 	decompressed, err := Decompress(compressed)
@@ -137,9 +169,18 @@ func TestCompress_RandomDataStillWorks(t *testing.T) {
 }
 
 func TestDecompress_DataStartingWithMagicButUncompressed(t *testing.T) {
-	// Edge case: data that happens to start with the magic bytes but isn't actually compressed.
-	// This should fail decompression (invalid zstd frame).
 	fakeCompressed := append([]byte{0x5A, 0x53, 0x54, 0x44}, bytes.Repeat([]byte{0x00}, 100)...)
 	_, err := Decompress(fakeCompressed)
 	assert.Error(t, err, "data starting with magic but containing invalid zstd should error")
+}
+
+func TestCompress_InvalidLevel(t *testing.T) {
+	// Out-of-range level should fall back to LevelDefault
+	data := []byte("test data for invalid level")
+	compressed, err := Compress(data, CompressionLevel(99))
+	require.NoError(t, err)
+
+	decompressed, err := Decompress(compressed)
+	require.NoError(t, err)
+	assert.Equal(t, data, decompressed)
 }

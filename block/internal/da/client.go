@@ -88,10 +88,20 @@ func (c *client) Submit(ctx context.Context, data [][]byte, _ float64, namespace
 		}
 	}
 
+	// Select compression level based on backlog pressure:
+	// large batch = high backlog = prioritize speed;
+	// small batch = low backlog = prioritize ratio.
+	compLevel := da.LevelBest
+	switch {
+	case len(data) > 10:
+		compLevel = da.LevelFastest
+	case len(data) > 3:
+		compLevel = da.LevelDefault
+	}
+
 	blobs := make([]*blobrpc.Blob, len(data))
 	for i, raw := range data {
-		// Compress blob data before submission to reduce bandwidth and storage costs
-		compressed, compErr := da.Compress(raw)
+		compressed, compErr := da.Compress(raw, compLevel)
 		if compErr != nil {
 			return datypes.ResultSubmit{
 				BaseResult: datypes.BaseResult{
@@ -104,6 +114,7 @@ func (c *client) Submit(ctx context.Context, data [][]byte, _ float64, namespace
 			Int("original_size", len(raw)).
 			Int("compressed_size", len(compressed)).
 			Float64("ratio", float64(len(compressed))/float64(len(raw))).
+			Int("level", int(compLevel)).
 			Msg("compressed blob for DA submission")
 
 		if uint64(len(compressed)) > common.DefaultMaxBlobSize {
