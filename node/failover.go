@@ -8,6 +8,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/rs/zerolog"
+	"golang.org/x/sync/errgroup"
+
 	"github.com/evstack/ev-node/block"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
@@ -19,8 +22,6 @@ import (
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
 	evsync "github.com/evstack/ev-node/pkg/sync"
-	"github.com/rs/zerolog"
-	"golang.org/x/sync/errgroup"
 )
 
 // failoverState collect the components to reset when switching modes.

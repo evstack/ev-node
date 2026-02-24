@@ -134,8 +134,8 @@ func (s *stubSequencer) GetDAHeight() uint64 { return 0 }
 
 func createTxs(n int) [][]byte {
 	txs := make([][]byte, n)
-	for i := 0; i < n; i++ {
-		txs[i] = []byte(fmt.Sprintf("tx%d", i))
+	for i := range n {
+		txs[i] = fmt.Appendf(nil, "tx%d", i)
 	}
 	return txs
 }

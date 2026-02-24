@@ -28,13 +28,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/celestiaorg/tastora/framework/docker/evstack/reth"
+	tastoratypes "github.com/celestiaorg/tastora/framework/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
-	evmtest "github.com/evstack/ev-node/execution/evm/test"
 	"github.com/stretchr/testify/require"
 
-	"github.com/celestiaorg/tastora/framework/docker/evstack/reth"
 	"github.com/evstack/ev-node/execution/evm"
+	evmtest "github.com/evstack/ev-node/execution/evm/test"
 )
 
 // evmSingleBinaryPath is the path to the evm-single binary used in tests
@@ -505,16 +506,33 @@ func submitTransactionAndGetBlockNumber(t testing.TB, sequencerClients ...*ethcl
 	return tx.Hash(), txBlockNumber
 }
 
-// setupCommonEVMTest performs common setup for EVM tests including DA and EVM engine initialization.
-// This helper reduces code duplication across multiple test functions.
-//
-// Parameters:
-// - needsFullNode: whether to set up a full node EVM engine in addition to sequencer
-// - daPort: optional DA port to use (if empty, uses default)
-//
-// Returns: jwtSecret, fullNodeJwtSecret (empty if needsFullNode=false), genesisHash
-func setupCommonEVMTest(t testing.TB, sut *SystemUnderTest, needsFullNode bool) (string, string, string, *TestEndpoints, *reth.Node) {
+// SetupOpt customizes the common EVM test setup without adding positional params.
+type SetupOpt func(*setupConfig)
+
+type setupConfig struct {
+	needsFullNode bool
+	rethOpts      []evmtest.RethNodeOpt
+}
+
+// WithFullNode enables bringing up an additional full node in the test setup.
+func WithFullNode() SetupOpt {
+	return func(c *setupConfig) {
+		c.needsFullNode = true
+	}
+}
+
+// setupCommonEVMEnv creates and initializes ev-reth instances, while also initializing the local ev-node instance
+// managed by sut. If a full node is also required, we can use the WithFullNode() additional option.
+func setupCommonEVMEnv(t testing.TB, sut *SystemUnderTest, client tastoratypes.TastoraDockerClient, networkID string, opts ...SetupOpt) *EVMEnv {
 	t.Helper()
+
+	// Configuration via functional options
+	cfg := setupConfig{needsFullNode: false}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&cfg)
+		}
+	}
 
 	// Reset global nonce for each test to ensure clean state
 	globalNonce = 0
@@ -531,7 +549,9 @@ func setupCommonEVMTest(t testing.TB, sut *SystemUnderTest, needsFullNode bool) 
 	sut.ExecCmd(localDABinary, "-port", dynEndpoints.DAPort)
 	t.Logf("Started local DA on port %s", dynEndpoints.DAPort)
 
-	rethNode := evmtest.SetupTestRethNode(t)
+	require.NotNil(t, client, "docker client is required")
+	require.NotEmpty(t, networkID, "docker networkID is required")
+	rethNode := evmtest.SetupTestRethNode(t, client, networkID, cfg.rethOpts...)
 
 	networkInfo, err := rethNode.GetNetworkInfo(context.Background())
 	require.NoError(t, err, "failed to get reth network info")
@@ -540,8 +560,8 @@ func setupCommonEVMTest(t testing.TB, sut *SystemUnderTest, needsFullNode bool) 
 
 	var fnJWT string
 	var rethFn *reth.Node
-	if needsFullNode {
-		rethFn = evmtest.SetupTestRethNode(t)
+	if cfg.needsFullNode {
+		rethFn = evmtest.SetupTestRethNode(t, client, networkID, cfg.rethOpts...)
 		fnJWT = rethFn.JWTSecretHex()
 	}
 
@@ -552,14 +572,31 @@ func setupCommonEVMTest(t testing.TB, sut *SystemUnderTest, needsFullNode bool) 
 	// Populate endpoints with both dynamic rollkit ports and dynamic engine ports
 	dynEndpoints.SequencerEthPort = networkInfo.External.Ports.RPC
 	dynEndpoints.SequencerEnginePort = networkInfo.External.Ports.Engine
-	if needsFullNode {
+	if cfg.needsFullNode {
 		fnInfo, err := rethFn.GetNetworkInfo(context.Background())
 		require.NoError(t, err, "failed to get full node reth network info")
 		dynEndpoints.FullNodeEthPort = fnInfo.External.Ports.RPC
 		dynEndpoints.FullNodeEnginePort = fnInfo.External.Ports.Engine
 	}
 
-	return seqJWT, fnJWT, genesisHash, dynEndpoints, rethNode
+	return &EVMEnv{
+		SequencerJWT: seqJWT,
+		FullNodeJWT:  fnJWT,
+		GenesisHash:  genesisHash,
+		Endpoints:    dynEndpoints,
+		RethNode:     rethNode,
+	}
+}
+
+// EVMEnv is a cohesive result for common EVM test setup.
+// It consolidates the return values into a single struct
+// to improve readability and extensibility at call sites.
+type EVMEnv struct {
+	SequencerJWT string
+	FullNodeJWT  string
+	GenesisHash  string
+	Endpoints    *TestEndpoints
+	RethNode     *reth.Node
 }
 
 // checkBlockInfoAt retrieves block information at a specific height including state root.
@@ -614,17 +651,16 @@ func checkBlockInfoAt(t testing.TB, ethURL string, blockHeight *uint64) (common.
 // - nodeHome: Directory path for sequencer node data
 //
 // Returns: genesisHash for the sequencer
-func setupSequencerOnlyTest(t testing.TB, sut *SystemUnderTest, nodeHome string, extraArgs ...string) (string, string) {
+func setupSequencerOnlyTest(t testing.TB, sut *SystemUnderTest, nodeHome string, client tastoratypes.TastoraDockerClient, networkID string, extraArgs ...string) (string, string) {
 	t.Helper()
 
 	// Use common setup (no full node needed)
-	jwtSecret, _, genesisHash, endpoints, _ := setupCommonEVMTest(t, sut, false)
-
+	env := setupCommonEVMEnv(t, sut, client, networkID)
 	// Initialize and start sequencer node
-	setupSequencerNode(t, sut, nodeHome, jwtSecret, genesisHash, endpoints, extraArgs...)
+	setupSequencerNode(t, sut, nodeHome, env.SequencerJWT, env.GenesisHash, env.Endpoints, extraArgs...)
 	t.Log("Sequencer node is up")
 
-	return genesisHash, endpoints.GetSequencerEthURL()
+	return env.GenesisHash, env.Endpoints.GetSequencerEthURL()
 }
 
 // restartDAAndSequencer restarts both the local DA and sequencer node.

@@ -15,10 +15,11 @@ import (
 	"github.com/celestiaorg/tastora/framework/docker/evstack/evmsingle"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/evstack/ev-node/execution/evm"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/suite"
+
+	"github.com/evstack/ev-node/execution/evm"
 )
 
 // EVMCompatTestSuite tests cross-version compatibility between different ev-node-evm versions.

@@ -10,11 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/evstack/ev-node/pkg/config"
-	coreda "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/evstack/ev-node/pkg/config"
+	coreda "github.com/evstack/ev-node/pkg/da/types"
 )
 
 type stubDAVizClient struct{}

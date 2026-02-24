@@ -13,9 +13,8 @@ import (
 
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
-	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
-
 	mocks "github.com/evstack/ev-node/test/mocks"
+	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
 
 func TestAsyncBlockRetriever_GetCachedBlock_NoNamespace(t *testing.T) {

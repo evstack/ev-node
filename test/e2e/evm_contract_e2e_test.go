@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	tastoradocker "github.com/celestiaorg/tastora/framework/docker"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -243,7 +244,8 @@ func TestEvmContractEvents(t *testing.T) {
 func setupTestSequencer(t testing.TB, homeDir string, extraArgs ...string) (*ethclient.Client, string, func()) {
 	sut := NewSystemUnderTest(t)
 
-	genesisHash, seqEthURL := setupSequencerOnlyTest(t, sut, homeDir, extraArgs...)
+	dcli, netID := tastoradocker.Setup(t)
+	genesisHash, seqEthURL := setupSequencerOnlyTest(t, sut, homeDir, dcli, netID, extraArgs...)
 	t.Logf("Sequencer started at %s (Genesis: %s)", seqEthURL, genesisHash)
 
 	client, err := ethclient.Dial(seqEthURL)
