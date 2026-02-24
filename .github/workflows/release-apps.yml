@@ -24,7 +24,7 @@ jobs:
       dockerfile: ${{ steps.parse.outputs.dockerfile }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.0.2
 
       - name: Parse tag and validate app
         id: parse
@@ -75,7 +75,7 @@ jobs:
       packages: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.0.2
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

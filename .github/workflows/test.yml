@@ -12,7 +12,7 @@ jobs:
     name: Build All ev-node Binaries
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
       - name: set up go
         uses: actions/setup-go@v6
         with:
@@ -24,7 +24,7 @@ jobs:
     name: Go Mod Tidy Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
       - uses: actions/setup-go@v6
         with:
           go-version-file: ./go.mod
@@ -39,7 +39,7 @@ jobs:
       contents: read
       packages: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
       - name: set up go
         uses: actions/setup-go@v6
         with:
@@ -56,7 +56,7 @@ jobs:
     name: Run Integration Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
       - name: set up go
         uses: actions/setup-go@v6
         with:
@@ -77,7 +77,7 @@ jobs:
       contents: read
       packages: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
       - name: set up go
         uses: actions/setup-go@v6
         with:
@@ -101,7 +101,7 @@ jobs:
     needs: build_all-apps
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
       - name: set up go
         uses: actions/setup-go@v6
         with:
@@ -116,7 +116,7 @@ jobs:
     permissions:
       actions: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
       - name: Download unit test coverage report
         uses: actions/download-artifact@v7
         with:
