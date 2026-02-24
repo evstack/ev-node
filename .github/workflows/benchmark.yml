@@ -15,10 +15,6 @@ jobs:
     name: EVM Contract Benchmark
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Set up Go
@@ -33,46 +29,22 @@ jobs:
         run: |
           cd test/e2e && go test -tags evm -bench=. -benchmem -run='^$' \
             -timeout=10m --evm-binary=../../build/evm | tee output.txt
-      # only update the benchmark baseline on push/dispatch, not on PRs
-      - name: Store benchmark result
-        uses: benchmark-action/github-action-benchmark@4bdcce38c94cec68da58d012ac24b7b1155efe8b # v1.20.7
-        with:
-          name: EVM Contract Roundtrip
-          tool: 'go'
-          output-file-path: test/e2e/output.txt
-          auto-push: ${{ github.event_name != 'pull_request' }}
-          save-data-file: ${{ github.event_name != 'pull_request' }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          alert-threshold: '150%'
-          fail-on-alert: true
-          comment-on-alert: true
-
       - name: Run Block Executor benchmarks
         run: |
           go test -bench=BenchmarkProduceBlock -benchmem -run='^$' \
             ./block/internal/executing/... > block_executor_output.txt
-      # only update the benchmark baseline on push/dispatch, not on PRs
-      - name: Store Block Executor benchmark result
-        uses: benchmark-action/github-action-benchmark@4bdcce38c94cec68da58d012ac24b7b1155efe8b # v1.20.7
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: Block Executor Benchmark
-          tool: 'go'
-          output-file-path: block_executor_output.txt
-          auto-push: ${{ github.event_name != 'pull_request' }}
-          save-data-file: ${{ github.event_name != 'pull_request' }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          alert-threshold: '150%'
-          fail-on-alert: true
-          comment-on-alert: true
+          name: evm-benchmark-results
+          path: |
+            test/e2e/output.txt
+            block_executor_output.txt
 
   spamoor-benchmark:
     name: Spamoor Trace Benchmark
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Set up Go
@@ -87,8 +59,60 @@ jobs:
         run: |
           cd test/e2e && BENCH_JSON_OUTPUT=spamoor_bench.json go test -tags evm \
             -run='^TestSpamoorSmoke$' -v -timeout=15m --evm-binary=../../build/evm
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: spamoor-benchmark-results
+          path: test/e2e/spamoor_bench.json
+
+  # single job to push all results to gh-pages sequentially, avoiding race conditions
+  publish-benchmarks:
+    name: Publish Benchmark Results
+    needs: [evm-benchmark, spamoor-benchmark]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Download EVM benchmark results
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: evm-benchmark-results
+      - name: Download Spamoor benchmark results
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: spamoor-benchmark-results
+
       # only update the benchmark baseline on push/dispatch, not on PRs
-      - name: Store spamoor benchmark result
+      - name: Store EVM Contract Roundtrip result
+        uses: benchmark-action/github-action-benchmark@4bdcce38c94cec68da58d012ac24b7b1155efe8b # v1.20.7
+        with:
+          name: EVM Contract Roundtrip
+          tool: 'go'
+          output-file-path: test/e2e/output.txt
+          auto-push: ${{ github.event_name != 'pull_request' }}
+          save-data-file: ${{ github.event_name != 'pull_request' }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          alert-threshold: '150%'
+          fail-on-alert: true
+          comment-on-alert: true
+
+      - name: Store Block Executor result
+        uses: benchmark-action/github-action-benchmark@4bdcce38c94cec68da58d012ac24b7b1155efe8b # v1.20.7
+        with:
+          name: Block Executor Benchmark
+          tool: 'go'
+          output-file-path: block_executor_output.txt
+          auto-push: ${{ github.event_name != 'pull_request' }}
+          save-data-file: ${{ github.event_name != 'pull_request' }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          alert-threshold: '150%'
+          fail-on-alert: true
+          comment-on-alert: true
+
+      - name: Store Spamoor Trace result
         uses: benchmark-action/github-action-benchmark@4bdcce38c94cec68da58d012ac24b7b1155efe8b # v1.20.7
         with:
           name: Spamoor Trace Benchmarks
