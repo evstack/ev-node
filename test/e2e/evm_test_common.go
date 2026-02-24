@@ -964,11 +964,11 @@ func writeTraceBenchmarkJSON(t testing.TB, label string, spans []traceSpan, outp
 	var entries []benchmarkEntry
 	for _, name := range names {
 		s := m[name]
-		avg := float64(s.total.Milliseconds()) / float64(s.count)
+		avg := float64(s.total.Microseconds()) / float64(s.count)
 		entries = append(entries,
-			benchmarkEntry{Name: fmt.Sprintf("%s - %s (avg)", label, name), Unit: "ms", Value: avg},
-			benchmarkEntry{Name: fmt.Sprintf("%s - %s (min)", label, name), Unit: "ms", Value: float64(s.min.Milliseconds())},
-			benchmarkEntry{Name: fmt.Sprintf("%s - %s (max)", label, name), Unit: "ms", Value: float64(s.max.Milliseconds())},
+			benchmarkEntry{Name: fmt.Sprintf("%s - %s (avg)", label, name), Unit: "us", Value: avg},
+			benchmarkEntry{Name: fmt.Sprintf("%s - %s (min)", label, name), Unit: "us", Value: float64(s.min.Microseconds())},
+			benchmarkEntry{Name: fmt.Sprintf("%s - %s (max)", label, name), Unit: "us", Value: float64(s.max.Microseconds())},
 		)
 	}
 
