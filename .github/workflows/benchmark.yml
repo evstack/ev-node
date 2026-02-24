@@ -56,3 +56,36 @@ jobs:
           alert-threshold: '150%'
           fail-on-alert: true
           comment-on-alert: true
+
+  spamoor-benchmark:
+    name: Spamoor Trace Benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up Go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: ./go.mod
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
+      - name: Build binaries
+        run: make build-evm build-da
+      - name: Run Spamoor smoke test
+        run: |
+          cd test/e2e && BENCH_JSON_OUTPUT=spamoor_bench.json go test -tags evm \
+            -run='^TestSpamoorSmoke$' -v -timeout=15m --evm-binary=../../build/evm
+      - name: Store spamoor benchmark result
+        uses: benchmark-action/github-action-benchmark@4bdcce38c94cec68da58d012ac24b7b1155efe8b # v1.20.7
+        with:
+          name: Spamoor Trace Benchmarks
+          tool: 'customSmallerIsBetter'
+          output-file-path: test/e2e/spamoor_bench.json
+          auto-push: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          alert-threshold: '150%'
+          fail-on-alert: true
+          comment-on-alert: true

@@ -16,6 +16,7 @@ package e2e
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"math/big"
@@ -855,21 +856,17 @@ type traceSpan interface {
 	SpanDuration() time.Duration
 }
 
-// printTraceReport aggregates spans by operation name and prints a timing breakdown.
-func printTraceReport(t testing.TB, label string, spans []traceSpan) {
-	t.Helper()
-	if len(spans) == 0 {
-		t.Logf("WARNING: no spans found for %s", label)
-		return
-	}
+// spanStats holds aggregated timing statistics for a single span operation.
+type spanStats struct {
+	count int
+	total time.Duration
+	min   time.Duration
+	max   time.Duration
+}
 
-	type stats struct {
-		count int
-		total time.Duration
-		min   time.Duration
-		max   time.Duration
-	}
-	m := make(map[string]*stats)
+// aggregateSpanStats groups spans by operation name and computes count, total, min, max.
+func aggregateSpanStats(spans []traceSpan) map[string]*spanStats {
+	m := make(map[string]*spanStats)
 	for _, span := range spans {
 		d := span.SpanDuration()
 		if d <= 0 {
@@ -878,7 +875,7 @@ func printTraceReport(t testing.TB, label string, spans []traceSpan) {
 		name := span.SpanName()
 		s, ok := m[name]
 		if !ok {
-			s = &stats{min: d, max: d}
+			s = &spanStats{min: d, max: d}
 			m[name] = s
 		}
 		s.count++
@@ -890,6 +887,18 @@ func printTraceReport(t testing.TB, label string, spans []traceSpan) {
 			s.max = d
 		}
 	}
+	return m
+}
+
+// printTraceReport aggregates spans by operation name and prints a timing breakdown.
+func printTraceReport(t testing.TB, label string, spans []traceSpan) {
+	t.Helper()
+	if len(spans) == 0 {
+		t.Logf("WARNING: no spans found for %s", label)
+		return
+	}
+
+	m := aggregateSpanStats(spans)
 
 	names := make([]string, 0, len(m))
 	for name := range m {
@@ -923,4 +932,52 @@ func printTraceReport(t testing.TB, label string, spans []traceSpan) {
 		}
 		t.Logf("%-40s %5.1f%% %s", name, pct, bar)
 	}
+}
+
+// benchmarkEntry matches the customSmallerIsBetter format for github-action-benchmark.
+type benchmarkEntry struct {
+	Name  string  `json:"name"`
+	Unit  string  `json:"unit"`
+	Value float64 `json:"value"`
+}
+
+// writeTraceBenchmarkJSON aggregates spans and writes a customSmallerIsBetter JSON file.
+// If outputPath is empty, the function is a no-op.
+func writeTraceBenchmarkJSON(t testing.TB, label string, spans []traceSpan, outputPath string) {
+	t.Helper()
+	if outputPath == "" {
+		return
+	}
+	m := aggregateSpanStats(spans)
+	if len(m) == 0 {
+		t.Logf("WARNING: no span stats to write for %s", label)
+		return
+	}
+
+	// sort by name for stable output
+	names := make([]string, 0, len(m))
+	for name := range m {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	var entries []benchmarkEntry
+	for _, name := range names {
+		s := m[name]
+		avg := float64(s.total.Milliseconds()) / float64(s.count)
+		entries = append(entries,
+			benchmarkEntry{Name: fmt.Sprintf("%s - %s (avg)", label, name), Unit: "ms", Value: avg},
+			benchmarkEntry{Name: fmt.Sprintf("%s - %s (min)", label, name), Unit: "ms", Value: float64(s.min.Milliseconds())},
+			benchmarkEntry{Name: fmt.Sprintf("%s - %s (max)", label, name), Unit: "ms", Value: float64(s.max.Milliseconds())},
+		)
+	}
+
+	data, err := json.MarshalIndent(entries, "", "  ")
+	if err != nil {
+		t.Fatalf("failed to marshal benchmark JSON: %v", err)
+	}
+	if err := os.WriteFile(outputPath, data, 0644); err != nil {
+		t.Fatalf("failed to write benchmark JSON to %s: %v", outputPath, err)
+	}
+	t.Logf("wrote %d benchmark entries to %s", len(entries), outputPath)
 }
