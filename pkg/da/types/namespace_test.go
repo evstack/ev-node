@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/hex"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestNamespaceV0Creation(t *testing.T) {
@@ -22,7 +24,6 @@ func TestNamespaceV0Creation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ns, err := NewNamespaceV0(tt.data)
-
 			if tt.expectError {
 				if err == nil {
 					t.Errorf("%s: expected error but got nil", tt.description)
@@ -33,13 +34,8 @@ func TestNamespaceV0Creation(t *testing.T) {
 				return
 			}
 
-			if err != nil {
-				t.Fatalf("%s: unexpected error: %v", tt.description, err)
-			}
-			if ns == nil {
-				t.Fatal("expected non-nil namespace but got nil")
-			}
-
+			require.NoError(t, err)
+			require.NotNil(t, ns)
 			if ns.Version != NamespaceVersionZero {
 				t.Errorf("Version should be 0, got %d", ns.Version)
 			}
