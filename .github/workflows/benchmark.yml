@@ -72,10 +72,35 @@ jobs:
           name: spamoor-benchmark-results
           path: test/e2e/benchmark/spamoor_bench.json
 
+  gasburner-benchmark:
+    name: Gasburner Trace Benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up Go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: ./go.mod
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
+      - name: Build binaries
+        run: make build-evm build-da
+      - name: Run Gasburner benchmark
+        run: |
+          cd test/e2e && BENCH_JSON_OUTPUT=benchmark/gasburner_bench.json go test -tags evm \
+            -run='^TestSpamoorSuite$/^TestGasBurner$' -v -timeout=15m \
+            --evm-binary=../../build/evm ./benchmark/
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: gasburner-benchmark-results
+          path: test/e2e/benchmark/gasburner_bench.json
+
   # single job to push all results to gh-pages sequentially, avoiding race conditions
   publish-benchmarks:
     name: Publish Benchmark Results
-    needs: [evm-benchmark, spamoor-benchmark]
+    needs: [evm-benchmark, spamoor-benchmark, gasburner-benchmark]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -91,6 +116,11 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: spamoor-benchmark-results
+          path: test/e2e/benchmark/
+      - name: Download Gasburner benchmark results
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: gasburner-benchmark-results
           path: test/e2e/benchmark/
 
       # only update the benchmark baseline on push/dispatch, not on PRs
@@ -139,6 +169,25 @@ jobs:
           name: Spamoor Trace Benchmarks
           tool: 'customSmallerIsBetter'
           output-file-path: test/e2e/benchmark/spamoor_bench.json
+          auto-push: ${{ github.event_name != 'pull_request' }}
+          save-data-file: ${{ github.event_name != 'pull_request' }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          alert-threshold: '150%'
+          fail-on-alert: false
+          comment-on-alert: true
+
+      # delete local gh-pages so the next benchmark action step fetches fresh from remote
+      - name: Reset local gh-pages branch
+        if: always()
+        run: git branch -D gh-pages || true
+
+      - name: Store Gasburner Trace result
+        if: always()
+        uses: benchmark-action/github-action-benchmark@4bdcce38c94cec68da58d012ac24b7b1155efe8b # v1.20.7
+        with:
+          name: Gasburner Trace Benchmarks
+          tool: 'customSmallerIsBetter'
+          output-file-path: test/e2e/benchmark/gasburner_bench.json
           auto-push: ${{ github.event_name != 'pull_request' }}
           save-data-file: ${{ github.event_name != 'pull_request' }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
