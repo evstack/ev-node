@@ -2,9 +2,11 @@ package da
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"testing"
 
+	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -39,7 +41,7 @@ func TestCompressDecompress_RoundTrip(t *testing.T) {
 
 			assert.True(t, IsCompressed(compressed), "compressed data should have magic prefix")
 
-			decompressed, err := Decompress(compressed)
+			decompressed, err := Decompress(context.Background(), compressed)
 			require.NoError(t, err)
 
 			assert.Equal(t, tt.data, decompressed, "round-trip should preserve data")
@@ -67,7 +69,7 @@ func TestCompress_AllLevelsRoundTrip(t *testing.T) {
 
 			sizes = append(sizes, len(compressed))
 
-			decompressed, err := Decompress(compressed)
+			decompressed, err := Decompress(context.Background(), compressed)
 			require.NoError(t, err)
 			assert.Equal(t, data, decompressed)
 
@@ -94,24 +96,24 @@ func TestCompress_Empty(t *testing.T) {
 func TestDecompress_UncompressedPassthrough(t *testing.T) {
 	// Data without magic prefix should pass through unchanged
 	raw := []byte("this is uncompressed protobuf data")
-	result, err := Decompress(raw)
+	result, err := Decompress(context.Background(), raw)
 	require.NoError(t, err)
 	assert.Equal(t, raw, result)
 }
 
 func TestDecompress_Empty(t *testing.T) {
-	result, err := Decompress(nil)
+	result, err := Decompress(context.Background(), nil)
 	require.NoError(t, err)
 	assert.Nil(t, result)
 
-	result, err = Decompress([]byte{})
+	result, err = Decompress(context.Background(), []byte{})
 	require.NoError(t, err)
 	assert.Empty(t, result)
 }
 
 func TestDecompress_ShortData(t *testing.T) {
 	// Data shorter than magic prefix should pass through
-	result, err := Decompress([]byte{0x5A, 0x53})
+	result, err := Decompress(context.Background(), []byte{0x5A, 0x53})
 	require.NoError(t, err)
 	assert.Equal(t, []byte{0x5A, 0x53}, result)
 }
@@ -119,7 +121,7 @@ func TestDecompress_ShortData(t *testing.T) {
 func TestDecompress_CorruptCompressedData(t *testing.T) {
 	// Magic prefix followed by invalid zstd data
 	corrupt := append([]byte{0x5A, 0x53, 0x54, 0x44}, []byte("not valid zstd")...)
-	_, err := Decompress(corrupt)
+	_, err := Decompress(context.Background(), corrupt)
 	assert.Error(t, err, "should fail on corrupt compressed data")
 }
 
@@ -163,14 +165,14 @@ func TestCompress_RandomDataStillWorks(t *testing.T) {
 	compressed, err := Compress(data, LevelFastest)
 	require.NoError(t, err)
 
-	decompressed, err := Decompress(compressed)
+	decompressed, err := Decompress(context.Background(), compressed)
 	require.NoError(t, err)
 	assert.Equal(t, data, decompressed)
 }
 
 func TestDecompress_DataStartingWithMagicButUncompressed(t *testing.T) {
 	fakeCompressed := append([]byte{0x5A, 0x53, 0x54, 0x44}, bytes.Repeat([]byte{0x00}, 100)...)
-	_, err := Decompress(fakeCompressed)
+	_, err := Decompress(context.Background(), fakeCompressed)
 	assert.Error(t, err, "data starting with magic but containing invalid zstd should error")
 }
 
@@ -180,7 +182,43 @@ func TestCompress_InvalidLevel(t *testing.T) {
 	compressed, err := Compress(data, CompressionLevel(99))
 	require.NoError(t, err)
 
-	decompressed, err := Decompress(compressed)
+	decompressed, err := Decompress(context.Background(), compressed)
 	require.NoError(t, err)
 	assert.Equal(t, data, decompressed)
+}
+
+func TestDecompress_ContextCanceled(t *testing.T) {
+	data := []byte("test data for context cancellation")
+	compressed, err := Compress(data, LevelDefault)
+	require.NoError(t, err)
+
+	// Pre-canceled context should cause Decompress to return an error.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err = Decompress(ctx, compressed)
+	assert.Error(t, err, "decompress with canceled context should fail")
+	assert.ErrorIs(t, err, context.Canceled)
+}
+
+func TestDecompress_OversizedFrameRejected(t *testing.T) {
+	// Build a fake zstd frame header that declares 100 MiB decompressed size.
+	// This should be rejected by the frame header pre-check before any
+	// decompression occurs.
+	hdr := zstd.Header{
+		SingleSegment:    true,
+		HasFCS:           true,
+		FrameContentSize: 100 * 1024 * 1024, // 100 MiB — way over the 7 MiB limit
+	}
+	frame, err := hdr.AppendTo(nil)
+	require.NoError(t, err)
+
+	// Prepend our custom magic prefix
+	blob := make([]byte, len(magic)+len(frame))
+	copy(blob, magic)
+	copy(blob[len(magic):], frame)
+
+	_, err = Decompress(context.Background(), blob)
+	assert.Error(t, err, "should reject blob declaring oversized decompressed output")
+	assert.ErrorIs(t, err, ErrDecompressedSizeExceeded)
 }

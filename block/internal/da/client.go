@@ -113,7 +113,7 @@ func (c *client) Submit(ctx context.Context, data [][]byte, _ float64, namespace
 		c.logger.Debug().
 			Int("original_size", len(raw)).
 			Int("compressed_size", len(compressed)).
-			Float64("ratio", float64(len(compressed))/float64(len(raw))).
+			Float64("ratio", float64(len(compressed))/float64(max(len(raw), 1))).
 			Int("level", int(compLevel)).
 			Msg("compressed blob for DA submission")
 
@@ -311,13 +311,14 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 	data := make([]datypes.Blob, len(blobs))
 	for i, b := range blobs {
 		ids[i] = blobrpc.MakeID(height, b.Commitment)
-		decompressed, decompErr := da.Decompress(b.Data())
+		decompressed, decompErr := da.Decompress(ctx, b.Data())
 		if decompErr != nil {
 			return datypes.ResultRetrieve{
 				BaseResult: datypes.BaseResult{
-					Code:    datypes.StatusError,
-					Message: fmt.Sprintf("decompress blob %d at height %d: %v", i, height, decompErr),
-					Height:  height,
+					Code:      datypes.StatusError,
+					Message:   fmt.Sprintf("decompress blob %d at height %d: %v", i, height, decompErr),
+					Height:    height,
+					Timestamp: blockTime,
 				},
 			}
 		}
@@ -399,7 +400,7 @@ func (c *client) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([
 		if b == nil {
 			continue
 		}
-		decompressed, decompErr := da.Decompress(b.Data())
+		decompressed, decompErr := da.Decompress(ctx, b.Data())
 		if decompErr != nil {
 			return nil, fmt.Errorf("decompress blob: %w", decompErr)
 		}
