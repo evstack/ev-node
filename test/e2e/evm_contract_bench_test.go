@@ -202,7 +202,7 @@ func (c *otlpCollector) getSpans() []*tracepb.Span {
 	return cp
 }
 
-// otlpSpanAdapter wraps an OTLP protobuf span to implement traceSpan.
+// otlpSpanAdapter wraps an OTLP protobuf span to implement TraceSpan.
 type otlpSpanAdapter struct {
 	span *tracepb.Span
 }
@@ -215,11 +215,11 @@ func (a otlpSpanAdapter) SpanDuration() time.Duration {
 func printCollectedTraceReport(b testing.TB, collector *otlpCollector) {
 	b.Helper()
 	raw := collector.getSpans()
-	spans := make([]traceSpan, len(raw))
+	spans := make([]TraceSpan, len(raw))
 	for i, s := range raw {
 		spans[i] = otlpSpanAdapter{span: s}
 	}
-	printTraceReport(b, "ev-node", spans)
+	PrintTraceReport(b, "ev-node", spans)
 }
 
 // waitForReceipt polls for a transaction receipt until it is available.
