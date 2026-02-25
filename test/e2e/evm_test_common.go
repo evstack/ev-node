@@ -16,7 +16,6 @@ package e2e
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"math/big"
@@ -316,7 +315,7 @@ func getNodeP2PAddress(t testing.TB, sut *SystemUnderTest, nodeHome string, rpcP
 // - jwtSecret: JWT secret for authenticating with EVM engine
 // - genesisHash: Hash of the genesis block for chain validation
 // - endpoints: TestEndpoints struct containing unique port assignments
-func setupSequencerNode(t testing.TB, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string, endpoints *TestEndpoints, extraArgs ...string) {
+func SetupSequencerNode(t testing.TB, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string, endpoints *TestEndpoints, extraArgs ...string) {
 	t.Helper()
 
 	// Create passphrase file
@@ -532,7 +531,7 @@ func WithRethOpts(opts ...evmtest.RethNodeOpt) SetupOpt {
 
 // setupCommonEVMEnv creates and initializes ev-reth instances, while also initializing the local ev-node instance
 // managed by sut. If a full node is also required, we can use the WithFullNode() additional option.
-func setupCommonEVMEnv(t testing.TB, sut *SystemUnderTest, client tastoratypes.TastoraDockerClient, networkID string, opts ...SetupOpt) *EVMEnv {
+func SetupCommonEVMEnv(t testing.TB, sut *SystemUnderTest, client tastoratypes.TastoraDockerClient, networkID string, opts ...SetupOpt) *EVMEnv {
 	t.Helper()
 
 	// Configuration via functional options
@@ -666,9 +665,9 @@ func setupSequencerOnlyTest(t testing.TB, sut *SystemUnderTest, nodeHome string,
 	t.Helper()
 
 	// Use common setup (no full node needed)
-	env := setupCommonEVMEnv(t, sut, client, networkID)
+	env := SetupCommonEVMEnv(t, sut, client, networkID)
 	// Initialize and start sequencer node
-	setupSequencerNode(t, sut, nodeHome, env.SequencerJWT, env.GenesisHash, env.Endpoints, extraArgs...)
+	SetupSequencerNode(t, sut, nodeHome, env.SequencerJWT, env.GenesisHash, env.Endpoints, extraArgs...)
 	t.Log("Sequencer node is up")
 
 	return env.GenesisHash, env.Endpoints.GetSequencerEthURL()
@@ -850,23 +849,23 @@ func verifyNoBlockProduction(t testing.TB, client *ethclient.Client, duration ti
 	t.Logf("✅ %s maintained height %d for %v (no new blocks produced)", nodeName, initialHeight, duration)
 }
 
-// traceSpan is a common interface for span data from different sources (OTLP collector, Jaeger API).
-type traceSpan interface {
+// TraceSpan is a common interface for span data from different sources (OTLP collector, Jaeger API).
+type TraceSpan interface {
 	SpanName() string
 	SpanDuration() time.Duration
 }
 
-// spanStats holds aggregated timing statistics for a single span operation.
-type spanStats struct {
-	count int
-	total time.Duration
-	min   time.Duration
-	max   time.Duration
+// SpanStats holds aggregated timing statistics for a single span operation.
+type SpanStats struct {
+	Count int
+	Total time.Duration
+	Min   time.Duration
+	Max   time.Duration
 }
 
-// aggregateSpanStats groups spans by operation name and computes count, total, min, max.
-func aggregateSpanStats(spans []traceSpan) map[string]*spanStats {
-	m := make(map[string]*spanStats)
+// AggregateSpanStats groups spans by operation name and computes count, total, min, max.
+func AggregateSpanStats(spans []TraceSpan) map[string]*SpanStats {
+	m := make(map[string]*SpanStats)
 	for _, span := range spans {
 		d := span.SpanDuration()
 		if d <= 0 {
@@ -875,57 +874,57 @@ func aggregateSpanStats(spans []traceSpan) map[string]*spanStats {
 		name := span.SpanName()
 		s, ok := m[name]
 		if !ok {
-			s = &spanStats{min: d, max: d}
+			s = &SpanStats{Min: d, Max: d}
 			m[name] = s
 		}
-		s.count++
-		s.total += d
-		if d < s.min {
-			s.min = d
+		s.Count++
+		s.Total += d
+		if d < s.Min {
+			s.Min = d
 		}
-		if d > s.max {
-			s.max = d
+		if d > s.Max {
+			s.Max = d
 		}
 	}
 	return m
 }
 
-// printTraceReport aggregates spans by operation name and prints a timing breakdown.
-func printTraceReport(t testing.TB, label string, spans []traceSpan) {
+// PrintTraceReport aggregates spans by operation name and prints a timing breakdown.
+func PrintTraceReport(t testing.TB, label string, spans []TraceSpan) {
 	t.Helper()
 	if len(spans) == 0 {
 		t.Logf("WARNING: no spans found for %s", label)
 		return
 	}
 
-	m := aggregateSpanStats(spans)
+	m := AggregateSpanStats(spans)
 
 	names := make([]string, 0, len(m))
 	for name := range m {
 		names = append(names, name)
 	}
 	sort.Slice(names, func(i, j int) bool {
-		return m[names[i]].total > m[names[j]].total
+		return m[names[i]].Total > m[names[j]].Total
 	})
 
 	var overallTotal time.Duration
 	for _, s := range m {
-		overallTotal += s.total
+		overallTotal += s.Total
 	}
 
 	t.Logf("\n--- %s Trace Breakdown (%d spans) ---", label, len(spans))
 	t.Logf("%-40s %6s %12s %12s %12s %7s", "OPERATION", "COUNT", "AVG", "MIN", "MAX", "% TOTAL")
 	for _, name := range names {
 		s := m[name]
-		avg := s.total / time.Duration(s.count)
-		pct := float64(s.total) / float64(overallTotal) * 100
-		t.Logf("%-40s %6d %12s %12s %12s %6.1f%%", name, s.count, avg, s.min, s.max, pct)
+		avg := s.Total / time.Duration(s.Count)
+		pct := float64(s.Total) / float64(overallTotal) * 100
+		t.Logf("%-40s %6d %12s %12s %12s %6.1f%%", name, s.Count, avg, s.Min, s.Max, pct)
 	}
 
 	t.Logf("\n--- %s Time Distribution ---", label)
 	for _, name := range names {
 		s := m[name]
-		pct := float64(s.total) / float64(overallTotal) * 100
+		pct := float64(s.Total) / float64(overallTotal) * 100
 		bar := ""
 		for range int(pct / 2) {
 			bar += "█"
@@ -934,48 +933,3 @@ func printTraceReport(t testing.TB, label string, spans []traceSpan) {
 	}
 }
 
-// benchmarkEntry matches the customSmallerIsBetter format for github-action-benchmark.
-type benchmarkEntry struct {
-	Name  string  `json:"name"`
-	Unit  string  `json:"unit"`
-	Value float64 `json:"value"`
-}
-
-// writeTraceBenchmarkJSON aggregates spans and writes a customSmallerIsBetter JSON file.
-// If outputPath is empty, the function is a no-op.
-func writeTraceBenchmarkJSON(t testing.TB, label string, spans []traceSpan, outputPath string) {
-	t.Helper()
-	if outputPath == "" {
-		return
-	}
-	m := aggregateSpanStats(spans)
-	if len(m) == 0 {
-		t.Logf("WARNING: no span stats to write for %s", label)
-		return
-	}
-
-	// sort by name for stable output
-	names := make([]string, 0, len(m))
-	for name := range m {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-
-	var entries []benchmarkEntry
-	for _, name := range names {
-		s := m[name]
-		avg := float64(s.total.Microseconds()) / float64(s.count)
-		entries = append(entries,
-			benchmarkEntry{Name: fmt.Sprintf("%s - %s (avg)", label, name), Unit: "us", Value: avg},
-		)
-	}
-
-	data, err := json.MarshalIndent(entries, "", "  ")
-	if err != nil {
-		t.Fatalf("failed to marshal benchmark JSON: %v", err)
-	}
-	if err := os.WriteFile(outputPath, data, 0644); err != nil {
-		t.Fatalf("failed to write benchmark JSON to %s: %v", outputPath, err)
-	}
-	t.Logf("wrote %d benchmark entries to %s", len(entries), outputPath)
-}

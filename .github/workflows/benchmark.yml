@@ -8,6 +8,12 @@ permissions: {}
   pull_request:
     branches:
       - main
+    paths:
+      - 'test/e2e/benchmark/**'
+      - 'test/e2e/evm_contract_bench_test.go'
+      - 'test/e2e/evm_test_common.go'
+      - 'test/e2e/sut_helper.go'
+      - '.github/workflows/benchmark.yml'
   workflow_dispatch:
 
 jobs:
@@ -58,12 +64,13 @@ jobs:
       - name: Run Spamoor smoke test
         run: |
           cd test/e2e && BENCH_JSON_OUTPUT=spamoor_bench.json go test -tags evm \
-            -run='^TestSpamoorSmoke$' -v -timeout=15m --evm-binary=../../build/evm
+            -run='^TestSpamoorSuite$/^TestSpamoorSmoke$' -v -timeout=15m \
+            ./benchmark/ --evm-binary=../../../build/evm
       - name: Upload benchmark results
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: spamoor-benchmark-results
-          path: test/e2e/spamoor_bench.json
+          path: test/e2e/benchmark/spamoor_bench.json
 
   # single job to push all results to gh-pages sequentially, avoiding race conditions
   publish-benchmarks:
@@ -84,7 +91,7 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: spamoor-benchmark-results
-          path: test/e2e/
+          path: test/e2e/benchmark/
 
       # only update the benchmark baseline on push/dispatch, not on PRs
       - name: Store EVM Contract Roundtrip result
@@ -131,7 +138,7 @@ jobs:
         with:
           name: Spamoor Trace Benchmarks
           tool: 'customSmallerIsBetter'
-          output-file-path: test/e2e/spamoor_bench.json
+          output-file-path: test/e2e/benchmark/spamoor_bench.json
           auto-push: ${{ github.event_name != 'pull_request' }}
           save-data-file: ${{ github.event_name != 'pull_request' }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
