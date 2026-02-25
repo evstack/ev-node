@@ -110,12 +110,8 @@ func TestNamespaceFromBytes(t *testing.T) {
 				return
 			}
 
-			if err != nil {
-				t.Fatalf("%s: unexpected error: %v", tt.description, err)
-			}
-			if ns == nil {
-				t.Fatal("expected non-nil namespace but got nil")
-			}
+			require.NoError(t, err, tt.description)
+			require.NotNil(t, ns, "expected non-nil namespace but got nil")
 			if !bytes.Equal(tt.input, ns.Bytes()) {
 				t.Errorf("Should round-trip correctly, expected %v, got %v", tt.input, ns.Bytes())
 			}
