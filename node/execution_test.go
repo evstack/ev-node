@@ -95,7 +95,7 @@ func getExecutorFromNode(t *testing.T, node *FullNode) coreexecutor.Executor {
 	require.NotNil(t, state)
 	require.NotNil(t, state.bc)
 	require.NotNil(t, state.bc.Executor)
-	return nil
+	return state.bc.Executor.GetCoreExecutor()
 }
 
 func getTransactions(t *testing.T, executor coreexecutor.Executor, ctx context.Context) [][]byte {
