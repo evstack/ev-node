@@ -65,7 +65,7 @@ jobs:
         run: |
           cd test/e2e && BENCH_JSON_OUTPUT=spamoor_bench.json go test -tags evm \
             -run='^TestSpamoorSuite$/^TestSpamoorSmoke$' -v -timeout=15m \
-            ./benchmark/ --evm-binary=../../build/evm
+            ./benchmark/ --evm-binary=../../../build/evm
       - name: Upload benchmark results
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
