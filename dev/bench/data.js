@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1772018868571,
+  "lastUpdate": 1772018870536,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -1910,6 +1910,102 @@ window.BENCHMARK_DATA = {
             "value": 81,
             "unit": "allocs/op",
             "extra": "24774 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "github.qpeyb@simplelogin.fr",
+            "name": "Cian Hatton",
+            "username": "chatton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "212ac0881c0c32481afa69d10a6ac571ddfea168",
+          "message": "feat: adding spammoor test to benchmark (#3105)\n\n* feat: adding spammoor test to benchmark\n\n* fix: use microseconds in benchmark JSON to preserve sub-millisecond precision\n\n* ci: run benchmarks on PRs without updating baseline\n\n* ci: fan-out/fan-in benchmark jobs to avoid gh-pages race condition\n\n* ci: reset local gh-pages between benchmark steps to avoid fetch conflict\n\n* ci: fix spamoor benchmark artifact download path\n\n* ci: isolate benchmark publish steps so failures don't cascade\n\n* ci: only emit avg in benchmark JSON to reduce alert noise",
+          "timestamp": "2026-02-25T11:06:23Z",
+          "tree_id": "3fb93a845ff6b98b0a4d9dafdcf27ce575de9257",
+          "url": "https://github.com/evstack/ev-node/commit/212ac0881c0c32481afa69d10a6ac571ddfea168"
+        },
+        "date": 1772018869777,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 37497,
+            "unit": "ns/op\t    7001 B/op\t      71 allocs/op",
+            "extra": "32364 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 37497,
+            "unit": "ns/op",
+            "extra": "32364 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 7001,
+            "unit": "B/op",
+            "extra": "32364 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 71,
+            "unit": "allocs/op",
+            "extra": "32364 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 38213,
+            "unit": "ns/op\t    7459 B/op\t      81 allocs/op",
+            "extra": "31659 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 38213,
+            "unit": "ns/op",
+            "extra": "31659 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 7459,
+            "unit": "B/op",
+            "extra": "31659 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 81,
+            "unit": "allocs/op",
+            "extra": "31659 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 49000,
+            "unit": "ns/op\t   26151 B/op\t      81 allocs/op",
+            "extra": "24790 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 49000,
+            "unit": "ns/op",
+            "extra": "24790 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 26151,
+            "unit": "B/op",
+            "extra": "24790 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 81,
+            "unit": "allocs/op",
+            "extra": "24790 times\n4 procs"
           }
         ]
       }
