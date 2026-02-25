@@ -63,7 +63,7 @@ jobs:
         run: make build-evm build-da
       - name: Run Spamoor smoke test
         run: |
-          cd test/e2e && BENCH_JSON_OUTPUT=benchmark/spamoor_bench.json go test -tags evm \
+          cd test/e2e && BENCH_JSON_OUTPUT=spamoor_bench.json go test -tags evm \
             -run='^TestSpamoorSuite$/^TestSpamoorSmoke$' -v -timeout=15m \
             --evm-binary=../../build/evm ./benchmark/
       - name: Upload benchmark results
