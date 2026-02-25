@@ -307,22 +307,22 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 	}
 
 	// Extract IDs and data from the blobs, decompressing if needed.
-	ids := make([]datypes.ID, len(blobs))
-	data := make([]datypes.Blob, len(blobs))
+	// Malicious or corrupt blobs that fail decompression are logged and skipped.
+	ids := make([]datypes.ID, 0, len(blobs))
+	data := make([]datypes.Blob, 0, len(blobs))
 	for i, b := range blobs {
-		ids[i] = blobrpc.MakeID(height, b.Commitment)
 		decompressed, decompErr := da.Decompress(ctx, b.Data())
 		if decompErr != nil {
-			return datypes.ResultRetrieve{
-				BaseResult: datypes.BaseResult{
-					Code:      datypes.StatusError,
-					Message:   fmt.Sprintf("decompress blob %d at height %d: %v", i, height, decompErr),
-					Height:    height,
-					Timestamp: blockTime,
-				},
-			}
+			c.logger.Warn().
+				Err(decompErr).
+				Uint64("height", height).
+				Int("blob_index", i).
+				Int("blob_size", len(b.Data())).
+				Msg("skipping malicious or corrupt DA blob")
+			continue
 		}
-		data[i] = decompressed
+		ids = append(ids, blobrpc.MakeID(height, b.Commitment))
+		data = append(data, decompressed)
 	}
 
 	c.logger.Debug().Int("num_blobs", len(blobs)).Msg("retrieved blobs")
@@ -402,7 +402,12 @@ func (c *client) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([
 		}
 		decompressed, decompErr := da.Decompress(ctx, b.Data())
 		if decompErr != nil {
-			return nil, fmt.Errorf("decompress blob: %w", decompErr)
+			c.logger.Warn().
+				Err(decompErr).
+				Uint64("height", height).
+				Int("blob_size", len(b.Data())).
+				Msg("skipping malicious or corrupt DA blob")
+			continue
 		}
 		res = append(res, decompressed)
 	}
