@@ -32,6 +32,7 @@ import (
 
 	"github.com/evstack/ev-node/execution/evm"
 	evmtest "github.com/evstack/ev-node/execution/evm/test"
+	da "github.com/evstack/ev-node/pkg/da"
 	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 	coreda "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/rpc/client"
@@ -612,6 +613,14 @@ func extractBlockHeight(t *testing.T, blob []byte) (uint64, types.Hash, string) 
 		t.Log("empty blob, skipping")
 		return 0, nil, ""
 	}
+
+	// Decompress if the blob was compressed before DA submission.
+	if da.IsCompressed(blob) {
+		var err error
+		blob, err = da.Decompress(t.Context(), blob)
+		require.NoError(t, err, "failed to decompress blob")
+	}
+
 	var headerPb pb.SignedHeader
 	if err := proto.Unmarshal(blob, &headerPb); err == nil {
 		var signedHeader types.SignedHeader
