@@ -75,6 +75,8 @@ func (s *SpamoorSuite) setupEnv(cfg config) *env {
 				"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT="+jg.Internal.IngestHTTPEndpoint()+"/v1/traces",
 				"OTEL_EXPORTER_OTLP_PROTOCOL=http",
 				"OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=http",
+				"OTEL_TRACES_SAMPLER=parentbased_traceidratio",
+				"OTEL_TRACES_SAMPLER_ARG=0.1",
 				"RUST_LOG=debug",
 				"OTEL_SDK_DISABLED=false",
 			)
@@ -87,7 +89,7 @@ func (s *SpamoorSuite) setupEnv(cfg config) *env {
 	e2e.SetupSequencerNode(t, sut, sequencerHome, evmEnv.SequencerJWT, evmEnv.GenesisHash, evmEnv.Endpoints,
 		"--evnode.instrumentation.tracing=true",
 		"--evnode.instrumentation.tracing_endpoint", otlpHTTP,
-		"--evnode.instrumentation.tracing_sample_rate", "1.0",
+		"--evnode.instrumentation.tracing_sample_rate", "0.1",
 		"--evnode.instrumentation.tracing_service_name", cfg.serviceName,
 	)
 	t.Log("sequencer node is up")

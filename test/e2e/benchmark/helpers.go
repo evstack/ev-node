@@ -165,6 +165,65 @@ func waitForSpamoorDone(ctx context.Context, log func(string, ...any), api *spam
 	}
 }
 
+// deleteAllSpammers removes any pre-existing spammers from the daemon.
+// This prevents stale spammers (from previous failed runs) being restored
+// from the spamoor SQLite database.
+func deleteAllSpammers(api *spamoor.API) error {
+	existing, err := api.ListSpammers()
+	if err != nil {
+		return fmt.Errorf("list spammers: %w", err)
+	}
+	for _, sp := range existing {
+		if err := api.DeleteSpammer(sp.ID); err != nil {
+			return fmt.Errorf("delete spammer %d: %w", sp.ID, err)
+		}
+	}
+	return nil
+}
+
+// waitForDrain polls the latest block until consecutiveEmpty consecutive empty
+// blocks are observed, indicating the mempool has drained.
+func waitForDrain(ctx context.Context, log func(string, ...any), client *ethclient.Client, consecutiveEmpty int) {
+	var emptyRun int
+	var lastBlock uint64
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			log("drain timeout after %d consecutive empty blocks (needed %d)", emptyRun, consecutiveEmpty)
+			return
+		case <-ticker.C:
+			header, err := client.HeaderByNumber(ctx, nil)
+			if err != nil {
+				continue
+			}
+			num := header.Number.Uint64()
+			if num == lastBlock {
+				continue
+			}
+
+			txCount, err := client.TransactionCount(ctx, header.Hash())
+			if err != nil {
+				continue
+			}
+
+			lastBlock = num
+			if txCount == 0 {
+				emptyRun++
+			} else {
+				emptyRun = 0
+			}
+
+			if emptyRun >= consecutiveEmpty {
+				log("mempool drained: %d consecutive empty blocks at block %d", emptyRun, num)
+				return
+			}
+		}
+	}
+}
+
 // collectBlockMetrics iterates all headers in [startBlock, endBlock] to collect
 // gas and transaction metrics. Empty blocks are skipped for gas/tx aggregation
 // but included in block interval tracking.

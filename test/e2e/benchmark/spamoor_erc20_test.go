@@ -18,7 +18,7 @@ import (
 // Diagnostic metrics: per-span latency breakdown, gas/block, tx/block.
 func (s *SpamoorSuite) TestERC20Throughput() {
 	const (
-		numSpammers    = 5
+		numSpammers     = 5
 		countPerSpammer = 50000
 		totalCount      = numSpammers * countPerSpammer
 		serviceName     = "ev-node-erc20"
@@ -47,25 +47,24 @@ func (s *SpamoorSuite) TestERC20Throughput() {
 		"refill_interval": 600,
 	}
 
-	// record the starting block before generating load
-	startHeader, err := e.ethClient.HeaderByNumber(ctx, nil)
-	s.Require().NoError(err, "failed to get start block header")
-	startBlock := startHeader.Number.Uint64()
-	loadStart := time.Now()
+	// clear any stale spammers restored from the persistent spamoor database
+	s.Require().NoError(deleteAllSpammers(e.spamoorAPI), "failed to delete stale spammers")
 
-	// stagger spammer launches so their warm-up phases (contract deploy + wallet
-	// funding) complete at different times, producing a more continuous tx stream
-	// instead of synchronized bursts.
-	const staggerDelay = 5 * time.Second
+	// launch all spammers before recording startBlock so warm-up
+	// (contract deploy + wallet funding) is excluded from the measurement window.
 	for i := range numSpammers {
-		if i > 0 {
-			time.Sleep(staggerDelay)
-		}
 		name := fmt.Sprintf("bench-erc20-%d", i)
 		id, err := e.spamoorAPI.CreateSpammer(name, spamoor.ScenarioERC20TX, erc20Config, true)
 		s.Require().NoError(err, "failed to create spammer %s", name)
 		t.Cleanup(func() { _ = e.spamoorAPI.DeleteSpammer(id) })
 	}
+
+	// record the starting block after all spammers are launched so the
+	// measurement window excludes the warm-up period.
+	startHeader, err := e.ethClient.HeaderByNumber(ctx, nil)
+	s.Require().NoError(err, "failed to get start block header")
+	startBlock := startHeader.Number.Uint64()
+	loadStart := time.Now()
 
 	// wait for spamoor to finish sending all transactions
 	waitCtx, cancel := context.WithTimeout(ctx, waitTimeout)
@@ -73,8 +72,11 @@ func (s *SpamoorSuite) TestERC20Throughput() {
 	sent, failed, err := waitForSpamoorDone(waitCtx, t.Logf, e.spamoorAPI, totalCount, 2*time.Second)
 	s.Require().NoError(err, "spamoor did not finish in time")
 
-	// allow pending txs to drain from mempool into blocks
-	time.Sleep(20 * time.Second)
+	// wait for pending txs to drain: once we see several consecutive empty
+	// blocks, the mempool is drained and we can stop.
+	drainCtx, drainCancel := context.WithTimeout(ctx, 30*time.Second)
+	defer drainCancel()
+	waitForDrain(drainCtx, t.Logf, e.ethClient, 10)
 	wallClock := time.Since(loadStart)
 
 	endHeader, err := e.ethClient.HeaderByNumber(ctx, nil)
