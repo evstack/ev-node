@@ -22,6 +22,7 @@ require (
 )
 
 replace (
+	github.com/celestiaorg/tastora => /Users/chatton/checkouts/celestiaorg/tastora
 	github.com/evstack/ev-node => ../../
 	github.com/evstack/ev-node/core => ../../core
 	github.com/evstack/ev-node/execution/evm => ../../execution/evm

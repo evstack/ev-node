@@ -4,6 +4,7 @@ package benchmark
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/celestiaorg/tastora/framework/docker/evstack/spamoor"
@@ -17,9 +18,11 @@ import (
 // Diagnostic metrics: per-span latency breakdown, gas/block, tx/block.
 func (s *SpamoorSuite) TestERC20Throughput() {
 	const (
-		totalCount  = 3000
-		serviceName = "ev-node-erc20"
-		waitTimeout = 3 * time.Minute
+		numSpammers    = 5
+		countPerSpammer = 50000
+		totalCount      = numSpammers * countPerSpammer
+		serviceName     = "ev-node-erc20"
+		waitTimeout     = 5 * time.Minute
 	)
 
 	t := s.T()
@@ -33,10 +36,10 @@ func (s *SpamoorSuite) TestERC20Throughput() {
 	})
 
 	erc20Config := map[string]any{
-		"throughput":      100,
-		"total_count":     totalCount,
-		"max_pending":     4000,
-		"max_wallets":     300,
+		"throughput":      50, // 50 tx per 100ms slot = 500 tx/s per spammer
+		"total_count":     countPerSpammer,
+		"max_pending":     50000,
+		"max_wallets":     200,
 		"base_fee":        20,
 		"tip_fee":         3,
 		"refill_amount":   "5000000000000000000",
@@ -50,18 +53,28 @@ func (s *SpamoorSuite) TestERC20Throughput() {
 	startBlock := startHeader.Number.Uint64()
 	loadStart := time.Now()
 
-	id, err := e.spamoorAPI.CreateSpammer("bench-erc20", spamoor.ScenarioERC20TX, erc20Config, true)
-	s.Require().NoError(err, "failed to create erc20 spammer")
-	t.Cleanup(func() { _ = e.spamoorAPI.DeleteSpammer(id) })
+	// stagger spammer launches so their warm-up phases (contract deploy + wallet
+	// funding) complete at different times, producing a more continuous tx stream
+	// instead of synchronized bursts.
+	const staggerDelay = 5 * time.Second
+	for i := range numSpammers {
+		if i > 0 {
+			time.Sleep(staggerDelay)
+		}
+		name := fmt.Sprintf("bench-erc20-%d", i)
+		id, err := e.spamoorAPI.CreateSpammer(name, spamoor.ScenarioERC20TX, erc20Config, true)
+		s.Require().NoError(err, "failed to create spammer %s", name)
+		t.Cleanup(func() { _ = e.spamoorAPI.DeleteSpammer(id) })
+	}
 
 	// wait for spamoor to finish sending all transactions
 	waitCtx, cancel := context.WithTimeout(ctx, waitTimeout)
 	defer cancel()
-	sent, failed, err := waitForSpamoorDone(waitCtx, e.spamoorAPI, totalCount, 2*time.Second)
+	sent, failed, err := waitForSpamoorDone(waitCtx, t.Logf, e.spamoorAPI, totalCount, 2*time.Second)
 	s.Require().NoError(err, "spamoor did not finish in time")
 
-	// allow a short settle period for remaining txs to be included in blocks
-	time.Sleep(5 * time.Second)
+	// allow pending txs to drain from mempool into blocks
+	time.Sleep(20 * time.Second)
 	wallClock := time.Since(loadStart)
 
 	endHeader, err := e.ethClient.HeaderByNumber(ctx, nil)
@@ -72,18 +85,34 @@ func (s *SpamoorSuite) TestERC20Throughput() {
 	bm, err := collectBlockMetrics(ctx, e.ethClient, startBlock, endBlock)
 	s.Require().NoError(err, "failed to collect block metrics")
 
-	achievedMGas := mgasPerSec(bm.TotalGasUsed, wallClock)
-	achievedTPS := float64(bm.TotalTxCount) / wallClock.Seconds()
+	// use steady-state window (first active block to last active block) for
+	// throughput calculation, excluding warm-up and cool-down periods
+	steadyState := bm.steadyStateDuration()
+	s.Require().Greater(steadyState, time.Duration(0), "expected non-zero steady-state duration")
 
-	t.Logf("ERC20 throughput: %.2f MGas/s, %.1f TPS over %s (%d blocks, %d txs, %.2f avg gas/block)",
-		achievedMGas, achievedTPS, wallClock.Round(time.Millisecond),
-		bm.BlockCount, bm.TotalTxCount, bm.avgGasPerBlock())
+	achievedMGas := mgasPerSec(bm.TotalGasUsed, steadyState)
+	achievedTPS := float64(bm.TotalTxCount) / steadyState.Seconds()
+
+	intervalP50, intervalP99, intervalMax := bm.blockIntervalStats()
+	gasP50, gasP99 := bm.gasPerBlockStats()
+	txP50, txP99 := bm.txPerBlockStats()
+
+	t.Logf("block range: %d-%d (%d total, %d non-empty, %.1f%% non-empty)",
+		startBlock, endBlock, bm.TotalBlockCount, bm.BlockCount, bm.nonEmptyRatio())
+	t.Logf("block intervals: p50=%s, p99=%s, max=%s",
+		intervalP50.Round(time.Millisecond), intervalP99.Round(time.Millisecond), intervalMax.Round(time.Millisecond))
+	t.Logf("gas/block (non-empty): avg=%.0f, p50=%.0f, p99=%.0f", bm.avgGasPerBlock(), gasP50, gasP99)
+	t.Logf("tx/block (non-empty): avg=%.1f, p50=%.0f, p99=%.0f", bm.avgTxPerBlock(), txP50, txP99)
+	t.Logf("ERC20 throughput: %.2f MGas/s, %.1f TPS over %s steady-state (%s wall clock)",
+		achievedMGas, achievedTPS, steadyState.Round(time.Millisecond), wallClock.Round(time.Millisecond))
 
 	// collect and report traces
 	evNodeSpans := s.collectServiceTraces(e, serviceName)
-	evRethSpans := s.collectServiceTraces(e, "ev-reth")
+	evRethSpans := s.tryCollectServiceTraces(e, "ev-reth")
 	e2e.PrintTraceReport(t, serviceName, evNodeSpans)
-	e2e.PrintTraceReport(t, "ev-reth", evRethSpans)
+	if len(evRethSpans) > 0 {
+		e2e.PrintTraceReport(t, "ev-reth", evRethSpans)
+	}
 
 	// compute ev-node overhead ratio
 	spanStats := e2e.AggregateSpanStats(evNodeSpans)
@@ -127,7 +156,42 @@ func (s *SpamoorSuite) TestERC20Throughput() {
 	w.addEntry(entry{
 		Name:  "ERC20Throughput - blocks/s",
 		Unit:  "blocks/s",
-		Value: float64(bm.BlockCount) / wallClock.Seconds(),
+		Value: float64(bm.BlockCount) / steadyState.Seconds(),
+	})
+	w.addEntry(entry{
+		Name:  "ERC20Throughput - non-empty block ratio",
+		Unit:  "%",
+		Value: bm.nonEmptyRatio(),
+	})
+	w.addEntry(entry{
+		Name:  "ERC20Throughput - block interval p50",
+		Unit:  "ms",
+		Value: float64(intervalP50.Milliseconds()),
+	})
+	w.addEntry(entry{
+		Name:  "ERC20Throughput - block interval p99",
+		Unit:  "ms",
+		Value: float64(intervalP99.Milliseconds()),
+	})
+	w.addEntry(entry{
+		Name:  "ERC20Throughput - gas/block p50",
+		Unit:  "gas",
+		Value: gasP50,
+	})
+	w.addEntry(entry{
+		Name:  "ERC20Throughput - gas/block p99",
+		Unit:  "gas",
+		Value: gasP99,
+	})
+	w.addEntry(entry{
+		Name:  "ERC20Throughput - tx/block p50",
+		Unit:  "count",
+		Value: txP50,
+	})
+	w.addEntry(entry{
+		Name:  "ERC20Throughput - tx/block p99",
+		Unit:  "count",
+		Value: txP99,
 	})
 
 	// add per-span avg latencies

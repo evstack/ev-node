@@ -107,7 +107,8 @@ func (s *SpamoorSuite) setupEnv(cfg config) *env {
 		WithDockerNetworkID(evmEnv.RethNode.NetworkID).
 		WithLogger(evmEnv.RethNode.Logger).
 		WithRPCHosts(internalRPC).
-		WithPrivateKey(e2e.TestPrivateKey)
+		WithPrivateKey(e2e.TestPrivateKey).
+		WithAdditionalStartArgs("--slot-duration", "100ms", "--startup-delay", "0")
 
 	spNode, err := spBuilder.Build(ctx)
 	s.Require().NoError(err, "failed to build spamoor node")
@@ -141,4 +142,45 @@ func (s *SpamoorSuite) collectServiceTraces(e *env, serviceName string) []e2e.Tr
 	s.Require().NoError(err, "failed to fetch %s traces", serviceName)
 
 	return toTraceSpans(extractSpansFromTraces(traces))
+}
+
+// tryCollectServiceTraces attempts to fetch all traces by requesting them in
+// batches to avoid overwhelming Jaeger with a single large response.
+// Returns nil instead of failing the test if traces are unavailable.
+func (s *SpamoorSuite) tryCollectServiceTraces(e *env, serviceName string) []e2e.TraceSpan {
+	t := s.T()
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Minute)
+	defer cancel()
+
+	ok, err := e.jaeger.External.WaitForTraces(ctx, serviceName, 1, 2*time.Second)
+	if err != nil || !ok {
+		t.Logf("warning: could not collect %s traces (err=%v, ok=%v)", serviceName, err, ok)
+		return nil
+	}
+
+	const batchSize = 200
+	var allSpans []e2e.TraceSpan
+	for batch := 0; ; batch++ {
+		traces, err := e.jaeger.External.Traces(ctx, serviceName, batchSize)
+		if err != nil {
+			if batch == 0 {
+				t.Logf("warning: failed to fetch %s traces: %v", serviceName, err)
+				return nil
+			}
+			// got some data before failing, use what we have
+			t.Logf("warning: %s trace fetch stopped after %d batches (%d spans): %v", serviceName, batch, len(allSpans), err)
+			break
+		}
+		spans := toTraceSpans(extractSpansFromTraces(traces))
+		if len(spans) == 0 {
+			break
+		}
+		allSpans = append(allSpans, spans...)
+		if len(traces) < batchSize {
+			break // got fewer traces than requested, no more available
+		}
+	}
+
+	t.Logf("collected %d %s spans", len(allSpans), serviceName)
+	return allSpans
 }
