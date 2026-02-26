@@ -18,7 +18,7 @@ jobs:
         with:
           go-version-file: ./go.mod
       - name: Install just
-        uses: extractions/setup-just@v4
+        uses: extractions/setup-just@v3
       - name: Build all ev-node binaries
         run: just build-all
 
@@ -30,7 +30,7 @@ jobs:
       - uses: actions/setup-go@v6.2.0
         with:
           go-version-file: ./go.mod
-      - uses: extractions/setup-just@v4
+      - uses: extractions/setup-just@v3
       - run: just deps
       - name: check for diff
         run: git diff --exit-code
@@ -48,7 +48,7 @@ jobs:
         with:
           go-version-file: ./go.mod
       - name: Install just
-        uses: extractions/setup-just@v4
+        uses: extractions/setup-just@v3
       - name: Run unit test
         run: just test-cover
       - name: Upload unit test coverage report
@@ -67,7 +67,7 @@ jobs:
         with:
           go-version-file: ./go.mod
       - name: Install just
-        uses: extractions/setup-just@v4
+        uses: extractions/setup-just@v3
       - name: Run integration test
         run: just test-integration-cover
       - name: Upload integration test coverage report
@@ -101,7 +101,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Install just
-        uses: extractions/setup-just@v4
+        uses: extractions/setup-just@v3
       - name: E2E Tests
         run: just test-e2e
 
@@ -116,7 +116,7 @@ jobs:
         with:
           go-version-file: ./go.mod
       - name: Install just
-        uses: extractions/setup-just@v4
+        uses: extractions/setup-just@v3
       - name: EVM Tests
         run: just test-evm
 

@@ -28,7 +28,7 @@ jobs:
         with:
           go-version-file: ./test/docker-e2e/go.mod
       - name: Install just
-        uses: extractions/setup-just@v4
+        uses: extractions/setup-just@v3
       - name: Run Docker E2E Tests
         run: just test-docker-e2e
         env:
@@ -47,7 +47,7 @@ jobs:
         with:
           go-version-file: ./test/docker-e2e/go.mod
       - name: Install just
-        uses: extractions/setup-just@v4
+        uses: extractions/setup-just@v3
       - name: Run Docker Upgrade E2E Tests
         run: just test-docker-upgrade-e2e
         env:
@@ -66,7 +66,7 @@ jobs:
         with:
           go-version-file: ./test/docker-e2e/go.mod
       - name: Install just
-        uses: extractions/setup-just@v4
+        uses: extractions/setup-just@v3
       - name: Run Docker Compat E2E Tests
         run: just test-docker-compat
         env:

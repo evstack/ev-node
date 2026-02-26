@@ -23,7 +23,7 @@ jobs:
           go-version-file: ./go.mod
 
       - name: Install just
-        uses: extractions/setup-just@v4
+        uses: extractions/setup-just@v3
 
       - name: Run dependency update
         run: just deps
