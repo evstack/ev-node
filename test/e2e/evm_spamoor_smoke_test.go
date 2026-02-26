@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -163,6 +164,11 @@ func TestSpamoorSmoke(t *testing.T) {
 	require.NoError(t, err, "failed to fetch ev-reth traces from Jaeger")
 	evRethSpans := extractSpansFromTraces(evRethTraces)
 	printTraceReport(t, "ev-reth", toTraceSpans(evRethSpans))
+
+	// write benchmark JSON for ev-node spans when output path is configured
+	if outputPath := os.Getenv("BENCH_JSON_OUTPUT"); outputPath != "" {
+		writeTraceBenchmarkJSON(t, "SpamoorSmoke", toTraceSpans(evNodeSpans), outputPath)
+	}
 
 	// assert expected ev-node span names are present.
 	// these spans reliably appear during block production with transactions flowing.
