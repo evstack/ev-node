@@ -62,21 +62,24 @@ func NewBasedSequencer(
 		currentDAEndTime: genesis.StartTime,
 	}
 
-	// Read the last block time from the store so that timestamps are
-	// guaranteed to be strictly after any previously produced or synced block.
-	// This handles the case where a node that already had blocks (produced with
-	// wall-clock time) restarts as a based sequencer.
+	// Read state from the store to allow nodes to restart as based sequencers on a chain that had ran previously with a different sequencer type, and to initialize the timestamp floor for monotonicity guarantees after restart.
 	initCtx, initCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer initCancel()
 	s := store.New(store.NewEvNodeKVStore(db))
-	if state, err := s.GetState(initCtx); err == nil && !state.LastBlockTime.IsZero() {
-		bs.lastTimestamp = state.LastBlockTime
-		bs.logger.Debug().
-			Time("last_block_time", state.LastBlockTime).
-			Msg("initialized timestamp floor from last block time")
+	daStartHeight := genesis.DAStartHeight
+	if state, err := s.GetState(initCtx); err == nil {
+		if !state.LastBlockTime.IsZero() {
+			bs.lastTimestamp = state.LastBlockTime
+			bs.logger.Debug().
+				Time("last_block_time", state.LastBlockTime).
+				Msg("initialized timestamp floor from last block time")
+		}
+		if state.DAHeight > 0 {
+			// skip already processed epochs
+			daStartHeight = state.DAHeight
+		}
 	}
-	// based sequencers need community consensus about the da start height given no submission are done
-	bs.SetDAHeight(genesis.DAStartHeight)
+	bs.SetDAHeight(daStartHeight)
 
 	// Load checkpoint from DB, or initialize if none exists
 	loadCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
