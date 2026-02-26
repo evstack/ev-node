@@ -5,6 +5,7 @@
 - 2025-03-24: Initial draft
 - 2025-04-23: Renumbered from ADR-018 to ADR-019 to maintain chronological order.
 - 2025-11-10: Updated to reflect actual implementation
+- 2026-02-23: Added sequencer catch-up mode documentation
 
 ## Context
 
@@ -445,6 +446,59 @@ if errors.Is(err, coreda.ErrHeightFromFuture) {
 }
 ```
 
+#### Sequencer Catch-Up Mode
+
+When a single sequencer comes back online after downtime spanning multiple DA epochs, it enters **catch-up mode** to ensure consistency with base sequencing behavior.
+
+**Problem**: If the sequencer was offline for several DA epochs, it missed mempool transactions that were submitted during that time. However, forced inclusion transactions were still being posted to DA and processed by full nodes running in base sequencing mode. When the sequencer restarts, it must produce blocks that match what base sequencing would have produced during the downtime.
+
+**Solution**: The sequencer detects if it has fallen more than one epoch behind the DA head and enters catch-up mode:
+
+1. **Detection**: On the first epoch fetch after startup, query `GetLatestDAHeight()` to determine the gap
+2. **Catch-Up Mode**: If more than one epoch behind, enter catch-up mode:
+   - Only produce blocks with forced inclusion transactions (no mempool)
+   - Use DA epoch end timestamps for block timestamps (to match base sequencing)
+3. **Exit**: When `ErrHeightFromFuture` is encountered (reached DA head), exit catch-up mode and resume normal operation
+
+**Key Behaviors During Catch-Up**:
+
+- **No Mempool Transactions**: Only forced inclusion transactions are included in blocks
+- **Matching Timestamps**: Block timestamps are derived from DA epoch end times to match base sequencing
+- **Checkpoint Persistence**: Progress is tracked via checkpoint to handle crashes during catch-up
+- **Single Check**: The `GetLatestDAHeight()` query is performed only once per sequencer lifecycle
+
+**Example**:
+
+Sequencer offline during epochs 100-150 (5 epochs of 10 blocks each)
+Full nodes (base sequencing) produced blocks with forced txs only
+
+Sequencer restarts:
+
+1. Checkpoint DA height: 100
+2. Latest DA height: 150
+3. Missed epochs: 5 (more than 1)
+4. Enter catch-up mode
+
+Catch-up process:
+
+- Epoch 101-110: Produce blocks with forced txs only, use epoch timestamps
+- Epoch 111-120: Continue catch-up...
+- ...
+- Epoch 141-150: Still catching up
+- Epoch 151: ErrHeightFromFuture -> exit catch-up mode
+
+Normal operation resumes:
+
+- Include both forced txs and mempool txs
+- Use current timestamps
+
+**Benefits**:
+
+- Ensures sequencer produces identical blocks to what base sequencing would have produced
+- Maintains consistency across the network regardless of sequencer downtime
+- Automatic detection and recovery without operator intervention
+- Safe restart after crashes (checkpoint tracks progress)
+
 #### Grace Period for Forced Inclusion
 
 The grace period mechanism provides tolerance for chain congestion while maintaining censorship resistance:
@@ -686,7 +740,7 @@ based_sequencer = true # Use based sequencer
 
 ### Full Node Verification Flow
 
-1. Receive block from DA or P2P
+1. Receive block from DA
 2. Before applying block:
    a. Fetch forced inclusion txs from DA at block's DA height (epoch-based)
    b. Build map of transactions in block
@@ -698,6 +752,8 @@ based_sequencer = true # Use based sequencer
    g. If txs past grace boundary are not included: reject block, flag malicious proposer
    h. If txs within grace period: keep in pending queue, allow block
 3. Apply block if verification passes
+
+NOTE: P2P nodes do not perform forced inclusion verification. This is because DA inclusion happens after block production, and DA hints are added later to broadcasted blocks.
 
 **Grace Period Example** (with base grace period = 1 epoch, `DAEpochForcedInclusion = 50`):
 
@@ -721,18 +777,6 @@ based_sequencer = true # Use based sequencer
 **DA Query Frequency**:
 
 Every `DAEpochForcedInclusion` DA blocks
-
-### Security Considerations
-
-1. **Malicious Proposer Detection**: Full nodes reject blocks missing forced transactions
-2. **No Timing Attacks**: Epoch boundaries are deterministic, no time-based logic
-3. **Blob Size Limits**: Two-tier size validation prevents DoS
-   - Absolute limit (1.5MB): Blobs exceeding this are permanently rejected
-   - Batch limit (`MaxBytes`): Ensures no batch exceeds DA submission limits
-4. **Graceful Degradation**: Continues operation if forced inclusion not configured
-5. **Height Validation**: Handles "height from future" errors without state corruption
-6. **Transaction Preservation**: No valid transactions are lost due to size constraints
-7. **Strict MaxBytes Enforcement**: Batches NEVER exceed `req.MaxBytes`, preventing DA layer rejections
 
 **Attack Vectors**:
 
@@ -770,15 +814,14 @@ Accepted and Implemented
 9. **Transaction Preservation**: All valid transactions are preserved in queues, nothing is lost
 10. **Strict MaxBytes Compliance**: Batches never exceed limits, preventing DA submission failures
 11. **DA Fault Tolerance**: Grace period prevents false positives during temporary chain congestion
+12. **Automatic Recovery**: Sequencer catch-up mode ensures consistency after downtime without operator intervention
 
 ### Negative
 
 1. **Increased Latency**: Forced transactions subject to epoch boundaries
-2. **DA Dependency**: Requires DA layer to support multiple namespaces
+2. **DA Dependency**: Requires DA layer to be enabled on nodes for verification
 3. **Higher DA Costs**: Users pay DA posting fees for forced inclusion
-4. **Additional Complexity**: New component (DA Retriever) and verification logic with grace period tracking
-5. **Epoch Configuration**: Requires setting `DAEpochForcedInclusion` in genesis (consensus parameter)
-6. **Grace Period Adjustment**: Grace period is dynamically adjusted based on block fullness to balance censorship detection with operational reliability
+4. **Epoch Configuration**: Requires setting `DAEpochForcedInclusion` in genesis (consensus parameter)
 
 ### Neutral
 

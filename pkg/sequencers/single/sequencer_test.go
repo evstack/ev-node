@@ -365,7 +365,7 @@ func TestSequencer_GetNextBatch_BeforeDASubmission(t *testing.T) {
 
 func TestSequencer_GetNextBatch_ForcedInclusionAndBatch_MaxBytes(t *testing.T) {
 	ctx := context.Background()
-	logger := zerolog.New(zerolog.NewConsoleWriter())
+	logger := zerolog.New(zerolog.NewTestWriter(t))
 
 	// Create in-memory datastore
 	db := ds.NewMapDatastore()
@@ -380,6 +380,9 @@ func TestSequencer_GetNextBatch_ForcedInclusionAndBatch_MaxBytes(t *testing.T) {
 	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+
+	// DA head is at 100 — same as sequencer start, no catch-up needed
+	mockDA.MockClient.On("GetLatestDAHeight", mock.Anything).Return(uint64(100), nil).Maybe()
 
 	// Create forced inclusion txs that are 50 and 60 bytes
 	forcedTx1 := make([]byte, 50)
@@ -455,7 +458,7 @@ func TestSequencer_GetNextBatch_ForcedInclusionAndBatch_MaxBytes(t *testing.T) {
 
 func TestSequencer_GetNextBatch_ForcedInclusion_ExceedsMaxBytes(t *testing.T) {
 	ctx := context.Background()
-	logger := zerolog.New(zerolog.NewConsoleWriter())
+	logger := zerolog.New(zerolog.NewTestWriter(t))
 
 	db := ds.NewMapDatastore()
 	defer db.Close()
@@ -468,6 +471,9 @@ func TestSequencer_GetNextBatch_ForcedInclusion_ExceedsMaxBytes(t *testing.T) {
 	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+
+	// DA head is at 100 — same as sequencer start, no catch-up needed
+	mockDA.MockClient.On("GetLatestDAHeight", mock.Anything).Return(uint64(100), nil).Maybe()
 
 	// Create forced inclusion txs where combined they exceed maxBytes
 	forcedTx1 := make([]byte, 100)
@@ -535,7 +541,7 @@ func TestSequencer_GetNextBatch_ForcedInclusion_ExceedsMaxBytes(t *testing.T) {
 
 func TestSequencer_GetNextBatch_AlwaysCheckPendingForcedInclusion(t *testing.T) {
 	ctx := context.Background()
-	logger := zerolog.New(zerolog.NewConsoleWriter())
+	logger := zerolog.New(zerolog.NewTestWriter(t))
 
 	db := ds.NewMapDatastore()
 	defer db.Close()
@@ -548,6 +554,9 @@ func TestSequencer_GetNextBatch_AlwaysCheckPendingForcedInclusion(t *testing.T) 
 	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+
+	// DA head is at 100 — same as sequencer start, no catch-up needed
+	mockDA.MockClient.On("GetLatestDAHeight", mock.Anything).Return(uint64(100), nil).Maybe()
 
 	// First call returns large forced txs
 	largeForcedTx1, largeForcedTx2 := make([]byte, 75), make([]byte, 75)
@@ -873,7 +882,7 @@ func TestSequencer_DAFailureAndQueueThrottling_Integration(t *testing.T) {
 
 func TestSequencer_CheckpointPersistence_CrashRecovery(t *testing.T) {
 	ctx := context.Background()
-	logger := zerolog.New(zerolog.NewConsoleWriter())
+	logger := zerolog.New(zerolog.NewTestWriter(t))
 
 	db := ds.NewMapDatastore()
 	defer db.Close()
@@ -886,6 +895,10 @@ func TestSequencer_CheckpointPersistence_CrashRecovery(t *testing.T) {
 	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+
+	// DA head is at 101 — close to sequencer start (100), no catch-up needed.
+	// Use Maybe() since two sequencer instances share this mock.
+	mockDA.MockClient.On("GetLatestDAHeight", mock.Anything).Return(uint64(101), nil).Maybe()
 
 	// Create forced inclusion txs at DA height 100
 	// Use sizes that all fit in one batch to test checkpoint advancing
@@ -985,6 +998,9 @@ func TestSequencer_GetNextBatch_EmptyDABatch_IncreasesDAHeight(t *testing.T) {
 	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+
+	// DA head is at 100 — same as sequencer start, no catch-up needed
+	mockDA.MockClient.On("GetLatestDAHeight", mock.Anything).Return(uint64(100), nil).Maybe()
 
 	// First DA epoch returns empty transactions
 	mockDA.MockClient.On("Retrieve", mock.Anything, uint64(100), forcedInclusionNS).Return(datypes.ResultRetrieve{
@@ -1224,6 +1240,887 @@ func TestSequencer_GetNextBatch_GasFilterError(t *testing.T) {
 // preserves any transactions that weren't even processed yet due to maxBytes limits.
 //
 // This test uses maxBytes to limit how many txs are fetched, triggering the unprocessed txs scenario.
+func TestSequencer_CatchUp_DetectsOldEpoch(t *testing.T) {
+	ctx := context.Background()
+	logger := zerolog.New(zerolog.NewTestWriter(t))
+
+	db := ds.NewMapDatastore()
+	defer db.Close()
+
+	mockDA := newMockFullDAClient(t)
+	forcedInclusionNS := []byte("forced-inclusion")
+
+	mockDA.MockClient.On("GetHeaderNamespace").Return([]byte("header")).Maybe()
+	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
+	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
+	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+
+	// DA head is at height 105 — sequencer starts at 100 with epoch size 1,
+	// so it has missed 5 epochs (>1), triggering catch-up.
+	mockDA.MockClient.On("GetLatestDAHeight", mock.Anything).Return(uint64(105), nil).Once()
+
+	// DA epoch at height 100
+	oldTimestamp := time.Now().Add(-10 * time.Minute)
+	mockDA.MockClient.On("Retrieve", mock.Anything, uint64(100), forcedInclusionNS).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: oldTimestamp},
+		Data:       [][]byte{[]byte("forced-tx-1")},
+	}).Once()
+
+	gen := genesis.Genesis{
+		ChainID:                "test-chain",
+		DAStartHeight:          100,
+		DAEpochForcedInclusion: 1,
+	}
+
+	seq, err := NewSequencer(
+		logger,
+		db,
+		mockDA,
+		config.DefaultConfig(),
+		[]byte("test-chain"),
+		1000,
+		gen,
+		createDefaultMockExecutor(t),
+	)
+	require.NoError(t, err)
+
+	// Submit a mempool transaction
+	_, err = seq.SubmitBatchTxs(ctx, coresequencer.SubmitBatchTxsRequest{
+		Id:    []byte("test-chain"),
+		Batch: &coresequencer.Batch{Transactions: [][]byte{[]byte("mempool-tx-1")}},
+	})
+	require.NoError(t, err)
+
+	assert.False(t, seq.isCatchingUp(), "should not be catching up initially")
+
+	// First GetNextBatch — DA head is far ahead, should enter catch-up
+	req := coresequencer.GetNextBatchRequest{
+		Id:            []byte("test-chain"),
+		MaxBytes:      1000000,
+		LastBatchData: nil,
+	}
+	resp, err := seq.GetNextBatch(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, resp.Batch)
+
+	assert.True(t, seq.isCatchingUp(), "should be catching up after detecting epoch gap")
+
+	// During catch-up, batch should contain only forced inclusion tx, no mempool tx
+	assert.Equal(t, 1, len(resp.Batch.Transactions), "should have only forced inclusion tx during catch-up")
+	assert.Equal(t, []byte("forced-tx-1"), resp.Batch.Transactions[0])
+}
+
+func TestSequencer_CatchUp_SkipsMempoolDuringCatchUp(t *testing.T) {
+	ctx := context.Background()
+	logger := zerolog.New(zerolog.NewTestWriter(t))
+
+	db := ds.NewMapDatastore()
+	defer db.Close()
+
+	mockDA := newMockFullDAClient(t)
+	forcedInclusionNS := []byte("forced-inclusion")
+
+	mockDA.MockClient.On("GetHeaderNamespace").Return([]byte("header")).Maybe()
+	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
+	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
+	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+
+	// DA head is at 105 — sequencer starts at 100 with epoch size 1,
+	// so it has missed multiple epochs, triggering catch-up.
+	// Called once on first fetchNextDAEpoch; subsequent fetches skip the check.
+	mockDA.MockClient.On("GetLatestDAHeight", mock.Anything).Return(uint64(105), nil).Once()
+
+	// Epoch at height 100: two forced txs
+	oldTimestamp := time.Now().Add(-5 * time.Minute)
+	mockDA.MockClient.On("Retrieve", mock.Anything, uint64(100), forcedInclusionNS).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: oldTimestamp},
+		Data:       [][]byte{[]byte("forced-1"), []byte("forced-2")},
+	}).Once()
+
+	// Epoch at height 101: one forced tx
+	oldTimestamp2 := time.Now().Add(-4 * time.Minute)
+	mockDA.MockClient.On("Retrieve", mock.Anything, uint64(101), forcedInclusionNS).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: oldTimestamp2},
+		Data:       [][]byte{[]byte("forced-3")},
+	}).Once()
+
+	// Epoch at height 102: from the future (head reached during replay)
+	mockDA.MockClient.On("Retrieve", mock.Anything, uint64(102), forcedInclusionNS).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture},
+	}).Maybe()
+
+	gen := genesis.Genesis{
+		ChainID:                "test-chain",
+		DAStartHeight:          100,
+		DAEpochForcedInclusion: 1,
+	}
+
+	seq, err := NewSequencer(
+		logger,
+		db,
+		mockDA,
+		config.DefaultConfig(),
+		[]byte("test-chain"),
+		1000,
+		gen,
+		createDefaultMockExecutor(t),
+	)
+	require.NoError(t, err)
+
+	// Submit several mempool transactions
+	for i := 0; i < 5; i++ {
+		_, err = seq.SubmitBatchTxs(ctx, coresequencer.SubmitBatchTxsRequest{
+			Id:    []byte("test-chain"),
+			Batch: &coresequencer.Batch{Transactions: [][]byte{[]byte("mempool-tx")}},
+		})
+		require.NoError(t, err)
+	}
+
+	req := coresequencer.GetNextBatchRequest{
+		Id:            []byte("test-chain"),
+		MaxBytes:      1000000,
+		LastBatchData: nil,
+	}
+
+	// First batch (epoch 100): only forced txs
+	resp1, err := seq.GetNextBatch(ctx, req)
+	require.NoError(t, err)
+	assert.True(t, seq.isCatchingUp())
+
+	for _, tx := range resp1.Batch.Transactions {
+		assert.NotEqual(t, []byte("mempool-tx"), tx, "mempool tx should not appear during catch-up")
+	}
+	assert.Equal(t, 2, len(resp1.Batch.Transactions), "should have 2 forced txs from epoch 100")
+
+	// Second batch (epoch 101): only forced txs
+	resp2, err := seq.GetNextBatch(ctx, req)
+	require.NoError(t, err)
+	assert.True(t, seq.isCatchingUp())
+
+	for _, tx := range resp2.Batch.Transactions {
+		assert.NotEqual(t, []byte("mempool-tx"), tx, "mempool tx should not appear during catch-up")
+	}
+	assert.Equal(t, 1, len(resp2.Batch.Transactions), "should have 1 forced tx from epoch 101")
+}
+
+func TestSequencer_CatchUp_UsesDATimestamp(t *testing.T) {
+	ctx := context.Background()
+
+	db := ds.NewMapDatastore()
+	defer db.Close()
+
+	mockDA := newMockFullDAClient(t)
+	forcedInclusionNS := []byte("forced-inclusion")
+
+	mockDA.MockClient.On("GetHeaderNamespace").Return([]byte("header")).Maybe()
+	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
+	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
+	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+
+	// DA head is at 105 — multiple epochs ahead, triggers catch-up
+	mockDA.MockClient.On("GetLatestDAHeight", mock.Anything).Return(uint64(105), nil).Once()
+
+	// Epoch at height 100: timestamp 5 minutes ago
+	epochTimestamp := time.Now().Add(-5 * time.Minute).UTC()
+	mockDA.MockClient.On("Retrieve", mock.Anything, uint64(100), forcedInclusionNS).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: epochTimestamp},
+		Data:       [][]byte{[]byte("forced-tx")},
+	}).Once()
+
+	gen := genesis.Genesis{
+		ChainID:                "test-chain",
+		DAStartHeight:          100,
+		DAEpochForcedInclusion: 1,
+	}
+
+	seq, err := NewSequencer(
+		zerolog.Nop(),
+		db,
+		mockDA,
+		config.DefaultConfig(),
+		[]byte("test-chain"),
+		1000,
+		gen,
+		createDefaultMockExecutor(t),
+	)
+	require.NoError(t, err)
+
+	req := coresequencer.GetNextBatchRequest{
+		Id:            []byte("test-chain"),
+		MaxBytes:      1000000,
+		LastBatchData: nil,
+	}
+
+	resp, err := seq.GetNextBatch(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.True(t, seq.isCatchingUp(), "should be in catch-up mode")
+
+	// During catch-up, the timestamp should be the DA epoch end time, not time.Now()
+	assert.Equal(t, epochTimestamp, resp.Timestamp,
+		"catch-up batch timestamp should match DA epoch timestamp")
+}
+
+func TestSequencer_CatchUp_ExitsCatchUpAtDAHead(t *testing.T) {
+	ctx := context.Background()
+	logger := zerolog.New(zerolog.NewTestWriter(t))
+
+	db := ds.NewMapDatastore()
+	defer db.Close()
+
+	mockDA := newMockFullDAClient(t)
+	forcedInclusionNS := []byte("forced-inclusion")
+
+	mockDA.MockClient.On("GetHeaderNamespace").Return([]byte("header")).Maybe()
+	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
+	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
+	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+
+	// DA head is at 105 — multiple epochs ahead, triggers catch-up
+	mockDA.MockClient.On("GetLatestDAHeight", mock.Anything).Return(uint64(105), nil).Once()
+
+	// Epoch 100: old (catch-up)
+	mockDA.MockClient.On("Retrieve", mock.Anything, uint64(100), forcedInclusionNS).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: time.Now().Add(-5 * time.Minute)},
+		Data:       [][]byte{[]byte("forced-old")},
+	}).Once()
+
+	// Epoch 101: fetched during catch-up, but returns HeightFromFuture to exit catch-up
+	mockDA.MockClient.On("Retrieve", mock.Anything, uint64(101), forcedInclusionNS).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture},
+	}).Once()
+
+	gen := genesis.Genesis{
+		ChainID:                "test-chain",
+		DAStartHeight:          100,
+		DAEpochForcedInclusion: 1,
+	}
+
+	seq, err := NewSequencer(
+		logger,
+		db,
+		mockDA,
+		config.DefaultConfig(),
+		[]byte("test-chain"),
+		1000,
+		gen,
+		createDefaultMockExecutor(t),
+	)
+	require.NoError(t, err)
+
+	// Submit mempool tx
+	_, err = seq.SubmitBatchTxs(ctx, coresequencer.SubmitBatchTxsRequest{
+		Id:    []byte("test-chain"),
+		Batch: &coresequencer.Batch{Transactions: [][]byte{[]byte("mempool-tx")}},
+	})
+	require.NoError(t, err)
+
+	req := coresequencer.GetNextBatchRequest{
+		Id:            []byte("test-chain"),
+		MaxBytes:      1000000,
+		LastBatchData: nil,
+	}
+
+	// First batch: catch-up (old epoch 100)
+	resp1, err := seq.GetNextBatch(ctx, req)
+	require.NoError(t, err)
+	assert.True(t, seq.isCatchingUp(), "should be catching up during old epoch")
+	assert.Equal(t, 1, len(resp1.Batch.Transactions), "catch-up: only forced tx")
+	assert.Equal(t, []byte("forced-old"), resp1.Batch.Transactions[0])
+
+	// Second batch: epoch 101 returns HeightFromFuture — should exit catch-up
+	resp2, err := seq.GetNextBatch(ctx, req)
+	require.NoError(t, err)
+	assert.False(t, seq.isCatchingUp(), "should have exited catch-up after reaching DA head")
+
+	// Should include mempool tx now (no forced txs available)
+	hasMempoolTx := false
+	for _, tx := range resp2.Batch.Transactions {
+		if bytes.Equal(tx, []byte("mempool-tx")) {
+			hasMempoolTx = true
+		}
+	}
+	assert.True(t, hasMempoolTx, "should contain mempool tx after exiting catch-up")
+}
+
+func TestSequencer_CatchUp_HeightFromFutureExitsCatchUp(t *testing.T) {
+	ctx := context.Background()
+
+	db := ds.NewMapDatastore()
+	defer db.Close()
+
+	mockDA := newMockFullDAClient(t)
+	forcedInclusionNS := []byte("forced-inclusion")
+
+	mockDA.MockClient.On("GetHeaderNamespace").Return([]byte("header")).Maybe()
+	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
+	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
+	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+
+	// DA head is at 105 — multiple epochs ahead, triggers catch-up
+	mockDA.MockClient.On("GetLatestDAHeight", mock.Anything).Return(uint64(105), nil).Once()
+
+	// Epoch 100: success, fetched during catch-up
+	mockDA.MockClient.On("Retrieve", mock.Anything, uint64(100), forcedInclusionNS).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: time.Now().Add(-5 * time.Minute)},
+		Data:       [][]byte{[]byte("forced-tx")},
+	}).Once()
+
+	// Epoch 101: from the future — DA head reached, exits catch-up
+	mockDA.MockClient.On("Retrieve", mock.Anything, uint64(101), forcedInclusionNS).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture},
+	}).Once()
+
+	gen := genesis.Genesis{
+		ChainID:                "test-chain",
+		DAStartHeight:          100,
+		DAEpochForcedInclusion: 1,
+	}
+
+	seq, err := NewSequencer(
+		zerolog.Nop(),
+		db,
+		mockDA,
+		config.DefaultConfig(),
+		[]byte("test-chain"),
+		1000,
+		gen,
+		createDefaultMockExecutor(t),
+	)
+	require.NoError(t, err)
+
+	req := coresequencer.GetNextBatchRequest{
+		Id:            []byte("test-chain"),
+		MaxBytes:      1000000,
+		LastBatchData: nil,
+	}
+
+	// First call: fetches epoch 100, enters catch-up via epoch gap detection
+	resp1, err := seq.GetNextBatch(ctx, req)
+	require.NoError(t, err)
+	assert.True(t, seq.isCatchingUp())
+	assert.Equal(t, 1, len(resp1.Batch.Transactions))
+
+	// Second call: epoch 101 is from the future, should exit catch-up
+	resp2, err := seq.GetNextBatch(ctx, req)
+	require.NoError(t, err)
+	assert.False(t, seq.isCatchingUp(), "should exit catch-up when DA returns HeightFromFuture")
+	// No forced txs available, batch is empty
+	assert.Equal(t, 0, len(resp2.Batch.Transactions))
+}
+
+func TestSequencer_CatchUp_NoCatchUpWhenRecentEpoch(t *testing.T) {
+	ctx := context.Background()
+
+	db := ds.NewMapDatastore()
+	defer db.Close()
+
+	mockDA := newMockFullDAClient(t)
+	forcedInclusionNS := []byte("forced-inclusion")
+
+	mockDA.MockClient.On("GetHeaderNamespace").Return([]byte("header")).Maybe()
+	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
+	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
+	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+
+	// DA head is at 100 — sequencer starts at 100 with epoch size 1,
+	// so it is within the same epoch (0 missed). No catch-up.
+	mockDA.MockClient.On("GetLatestDAHeight", mock.Anything).Return(uint64(100), nil).Once()
+
+	// Epoch at height 100: current epoch
+	mockDA.MockClient.On("Retrieve", mock.Anything, uint64(100), forcedInclusionNS).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: time.Now()},
+		Data:       [][]byte{[]byte("forced-tx")},
+	}).Once()
+
+	gen := genesis.Genesis{
+		ChainID:                "test-chain",
+		DAStartHeight:          100,
+		DAEpochForcedInclusion: 1,
+	}
+
+	seq, err := NewSequencer(
+		zerolog.Nop(),
+		db,
+		mockDA,
+		config.DefaultConfig(),
+		[]byte("test-chain"),
+		1000,
+		gen,
+		createDefaultMockExecutor(t),
+	)
+	require.NoError(t, err)
+
+	// Submit a mempool tx
+	_, err = seq.SubmitBatchTxs(ctx, coresequencer.SubmitBatchTxsRequest{
+		Id:    []byte("test-chain"),
+		Batch: &coresequencer.Batch{Transactions: [][]byte{[]byte("mempool-tx")}},
+	})
+	require.NoError(t, err)
+
+	req := coresequencer.GetNextBatchRequest{
+		Id:            []byte("test-chain"),
+		MaxBytes:      1000000,
+		LastBatchData: nil,
+	}
+
+	resp, err := seq.GetNextBatch(ctx, req)
+	require.NoError(t, err)
+	assert.False(t, seq.isCatchingUp(), "should NOT be catching up when within one epoch of DA head")
+
+	// Should have both forced and mempool txs (normal operation)
+	assert.Equal(t, 2, len(resp.Batch.Transactions), "should have forced + mempool tx in normal mode")
+}
+
+func TestSequencer_CatchUp_MultiEpochReplay(t *testing.T) {
+	// Simulates a sequencer that missed 3 DA epochs and must replay them all
+	// before resuming normal operation.
+	ctx := context.Background()
+	logger := zerolog.New(zerolog.NewTestWriter(t))
+
+	db := ds.NewMapDatastore()
+	defer db.Close()
+
+	mockDA := newMockFullDAClient(t)
+	forcedInclusionNS := []byte("forced-inclusion")
+
+	mockDA.MockClient.On("GetHeaderNamespace").Return([]byte("header")).Maybe()
+	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
+	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
+	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+
+	// DA head is at 106 — sequencer starts at 100 with epoch size 1,
+	// so it has missed 6 epochs (>1), triggering catch-up.
+	// Called once on first fetchNextDAEpoch.
+	mockDA.MockClient.On("GetLatestDAHeight", mock.Anything).Return(uint64(106), nil).Once()
+
+	// 3 old epochs (100, 101, 102) — all with timestamps far in the past
+	for h := uint64(100); h <= 102; h++ {
+		ts := time.Now().Add(-time.Duration(103-h) * time.Minute) // older epochs further in the past
+		txData := []byte("forced-from-epoch-" + string(rune('0'+h-100)))
+		mockDA.MockClient.On("Retrieve", mock.Anything, h, forcedInclusionNS).Return(datypes.ResultRetrieve{
+			BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: ts},
+			Data:       [][]byte{txData},
+		}).Once()
+	}
+
+	// Epoch 103: returns HeightFromFuture — DA head reached, exits catch-up
+	mockDA.MockClient.On("Retrieve", mock.Anything, uint64(103), forcedInclusionNS).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture},
+	}).Once()
+
+	gen := genesis.Genesis{
+		ChainID:                "test-chain",
+		DAStartHeight:          100,
+		DAEpochForcedInclusion: 1,
+	}
+
+	seq, err := NewSequencer(
+		logger,
+		db,
+		mockDA,
+		config.DefaultConfig(),
+		[]byte("test-chain"),
+		1000,
+		gen,
+		createDefaultMockExecutor(t),
+	)
+	require.NoError(t, err)
+
+	// Submit mempool txs
+	_, err = seq.SubmitBatchTxs(ctx, coresequencer.SubmitBatchTxsRequest{
+		Id:    []byte("test-chain"),
+		Batch: &coresequencer.Batch{Transactions: [][]byte{[]byte("mempool-1"), []byte("mempool-2")}},
+	})
+	require.NoError(t, err)
+
+	req := coresequencer.GetNextBatchRequest{
+		Id:            []byte("test-chain"),
+		MaxBytes:      1000000,
+		LastBatchData: nil,
+	}
+
+	// Process the 3 old epochs — all should be catch-up (no mempool)
+	for i := 0; i < 3; i++ {
+		resp, err := seq.GetNextBatch(ctx, req)
+		require.NoError(t, err)
+		assert.True(t, seq.isCatchingUp(), "should be catching up during epoch %d", 100+i)
+		assert.Equal(t, 1, len(resp.Batch.Transactions),
+			"epoch %d: should have exactly 1 forced tx", 100+i)
+
+		for _, tx := range resp.Batch.Transactions {
+			assert.NotEqual(t, []byte("mempool-1"), tx, "no mempool during catch-up epoch %d", 100+i)
+			assert.NotEqual(t, []byte("mempool-2"), tx, "no mempool during catch-up epoch %d", 100+i)
+		}
+	}
+
+	// DA height should have advanced through the 3 old epochs
+	assert.Equal(t, uint64(103), seq.GetDAHeight(), "DA height should be at 103 after replaying 3 epochs")
+
+	// Next batch: epoch 103 returns HeightFromFuture — should exit catch-up and include mempool
+	resp4, err := seq.GetNextBatch(ctx, req)
+	require.NoError(t, err)
+	assert.False(t, seq.isCatchingUp(), "should have exited catch-up at DA head")
+
+	hasMempoolTx := false
+	for _, tx := range resp4.Batch.Transactions {
+		if bytes.Equal(tx, []byte("mempool-1")) || bytes.Equal(tx, []byte("mempool-2")) {
+			hasMempoolTx = true
+		}
+	}
+	assert.True(t, hasMempoolTx, "should include mempool txs after exiting catch-up")
+}
+
+func TestSequencer_CatchUp_NoForcedInclusionConfigured(t *testing.T) {
+	// When forced inclusion is not configured, catch-up should never activate.
+	// GetLatestDAHeight should NOT be called because DAEpochForcedInclusion == 0
+	// causes updateCatchUpState to bail out early.
+	ctx := context.Background()
+
+	db := ds.NewMapDatastore()
+	defer db.Close()
+
+	mockDA := newMockFullDAClient(t)
+	// No forced inclusion namespace configured
+	mockDA.MockClient.On("GetHeaderNamespace").Return([]byte("header")).Maybe()
+	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
+	mockDA.MockClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
+	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
+
+	gen := genesis.Genesis{
+		ChainID:                "test-chain",
+		DAStartHeight:          100,
+		DAEpochForcedInclusion: 0, // no epoch-based forced inclusion
+	}
+
+	seq, err := NewSequencer(
+		zerolog.Nop(),
+		db,
+		mockDA,
+		config.DefaultConfig(),
+		[]byte("test-chain"),
+		1000,
+		gen,
+		createDefaultMockExecutor(t),
+	)
+	require.NoError(t, err)
+
+	// Submit mempool tx
+	_, err = seq.SubmitBatchTxs(ctx, coresequencer.SubmitBatchTxsRequest{
+		Id:    []byte("test-chain"),
+		Batch: &coresequencer.Batch{Transactions: [][]byte{[]byte("mempool-tx")}},
+	})
+	require.NoError(t, err)
+
+	req := coresequencer.GetNextBatchRequest{
+		Id:            []byte("test-chain"),
+		MaxBytes:      1000000,
+		LastBatchData: nil,
+	}
+
+	resp, err := seq.GetNextBatch(ctx, req)
+	require.NoError(t, err)
+	assert.False(t, seq.isCatchingUp(), "should never catch up when forced inclusion not configured")
+	assert.Equal(t, 1, len(resp.Batch.Transactions))
+	assert.Equal(t, []byte("mempool-tx"), resp.Batch.Transactions[0])
+}
+
+func TestSequencer_CatchUp_CheckpointAdvancesDuringCatchUp(t *testing.T) {
+	// Verify that the checkpoint (DA epoch tracking) advances correctly during catch-up.
+	ctx := context.Background()
+
+	db := ds.NewMapDatastore()
+	defer db.Close()
+
+	mockDA := newMockFullDAClient(t)
+	forcedInclusionNS := []byte("forced-inclusion")
+
+	mockDA.MockClient.On("GetHeaderNamespace").Return([]byte("header")).Maybe()
+	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
+	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
+	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+
+	// DA head is at 105 — multiple epochs ahead, triggers catch-up
+	mockDA.MockClient.On("GetLatestDAHeight", mock.Anything).Return(uint64(105), nil).Once()
+
+	// Epoch 100: old
+	mockDA.MockClient.On("Retrieve", mock.Anything, uint64(100), forcedInclusionNS).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: time.Now().Add(-5 * time.Minute)},
+		Data:       [][]byte{[]byte("tx-a"), []byte("tx-b")},
+	}).Once()
+
+	// Epoch 101: old
+	mockDA.MockClient.On("Retrieve", mock.Anything, uint64(101), forcedInclusionNS).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: time.Now().Add(-4 * time.Minute)},
+		Data:       [][]byte{[]byte("tx-c")},
+	}).Once()
+
+	// Epoch 102: from the future
+	mockDA.MockClient.On("Retrieve", mock.Anything, uint64(102), forcedInclusionNS).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture},
+	}).Maybe()
+
+	gen := genesis.Genesis{
+		ChainID:                "test-chain",
+		DAStartHeight:          100,
+		DAEpochForcedInclusion: 1,
+	}
+
+	seq, err := NewSequencer(
+		zerolog.Nop(),
+		db,
+		mockDA,
+		config.DefaultConfig(),
+		[]byte("test-chain"),
+		1000,
+		gen,
+		createDefaultMockExecutor(t),
+	)
+	require.NoError(t, err)
+
+	// Initial checkpoint
+	assert.Equal(t, uint64(100), seq.checkpoint.DAHeight)
+	assert.Equal(t, uint64(0), seq.checkpoint.TxIndex)
+
+	req := coresequencer.GetNextBatchRequest{
+		Id:            []byte("test-chain"),
+		MaxBytes:      1000000,
+		LastBatchData: nil,
+	}
+
+	// Process epoch 100
+	resp1, err := seq.GetNextBatch(ctx, req)
+	require.NoError(t, err)
+	assert.Equal(t, 2, len(resp1.Batch.Transactions))
+
+	// Checkpoint should advance to epoch 101
+	assert.Equal(t, uint64(101), seq.checkpoint.DAHeight)
+	assert.Equal(t, uint64(0), seq.checkpoint.TxIndex)
+	assert.Equal(t, uint64(101), seq.GetDAHeight())
+
+	// Process epoch 101
+	resp2, err := seq.GetNextBatch(ctx, req)
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(resp2.Batch.Transactions))
+
+	// Checkpoint should advance to epoch 102
+	assert.Equal(t, uint64(102), seq.checkpoint.DAHeight)
+	assert.Equal(t, uint64(0), seq.checkpoint.TxIndex)
+	assert.Equal(t, uint64(102), seq.GetDAHeight())
+}
+
+func TestSequencer_CatchUp_MonotonicTimestamps(t *testing.T) {
+	// When a single DA epoch has more forced txs than fit in one block,
+	// catch-up must produce strictly monotonic timestamps across the
+	// resulting blocks.  The jitter scheme is:
+	//   epochStart     = daEndTime - totalEpochTxs * 1ms
+	//   blockTimestamp = epochStart + txIndexForTimestamp * 1ms
+	// where txIndexForTimestamp is the cumulative consumed-tx count
+	// captured *before* the checkpoint resets at an epoch boundary.
+	// The final block of an epoch therefore lands exactly on daEndTime.
+	ctx := context.Background()
+	logger := zerolog.New(zerolog.NewTestWriter(t))
+
+	db := ds.NewMapDatastore()
+	defer db.Close()
+
+	mockDA := newMockFullDAClient(t)
+	forcedInclusionNS := []byte("forced-inclusion")
+
+	mockDA.MockClient.On("GetHeaderNamespace").Return([]byte("header")).Maybe()
+	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
+	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
+	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+
+	// DA head is far ahead — triggers catch-up
+	mockDA.MockClient.On("GetLatestDAHeight", mock.Anything).Return(uint64(110), nil).Once()
+
+	// Epoch at height 100: 3 forced txs, each 100 bytes
+	epochTimestamp := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	tx1 := make([]byte, 100)
+	tx2 := make([]byte, 100)
+	tx3 := make([]byte, 100)
+	copy(tx1, "forced-tx-1")
+	copy(tx2, "forced-tx-2")
+	copy(tx3, "forced-tx-3")
+	mockDA.MockClient.On("Retrieve", mock.Anything, uint64(100), forcedInclusionNS).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: epochTimestamp},
+		Data:       [][]byte{tx1, tx2, tx3},
+	}).Once()
+
+	// Epoch at height 101: single tx (to verify cross-epoch monotonicity)
+	epoch2Timestamp := time.Date(2025, 1, 1, 12, 0, 10, 0, time.UTC) // 10 seconds later
+	mockDA.MockClient.On("Retrieve", mock.Anything, uint64(101), forcedInclusionNS).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: epoch2Timestamp},
+		Data:       [][]byte{[]byte("forced-tx-4")},
+	}).Once()
+
+	// Epoch 102: future — exits catch-up
+	mockDA.MockClient.On("Retrieve", mock.Anything, uint64(102), forcedInclusionNS).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture},
+	}).Maybe()
+
+	gen := genesis.Genesis{
+		ChainID:                "test-chain",
+		DAStartHeight:          100,
+		DAEpochForcedInclusion: 1,
+	}
+
+	// Custom executor: only 1 tx fits per block (gas-limited)
+	mockExec := mocks.NewMockExecutor(t)
+	mockExec.On("GetExecutionInfo", mock.Anything).Return(execution.ExecutionInfo{MaxGas: 1000000}, nil).Maybe()
+	mockExec.On("FilterTxs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
+		func(ctx context.Context, txs [][]byte, maxBytes, maxGas uint64, hasForceIncludedTransaction bool) []execution.FilterStatus {
+			result := make([]execution.FilterStatus, len(txs))
+			// Only first tx fits, rest are postponed
+			for i := range result {
+				if i == 0 {
+					result[i] = execution.FilterOK
+				} else {
+					result[i] = execution.FilterPostpone
+				}
+			}
+			return result
+		},
+		nil,
+	).Maybe()
+
+	seq, err := NewSequencer(
+		logger,
+		db,
+		mockDA,
+		config.DefaultConfig(),
+		[]byte("test-chain"),
+		1000,
+		gen,
+		mockExec,
+	)
+	require.NoError(t, err)
+
+	req := coresequencer.GetNextBatchRequest{
+		Id:            []byte("test-chain"),
+		MaxBytes:      1000000,
+		LastBatchData: nil,
+	}
+
+	// Produce 3 blocks from epoch 100 (1 tx each due to gas filter)
+	var timestamps []time.Time
+	for i := 0; i < 3; i++ {
+		resp, err := seq.GetNextBatch(ctx, req)
+		require.NoError(t, err)
+		assert.True(t, seq.isCatchingUp(), "should be catching up during block %d", i)
+		assert.Equal(t, 1, len(resp.Batch.Transactions), "block %d: exactly 1 forced tx", i)
+		timestamps = append(timestamps, resp.Timestamp)
+	}
+
+	// All 3 timestamps must be strictly monotonically increasing
+	for i := 1; i < len(timestamps); i++ {
+		assert.True(t, timestamps[i].After(timestamps[i-1]),
+			"timestamp[%d] (%v) must be strictly after timestamp[%d] (%v)",
+			i, timestamps[i], i-1, timestamps[i-1])
+	}
+
+	// Verify exact jitter values using epochStart + txIndexForTimestamp formula:
+	//   epochStart = T - 3ms  (3 total txs in epoch)
+	//   Block 0: 1 consumed → txIndex=1 → epochStart + 1ms = T - 2ms
+	//   Block 1: 1 consumed → txIndex=2 → epochStart + 2ms = T - 1ms
+	//   Block 2: 1 consumed → txIndex=3 (pre-reset) → epochStart + 3ms = T
+	assert.Equal(t, epochTimestamp.Add(-2*time.Millisecond), timestamps[0], "block 0: T - 2ms")
+	assert.Equal(t, epochTimestamp.Add(-1*time.Millisecond), timestamps[1], "block 1: T - 1ms")
+	assert.Equal(t, epochTimestamp, timestamps[2], "block 2: T (exact epoch end time)")
+
+	// Block from epoch 101 should also be monotonically after epoch 100's last block
+	resp4, err := seq.GetNextBatch(ctx, req)
+	require.NoError(t, err)
+	assert.True(t, seq.isCatchingUp(), "should still be catching up")
+	assert.Equal(t, 1, len(resp4.Batch.Transactions))
+	assert.True(t, resp4.Timestamp.After(timestamps[2]),
+		"epoch 101 timestamp (%v) must be after epoch 100 last timestamp (%v)",
+		resp4.Timestamp, timestamps[2])
+	// epoch 101 has 1 tx: epochStart = T2 - 1ms, txIndexForTimestamp=1 → T2 - 1ms + 1ms = T2
+	assert.Equal(t, epoch2Timestamp, resp4.Timestamp, "single-tx epoch gets exact DA end time")
+}
+
+func TestSequencer_CatchUp_MonotonicTimestamps_EmptyEpoch(t *testing.T) {
+	// Verify that an empty DA epoch (no forced txs) still advances the
+	// checkpoint and updates currentDAEndTime so subsequent epochs get
+	// correct timestamps.
+	ctx := context.Background()
+
+	db := ds.NewMapDatastore()
+	defer db.Close()
+
+	mockDA := newMockFullDAClient(t)
+	forcedInclusionNS := []byte("forced-inclusion")
+
+	mockDA.MockClient.On("GetHeaderNamespace").Return([]byte("header")).Maybe()
+	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
+	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
+	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+
+	mockDA.MockClient.On("GetLatestDAHeight", mock.Anything).Return(uint64(110), nil).Once()
+
+	// Epoch 100: empty (no forced txs) but valid timestamp
+	emptyEpochTimestamp := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	mockDA.MockClient.On("Retrieve", mock.Anything, uint64(100), forcedInclusionNS).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: emptyEpochTimestamp},
+		Data:       [][]byte{},
+	}).Once()
+
+	// Epoch 101: has a forced tx with a later timestamp
+	epoch2Timestamp := time.Date(2025, 1, 1, 12, 0, 15, 0, time.UTC)
+	mockDA.MockClient.On("Retrieve", mock.Anything, uint64(101), forcedInclusionNS).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: epoch2Timestamp},
+		Data:       [][]byte{[]byte("forced-tx-after-empty")},
+	}).Once()
+
+	// Epoch 102: future
+	mockDA.MockClient.On("Retrieve", mock.Anything, uint64(102), forcedInclusionNS).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture},
+	}).Maybe()
+
+	gen := genesis.Genesis{
+		ChainID:                "test-chain",
+		DAStartHeight:          100,
+		DAEpochForcedInclusion: 1,
+	}
+
+	seq, err := NewSequencer(
+		zerolog.Nop(),
+		db,
+		mockDA,
+		config.DefaultConfig(),
+		[]byte("test-chain"),
+		1000,
+		gen,
+		createDefaultMockExecutor(t),
+	)
+	require.NoError(t, err)
+
+	req := coresequencer.GetNextBatchRequest{
+		Id:            []byte("test-chain"),
+		MaxBytes:      1000000,
+		LastBatchData: nil,
+	}
+
+	// First call processes the empty epoch 100 — empty batch, but checkpoint advances
+	resp1, err := seq.GetNextBatch(ctx, req)
+	require.NoError(t, err)
+	assert.True(t, seq.isCatchingUp())
+	assert.Equal(t, 0, len(resp1.Batch.Transactions), "empty epoch should produce empty batch")
+	assert.Equal(t, emptyEpochTimestamp, resp1.Timestamp,
+		"empty epoch batch should use epoch DA end time (0 remaining)")
+
+	// Second call processes epoch 101 — should have later timestamp
+	resp2, err := seq.GetNextBatch(ctx, req)
+	require.NoError(t, err)
+	assert.True(t, seq.isCatchingUp())
+	assert.Equal(t, 1, len(resp2.Batch.Transactions))
+	assert.True(t, resp2.Timestamp.After(resp1.Timestamp),
+		"epoch 101 timestamp (%v) must be after empty epoch 100 timestamp (%v)",
+		resp2.Timestamp, resp1.Timestamp)
+}
+
 func TestSequencer_GetNextBatch_GasFilteringPreservesUnprocessedTxs(t *testing.T) {
 	db := ds.NewMapDatastore()
 	logger := zerolog.New(zerolog.NewTestWriter(t))

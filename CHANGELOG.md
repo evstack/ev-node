@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add disaster recovery for sequencer
+  - Catch up possible DA-only blocks when restarting. [#3057](https://github.com/evstack/ev-node/pull/3057)
+  - Verify DA and P2P state on restart (prevent double-signing). [#3061](https://github.com/evstack/ev-node/pull/3061)
 - Node pruning support. [#2984](https://github.com/evstack/ev-node/pull/2984)
   - Two different sort of pruning implemented:
     _Classic pruning_ (`all`): prunes given `HEAD-n` blocks from the databases, including store metadatas.
@@ -21,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changes
 
 - Store pending blocks separately from executed blocks key. [#3073](https://github.com/evstack/ev-node/pull/3073)
+- Fixes issues with force inclusion verification on sync nodes. [#3057](https://github.com/evstack/ev-node/pull/3057)
+- Add flag to `local-da` to produce empty DA blocks (closer to the real system). [#3057](https://github.com/evstack/ev-node/pull/3057)
 
 ## v1.0.0-rc.4
 

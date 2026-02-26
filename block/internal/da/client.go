@@ -299,6 +299,23 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 	}
 }
 
+// GetLatestDAHeight returns the latest height available on the DA layer by
+// querying the network head.
+func (c *client) GetLatestDAHeight(ctx context.Context) (uint64, error) {
+	headCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
+	defer cancel()
+
+	header, err := c.headerAPI.NetworkHead(headCtx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get DA network head: %w", err)
+	}
+	if header == nil {
+		return 0, fmt.Errorf("DA network head returned nil header")
+	}
+
+	return header.Height, nil
+}
+
 // RetrieveForcedInclusion retrieves blobs from the forced inclusion namespace at the specified height.
 func (c *client) RetrieveForcedInclusion(ctx context.Context, height uint64) datypes.ResultRetrieve {
 	if !c.hasForcedNamespace {

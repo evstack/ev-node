@@ -74,6 +74,10 @@ func (m *mockDA) HasForcedInclusionNamespace() bool {
 	return true
 }
 
+func (m *mockDA) GetLatestDAHeight(_ context.Context) (uint64, error) {
+	return 0, nil
+}
+
 func TestForceInclusionServer_handleSendRawTransaction_Success(t *testing.T) {
 	testHeight := uint64(100)
 

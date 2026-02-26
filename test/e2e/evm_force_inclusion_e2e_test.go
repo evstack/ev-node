@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
@@ -361,9 +362,12 @@ func setupFullNodeWithForceInclusionCheck(t *testing.T, sut *SystemUnderTest, fu
 		"--evnode.da.forced_inclusion_namespace", "forced-inc", // Enables forced inclusion verification
 		"--evnode.rpc.address", endpoints.GetFullNodeRPCListen(),
 		"--evnode.p2p.listen_address", endpoints.GetFullNodeP2PAddress(),
-		"--evnode.p2p.peers", sequencerP2PAddr,
 		"--evm.engine-url", endpoints.GetFullNodeEngineURL(),
 		"--evm.eth-url", endpoints.GetFullNodeEthURL(),
+	}
+	// Only add P2P peers if a peer address is provided (disabled for malicious sequencer test)
+	if sequencerP2PAddr != "" {
+		fnArgs = append(fnArgs, "--evnode.p2p.peers", sequencerP2PAddr)
 	}
 	sut.ExecCmd(evmSingleBinaryPath, fnArgs...)
 	sut.AwaitNodeLive(t, endpoints.GetFullNodeRPCAddress(), NodeStartupTimeout)
@@ -405,8 +409,6 @@ func setupFullNodeWithForceInclusionCheck(t *testing.T, sut *SystemUnderTest, fu
 // Note: This test simulates the scenario by having the sequencer configured to
 // listen to the wrong namespace, while we submit directly to the correct namespace.
 func TestEvmSyncerMaliciousSequencerForceInclusionE2E(t *testing.T) {
-	t.Skip() // Unskip once https://github.com/evstack/ev-node/pull/2963 is merged
-
 	sut := NewSystemUnderTest(t)
 	workDir := t.TempDir()
 	sequencerHome := filepath.Join(workDir, "sequencer")
@@ -417,12 +419,9 @@ func TestEvmSyncerMaliciousSequencerForceInclusionE2E(t *testing.T) {
 	t.Log("Malicious sequencer started listening to WRONG forced inclusion namespace")
 	t.Log("NOTE: Sequencer listens to 'wrong-namespace', won't see txs on 'forced-inc'")
 
-	sequencerP2PAddress := getNodeP2PAddress(t, sut, sequencerHome, endpoints.RollkitRPCPort)
-	t.Logf("Sequencer P2P address: %s", sequencerP2PAddress)
-
-	// Setup full node that will sync from the sequencer and verify forced inclusion
-	setupFullNodeWithForceInclusionCheck(t, sut, fullNodeHome, sequencerHome, fullNodeJwtSecret, genesisHash, sequencerP2PAddress, endpoints)
-	t.Log("Full node (syncer) is up and will verify forced inclusion from DA")
+	// Disable P2P sync - the full node will sync blocks directly from DA.
+	setupFullNodeWithForceInclusionCheck(t, sut, fullNodeHome, sequencerHome, fullNodeJwtSecret, genesisHash, "", endpoints)
+	t.Log("Full node (syncer) is up and will verify forced inclusion from DA (P2P disabled)")
 
 	// Connect to clients
 	seqClient, err := ethclient.Dial(endpoints.GetSequencerEthURL())
@@ -564,4 +563,510 @@ func TestEvmSyncerMaliciousSequencerForceInclusionE2E(t *testing.T) {
 
 	require.False(t, evm.CheckTxIncluded(seqClient, txForce.Hash()),
 		"Malicious sequencer should NOT have included the forced inclusion transaction")
+}
+
+// setDAStartHeightInGenesis modifies the genesis file to set da_start_height.
+// This is needed because the based sequencer requires non-zero DAStartHeight,
+// and catch-up detection via CalculateEpochNumber also depends on it.
+func setDAStartHeightInGenesis(t *testing.T, homeDir string, height uint64) {
+	t.Helper()
+	genesisPath := filepath.Join(homeDir, "config", "genesis.json")
+	data, err := os.ReadFile(genesisPath)
+	require.NoError(t, err)
+
+	var genesis map[string]interface{}
+	err = json.Unmarshal(data, &genesis)
+	require.NoError(t, err)
+
+	genesis["da_start_height"] = height
+
+	newData, err := json.MarshalIndent(genesis, "", "  ")
+	require.NoError(t, err)
+
+	err = os.WriteFile(genesisPath, newData, 0644)
+	require.NoError(t, err)
+}
+
+// TestEvmSequencerCatchUpBasedSequencerE2E tests that when a sequencer restarts after
+// extended downtime (multiple DA epochs), it correctly enters catch-up mode, replays
+// missed forced inclusion transactions from DA (matching what a based sequencer would
+// produce), and then resumes normal operation.
+//
+// Test Flow:
+// 1. a) Start sequencer
+// 1. b) Start sync node (full node)
+// 2. Wait for sync node to sync and send txs
+// 3. a) Stop sequencer
+// 3. b) Stop sync node
+// 4. Restart sync node as based sequencer (reuse home directory, add --based_sequencer flag)
+// 5. Send txs to force inclusion namespace
+// 6. Wait for node (based sequencer) to produce one block (must contain those transactions)
+// 7. Start sequencer
+// 8. Verify blocks are produced and equal to based sequencer blocks
+// 9. Stop based sequencer and restart as normal sync node
+// 10. Verify they are in sync.
+func TestEvmSequencerCatchUpBasedSequencerE2E(t *testing.T) {
+	sut := NewSystemUnderTest(t)
+	workDir := t.TempDir()
+	sequencerHome := filepath.Join(workDir, "sequencer")
+	fullNodeHome := filepath.Join(workDir, "fullnode")
+
+	// ===== PHASE 1: Setup - Start Sequencer and Sync Node =====
+	t.Log("Phase 1: Setup - Start Sequencer and Sync Node")
+
+	dockerClient, networkID := tastoradocker.Setup(t)
+	env := setupCommonEVMEnv(t, sut, dockerClient, networkID, WithFullNode())
+
+	// Create passphrase and JWT secret files for sequencer
+	seqPassphraseFile := createPassphraseFile(t, sequencerHome)
+	seqJwtSecretFile := createJWTSecretFile(t, sequencerHome, env.SequencerJWT)
+
+	// Initialize sequencer node
+	output, err := sut.RunCmd(evmSingleBinaryPath,
+		"init",
+		"--evnode.node.aggregator=true",
+		"--evnode.signer.passphrase_file", seqPassphraseFile,
+		"--home", sequencerHome,
+	)
+	require.NoError(t, err, "failed to init sequencer", output)
+
+	// Modify genesis: enable force inclusion with epoch=2, set da_start_height=1
+	enableForceInclusionInGenesis(t, sequencerHome, 2)
+	setDAStartHeightInGenesis(t, sequencerHome, 1)
+
+	// Copy genesis to full node (will be used when restarting as based sequencer)
+	output, err = sut.RunCmd(evmSingleBinaryPath,
+		"init",
+		"--home", fullNodeHome,
+	)
+	require.NoError(t, err, "failed to init full node", output)
+	MustCopyFile(t,
+		filepath.Join(sequencerHome, "config", "genesis.json"),
+		filepath.Join(fullNodeHome, "config", "genesis.json"),
+	)
+
+	// Start sequencer with forced inclusion namespace
+	seqProcess := sut.ExecCmd(evmSingleBinaryPath,
+		"start",
+		"--evm.jwt-secret-file", seqJwtSecretFile,
+		"--evm.genesis-hash", env.GenesisHash,
+		"--evnode.node.block_time", DefaultBlockTime,
+		"--evnode.node.aggregator=true",
+		"--evnode.signer.passphrase_file", seqPassphraseFile,
+		"--home", sequencerHome,
+		"--evnode.da.block_time", DefaultDABlockTime,
+		"--evnode.da.address", env.Endpoints.GetDAAddress(),
+		"--evnode.da.namespace", DefaultDANamespace,
+		"--evnode.da.forced_inclusion_namespace", "forced-inc",
+		"--evnode.rpc.address", env.Endpoints.GetRollkitRPCListen(),
+		"--evnode.p2p.listen_address", env.Endpoints.GetRollkitP2PAddress(),
+		"--evm.engine-url", env.Endpoints.GetSequencerEngineURL(),
+		"--evm.eth-url", env.Endpoints.GetSequencerEthURL(),
+	)
+	sut.AwaitNodeUp(t, env.Endpoints.GetRollkitRPCAddress(), NodeStartupTimeout)
+	t.Log("Sequencer is up with force inclusion enabled")
+
+	// Get sequencer P2P address for sync node to connect to
+	sequencerP2PAddress := getNodeP2PAddress(t, sut, sequencerHome, env.Endpoints.RollkitRPCPort)
+	t.Logf("Sequencer P2P address: %s", sequencerP2PAddress)
+
+	// Create JWT secret file for full node
+	fnJwtSecretFile := createJWTSecretFile(t, fullNodeHome, env.FullNodeJWT)
+
+	// Start sync node (full node) - connects to sequencer via P2P
+	fnProcess := sut.ExecCmd(evmSingleBinaryPath,
+		"start",
+		"--evm.jwt-secret-file", fnJwtSecretFile,
+		"--evm.genesis-hash", env.GenesisHash,
+		"--home", fullNodeHome,
+		"--evnode.da.block_time", DefaultDABlockTime,
+		"--evnode.da.address", env.Endpoints.GetDAAddress(),
+		"--evnode.da.namespace", DefaultDANamespace,
+		"--evnode.da.forced_inclusion_namespace", "forced-inc",
+		"--evnode.rpc.address", env.Endpoints.GetFullNodeRPCListen(),
+		"--evnode.p2p.listen_address", env.Endpoints.GetFullNodeP2PAddress(),
+		"--evnode.p2p.peers", sequencerP2PAddress,
+		"--evm.engine-url", env.Endpoints.GetFullNodeEngineURL(),
+		"--evm.eth-url", env.Endpoints.GetFullNodeEthURL(),
+	)
+	sut.AwaitNodeLive(t, env.Endpoints.GetFullNodeRPCAddress(), NodeStartupTimeout)
+	t.Log("Sync node (full node) is up and syncing from sequencer")
+
+	// ===== PHASE 2: Send Transactions and Wait for Sync =====
+	t.Log("Phase 2: Send Transactions and Wait for Sync")
+
+	seqClient, err := ethclient.Dial(env.Endpoints.GetSequencerEthURL())
+	require.NoError(t, err)
+	defer seqClient.Close()
+
+	fnClient, err := ethclient.Dial(env.Endpoints.GetFullNodeEthURL())
+	require.NoError(t, err)
+	defer fnClient.Close()
+
+	ctx := context.Background()
+	var nonce uint64 = 0
+
+	// Submit 2 normal transactions to sequencer
+	var normalTxHashes []common.Hash
+	for i := 0; i < 2; i++ {
+		tx := evm.GetRandomTransaction(t, TestPrivateKey, TestToAddress, DefaultChainID, DefaultGasLimit, &nonce)
+		err = seqClient.SendTransaction(ctx, tx)
+		require.NoError(t, err)
+		normalTxHashes = append(normalTxHashes, tx.Hash())
+		t.Logf("Submitted normal tx %d: %s (nonce=%d)", i+1, tx.Hash().Hex(), tx.Nonce())
+	}
+
+	// Wait for sync node to sync the transactions
+	for i, txHash := range normalTxHashes {
+		require.Eventually(t, func() bool {
+			return evm.CheckTxIncluded(fnClient, txHash)
+		}, 20*time.Second, 500*time.Millisecond, "Normal tx %d not synced to full node", i+1)
+		t.Logf("Normal tx %d synced to full node", i+1)
+	}
+
+	// Record heights before stopping
+	seqHeader, err := seqClient.HeaderByNumber(ctx, nil)
+	require.NoError(t, err)
+	fnHeader, err := fnClient.HeaderByNumber(ctx, nil)
+	require.NoError(t, err)
+	t.Logf("Sequencer height: %d, Full node height: %d", seqHeader.Number.Uint64(), fnHeader.Number.Uint64())
+
+	// ===== PHASE 3: Stop Sequencer and Sync Node =====
+	t.Log("Phase 3: Stop Sequencer and Sync Node")
+
+	// Stop sequencer process
+	err = seqProcess.Signal(syscall.SIGTERM)
+	require.NoError(t, err, "failed to stop sequencer process")
+	time.Sleep(1 * time.Second)
+
+	// Stop sync node process
+	err = fnProcess.Signal(syscall.SIGTERM)
+	require.NoError(t, err, "failed to stop full node process")
+	time.Sleep(1 * time.Second)
+	t.Log("Both sequencer and sync node stopped")
+
+	// ===== PHASE 4: Restart Sync Node as Based Sequencer =====
+	t.Log("Phase 4: Restart Sync Node as Based Sequencer")
+
+	// Restart the same full node as a based sequencer
+	// Reuse the same home directory and data, just add the --based_sequencer flag
+	basedSeqProcess := sut.ExecCmd(evmSingleBinaryPath,
+		"start",
+		"--evnode.node.aggregator=true",
+		"--evnode.node.based_sequencer=true",
+		"--evm.jwt-secret-file", fnJwtSecretFile,
+		"--evm.genesis-hash", env.GenesisHash,
+		"--home", fullNodeHome,
+		"--evnode.da.block_time", DefaultDABlockTime,
+		"--evnode.da.address", env.Endpoints.GetDAAddress(),
+		"--evnode.da.namespace", DefaultDANamespace,
+		"--evnode.da.forced_inclusion_namespace", "forced-inc",
+		"--evnode.rpc.address", env.Endpoints.GetFullNodeRPCListen(),
+		"--evnode.p2p.listen_address", env.Endpoints.GetFullNodeP2PAddress(),
+		"--evm.engine-url", env.Endpoints.GetFullNodeEngineURL(),
+		"--evm.eth-url", env.Endpoints.GetFullNodeEthURL(),
+	)
+	sut.AwaitNodeLive(t, env.Endpoints.GetFullNodeRPCAddress(), NodeStartupTimeout)
+	t.Log("Sync node restarted as based sequencer")
+
+	// Reconnect to based sequencer
+	basedSeqClient, err := ethclient.Dial(env.Endpoints.GetFullNodeEthURL())
+	require.NoError(t, err)
+	defer basedSeqClient.Close()
+
+	// ===== PHASE 5: Submit Forced Inclusion Transactions to DA =====
+	t.Log("Phase 5: Submit Forced Inclusion Transactions to DA")
+
+	blobClient, err := blobrpc.NewClient(ctx, env.Endpoints.GetDAAddress(), "", "")
+	require.NoError(t, err, "Failed to create blob RPC client")
+	defer blobClient.Close()
+
+	daClient := block.NewDAClient(
+		blobClient,
+		config.Config{
+			DA: config.DAConfig{
+				Namespace:                DefaultDANamespace,
+				ForcedInclusionNamespace: "forced-inc",
+			},
+		},
+		zerolog.Nop(),
+	)
+
+	// Create and submit 3 forced inclusion txs to DA
+	var forcedTxHashes []common.Hash
+	for i := 0; i < 3; i++ {
+		txForce := evm.GetRandomTransaction(t, TestPrivateKey, TestToAddress, DefaultChainID, DefaultGasLimit, &nonce)
+		txBytes, err := txForce.MarshalBinary()
+		require.NoError(t, err)
+
+		result := daClient.Submit(ctx, [][]byte{txBytes}, -1, daClient.GetForcedInclusionNamespace(), nil)
+		require.Equal(t, da.StatusSuccess, result.Code, "Failed to submit forced tx %d to DA: %s", i+1, result.Message)
+
+		forcedTxHashes = append(forcedTxHashes, txForce.Hash())
+		t.Logf("Submitted forced inclusion tx %d to DA: %s (nonce=%d)", i+1, txForce.Hash().Hex(), txForce.Nonce())
+	}
+
+	// Hack for local-da for advancing past multiple epochs
+	t.Log("Advancing DA past multiple epochs...")
+	time.Sleep(6 * time.Second)
+
+	// ===== PHASE 6: Verify Based Sequencer Includes Forced Txs =====
+	t.Log("Phase 6: Verify Based Sequencer Includes Forced Txs")
+
+	// Wait for based sequencer to include forced inclusion txs
+	for i, txHash := range forcedTxHashes {
+		require.Eventually(t, func() bool {
+			return evm.CheckTxIncluded(basedSeqClient, txHash)
+		}, 30*time.Second, 1*time.Second,
+			"Forced inclusion tx %d (%s) not included in based sequencer", i+1, txHash.Hex())
+		t.Logf("Based sequencer included forced tx %d: %s", i+1, txHash.Hex())
+	}
+	t.Log("All forced inclusion txs verified on based sequencer")
+
+	// Get the based sequencer's block height after including forced txs
+	basedSeqHeader, err := basedSeqClient.HeaderByNumber(ctx, nil)
+	require.NoError(t, err)
+	basedSeqFinalHeight := basedSeqHeader.Number.Uint64()
+	t.Logf("Based sequencer final height: %d", basedSeqFinalHeight)
+
+	// ===== PHASE 7: Restart Original Sequencer =====
+	t.Log("Phase 7: Restart Original Sequencer")
+
+	// Restart the original sequencer
+	seqProcess = sut.ExecCmd(evmSingleBinaryPath,
+		"start",
+		"--evm.jwt-secret-file", seqJwtSecretFile,
+		"--evm.genesis-hash", env.GenesisHash,
+		"--evnode.node.block_time", DefaultBlockTime,
+		"--evnode.node.aggregator=true",
+		"--evnode.signer.passphrase_file", seqPassphraseFile,
+		"--home", sequencerHome,
+		"--evnode.da.block_time", DefaultDABlockTime,
+		"--evnode.da.address", env.Endpoints.GetDAAddress(),
+		"--evnode.da.namespace", DefaultDANamespace,
+		"--evnode.da.forced_inclusion_namespace", "forced-inc",
+		"--evnode.rpc.address", env.Endpoints.GetRollkitRPCListen(),
+		"--evnode.p2p.listen_address", env.Endpoints.GetRollkitP2PAddress(),
+		"--evm.engine-url", env.Endpoints.GetSequencerEngineURL(),
+		"--evm.eth-url", env.Endpoints.GetSequencerEthURL(),
+	)
+	sut.AwaitNodeUp(t, env.Endpoints.GetRollkitRPCAddress(), NodeStartupTimeout)
+	t.Log("Sequencer restarted successfully")
+
+	// Reconnect to sequencer
+	seqClient, err = ethclient.Dial(env.Endpoints.GetSequencerEthURL())
+	require.NoError(t, err)
+
+	// ===== PHASE 8: Verify Sequencer Catches Up =====
+	t.Log("Phase 8: Verify Sequencer Catches Up")
+
+	// Wait for sequencer to catch up and include forced txs
+	for i, txHash := range forcedTxHashes {
+		require.Eventually(t, func() bool {
+			return evm.CheckTxIncluded(seqClient, txHash)
+		}, 30*time.Second, 1*time.Second,
+			"Forced inclusion tx %d (%s) should be included after catch-up", i+1, txHash.Hex())
+		t.Logf("Sequencer caught up with forced tx %d: %s", i+1, txHash.Hex())
+	}
+	t.Log("All forced inclusion txs verified on sequencer after catch-up")
+
+	// Verify sequencer produces blocks and reaches same height as based sequencer
+	require.Eventually(t, func() bool {
+		seqHeader, err := seqClient.HeaderByNumber(ctx, nil)
+		if err != nil {
+			return false
+		}
+		return seqHeader.Number.Uint64() >= basedSeqFinalHeight
+	}, 30*time.Second, 1*time.Second, "Sequencer should catch up to based sequencer height")
+
+	seqHeader, err = seqClient.HeaderByNumber(ctx, nil)
+	require.NoError(t, err)
+	t.Logf("Sequencer caught up to height: %d", seqHeader.Number.Uint64())
+
+	// ===== PHASE 9: Stop Based Sequencer and Restart as Normal Sync Node =====
+	t.Log("Phase 9: Stop Based Sequencer and Restart as Normal Sync Node")
+
+	// Stop based sequencer
+	err = basedSeqProcess.Signal(syscall.SIGTERM)
+	require.NoError(t, err, "failed to stop based sequencer process")
+	time.Sleep(1 * time.Second)
+
+	// Restart as normal sync node (without --based_sequencer flag, with --p2p.peers to connect to sequencer)
+	fnProcess = sut.ExecCmd(evmSingleBinaryPath,
+		"start",
+		"--evm.jwt-secret-file", fnJwtSecretFile,
+		"--evm.genesis-hash", env.GenesisHash,
+		"--home", fullNodeHome,
+		"--evnode.da.block_time", DefaultDABlockTime,
+		"--evnode.da.address", env.Endpoints.GetDAAddress(),
+		"--evnode.da.namespace", DefaultDANamespace,
+		"--evnode.da.forced_inclusion_namespace", "forced-inc",
+		"--evnode.rpc.address", env.Endpoints.GetFullNodeRPCListen(),
+		"--evnode.p2p.listen_address", env.Endpoints.GetFullNodeP2PAddress(),
+		"--evnode.p2p.peers", sequencerP2PAddress,
+		"--evm.engine-url", env.Endpoints.GetFullNodeEngineURL(),
+		"--evm.eth-url", env.Endpoints.GetFullNodeEthURL(),
+	)
+	sut.AwaitNodeLive(t, env.Endpoints.GetFullNodeRPCAddress(), NodeStartupTimeout)
+	t.Log("Sync node restarted as normal full node")
+
+	// Reconnect to sync node
+	fnClient, err = ethclient.Dial(env.Endpoints.GetFullNodeEthURL())
+	require.NoError(t, err)
+
+	// ===== PHASE 10: Verify Nodes Are in Sync =====
+	t.Log("Phase 10: Verify Nodes Are in Sync")
+
+	// Wait for sync node to catch up to sequencer
+	require.Eventually(t, func() bool {
+		seqHeader, err1 := seqClient.HeaderByNumber(ctx, nil)
+		fnHeader, err2 := fnClient.HeaderByNumber(ctx, nil)
+		if err1 != nil || err2 != nil {
+			return false
+		}
+		return fnHeader.Number.Uint64() >= seqHeader.Number.Uint64()
+	}, 30*time.Second, 1*time.Second, "Sync node should catch up to sequencer")
+
+	// Verify both nodes have all forced inclusion txs
+	for i, txHash := range forcedTxHashes {
+		seqIncluded := evm.CheckTxIncluded(seqClient, txHash)
+		fnIncluded := evm.CheckTxIncluded(fnClient, txHash)
+		require.True(t, seqIncluded, "Forced tx %d should be on sequencer", i+1)
+		require.True(t, fnIncluded, "Forced tx %d should be on sync node", i+1)
+		t.Logf("Forced tx %d verified on both nodes: %s", i+1, txHash.Hex())
+	}
+
+	// Send a new transaction and verify both nodes get it
+	txFinal := evm.GetRandomTransaction(t, TestPrivateKey, TestToAddress, DefaultChainID, DefaultGasLimit, &nonce)
+	err = seqClient.SendTransaction(ctx, txFinal)
+	require.NoError(t, err)
+	t.Logf("Submitted final tx: %s (nonce=%d)", txFinal.Hash().Hex(), txFinal.Nonce())
+
+	require.Eventually(t, func() bool {
+		return evm.CheckTxIncluded(seqClient, txFinal.Hash()) && evm.CheckTxIncluded(fnClient, txFinal.Hash())
+	}, 20*time.Second, 500*time.Millisecond, "Final tx should be included on both nodes")
+	t.Log("Final tx included on both nodes - nodes are in sync")
+
+	t.Log("Test PASSED: Sequencer catch-up with based sequencer verified successfully")
+	t.Logf("  - Sequencer processed %d normal txs before downtime", len(normalTxHashes))
+	t.Logf("  - %d forced inclusion txs submitted to DA during downtime", len(forcedTxHashes))
+	t.Logf("  - Based sequencer included all forced txs from DA")
+	t.Logf("  - Sequencer caught up and replayed all forced txs after restart")
+	t.Logf("  - Both nodes are in sync")
+}
+
+// TestEvmBasedSequencerBaselineE2E tests the based sequencer.
+// This test validates that a fresh based sequencer can:
+// 1. Start from genesis (not restarted from a full node)
+// 2. Retrieve forced inclusion transactions from DA
+// 3. Include those transactions in produced blocks
+func TestEvmBasedSequencerBaselineE2E(t *testing.T) {
+	sut := NewSystemUnderTest(t)
+	workDir := t.TempDir()
+	basedSeqHome := filepath.Join(workDir, "based_sequencer")
+
+	t.Log("Setting up fresh based sequencer from genesis")
+
+	dockerClient, networkID := tastoradocker.Setup(t)
+	env := setupCommonEVMEnv(t, sut, dockerClient, networkID, WithFullNode())
+
+	// Create passphrase and JWT secret files
+	passphraseFile := createPassphraseFile(t, basedSeqHome)
+	jwtSecretFile := createJWTSecretFile(t, basedSeqHome, env.SequencerJWT)
+
+	// Initialize based sequencer node
+	output, err := sut.RunCmd(evmSingleBinaryPath,
+		"init",
+		"--evnode.node.aggregator=true",
+		"--evnode.node.based_sequencer=true",
+		"--evnode.signer.passphrase_file", passphraseFile,
+		"--home", basedSeqHome,
+	)
+	require.NoError(t, err, "failed to init based sequencer", output)
+
+	// Modify genesis: enable force inclusion with epoch=2, set da_start_height=1
+	enableForceInclusionInGenesis(t, basedSeqHome, 2)
+	setDAStartHeightInGenesis(t, basedSeqHome, 1)
+
+	// Start based sequencer
+	sut.ExecCmd(evmSingleBinaryPath,
+		"start",
+		"--evnode.node.aggregator=true",
+		"--evnode.node.based_sequencer=true",
+		"--evm.jwt-secret-file", jwtSecretFile,
+		"--evm.genesis-hash", env.GenesisHash,
+		"--evnode.node.block_time", DefaultBlockTime,
+		"--evnode.signer.passphrase_file", passphraseFile,
+		"--home", basedSeqHome,
+		"--evnode.da.block_time", DefaultDABlockTime,
+		"--evnode.da.address", env.Endpoints.GetDAAddress(),
+		"--evnode.da.namespace", DefaultDANamespace,
+		"--evnode.da.forced_inclusion_namespace", "forced-inc",
+		"--evnode.rpc.address", env.Endpoints.GetRollkitRPCListen(),
+		"--evnode.p2p.listen_address", env.Endpoints.GetRollkitP2PAddress(),
+		"--evm.engine-url", env.Endpoints.GetSequencerEngineURL(),
+		"--evm.eth-url", env.Endpoints.GetSequencerEthURL(),
+		"--evnode.log.level", "debug",
+	)
+	sut.AwaitNodeUp(t, env.Endpoints.GetRollkitRPCAddress(), NodeStartupTimeout)
+	t.Log("Based sequencer is up")
+
+	// Connect to based sequencer
+	basedSeqClient, err := ethclient.Dial(env.Endpoints.GetSequencerEthURL())
+	require.NoError(t, err)
+	defer basedSeqClient.Close()
+
+	ctx := context.Background()
+
+	t.Log("Submitting forced inclusion transactions to DA")
+	blobClient, err := blobrpc.NewClient(ctx, env.Endpoints.GetDAAddress(), "", "")
+	require.NoError(t, err, "Failed to create blob RPC client")
+	defer blobClient.Close()
+
+	daClient := block.NewDAClient(
+		blobClient,
+		config.Config{
+			DA: config.DAConfig{
+				Namespace:                DefaultDANamespace,
+				ForcedInclusionNamespace: "forced-inc",
+			},
+		},
+		zerolog.Nop(),
+	)
+
+	// Create and submit 3 forced inclusion txs to DA
+	var forcedTxHashes []common.Hash
+	var nonce uint64 = 0
+	for i := 0; i < 3; i++ {
+		txForce := evm.GetRandomTransaction(t, TestPrivateKey, TestToAddress, DefaultChainID, DefaultGasLimit, &nonce)
+		txBytes, err := txForce.MarshalBinary()
+		require.NoError(t, err)
+
+		result := daClient.Submit(ctx, [][]byte{txBytes}, -1, daClient.GetForcedInclusionNamespace(), nil)
+		require.Equal(t, da.StatusSuccess, result.Code, "Failed to submit forced tx %d to DA: %s", i+1, result.Message)
+
+		forcedTxHashes = append(forcedTxHashes, txForce.Hash())
+		t.Logf("Submitted forced inclusion tx %d to DA: %s (nonce=%d)", i+1, txForce.Hash().Hex(), txForce.Nonce())
+	}
+
+	// Advance DA past epoch boundary by submitting dummy data
+	// With epoch=2, we need at least 2 DA blocks per epoch
+	t.Log("Advancing DA past epoch boundary...")
+	time.Sleep(4 * time.Second)
+
+	// ===== VERIFY BASED SEQUENCER INCLUDES FORCED TXS =====
+	t.Log("Waiting for based sequencer to include forced inclusion txs")
+
+	for i, txHash := range forcedTxHashes {
+		require.Eventually(t, func() bool {
+			return evm.CheckTxIncluded(basedSeqClient, txHash)
+		}, 30*time.Second, 1*time.Second,
+			"Forced inclusion tx %d (%s) not included in based sequencer", i+1, txHash.Hex())
+		t.Logf("Based sequencer included forced tx %d: %s", i+1, txHash.Hex())
+	}
+
+	// Verify blocks are being produced
+	header, err := basedSeqClient.HeaderByNumber(ctx, nil)
+	require.NoError(t, err)
+	t.Logf("Based sequencer height: %d", header.Number.Uint64())
 }

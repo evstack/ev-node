@@ -37,6 +37,8 @@ type BasedSequencer struct {
 	currentBatchTxs [][]byte
 	// DA epoch end time for timestamp calculation
 	currentDAEndTime time.Time
+	// Total number of transactions in the current DA epoch (used for timestamp jitter)
+	currentEpochTxCount uint64
 }
 
 // NewBasedSequencer creates a new based sequencer instance
@@ -49,9 +51,10 @@ func NewBasedSequencer(
 	executor execution.Executor,
 ) (*BasedSequencer, error) {
 	bs := &BasedSequencer{
-		logger:          logger.With().Str("component", "based_sequencer").Logger(),
-		checkpointStore: seqcommon.NewCheckpointStore(db, ds.NewKey("/based/checkpoint")),
-		executor:        executor,
+		logger:           logger.With().Str("component", "based_sequencer").Logger(),
+		checkpointStore:  seqcommon.NewCheckpointStore(db, ds.NewKey("/based/checkpoint")),
+		executor:         executor,
+		currentDAEndTime: genesis.StartTime,
 	}
 	// based sequencers need community consensus about the da start height given no submission are done
 	bs.SetDAHeight(genesis.DAStartHeight)
@@ -108,7 +111,11 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 			return nil, err
 		}
 		daHeight = daEndHeight
-		s.currentDAEndTime = daEndTime
+
+		if daEndTime.After(s.currentDAEndTime) {
+			s.currentDAEndTime = daEndTime
+		}
+		s.currentEpochTxCount = uint64(len(s.currentBatchTxs))
 	}
 
 	// Get remaining transactions from checkpoint position
@@ -152,9 +159,13 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 	}
 doneProcessing:
 
-	// Update checkpoint based on consumed transactions
+	// Update checkpoint based on consumed transactions.
+	// txIndexForTimestamp is captured before the epoch-boundary reset so the
+	// final block of an epoch lands exactly on daEndTime.
+	var txIndexForTimestamp uint64
 	if daHeight > 0 || len(batchTxs) > 0 {
 		s.checkpoint.TxIndex += consumedCount
+		txIndexForTimestamp = s.checkpoint.TxIndex
 
 		// If we've consumed all transactions from this DA epoch, move to next DA epoch
 		if s.checkpoint.TxIndex >= uint64(len(s.currentBatchTxs)) {
@@ -175,14 +186,13 @@ doneProcessing:
 			Msg("updated checkpoint after processing batch")
 	}
 
-	// Calculate timestamp based on remaining transactions after this batch
-	// timestamp corresponds to the last block time of a DA epoch, based on the remaining transactions to be executed
-	// this is done in order to handle the case where a DA epoch must fit in multiple blocks
-	var remainingTxs uint64
-	if len(s.currentBatchTxs) > 0 {
-		remainingTxs = uint64(len(s.currentBatchTxs)) - s.checkpoint.TxIndex
-	}
-	timestamp := s.currentDAEndTime.Add(-time.Duration(remainingTxs) * time.Millisecond)
+	// Spread blocks across the DA epoch window to produce monotonically increasing timestamps:
+	//   epochStart     = daEndTime - totalEpochTxs * 1ms
+	//   blockTimestamp = epochStart + txIndexForTimestamp * 1ms
+	// The last block of an epoch lands exactly on daEndTime; the first block of
+	// the next epoch starts at nextDaEndTime - N*1ms >= prevDaEndTime.
+	epochStart := s.currentDAEndTime.Add(-time.Duration(s.currentEpochTxCount) * time.Millisecond)
+	timestamp := epochStart.Add(time.Duration(txIndexForTimestamp) * time.Millisecond)
 
 	return &coresequencer.GetNextBatchResponse{
 		Batch:     &coresequencer.Batch{Transactions: validTxs},
