@@ -66,6 +66,10 @@ type Sequencer struct {
 	currentDAEndTime time.Time
 	// currentEpochTxCount is the total number of txs in the current DA epoch (used for timestamp jitter)
 	currentEpochTxCount uint64
+	// lastCatchUpTimestamp is the floor for catch-up timestamps to guarantee
+	// monotonicity after a restart.  Initialised from the last block time in
+	// the store when catch-up mode is entered.
+	lastCatchUpTimestamp time.Time
 }
 
 // NewSequencer creates a new Single Sequencer
@@ -357,6 +361,14 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 	if c.catchUpState.Load() == catchUpInProgress && !c.currentDAEndTime.IsZero() {
 		epochStart := c.currentDAEndTime.Add(-time.Duration(c.currentEpochTxCount) * time.Millisecond)
 		timestamp = epochStart.Add(time.Duration(txIndexForTimestamp) * time.Millisecond)
+
+		// Clamp: the DA-derived timestamp may predate blocks that were
+		// produced with time.Now() before the sequencer was restarted.
+		// Ensure strict monotonicity relative to the last produced block.
+		if !c.lastCatchUpTimestamp.IsZero() && !timestamp.After(c.lastCatchUpTimestamp) {
+			timestamp = c.lastCatchUpTimestamp.Add(time.Millisecond)
+		}
+		c.lastCatchUpTimestamp = timestamp
 	}
 
 	return &coresequencer.GetNextBatchResponse{
@@ -534,7 +546,18 @@ func (c *Sequencer) updateCatchUpState(ctx context.Context) {
 		return
 	}
 
-	// More than one epoch behind - enter catch-up mode
+	// More than one epoch behind - enter catch-up mode.
+	// Read the last block time from the store so that catch-up timestamps
+	// are guaranteed to be strictly after any previously produced block.
+	s := store.New(store.NewEvNodeKVStore(c.db))
+	state, err := s.GetState(ctx)
+	if err == nil && !state.LastBlockTime.IsZero() {
+		c.lastCatchUpTimestamp = state.LastBlockTime
+		c.logger.Debug().
+			Time("last_block_time", state.LastBlockTime).
+			Msg("initialized catch-up timestamp floor from last block time")
+	}
+
 	c.catchUpState.Store(catchUpInProgress)
 	c.logger.Warn().
 		Uint64("checkpoint_da_height", currentDAHeight).

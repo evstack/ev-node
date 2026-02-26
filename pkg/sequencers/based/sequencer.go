@@ -17,6 +17,7 @@ import (
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	seqcommon "github.com/evstack/ev-node/pkg/sequencers/common"
+	"github.com/evstack/ev-node/pkg/store"
 )
 
 var _ coresequencer.Sequencer = (*BasedSequencer)(nil)
@@ -39,6 +40,10 @@ type BasedSequencer struct {
 	currentDAEndTime time.Time
 	// Total number of transactions in the current DA epoch (used for timestamp jitter)
 	currentEpochTxCount uint64
+	// lastTimestamp is the floor for timestamps to guarantee monotonicity
+	// after a restart on a node that already had blocks produced with wall-clock time.
+	// Initialised from the last block time in the store at construction.
+	lastTimestamp time.Time
 }
 
 // NewBasedSequencer creates a new based sequencer instance
@@ -55,6 +60,20 @@ func NewBasedSequencer(
 		checkpointStore:  seqcommon.NewCheckpointStore(db, ds.NewKey("/based/checkpoint")),
 		executor:         executor,
 		currentDAEndTime: genesis.StartTime,
+	}
+
+	// Read the last block time from the store so that timestamps are
+	// guaranteed to be strictly after any previously produced or synced block.
+	// This handles the case where a node that already had blocks (produced with
+	// wall-clock time) restarts as a based sequencer.
+	initCtx, initCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer initCancel()
+	s := store.New(store.NewEvNodeKVStore(db))
+	if state, err := s.GetState(initCtx); err == nil && !state.LastBlockTime.IsZero() {
+		bs.lastTimestamp = state.LastBlockTime
+		bs.logger.Debug().
+			Time("last_block_time", state.LastBlockTime).
+			Msg("initialized timestamp floor from last block time")
 	}
 	// based sequencers need community consensus about the da start height given no submission are done
 	bs.SetDAHeight(genesis.DAStartHeight)
@@ -193,6 +212,14 @@ doneProcessing:
 	// the next epoch starts at nextDaEndTime - N*1ms >= prevDaEndTime.
 	epochStart := s.currentDAEndTime.Add(-time.Duration(s.currentEpochTxCount) * time.Millisecond)
 	timestamp := epochStart.Add(time.Duration(txIndexForTimestamp) * time.Millisecond)
+
+	// Clamp: the DA-derived timestamp may predate blocks that were
+	// produced or synced with wall-clock time before the node restarted
+	// as a based sequencer.  Ensure strict monotonicity.
+	if !s.lastTimestamp.IsZero() && !timestamp.After(s.lastTimestamp) {
+		timestamp = s.lastTimestamp.Add(time.Millisecond)
+	}
+	s.lastTimestamp = timestamp
 
 	return &coresequencer.GetNextBatchResponse{
 		Batch:     &coresequencer.Batch{Transactions: validTxs},
