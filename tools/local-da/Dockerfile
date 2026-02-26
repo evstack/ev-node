@@ -3,8 +3,6 @@ FROM golang:1.25-alpine AS build-env
 WORKDIR /src
 
 #hadolint ignore=DL3018
-RUN apk add --no-cache make
-
 COPY core core
 
 COPY go.mod go.sum ./
@@ -12,7 +10,7 @@ RUN go mod download
 
 COPY . .
 
-RUN make build-da
+RUN mkdir -p build && cd tools/local-da && go build -o /src/build/local-da .
 
 FROM alpine:3.22.2
 

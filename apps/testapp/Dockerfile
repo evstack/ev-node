@@ -21,7 +21,7 @@ WORKDIR /ev-node
 COPY . .
 
 # Now download dependencies and build
-RUN go mod download && make install
+RUN go mod download && cd apps/testapp && go install .
 
 ## prep the final image.
 #
