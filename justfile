@@ -11,11 +11,8 @@ tool_ldflags := "-X main.Version=" + version + " -X main.GitSHA=" + gitsha
 # Build directory
 build_dir := justfile_directory() / "build"
 
-# Default recipe: build
-default: build
-
-# Show available recipes
-help:
+# List available recipes when running `just` with no args
+default:
     @just --list
 
 # ─── Build ────────────────────────────────────────────────────────────────────
