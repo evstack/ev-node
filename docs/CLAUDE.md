@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `yarn dev` - Start VitePress development server (hot reload enabled)
 - `yarn build` - Build static documentation site
 - `yarn preview` - Preview built site locally
-- `make testlink` - Validate all links in markdown files using lychee
+- `just testlink` - Validate all links in markdown files using lychee
 
 ### Deployment
 
@@ -44,14 +44,14 @@ docs/
 - **Navigation Structure**: Configured in `.vitepress/config.ts` with collapsible sidebar sections
 - **Analytics**: Plausible analytics and Chatbase integration
 - **Content Format**: Markdown files with frontmatter support
-- **Link Validation**: Automated via `make testlink` and GitHub Actions
+- **Link Validation**: Automated via `just testlink` and GitHub Actions
 
 ### Development Workflow
 
 1. Content changes: Edit markdown files in appropriate directories
 2. Navigation changes: Update `.vitepress/config.ts`
 3. Test locally with `yarn dev`
-4. Validate links with `make testlink`
+4. Validate links with `just testlink`
 5. Create PR - preview deployment will be available
 6. Merge to main triggers automatic deployment
 

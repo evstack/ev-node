@@ -8,33 +8,35 @@ ev-node is a sovereign rollup framework built in Go that allows developers to bu
 
 ## Build and Development Commands
 
+Uses [just](https://github.com/casey/just) as the command runner. Run `just help` to list all recipes.
+
 ### Building
 
-- `make build` - Builds the Testapp CLI to `./build/testapp`
-- `make install` - Installs Testapp CLI to your Go bin directory
-- `make build-all` - Builds all ev-node binaries
-- `make docker-build` - Builds Docker image tagged as `evstack:local-dev`
+- `just build` - Builds the Testapp CLI to `./build/testapp`
+- `just install` - Installs Testapp CLI to your Go bin directory
+- `just build-all` - Builds all ev-node binaries
+- `just docker-build` - Builds Docker image tagged as `evstack:local-dev`
 
 ### Testing
 
-- `make test` - Runs unit tests for all go.mod files
-- `make test-integration` - Runs integration tests (15m timeout)
-- `make test-e2e` - Runs end-to-end tests (requires building binaries first)
-- `make test-cover` - Generates code coverage report
-- `make test-all` - Runs all tests including Docker E2E tests
+- `just test` - Runs unit tests for all go.mod files
+- `just test-integration` - Runs integration tests (15m timeout)
+- `just test-e2e` - Runs end-to-end tests (requires building binaries first)
+- `just test-cover` - Generates code coverage report
+- `just test-all` - Runs all tests including Docker E2E tests
 
 ### Linting and Code Quality
 
-- `make lint` - Runs all linters (golangci-lint, markdownlint, hadolint, yamllint, goreleaser check, actionlint)
-- `make lint-fix` - Auto-fixes linting issues where possible
-- `make vet` - Runs go vet
+- `just lint` - Runs all linters (golangci-lint, markdownlint, hadolint, yamllint, goreleaser check, actionlint)
+- `just lint-fix` - Auto-fixes linting issues where possible
+- `just vet` - Runs go vet
 
 ### Development Utilities
 
-- `make deps` - Downloads dependencies and runs go mod tidy for all modules
-- `make proto-gen` - Generates protobuf files (requires Docker)
-- `make mock-gen` - Generates mocks using mockery
-- `make run-n NODES=3` - Run multiple nodes locally (default: 1)
+- `just deps` - Downloads dependencies and runs go mod tidy for all modules
+- `just proto-gen` - Generates protobuf files (requires Docker)
+- `just mock-gen` - Generates mocks using mockery
+- `just run-n 3` - Run multiple nodes locally (default: 1)
 
 ## Code Architecture
 
@@ -91,7 +93,7 @@ go test -race ./package/...
 ### Mock Generation
 
 - Mocks are defined in `.mockery.yaml`
-- Generate with `make mock-gen`
+- Generate with `just mock-gen`
 - Mocks are placed in `mocks/` directories
 
 ## Code Style Guidelines
@@ -128,7 +130,7 @@ go test -race ./package/...
 ### Modifying Protobuf Definitions
 
 1. Edit `.proto` files in `types/pb/`
-2. Run `make proto-gen` to regenerate Go code
+2. Run `just proto-gen` to regenerate Go code
 3. Update any affected code
 4. Run tests to ensure compatibility
 
@@ -157,15 +159,15 @@ go test -race ./package/...
 
 ## Debugging Tips
 
-- Use `make run-n NODES=2` to test multi-node scenarios locally
+- Use `just run-n 2` to test multi-node scenarios locally
 - Check logs for error messages and stack traces
 - Use Go's built-in profiling tools for performance issues
 - The testapp provides a simple way to test changes
 
 ## Contributing Guidelines
 
-- All code must pass linting (`make lint`)
-- All tests must pass (`make test-all`)
+- All code must pass linting (`just lint`)
+- All tests must pass (`just test-all`)
 - Follow the existing code patterns
 - Update tests when changing functionality
 - Keep commits focused and atomic

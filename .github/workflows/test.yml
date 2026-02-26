@@ -17,8 +17,10 @@ jobs:
         uses: actions/setup-go@v6.2.0
         with:
           go-version-file: ./go.mod
+      - name: Install just
+        uses: extractions/setup-just@v4
       - name: Build all ev-node binaries
-        run: make build-all
+        run: just build-all
 
   go_mod_tidy_check:
     name: Go Mod Tidy Check
@@ -28,7 +30,8 @@ jobs:
       - uses: actions/setup-go@v6.2.0
         with:
           go-version-file: ./go.mod
-      - run: make deps
+      - uses: extractions/setup-just@v4
+      - run: just deps
       - name: check for diff
         run: git diff --exit-code
 
@@ -44,8 +47,10 @@ jobs:
         uses: actions/setup-go@v6.2.0
         with:
           go-version-file: ./go.mod
+      - name: Install just
+        uses: extractions/setup-just@v4
       - name: Run unit test
-        run: make test-cover
+        run: just test-cover
       - name: Upload unit test coverage report
         uses: actions/upload-artifact@v6
         with:
@@ -61,8 +66,10 @@ jobs:
         uses: actions/setup-go@v6.2.0
         with:
           go-version-file: ./go.mod
+      - name: Install just
+        uses: extractions/setup-just@v4
       - name: Run integration test
-        run: make test-integration-cover
+        run: just test-integration-cover
       - name: Upload integration test coverage report
         uses: actions/upload-artifact@v6
         with:
@@ -93,8 +100,10 @@ jobs:
           tags: evstack:local-dev
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Install just
+        uses: extractions/setup-just@v4
       - name: E2E Tests
-        run: make test-e2e
+        run: just test-e2e
 
   evm-tests:
     name: Run EVM Execution Tests
@@ -106,8 +115,10 @@ jobs:
         uses: actions/setup-go@v6.2.0
         with:
           go-version-file: ./go.mod
+      - name: Install just
+        uses: extractions/setup-just@v4
       - name: EVM Tests
-        run: make test-evm
+        run: just test-evm
 
   combine_and_upload_coverage:
     name: Combine and Upload Coverage

@@ -27,8 +27,10 @@ jobs:
         uses: actions/setup-go@v6.2.0
         with:
           go-version-file: ./test/docker-e2e/go.mod
+      - name: Install just
+        uses: extractions/setup-just@v4
       - name: Run Docker E2E Tests
-        run: make test-docker-e2e
+        run: just test-docker-e2e
         env:
           EV_NODE_IMAGE_REPO: ghcr.io/${{ github.repository_owner }}/ev-node-testapp
           EV_NODE_IMAGE_TAG: ${{ inputs.image-tag }}
@@ -44,8 +46,10 @@ jobs:
         uses: actions/setup-go@v6.2.0
         with:
           go-version-file: ./test/docker-e2e/go.mod
+      - name: Install just
+        uses: extractions/setup-just@v4
       - name: Run Docker Upgrade E2E Tests
-        run: make test-docker-upgrade-e2e
+        run: just test-docker-upgrade-e2e
         env:
           EVM_IMAGE_REPO: ghcr.io/${{ github.repository_owner }}/ev-node-evm
           EVM_NODE_IMAGE_TAG: ${{ inputs.image-tag }}
@@ -61,8 +65,10 @@ jobs:
         uses: actions/setup-go@v6.2.0
         with:
           go-version-file: ./test/docker-e2e/go.mod
+      - name: Install just
+        uses: extractions/setup-just@v4
       - name: Run Docker Compat E2E Tests
-        run: make test-docker-compat
+        run: just test-docker-compat
         env:
           SEQUENCER_EVM_IMAGE_REPO: ghcr.io/${{ github.repository_owner }}/ev-node-evm
           SEQUENCER_EVM_IMAGE_TAG: main # TODO: set this to the last released tag
