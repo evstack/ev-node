@@ -58,7 +58,7 @@ test-evm:
 test-docker-e2e: docker-build-if-local
     @echo "--> Running Docker E2E tests"
     @echo "--> Verifying Docker image exists locally..."
-    @if [ -z "${EV_NODE_IMAGE_REPO:-}" ] || [ "${EV_NODE_IMAGE_REPO:-}" = "ev-node" ]; then \
+    @if [ -z "${EV_NODE_IMAGE_REPO:-}" ] || [ "${EV_NODE_IMAGE_REPO:-}" = "evstack" ]; then \
         echo "--> Verifying Docker image exists locally..."; \
         docker image inspect evstack:local-dev >/dev/null 2>&1 || (echo "ERROR: evstack:local-dev image not found. Run 'just docker-build' first." && exit 1); \
     fi
