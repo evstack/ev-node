@@ -591,27 +591,12 @@ func setDAStartHeightInGenesis(t *testing.T, homeDir string, height uint64) {
 // extended downtime (multiple DA epochs), it correctly enters catch-up mode, replays
 // missed forced inclusion transactions from DA (matching what a based sequencer would
 // produce), and then resumes normal operation.
-//
-// Test Flow:
-// 1. a) Start sequencer
-// 1. b) Start sync node (full node)
-// 2. Wait for sync node to sync and send txs
-// 3. a) Stop sequencer
-// 3. b) Stop sync node
-// 4. Restart sync node as based sequencer (reuse home directory, add --based_sequencer flag)
-// 5. Send txs to force inclusion namespace
-// 6. Wait for node (based sequencer) to produce one block (must contain those transactions)
-// 7. Start sequencer
-// 8. Verify blocks are produced and equal to based sequencer blocks
-// 9. Stop based sequencer and restart as normal sync node
-// 10. Verify they are in sync.
 func TestEvmSequencerCatchUpBasedSequencerE2E(t *testing.T) {
 	sut := NewSystemUnderTest(t)
 	workDir := t.TempDir()
 	sequencerHome := filepath.Join(workDir, "sequencer")
 	fullNodeHome := filepath.Join(workDir, "fullnode")
 
-	// ===== PHASE 1: Setup - Start Sequencer and Sync Node =====
 	t.Log("Phase 1: Setup - Start Sequencer and Sync Node")
 
 	dockerClient, networkID := tastoradocker.Setup(t)
@@ -662,6 +647,7 @@ func TestEvmSequencerCatchUpBasedSequencerE2E(t *testing.T) {
 		"--evnode.p2p.listen_address", env.Endpoints.GetRollkitP2PAddress(),
 		"--evm.engine-url", env.Endpoints.GetSequencerEngineURL(),
 		"--evm.eth-url", env.Endpoints.GetSequencerEthURL(),
+		"--evnode.log.level", "error",
 	)
 	sut.AwaitNodeUp(t, env.Endpoints.GetRollkitRPCAddress(), NodeStartupTimeout)
 	t.Log("Sequencer is up with force inclusion enabled")
@@ -688,11 +674,11 @@ func TestEvmSequencerCatchUpBasedSequencerE2E(t *testing.T) {
 		"--evnode.p2p.peers", sequencerP2PAddress,
 		"--evm.engine-url", env.Endpoints.GetFullNodeEngineURL(),
 		"--evm.eth-url", env.Endpoints.GetFullNodeEthURL(),
+		"--evnode.log.level", "error",
 	)
 	sut.AwaitNodeLive(t, env.Endpoints.GetFullNodeRPCAddress(), NodeStartupTimeout)
 	t.Log("Sync node (full node) is up and syncing from sequencer")
 
-	// ===== PHASE 2: Send Transactions and Wait for Sync =====
 	t.Log("Phase 2: Send Transactions and Wait for Sync")
 
 	seqClient, err := ethclient.Dial(env.Endpoints.GetSequencerEthURL())
@@ -724,28 +710,41 @@ func TestEvmSequencerCatchUpBasedSequencerE2E(t *testing.T) {
 		t.Logf("Normal tx %d synced to full node", i+1)
 	}
 
-	// Record heights before stopping
+	t.Log("Phase 3: Stop Sequencer and Wait for Sync Node to Catch Up")
+
+	// Record sequencer's height BEFORE stopping (RPC may be unavailable after SIGTERM).
 	seqHeader, err := seqClient.HeaderByNumber(ctx, nil)
 	require.NoError(t, err)
-	fnHeader, err := fnClient.HeaderByNumber(ctx, nil)
-	require.NoError(t, err)
-	t.Logf("Sequencer height: %d, Full node height: %d", seqHeader.Number.Uint64(), fnHeader.Number.Uint64())
+	seqFinalHeight := seqHeader.Number.Uint64()
+	t.Logf("Sequencer at height: %d before shutdown", seqFinalHeight)
 
-	// ===== PHASE 3: Stop Sequencer and Sync Node =====
-	t.Log("Phase 3: Stop Sequencer and Sync Node")
-
-	// Stop sequencer process
+	// Stop sequencer so it stops producing new blocks.
 	err = seqProcess.Signal(syscall.SIGTERM)
 	require.NoError(t, err, "failed to stop sequencer process")
 	time.Sleep(1 * time.Second)
+
+	// Wait for the full node to sync up to the sequencer's final height.
+	// Both nodes MUST be at the same height so that the based sequencer
+	// later produces blocks identical to what the single sequencer's catch-up
+	// will reproduce (same DA checkpoint, same state, same timestamps).
+	require.Eventually(t, func() bool {
+		fnH, err := fnClient.HeaderByNumber(ctx, nil)
+		if err != nil {
+			return false
+		}
+		return fnH.Number.Uint64() >= seqFinalHeight
+	}, 30*time.Second, 500*time.Millisecond, "Full node should catch up to sequencer height %d", seqFinalHeight)
+
+	fnHeader, err := fnClient.HeaderByNumber(ctx, nil)
+	require.NoError(t, err)
+	t.Logf("Full node caught up to height: %d (sequencer was at %d)", fnHeader.Number.Uint64(), seqFinalHeight)
 
 	// Stop sync node process
 	err = fnProcess.Signal(syscall.SIGTERM)
 	require.NoError(t, err, "failed to stop full node process")
 	time.Sleep(1 * time.Second)
-	t.Log("Both sequencer and sync node stopped")
+	t.Log("Both sequencer and sync node stopped at same height")
 
-	// ===== PHASE 4: Restart Sync Node as Based Sequencer =====
 	t.Log("Phase 4: Restart Sync Node as Based Sequencer")
 
 	// Restart the same full node as a based sequencer
@@ -765,6 +764,7 @@ func TestEvmSequencerCatchUpBasedSequencerE2E(t *testing.T) {
 		"--evnode.p2p.listen_address", env.Endpoints.GetFullNodeP2PAddress(),
 		"--evm.engine-url", env.Endpoints.GetFullNodeEngineURL(),
 		"--evm.eth-url", env.Endpoints.GetFullNodeEthURL(),
+		"--evnode.log.level", "error",
 	)
 	sut.AwaitNodeLive(t, env.Endpoints.GetFullNodeRPCAddress(), NodeStartupTimeout)
 	t.Log("Sync node restarted as based sequencer")
@@ -774,7 +774,6 @@ func TestEvmSequencerCatchUpBasedSequencerE2E(t *testing.T) {
 	require.NoError(t, err)
 	defer basedSeqClient.Close()
 
-	// ===== PHASE 5: Submit Forced Inclusion Transactions to DA =====
 	t.Log("Phase 5: Submit Forced Inclusion Transactions to DA")
 
 	blobClient, err := blobrpc.NewClient(ctx, env.Endpoints.GetDAAddress(), "", "")
@@ -806,11 +805,9 @@ func TestEvmSequencerCatchUpBasedSequencerE2E(t *testing.T) {
 		t.Logf("Submitted forced inclusion tx %d to DA: %s (nonce=%d)", i+1, txForce.Hash().Hex(), txForce.Nonce())
 	}
 
-	// Hack for local-da for advancing past multiple epochs
 	t.Log("Advancing DA past multiple epochs...")
 	time.Sleep(6 * time.Second)
 
-	// ===== PHASE 6: Verify Based Sequencer Includes Forced Txs =====
 	t.Log("Phase 6: Verify Based Sequencer Includes Forced Txs")
 
 	// Wait for based sequencer to include forced inclusion txs
@@ -829,8 +826,43 @@ func TestEvmSequencerCatchUpBasedSequencerE2E(t *testing.T) {
 	basedSeqFinalHeight := basedSeqHeader.Number.Uint64()
 	t.Logf("Based sequencer final height: %d", basedSeqFinalHeight)
 
-	// ===== PHASE 7: Restart Original Sequencer =====
-	t.Log("Phase 7: Restart Original Sequencer")
+	t.Log("Phase 7: Stop Based Sequencer and Restart as Normal Sync Node")
+
+	// Stop based sequencer
+	err = basedSeqProcess.Signal(syscall.SIGTERM)
+	require.NoError(t, err, "failed to stop based sequencer process")
+	time.Sleep(1 * time.Second)
+
+	// Restart as normal sync node (without --based_sequencer flag, with --p2p.peers to connect to sequencer)
+	fnProcess = sut.ExecCmd(evmSingleBinaryPath,
+		"start",
+		"--evm.jwt-secret-file", fnJwtSecretFile,
+		"--evm.genesis-hash", env.GenesisHash,
+		"--home", fullNodeHome,
+		"--evnode.da.block_time", DefaultDABlockTime,
+		"--evnode.da.address", env.Endpoints.GetDAAddress(),
+		"--evnode.da.namespace", DefaultDANamespace,
+		"--evnode.da.forced_inclusion_namespace", "forced-inc",
+		"--evnode.rpc.address", env.Endpoints.GetFullNodeRPCListen(),
+		"--evnode.p2p.listen_address", env.Endpoints.GetFullNodeP2PAddress(),
+		"--evnode.p2p.peers", sequencerP2PAddress,
+		"--evnode.clear_cache",
+		"--evm.engine-url", env.Endpoints.GetFullNodeEngineURL(),
+		"--evm.eth-url", env.Endpoints.GetFullNodeEthURL(),
+		"--evnode.log.level", "debug",
+	)
+	sut.AwaitNodeLive(t, env.Endpoints.GetFullNodeRPCAddress(), NodeStartupTimeout)
+	t.Log("Sync node restarted as normal full node")
+
+	// Reconnect to sync node
+	fnClient, err = ethclient.Dial(env.Endpoints.GetFullNodeEthURL())
+	require.NoError(t, err)
+
+	fnClientHeader, err := fnClient.HeaderByNumber(ctx, nil)
+	require.NoError(t, err)
+	t.Logf("Sync node restarted at height: %d", fnClientHeader.Number.Uint64())
+
+	t.Log("Phase 8: Restart Original Sequencer")
 
 	// Restart the original sequencer
 	seqProcess = sut.ExecCmd(evmSingleBinaryPath,
@@ -849,6 +881,7 @@ func TestEvmSequencerCatchUpBasedSequencerE2E(t *testing.T) {
 		"--evnode.p2p.listen_address", env.Endpoints.GetRollkitP2PAddress(),
 		"--evm.engine-url", env.Endpoints.GetSequencerEngineURL(),
 		"--evm.eth-url", env.Endpoints.GetSequencerEthURL(),
+		"--evnode.log.level", "error",
 	)
 	sut.AwaitNodeUp(t, env.Endpoints.GetRollkitRPCAddress(), NodeStartupTimeout)
 	t.Log("Sequencer restarted successfully")
@@ -857,8 +890,7 @@ func TestEvmSequencerCatchUpBasedSequencerE2E(t *testing.T) {
 	seqClient, err = ethclient.Dial(env.Endpoints.GetSequencerEthURL())
 	require.NoError(t, err)
 
-	// ===== PHASE 8: Verify Sequencer Catches Up =====
-	t.Log("Phase 8: Verify Sequencer Catches Up")
+	t.Log("Phase 9: Verify Sequencer Catches Up")
 
 	// Wait for sequencer to catch up and include forced txs
 	for i, txHash := range forcedTxHashes {
@@ -883,37 +915,6 @@ func TestEvmSequencerCatchUpBasedSequencerE2E(t *testing.T) {
 	require.NoError(t, err)
 	t.Logf("Sequencer caught up to height: %d", seqHeader.Number.Uint64())
 
-	// ===== PHASE 9: Stop Based Sequencer and Restart as Normal Sync Node =====
-	t.Log("Phase 9: Stop Based Sequencer and Restart as Normal Sync Node")
-
-	// Stop based sequencer
-	err = basedSeqProcess.Signal(syscall.SIGTERM)
-	require.NoError(t, err, "failed to stop based sequencer process")
-	time.Sleep(1 * time.Second)
-
-	// Restart as normal sync node (without --based_sequencer flag, with --p2p.peers to connect to sequencer)
-	fnProcess = sut.ExecCmd(evmSingleBinaryPath,
-		"start",
-		"--evm.jwt-secret-file", fnJwtSecretFile,
-		"--evm.genesis-hash", env.GenesisHash,
-		"--home", fullNodeHome,
-		"--evnode.da.block_time", DefaultDABlockTime,
-		"--evnode.da.address", env.Endpoints.GetDAAddress(),
-		"--evnode.da.namespace", DefaultDANamespace,
-		"--evnode.da.forced_inclusion_namespace", "forced-inc",
-		"--evnode.rpc.address", env.Endpoints.GetFullNodeRPCListen(),
-		"--evnode.p2p.listen_address", env.Endpoints.GetFullNodeP2PAddress(),
-		"--evnode.p2p.peers", sequencerP2PAddress,
-		"--evm.engine-url", env.Endpoints.GetFullNodeEngineURL(),
-		"--evm.eth-url", env.Endpoints.GetFullNodeEthURL(),
-	)
-	sut.AwaitNodeLive(t, env.Endpoints.GetFullNodeRPCAddress(), NodeStartupTimeout)
-	t.Log("Sync node restarted as normal full node")
-
-	// Reconnect to sync node
-	fnClient, err = ethclient.Dial(env.Endpoints.GetFullNodeEthURL())
-	require.NoError(t, err)
-
 	// ===== PHASE 10: Verify Nodes Are in Sync =====
 	t.Log("Phase 10: Verify Nodes Are in Sync")
 
@@ -924,7 +925,11 @@ func TestEvmSequencerCatchUpBasedSequencerE2E(t *testing.T) {
 		if err1 != nil || err2 != nil {
 			return false
 		}
-		return fnHeader.Number.Uint64() >= seqHeader.Number.Uint64()
+
+		syncHeaderNb, seqHeaderNb := fnHeader.Number.Uint64(), seqHeader.Number.Uint64()
+		t.Logf("Sync node height is %d and seq node height is %d", syncHeaderNb, seqHeaderNb)
+
+		return syncHeaderNb >= seqHeaderNb
 	}, 30*time.Second, 1*time.Second, "Sync node should catch up to sequencer")
 
 	// Verify both nodes have all forced inclusion txs
@@ -944,15 +949,8 @@ func TestEvmSequencerCatchUpBasedSequencerE2E(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return evm.CheckTxIncluded(seqClient, txFinal.Hash()) && evm.CheckTxIncluded(fnClient, txFinal.Hash())
-	}, 20*time.Second, 500*time.Millisecond, "Final tx should be included on both nodes")
+	}, 30*time.Second, 20*time.Millisecond, "Final tx should be included on both nodes")
 	t.Log("Final tx included on both nodes - nodes are in sync")
-
-	t.Log("Test PASSED: Sequencer catch-up with based sequencer verified successfully")
-	t.Logf("  - Sequencer processed %d normal txs before downtime", len(normalTxHashes))
-	t.Logf("  - %d forced inclusion txs submitted to DA during downtime", len(forcedTxHashes))
-	t.Logf("  - Based sequencer included all forced txs from DA")
-	t.Logf("  - Sequencer caught up and replayed all forced txs after restart")
-	t.Logf("  - Both nodes are in sync")
 }
 
 // TestEvmBasedSequencerBaselineE2E tests the based sequencer.
