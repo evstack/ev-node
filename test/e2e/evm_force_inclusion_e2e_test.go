@@ -719,6 +719,9 @@ func TestEvmSequencerCatchUpBasedSequencerE2E(t *testing.T) {
 	seqFinalHeight := seqHeader.Number.Uint64()
 	t.Logf("Sequencer at height: %d before shutdown", seqFinalHeight)
 
+	seqBlock, err := seqClient.BlockByNumber(ctx, new(big.Int).SetUint64(seqFinalHeight))
+	require.NoError(t, err, "sequencer should have block %d", seqFinalHeight)
+
 	// Stop sequencer so it stops producing new blocks.
 	err = seqProcess.Signal(syscall.SIGTERM)
 	require.NoError(t, err, "failed to stop sequencer process")
@@ -739,6 +742,11 @@ func TestEvmSequencerCatchUpBasedSequencerE2E(t *testing.T) {
 	fnHeader, err := fnClient.HeaderByNumber(ctx, nil)
 	require.NoError(t, err)
 	t.Logf("Full node caught up to height: %d (sequencer was at %d)", fnHeader.Number.Uint64(), seqFinalHeight)
+
+	// Normal flow: last sequencer block equal last sync node block
+	fnBlock, err := fnClient.BlockByNumber(ctx, new(big.Int).SetUint64(fnHeader.Number.Uint64()))
+	require.NoError(t, err)
+	require.Equal(t, seqBlock.Hash(), fnBlock.Hash())
 
 	// Stop sync node process
 	err = fnProcess.Signal(syscall.SIGTERM)
@@ -774,6 +782,11 @@ func TestEvmSequencerCatchUpBasedSequencerE2E(t *testing.T) {
 	basedSeqClient, err := ethclient.Dial(env.Endpoints.GetFullNodeEthURL())
 	require.NoError(t, err)
 	defer basedSeqClient.Close()
+
+	// Normal flow: last sequencer block equal last based sequencer block
+	baseSeqBlock, err := basedSeqClient.BlockByNumber(ctx, new(big.Int).SetUint64(fnHeader.Number.Uint64()))
+	require.NoError(t, err)
+	require.Equal(t, seqBlock.Hash(), baseSeqBlock.Hash(), "based sequencer block is not equal to last sequencer block")
 
 	t.Log("Phase 5: Submit Forced Inclusion Transactions to DA")
 
@@ -850,6 +863,7 @@ func TestEvmSequencerCatchUpBasedSequencerE2E(t *testing.T) {
 		"--evnode.clear_cache",
 		"--evm.engine-url", env.Endpoints.GetFullNodeEngineURL(),
 		"--evm.eth-url", env.Endpoints.GetFullNodeEthURL(),
+		"--evnode.log.level", "error",
 	)
 	sut.AwaitNodeLive(t, env.Endpoints.GetFullNodeRPCAddress(), NodeStartupTimeout)
 	t.Log("Sync node restarted as normal full node")
@@ -924,10 +938,10 @@ func TestEvmSequencerCatchUpBasedSequencerE2E(t *testing.T) {
 	for h := uint64(1); h <= basedSeqFinalHeight; h++ {
 		height := new(big.Int).SetUint64(h)
 
-		seqBlock, err := seqClient.BlockByNumber(ctx, height)
+		seqBlock, err = seqClient.BlockByNumber(ctx, height)
 		require.NoError(t, err, "sequencer should have block %d", h)
 
-		fnBlock, err := fnClient.BlockByNumber(ctx, height)
+		fnBlock, err = fnClient.BlockByNumber(ctx, height)
 		require.NoError(t, err, "full node should have block %d", h)
 
 		seqTime := seqBlock.Time()
@@ -951,9 +965,6 @@ func TestEvmSequencerCatchUpBasedSequencerE2E(t *testing.T) {
 		require.Equal(t, len(seqBlock.Transactions()), len(fnBlock.Transactions()),
 			"tx count mismatch at height %d: sequencer=%d fullnode=%d",
 			h, len(seqBlock.Transactions()), len(fnBlock.Transactions()))
-
-		t.Logf("✅ Block %d matches: hash=%s stateRoot=%s txs=%d",
-			h, seqBlock.Hash().Hex(), seqBlock.Root().Hex(), len(seqBlock.Transactions()))
 	}
 	t.Logf("All %d blocks match between sequencer and full node", basedSeqFinalHeight)
 
@@ -1048,7 +1059,8 @@ func TestEvmBasedSequencerBaselineE2E(t *testing.T) {
 		"--evm.eth-url", env.Endpoints.GetSequencerEthURL(),
 		"--evnode.log.level", "debug",
 	)
-	sut.AwaitNodeUp(t, env.Endpoints.GetRollkitRPCAddress(), NodeStartupTimeout)
+	// We cannot use AwaitNodeUp immediatly, as a base sequencer does not create blocks until getting txs from DA.
+	// sut.AwaitNodeUp(t, env.Endpoints.GetRollkitRPCAddress(), NodeStartupTimeout)
 	t.Log("Based sequencer is up")
 
 	// Connect to based sequencer
@@ -1094,7 +1106,6 @@ func TestEvmBasedSequencerBaselineE2E(t *testing.T) {
 	t.Log("Advancing DA past epoch boundary...")
 	time.Sleep(4 * time.Second)
 
-	// ===== VERIFY BASED SEQUENCER INCLUDES FORCED TXS =====
 	t.Log("Waiting for based sequencer to include forced inclusion txs")
 
 	for i, txHash := range forcedTxHashes {
@@ -1108,5 +1119,6 @@ func TestEvmBasedSequencerBaselineE2E(t *testing.T) {
 	// Verify blocks are being produced
 	header, err := basedSeqClient.HeaderByNumber(ctx, nil)
 	require.NoError(t, err)
+	require.GreaterOrEqual(t, header.Number.Uint64(), uint64(2))
 	t.Logf("Based sequencer height: %d", header.Number.Uint64())
 }

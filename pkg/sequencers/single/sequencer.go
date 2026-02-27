@@ -372,6 +372,10 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 		c.lastCatchUpTimestamp = timestamp
 	}
 
+	if c.isCatchingUp() && len(batchTxs) == 0 {
+		return nil, block.ErrNoBatch
+	}
+
 	return &coresequencer.GetNextBatchResponse{
 		Batch: &coresequencer.Batch{
 			Transactions: batchTxs,
@@ -539,17 +543,17 @@ func (c *Sequencer) updateCatchUpState(ctx context.Context) {
 	latestEpoch := types.CalculateEpochNumber(latestDAHeight, daStartHeight, epochSize)
 	missedEpochs := latestEpoch - currentEpoch
 
-	if missedEpochs <= 1 {
+	if missedEpochs == 0 {
 		c.logger.Debug().
 			Uint64("checkpoint_da_height", currentDAHeight).
 			Uint64("latest_da_height", latestDAHeight).
 			Uint64("current_epoch", currentEpoch).
 			Uint64("latest_epoch", latestEpoch).
-			Msg("sequencer within one epoch of DA head, no catch-up needed")
+			Msg("sequencer at DA head, no catch-up needed")
 		return
 	}
 
-	// More than one epoch behind - enter catch-up mode.
+	// At least one epoch behind - enter catch-up mode.
 	// Read the last block time from the store so that catch-up timestamps
 	// are guaranteed to be strictly after any previously produced block.
 	s := store.New(store.NewEvNodeKVStore(c.db))

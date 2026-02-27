@@ -219,6 +219,10 @@ doneProcessing:
 	}
 	s.lastTimestamp = timestamp
 
+	if len(validTxs) == 0 {
+		return nil, block.ErrNoBatch
+	}
+
 	return &coresequencer.GetNextBatchResponse{
 		Batch:     &coresequencer.Batch{Transactions: validTxs},
 		Timestamp: timestamp,
