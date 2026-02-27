@@ -4,11 +4,11 @@
 
 This guide covers how to set up a full node to run alongside a sequencer node in a Evolve-based blockchain network. A full node maintains a complete copy of the blockchain and helps validate transactions, improving the network's decentralization and security.
 
-> **Note: The guide on how to run an Evolve EVM full node can be found [in the evm section](./evm/single.md#setting-up-a-full-node).**
+> **Note: The guide on how to run an Evolve EVM full node can be found [in the evm section](../../guides/evm/single.md#setting-up-a-full-node).**
 
 ## Prerequisites
 
-Before proceeding, ensure that you have completed the [build a chain](./gm-world.md) tutorial, which covers setting-up, building and running your chain.
+Before proceeding, ensure that you have completed the [build a chain](../../guides/gm-world.md) tutorial, which covers setting-up, building and running your chain.
 
 Ensure that you have:
 

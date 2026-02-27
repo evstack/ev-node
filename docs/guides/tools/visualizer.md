@@ -22,7 +22,7 @@ The DA Visualizer is disabled by default. To enable it, use the following config
 ### Via Command-line Flag
 
 ```bash
-testapp start --rollkit.rpc.enable_da_visualization
+testapp start --evnode.rpc.enable_da_visualization
 ```
 
 ### Via Configuration File

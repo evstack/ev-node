@@ -428,7 +428,7 @@ The retrieval system uses persistent caches for both headers and data:
 - Enables efficient sync from P2P and DA sources
 - Maintains namespace migration state for optimized retrieval
 
-For more details on DA integration, see the [Data Availability specification](./da.md).
+For more details on DA integration, see the [Data Availability specification](./data-availability.md).
 
 #### Out-of-Order Chain Blocks on DA
 
@@ -725,7 +725,7 @@ See [tutorial] for running a multi-node network with both aggregator and non-agg
 
 [7] [Evolve Minimal Header](../../adr/adr-015-rollkit-minimal-header.md)
 
-[8] [Data Availability](./da.md)
+[8] [Data Availability](./data-availability.md)
 
 [9] [Lazy Aggregation with DA Layer Consistency ADR](../../adr/adr-021-lazy-aggregation.md)
 

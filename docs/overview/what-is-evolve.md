@@ -14,7 +14,7 @@ Evolve is a launch stack for L1s. It gives you full control over execution — w
 
 Evolve is [open-source](https://github.com/evstack/ev-node), production-ready, and fully composable.
 
-At its core is \`ev-node\`, a modular node that exposes an [Execution interface](https://github.com/evstack/ev-node/blob/main/core/execution/execution.go), — letting you bring any VM or execution logic, including Cosmos SDK or custom-built runtimes.
+At its core is `ev-node`, a modular node that exposes an [Execution interface](https://github.com/evstack/ev-node/blob/main/core/execution/execution.go) — letting you bring any VM or execution logic, including Cosmos SDK or custom-built runtimes.
 
 Evolving from Cosmos SDK?
 
