@@ -12,7 +12,7 @@ ev-reth extends reth with:
 
 ## Architecture
 
-```
+```text
 ┌─────────────────────────────────────────┐
 │               ev-node                    │
 │         (consensus + DA + P2P)          │

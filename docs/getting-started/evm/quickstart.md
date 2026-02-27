@@ -17,7 +17,7 @@ local-da
 
 You should see:
 
-```
+```text
 INF Listening on host=localhost port=7980
 ```
 
@@ -59,7 +59,7 @@ Initialize and start:
 
 You should see blocks being produced:
 
-```
+```text
 INF block marked as DA included blockHeight=1
 INF block marked as DA included blockHeight=2
 ```

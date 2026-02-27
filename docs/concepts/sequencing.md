@@ -18,7 +18,7 @@ In traditional L1 blockchains, these functions are distributed across validators
 
 The simplest approach is a single sequencer: one designated node that orders all transactions.
 
-```
+```text
 User → Sequencer → Block → DA Layer
 ```
 
@@ -41,7 +41,7 @@ Most production rollups today use single sequencers because the performance bene
 
 Based sequencing (also called "based rollups") delegates transaction ordering to the underlying DA layer. Instead of a dedicated sequencer, users submit transactions directly to the DA layer, and all rollup nodes independently derive the same ordering from DA blocks.
 
-```
+```text
 User → DA Layer → All Nodes Derive Same Order
 ```
 

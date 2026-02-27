@@ -30,7 +30,7 @@ Evolve currently supports two DA modes:
 
 ## DA Flow
 
-```
+```text
 Block Produced
       │
       ▼

@@ -38,7 +38,7 @@ rpc:
 
 Once enabled, the DA Visualizer is accessible through your node's RPC server. By default, this is:
 
-```
+```text
 http://localhost:7331/da
 ```
 

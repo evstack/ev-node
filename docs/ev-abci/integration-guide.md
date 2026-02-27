@@ -71,7 +71,7 @@ Check for ev-abci flags:
 
 Expected flags:
 
-```
+```text
 --evnode.node.aggregator     Run as block producer
 --evnode.da.address          DA layer address
 --evnode.signer.passphrase   Signer passphrase

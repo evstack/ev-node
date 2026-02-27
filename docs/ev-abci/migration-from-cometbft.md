@@ -269,4 +269,3 @@ Verify that the node starts successfully:
 ```
 
 Your node is now running with `ev-abci` instead of CometBFT. The chain continues from the same state but with the new consensus engine.
-

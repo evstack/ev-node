@@ -4,7 +4,7 @@ Evolve uses a modular architecture where each component has a well-defined inter
 
 ## System Overview
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                          Client Apps                            │
 │                    (wallets, dapps, indexers)                   │
@@ -51,7 +51,7 @@ The block package is the heart of ev-node. It's organized into specialized compo
 
 ### Component Interaction
 
-```
+```text
                     ┌─────────────┐
                     │   Reaper    │
                     │  (tx scrape)│
@@ -113,7 +113,7 @@ Full nodes sync and validate without producing blocks:
 
 ### Block Production (Aggregator)
 
-```
+```text
 User Tx → Execution Layer Mempool
                  │
                  ▼
@@ -137,7 +137,7 @@ User Tx → Execution Layer Mempool
 
 ### Block Sync (Non-Aggregator)
 
-```
+```text
 ┌────────────────────────────────────────┐
 │              Syncer                    │
 ├────────────┬────────────┬──────────────┤
