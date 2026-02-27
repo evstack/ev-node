@@ -6,7 +6,7 @@ Engine API methods used by ev-node to communicate with ev-reth.
 
 All requests require JWT authentication via the `Authorization` header:
 
-```
+```text
 Authorization: Bearer <jwt_token>
 ```
 

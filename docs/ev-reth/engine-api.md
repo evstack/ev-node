@@ -22,7 +22,7 @@ Configure both sides:
 
 ## Block Production Flow
 
-```
+```text
 ev-node                                    ev-reth
    │                                          │
    │  1. engine_forkchoiceUpdatedV3           │

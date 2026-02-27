@@ -4,7 +4,7 @@ Finality determines when a transaction is irreversible. Evolve has a multi-stage
 
 ## Finality Stages
 
-```
+```text
 Transaction Submitted
         │
         ▼

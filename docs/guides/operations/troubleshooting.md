@@ -63,7 +63,7 @@ ls -la ~/.evnode/data
 
 **Error example:**
 
-```
+```text
 ERR DA layer submission failed error="connection refused"
 ```
 
@@ -93,7 +93,7 @@ celestia header sync-state
 
 **Error example:**
 
-```
+```text
 ERR DA layer submission failed error="Codespace: 'sdk', Code: 19, Message: "
 ```
 

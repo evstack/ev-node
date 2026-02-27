@@ -137,8 +137,8 @@ db_path: "data"
 ```
 
 **Command-line Flag:**
-`--rollkit.db_path <path>`
-_Example:_ `--rollkit.db_path "node_db"`
+`--evnode.db_path <path>`
+_Example:_ `--evnode.db_path "node_db"`
 _Default:_ `"data"`
 _Constant:_ `FlagDBPath`
 
@@ -184,8 +184,8 @@ node:
 ```
 
 **Command-line Flag:**
-`--rollkit.node.aggregator` (boolean, presence enables it)
-_Example:_ `--rollkit.node.aggregator`
+`--evnode.node.aggregator` (boolean, presence enables it)
+_Example:_ `--evnode.node.aggregator`
 _Default:_ `false`
 _Constant:_ `FlagAggregator`
 
@@ -202,8 +202,8 @@ node:
 ```
 
 **Command-line Flag:**
-`--rollkit.node.light` (boolean, presence enables it)
-_Example:_ `--rollkit.node.light`
+`--evnode.node.light` (boolean, presence enables it)
+_Example:_ `--evnode.node.light`
 _Default:_ `false`
 _Constant:_ `FlagLight`
 
@@ -220,8 +220,8 @@ node:
 ```
 
 **Command-line Flag:**
-`--rollkit.node.block_time <duration>`
-_Example:_ `--rollkit.node.block_time 2s`
+`--evnode.node.block_time <duration>`
+_Example:_ `--evnode.node.block_time 2s`
 _Default:_ `"1s"`
 _Constant:_ `FlagBlockTime`
 
@@ -238,8 +238,8 @@ node:
 ```
 
 **Command-line Flag:**
-`--rollkit.node.max_pending_blocks <uint64>`
-_Example:_ `--rollkit.node.max_pending_blocks 50`
+`--evnode.node.max_pending_blocks <uint64>`
+_Example:_ `--evnode.node.max_pending_blocks 50`
 _Default:_ `0` (no limit)
 _Constant:_ `FlagMaxPendingBlocks`
 
@@ -256,8 +256,8 @@ node:
 ```
 
 **Command-line Flag:**
-`--rollkit.node.lazy_mode` (boolean, presence enables it)
-_Example:_ `--rollkit.node.lazy_mode`
+`--evnode.node.lazy_mode` (boolean, presence enables it)
+_Example:_ `--evnode.node.lazy_mode`
 _Default:_ `false`
 _Constant:_ `FlagLazyAggregator`
 
@@ -274,8 +274,8 @@ node:
 ```
 
 **Command-line Flag:**
-`--rollkit.node.lazy_block_interval <duration>`
-_Example:_ `--rollkit.node.lazy_block_interval 1m`
+`--evnode.node.lazy_block_interval <duration>`
+_Example:_ `--evnode.node.lazy_block_interval 1m`
 _Default:_ `"30s"`
 _Constant:_ `FlagLazyBlockTime`
 
@@ -303,8 +303,8 @@ da:
 ```
 
 **Command-line Flag:**
-`--rollkit.da.address <string>`
-_Example:_ `--rollkit.da.address 192.168.1.100:26659`
+`--evnode.da.address <string>`
+_Example:_ `--evnode.da.address 192.168.1.100:26659`
 _Default:_ `""` (empty, must be configured if DA is used)
 _Constant:_ `FlagDAAddress`
 
@@ -321,8 +321,8 @@ da:
 ```
 
 **Command-line Flag:**
-`--rollkit.da.auth_token <string>`
-_Example:_ `--rollkit.da.auth_token mysecrettoken`
+`--evnode.da.auth_token <string>`
+_Example:_ `--evnode.da.auth_token mysecrettoken`
 _Default:_ `""` (empty)
 _Constant:_ `FlagDAAuthToken`
 
@@ -339,8 +339,8 @@ da:
 ```
 
 **Command-line Flag:**
-`--rollkit.da.gas_price <float64>`
-_Example:_ `--rollkit.da.gas_price 0.05`
+`--evnode.da.gas_price <float64>`
+_Example:_ `--evnode.da.gas_price 0.05`
 _Default:_ `-1` (automatic)
 _Constant:_ `FlagDAGasPrice`
 
@@ -357,8 +357,8 @@ da:
 ```
 
 **Command-line Flag:**
-`--rollkit.da.gas_multiplier <float64>`
-_Example:_ `--rollkit.da.gas_multiplier 1.5`
+`--evnode.da.gas_multiplier <float64>`
+_Example:_ `--evnode.da.gas_multiplier 1.5`
 _Default:_ `1.0` (no multiplication)
 _Constant:_ `FlagDAGasMultiplier`
 
@@ -377,8 +377,8 @@ da:
 ```
 
 **Command-line Flag:**
-`--rollkit.da.submit_options <string>`
-_Example:_ `--rollkit.da.submit_options '{"custom_param":true}'`
+`--evnode.da.submit_options <string>`
+_Example:_ `--evnode.da.submit_options '{"custom_param":true}'`
 _Default:_ `""` (empty)
 _Constant:_ `FlagDASubmitOptions`
 
@@ -406,7 +406,7 @@ da:
 
 **Command-line Flag:**
 `--evnode.da.signing_addresses <string>`
-_Example:_ `--rollkit.da.signing_addresses celestia1abc...,celestia1def...,celestia1ghi...`
+_Example:_ `--evnode.da.signing_addresses celestia1abc...,celestia1def...,celestia1ghi...`
 _Default:_ `[]` (empty, uses default DA node behavior)
 _Constant:_ `FlagDASigningAddresses`
 
@@ -432,8 +432,8 @@ da:
 ```
 
 **Command-line Flag:**
-`--rollkit.da.namespace <string>`
-_Example:_ `--rollkit.da.namespace 0x1234567890abcdef`
+`--evnode.da.namespace <string>`
+_Example:_ `--evnode.da.namespace 0x1234567890abcdef`
 _Default:_ `""` (empty)
 _Constant:_ `FlagDANamespace`
 
@@ -450,8 +450,8 @@ da:
 ```
 
 **Command-line Flag:**
-`--rollkit.da.data_namespace <string>`
-_Example:_ `--rollkit.da.data_namespace my_data_namespace`
+`--evnode.da.data_namespace <string>`
+_Example:_ `--evnode.da.data_namespace my_data_namespace`
 _Default:_ Falls back to `namespace` if not set
 _Constant:_ `FlagDADataNamespace`
 
@@ -472,8 +472,8 @@ da:
 ```
 
 **Command-line Flag:**
-`--rollkit.da.block_time <duration>`
-_Example:_ `--rollkit.da.block_time 12s`
+`--evnode.da.block_time <duration>`
+_Example:_ `--evnode.da.block_time 12s`
 _Default:_ `"6s"`
 _Constant:_ `FlagDABlockTime`
 
@@ -490,8 +490,8 @@ da:
 ```
 
 **Command-line Flag:**
-`--rollkit.da.mempool_ttl <uint64>`
-_Example:_ `--rollkit.da.mempool_ttl 30`
+`--evnode.da.mempool_ttl <uint64>`
+_Example:_ `--evnode.da.mempool_ttl 30`
 _Default:_ `20`
 _Constant:_ `FlagDAMempoolTTL`
 
@@ -508,8 +508,8 @@ da:
 ```
 
 **Command-line Flag:**
-`--rollkit.da.request_timeout <duration>`
-_Example:_ `--rollkit.da.request_timeout 45s`
+`--evnode.da.request_timeout <duration>`
+_Example:_ `--evnode.da.request_timeout 45s`
 _Default:_ `"30s"`
 _Constant:_ `FlagDARequestTimeout`
 
@@ -533,8 +533,8 @@ da:
 ```
 
 **Command-line Flag:**
-`--rollkit.da.batching_strategy <string>`
-_Example:_ `--rollkit.da.batching_strategy adaptive`
+`--evnode.da.batching_strategy <string>`
+_Example:_ `--evnode.da.batching_strategy adaptive`
 _Default:_ `"time"`
 _Constant:_ `FlagDABatchingStrategy`
 
@@ -553,8 +553,8 @@ da:
 ```
 
 **Command-line Flag:**
-`--rollkit.da.batch_size_threshold <float64>`
-_Example:_ `--rollkit.da.batch_size_threshold 0.9`
+`--evnode.da.batch_size_threshold <float64>`
+_Example:_ `--evnode.da.batch_size_threshold 0.9`
 _Default:_ `0.8` (80% of max blob size)
 _Constant:_ `FlagDABatchSizeThreshold`
 
@@ -573,8 +573,8 @@ da:
 ```
 
 **Command-line Flag:**
-`--rollkit.da.batch_max_delay <duration>`
-_Example:_ `--rollkit.da.batch_max_delay 12s`
+`--evnode.da.batch_max_delay <duration>`
+_Example:_ `--evnode.da.batch_max_delay 12s`
 _Default:_ `0` (uses DA BlockTime)
 _Constant:_ `FlagDABatchMaxDelay`
 
@@ -591,8 +591,8 @@ da:
 ```
 
 **Command-line Flag:**
-`--rollkit.da.batch_min_items <uint64>`
-_Example:_ `--rollkit.da.batch_min_items 5`
+`--evnode.da.batch_min_items <uint64>`
+_Example:_ `--evnode.da.batch_min_items 5`
 _Default:_ `1`
 _Constant:_ `FlagDABatchMinItems`
 
@@ -620,8 +620,8 @@ p2p:
 ```
 
 **Command-line Flag:**
-`--rollkit.p2p.listen_address <string>`
-_Example:_ `--rollkit.p2p.listen_address /ip4/127.0.0.1/tcp/26656`
+`--evnode.p2p.listen_address <string>`
+_Example:_ `--evnode.p2p.listen_address /ip4/127.0.0.1/tcp/26656`
 _Default:_ `"/ip4/0.0.0.0/tcp/7676"`
 _Constant:_ `FlagP2PListenAddress`
 
@@ -642,8 +642,8 @@ p2p:
 ```
 
 **Command-line Flag:**
-`--rollkit.p2p.peers <string>`
-_Example:_ `--rollkit.p2p.peers /dns4/seed.example.com/tcp/26656/p2p/12D3KooW...`
+`--evnode.p2p.peers <string>`
+_Example:_ `--evnode.p2p.peers /dns4/seed.example.com/tcp/26656/p2p/12D3KooW...`
 _Default:_ `""` (empty - enables DA-only sync mode)
 _Constant:_ `FlagP2PPeers`
 
@@ -660,8 +660,8 @@ p2p:
 ```
 
 **Command-line Flag:**
-`--rollkit.p2p.blocked_peers <string>`
-_Example:_ `--rollkit.p2p.blocked_peers 12D3KooW...,12D3KooX...`
+`--evnode.p2p.blocked_peers <string>`
+_Example:_ `--evnode.p2p.blocked_peers 12D3KooW...,12D3KooX...`
 _Default:_ `""` (empty)
 _Constant:_ `FlagP2PBlockedPeers`
 
@@ -678,8 +678,8 @@ p2p:
 ```
 
 **Command-line Flag:**
-`--rollkit.p2p.allowed_peers <string>`
-_Example:_ `--rollkit.p2p.allowed_peers 12D3KooY...,12D3KooZ...`
+`--evnode.p2p.allowed_peers <string>`
+_Example:_ `--evnode.p2p.allowed_peers 12D3KooY...,12D3KooZ...`
 _Default:_ `""` (empty, allow all unless blocked)
 _Constant:_ `FlagP2PAllowedPeers`
 
@@ -707,8 +707,8 @@ rpc:
 ```
 
 **Command-line Flag:**
-`--rollkit.rpc.address <string>`
-_Example:_ `--rollkit.rpc.address 0.0.0.0:26657`
+`--evnode.rpc.address <string>`
+_Example:_ `--evnode.rpc.address 0.0.0.0:26657`
 _Default:_ `"127.0.0.1:7331"`
 _Constant:_ `FlagRPCAddress`
 
@@ -725,8 +725,8 @@ rpc:
 ```
 
 **Command-line Flag:**
-`--rollkit.rpc.enable_da_visualization` (boolean, presence enables it)
-_Example:_ `--rollkit.rpc.enable_da_visualization`
+`--evnode.rpc.enable_da_visualization` (boolean, presence enables it)
+_Example:_ `--evnode.rpc.enable_da_visualization`
 _Default:_ `false`
 _Constant:_ `FlagRPCEnableDAVisualization`
 
@@ -787,8 +787,8 @@ instrumentation:
 ```
 
 **Command-line Flag:**
-`--rollkit.instrumentation.prometheus` (boolean, presence enables it)
-_Example:_ `--rollkit.instrumentation.prometheus`
+`--evnode.instrumentation.prometheus` (boolean, presence enables it)
+_Example:_ `--evnode.instrumentation.prometheus`
 _Default:_ `false`
 _Constant:_ `FlagPrometheus`
 
@@ -807,8 +807,8 @@ instrumentation:
 ```
 
 **Command-line Flag:**
-`--rollkit.instrumentation.prometheus_listen_addr <string>`
-_Example:_ `--rollkit.instrumentation.prometheus_listen_addr 0.0.0.0:9090`
+`--evnode.instrumentation.prometheus_listen_addr <string>`
+_Example:_ `--evnode.instrumentation.prometheus_listen_addr 0.0.0.0:9090`
 _Default:_ `":2112"`
 _Constant:_ `FlagPrometheusListenAddr`
 
@@ -825,8 +825,8 @@ instrumentation:
 ```
 
 **Command-line Flag:**
-`--rollkit.instrumentation.max_open_connections <int>`
-_Example:_ `--rollkit.instrumentation.max_open_connections 50`
+`--evnode.instrumentation.max_open_connections <int>`
+_Example:_ `--evnode.instrumentation.max_open_connections 50`
 _Default:_ (Refer to `DefaultInstrumentationConfig()` in code, typically a reasonable number like 100)
 _Constant:_ `FlagMaxOpenConnections`
 
@@ -843,8 +843,8 @@ instrumentation:
 ```
 
 **Command-line Flag:**
-`--rollkit.instrumentation.pprof` (boolean, presence enables it)
-_Example:_ `--rollkit.instrumentation.pprof`
+`--evnode.instrumentation.pprof` (boolean, presence enables it)
+_Example:_ `--evnode.instrumentation.pprof`
 _Default:_ `false`
 _Constant:_ `FlagPprof`
 
@@ -861,8 +861,8 @@ instrumentation:
 ```
 
 **Command-line Flag:**
-`--rollkit.instrumentation.pprof_listen_addr <string>`
-_Example:_ `--rollkit.instrumentation.pprof_listen_addr 0.0.0.0:6061`
+`--evnode.instrumentation.pprof_listen_addr <string>`
+_Example:_ `--evnode.instrumentation.pprof_listen_addr 0.0.0.0:6061`
 _Default:_ `"localhost:6060"`
 _Constant:_ `FlagPprofListenAddr`
 
@@ -955,8 +955,8 @@ signer:
 ```
 
 **Command-line Flag:**
-`--rollkit.signer.signer_type <string>`
-_Example:_ `--rollkit.signer.signer_type grpc`
+`--evnode.signer.signer_type <string>`
+_Example:_ `--evnode.signer.signer_type grpc`
 _Default:_ (Depends on application, often "file" or none if not an aggregator)
 _Constant:_ `FlagSignerType`
 
@@ -974,8 +974,8 @@ signer:
 ```
 
 **Command-line Flag:**
-`--rollkit.signer.signer_path <string>`
-_Example:_ `--rollkit.signer.signer_path ./config`
+`--evnode.signer.signer_path <string>`
+_Example:_ `--evnode.signer.signer_path ./config`
 _Default:_ (Depends on application)
 _Constant:_ `FlagSignerPath`
 
@@ -988,8 +988,8 @@ The passphrase required to decrypt or access the signer key, particularly if usi
 This is typically not stored in the YAML file for security reasons but provided via flag or environment variable.
 
 **Command-line Flag:**
-`--rollkit.signer.passphrase <string>`
-_Example:_ `--rollkit.signer.passphrase "mysecretpassphrase"`
+`--evnode.signer.passphrase <string>`
+_Example:_ `--evnode.signer.passphrase "mysecretpassphrase"`
 _Default:_ `""` (empty)
 _Constant:_ `FlagSignerPassphrase`
 _Note:_ Be cautious with providing passphrases directly on the command line in shared environments due to history logging. Environment variables or secure input methods are often preferred.

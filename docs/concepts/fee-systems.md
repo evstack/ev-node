@@ -8,7 +8,7 @@ Evolve chains have two layers of fees: execution fees (paid to process transacti
 
 Uses EIP-1559 fee model:
 
-```
+```text
 Transaction Fee = (Base Fee + Priority Fee) × Gas Used
 ```
 
@@ -38,7 +38,7 @@ See [Base Fee Redirect](/ev-reth/features/base-fee-redirect) for details.
 
 Uses standard Cosmos SDK fee model:
 
-```
+```text
 Transaction Fee = Gas Price × Gas Used
 ```
 
@@ -107,7 +107,7 @@ da:
 
 ## Fee Flow Diagram
 
-```
+```text
 User Transaction
       │
       │ Pays: Gas Price × Gas

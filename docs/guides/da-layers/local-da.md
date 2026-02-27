@@ -38,7 +38,7 @@ local-da
 
 Default output:
 
-```
+```text
 INF NewLocalDA: initialized LocalDA module=local-da
 INF Listening on host=localhost maxBlobSize=1974272 module=da port=7980
 INF server started listening on=localhost:7980 module=da

@@ -93,7 +93,7 @@ Use a custom executor if you need something neither EVM nor Cosmos SDK provides.
 
 ## Decision Tree
 
-```
+```text
 Do you have an existing Cosmos SDK chain?
 ├── Yes → Cosmos SDK (ev-abci)
 └── No

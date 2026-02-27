@@ -62,7 +62,7 @@ mychaind start \
 
 You should see blocks being produced:
 
-```
+```text
 INF block marked as DA included blockHeight=1
 INF block marked as DA included blockHeight=2
 ```

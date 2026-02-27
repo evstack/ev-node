@@ -32,7 +32,7 @@ In your chainspec (`genesis.json`):
 
 ## How It Works
 
-```
+```text
 Transaction Fee = Base Fee + Priority Fee
 
 Standard Ethereum:

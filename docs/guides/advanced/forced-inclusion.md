@@ -72,7 +72,7 @@ Epoch [100, 109] (epoch size = 10):
   - Sequencer includes forced tx in blocks before height 110
 ```
 
-See [Based Sequencing](./based.md) for a fully decentralized alternative that relies entirely on forced inclusion.
+See [Based Sequencing](./based-sequencing.md) for a fully decentralized alternative that relies entirely on forced inclusion.
 
 ## Detecting Malicious Sequencer Behavior
 
@@ -113,7 +113,7 @@ Nodes may require a coordinated restart into based sequencing mode, depending on
 - Users submit transactions directly to the DA layer going forward
 - Returning to single sequencer mode requires explicit governance and operational coordination
 
-See [Based Sequencing documentation](./based.md) for details on operating in this mode.
+See [Based Sequencing documentation](./based-sequencing.md) for details on operating in this mode.
 
 ## Advantages
 
