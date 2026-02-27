@@ -84,16 +84,17 @@ func NewSequencer(
 	executor execution.Executor,
 ) (*Sequencer, error) {
 	s := &Sequencer{
-		db:              db,
-		logger:          logger,
-		daClient:        daClient,
-		cfg:             cfg,
-		batchTime:       cfg.Node.BlockTime.Duration,
-		Id:              id,
-		queue:           NewBatchQueue(db, "batches", maxQueueSize),
-		checkpointStore: seqcommon.NewCheckpointStore(db, ds.NewKey("/single/checkpoint")),
-		genesis:         genesis,
-		executor:        executor,
+		db:               db,
+		logger:           logger,
+		daClient:         daClient,
+		cfg:              cfg,
+		batchTime:        cfg.Node.BlockTime.Duration,
+		Id:               id,
+		queue:            NewBatchQueue(db, "batches", maxQueueSize),
+		checkpointStore:  seqcommon.NewCheckpointStore(db, ds.NewKey("/single/checkpoint")),
+		genesis:          genesis,
+		currentDAEndTime: genesis.StartTime,
+		executor:         executor,
 	}
 	s.SetDAHeight(genesis.DAStartHeight) // default value, will be overridden by executor or submitter
 	s.daStartHeight.Store(genesis.DAStartHeight)
@@ -463,10 +464,6 @@ func (c *Sequencer) fetchNextDAEpoch(ctx context.Context, maxBytes uint64) (uint
 		return 0, fmt.Errorf("failed to retrieve forced inclusion transactions: %w", err)
 	}
 
-	// Store DA epoch end time for timestamp usage during catch-up
-	if !forcedTxsEvent.Timestamp.IsZero() {
-		c.currentDAEndTime = forcedTxsEvent.Timestamp.UTC()
-	}
 	// Record total tx count for the epoch so the timestamp jitter can be computed
 	// after oversized txs are filtered out below.
 
@@ -494,8 +491,14 @@ func (c *Sequencer) fetchNextDAEpoch(ctx context.Context, maxBytes uint64) (uint
 		Bool("catching_up", c.catchUpState.Load() == catchUpInProgress).
 		Msg("fetched forced inclusion transactions from DA")
 
+	// Cache the transactions for this DA epoch
 	c.cachedForcedInclusionTxs = validTxs
 	c.currentEpochTxCount = uint64(len(validTxs))
+
+	// Store DA epoch end time for timestamp usage during catch-up
+	if daEndTime := forcedTxsEvent.Timestamp.UTC(); forcedTxsEvent.Timestamp.UTC().After(c.currentDAEndTime) {
+		c.currentDAEndTime = daEndTime
+	}
 
 	return forcedTxsEvent.EndDaHeight, nil
 }
@@ -556,6 +559,10 @@ func (c *Sequencer) updateCatchUpState(ctx context.Context) {
 		c.logger.Debug().
 			Time("last_block_time", state.LastBlockTime).
 			Msg("initialized catch-up timestamp floor from last block time")
+	}
+
+	if c.lastCatchUpTimestamp.After(c.currentDAEndTime) {
+		c.currentDAEndTime = c.lastCatchUpTimestamp
 	}
 
 	c.catchUpState.Store(catchUpInProgress)

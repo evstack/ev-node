@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -849,7 +850,6 @@ func TestEvmSequencerCatchUpBasedSequencerE2E(t *testing.T) {
 		"--evnode.clear_cache",
 		"--evm.engine-url", env.Endpoints.GetFullNodeEngineURL(),
 		"--evm.eth-url", env.Endpoints.GetFullNodeEthURL(),
-		"--evnode.log.level", "debug",
 	)
 	sut.AwaitNodeLive(t, env.Endpoints.GetFullNodeRPCAddress(), NodeStartupTimeout)
 	t.Log("Sync node restarted as normal full node")
@@ -914,6 +914,48 @@ func TestEvmSequencerCatchUpBasedSequencerE2E(t *testing.T) {
 	seqHeader, err = seqClient.HeaderByNumber(ctx, nil)
 	require.NoError(t, err)
 	t.Logf("Sequencer caught up to height: %d", seqHeader.Number.Uint64())
+
+	t.Log("Phase 9b: Compare Sequencer Caught-Up Blocks with Full Node Blocks")
+
+	// The sequencer caught up by replaying DA blocks, so its blocks from height 1
+	// through basedSeqFinalHeight must be identical to what the full node has
+	// (the full node synced the same DA chain). Compare block hashes, state roots,
+	// and transaction counts at every height to prove deterministic replay.
+	for h := uint64(1); h <= basedSeqFinalHeight; h++ {
+		height := new(big.Int).SetUint64(h)
+
+		seqBlock, err := seqClient.BlockByNumber(ctx, height)
+		require.NoError(t, err, "sequencer should have block %d", h)
+
+		fnBlock, err := fnClient.BlockByNumber(ctx, height)
+		require.NoError(t, err, "full node should have block %d", h)
+
+		seqTime := seqBlock.Time()
+		fnTime := fnBlock.Time()
+		if seqBlock.Hash() != fnBlock.Hash() {
+			t.Logf("❌ Block %d MISMATCH: seqHash=%s fnHash=%s seqTime=%d fnTime=%d timeDelta=%d seqTxs=%d fnTxs=%d seqRoot=%s fnRoot=%s",
+				h, seqBlock.Hash().Hex(), fnBlock.Hash().Hex(),
+				seqTime, fnTime, int64(seqTime)-int64(fnTime),
+				len(seqBlock.Transactions()), len(fnBlock.Transactions()),
+				seqBlock.Root().Hex(), fnBlock.Root().Hex())
+		}
+
+		require.Equal(t, seqBlock.Hash(), fnBlock.Hash(),
+			"block hash mismatch at height %d: sequencer=%s fullnode=%s seqTime=%d fnTime=%d timeDelta=%d (%v != %v)",
+			h, seqBlock.Hash().Hex(), fnBlock.Hash().Hex(), seqTime, fnTime, int64(seqTime)-int64(fnTime), seqBlock, fnBlock)
+
+		require.Equal(t, seqBlock.Root(), fnBlock.Root(),
+			"state root mismatch at height %d: sequencer=%s fullnode=%s",
+			h, seqBlock.Root().Hex(), fnBlock.Root().Hex())
+
+		require.Equal(t, len(seqBlock.Transactions()), len(fnBlock.Transactions()),
+			"tx count mismatch at height %d: sequencer=%d fullnode=%d",
+			h, len(seqBlock.Transactions()), len(fnBlock.Transactions()))
+
+		t.Logf("✅ Block %d matches: hash=%s stateRoot=%s txs=%d",
+			h, seqBlock.Hash().Hex(), seqBlock.Root().Hex(), len(seqBlock.Transactions()))
+	}
+	t.Logf("All %d blocks match between sequencer and full node", basedSeqFinalHeight)
 
 	// ===== PHASE 10: Verify Nodes Are in Sync =====
 	t.Log("Phase 10: Verify Nodes Are in Sync")

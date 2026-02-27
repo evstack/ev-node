@@ -128,16 +128,11 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 	// If we have no cached transactions or we've consumed all from the current DA epoch,
 	// fetch the next DA epoch
 	if daHeight > 0 && (len(s.currentBatchTxs) == 0 || s.checkpoint.TxIndex >= uint64(len(s.currentBatchTxs))) {
-		daEndTime, daEndHeight, err := s.fetchNextDAEpoch(ctx, req.MaxBytes)
+		daEndHeight, err := s.fetchNextDAEpoch(ctx, req.MaxBytes)
 		if err != nil {
 			return nil, err
 		}
 		daHeight = daEndHeight
-
-		if daEndTime.After(s.currentDAEndTime) {
-			s.currentDAEndTime = daEndTime
-		}
-		s.currentEpochTxCount = uint64(len(s.currentBatchTxs))
 	}
 
 	// Get remaining transactions from checkpoint position
@@ -242,7 +237,7 @@ func (s *BasedSequencer) getMaxGas(ctx context.Context) uint64 {
 }
 
 // fetchNextDAEpoch fetches transactions from the next DA epoch
-func (s *BasedSequencer) fetchNextDAEpoch(ctx context.Context, maxBytes uint64) (time.Time, uint64, error) {
+func (s *BasedSequencer) fetchNextDAEpoch(ctx context.Context, maxBytes uint64) (uint64, error) {
 	currentDAHeight := s.checkpoint.DAHeight
 
 	s.logger.Debug().
@@ -254,16 +249,16 @@ func (s *BasedSequencer) fetchNextDAEpoch(ctx context.Context, maxBytes uint64) 
 	if err != nil {
 		// Check if forced inclusion is not configured
 		if errors.Is(err, block.ErrForceInclusionNotConfigured) {
-			return time.Time{}, 0, block.ErrForceInclusionNotConfigured
+			return 0, block.ErrForceInclusionNotConfigured
 		} else if errors.Is(err, datypes.ErrHeightFromFuture) {
 			// If we get a height from future error, stay at current position
 			// We'll retry the same height on the next call until DA produces that block
 			s.logger.Debug().
 				Uint64("da_height", currentDAHeight).
 				Msg("DA height from future, waiting for DA to produce block")
-			return time.Time{}, 0, nil
+			return 0, nil
 		}
-		return time.Time{}, 0, fmt.Errorf("failed to retrieve forced inclusion transactions: %w", err)
+		return 0, fmt.Errorf("failed to retrieve forced inclusion transactions: %w", err)
 	}
 
 	// Validate and filter transactions by size
@@ -292,8 +287,13 @@ func (s *BasedSequencer) fetchNextDAEpoch(ctx context.Context, maxBytes uint64) 
 
 	// Cache the transactions for this DA epoch
 	s.currentBatchTxs = validTxs
+	s.currentEpochTxCount = uint64(len(validTxs))
 
-	return forcedTxsEvent.Timestamp.UTC(), forcedTxsEvent.EndDaHeight, nil
+	if daEndTime := forcedTxsEvent.Timestamp.UTC(); daEndTime.After(s.currentDAEndTime) {
+		s.currentDAEndTime = daEndTime
+	}
+
+	return forcedTxsEvent.EndDaHeight, nil
 }
 
 // VerifyBatch verifies a batch of transactions
