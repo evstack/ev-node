@@ -25,8 +25,8 @@ cd evolve
 ### 2. Build the Evolve EVM Single Sequencer Implementation
 
 ```bash
-make build-evm
-make build-da
+just build-evm
+just build-da
 ```
 
 This will create the following binaries in the `build` directory:

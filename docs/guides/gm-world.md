@@ -67,7 +67,7 @@ ignite app install -g github.com/ignite/apps/evolve
 Install your app locally:
 
 ```bash
-make install
+just install
 ```
 
 ## Add Evolve Features {#add-evolve-features}
