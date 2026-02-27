@@ -197,3 +197,265 @@ func BenchmarkDecompress(b *testing.B) {
 		})
 	}
 }
+
+// makeMegaBlobPayload builds a mega-blob by concatenating numBlocks
+// independently serialized block payloads. Each block is a separate
+// protobuf-encoded Data message at the given per-block size, with its own
+// metadata (distinct height, chain ID, last-data-hash). This mirrors the
+// production pattern where multiple blocks are batched into a single DA blob.
+func makeMegaBlobPayload(numBlocks, perBlockBytes int) []byte {
+	var combined []byte
+	for i := 0; i < numBlocks; i++ {
+		block := makeRealisticBlockPayload(perBlockBytes)
+		combined = append(combined, block...)
+	}
+	return combined
+}
+
+// BenchmarkCompressMegaBlob benchmarks Compress on mega-blobs that aggregate
+// multiple block payloads into a single compressed blob.
+//
+// Dimensions:
+//
+//	blocks:    2, 5, 10, 20  — number of blocks packed into one blob
+//	per-block: 10 KB, 100 KB, 500 KB — size of each constituent block
+//	level:     fastest, default, best
+func BenchmarkCompressMegaBlob(b *testing.B) {
+	//blockCounts := []int{2, 5, 10, 20, 30, 40, 50, 100}
+	blockCounts := []int{ 150, 200, 250, 300, 350, 400, 500}
+	perBlockSizes := []struct {
+		name  string
+		bytes int
+	}{
+		{"300", 300},
+		{"1KB", 1 * 1024},
+		//{"10KB", 10 * 1024},
+		//{"100KB", 100 * 1024},
+		//{"500KB", 500 * 1024},
+	}
+
+	levels := []struct {
+		name  string
+		level CompressionLevel
+	}{
+		{"fastest", LevelFastest},
+		{"default", LevelDefault},
+		{"best", LevelBest},
+	}
+
+	for _, nBlocks := range blockCounts {
+		for _, pbs := range perBlockSizes {
+			payload := makeMegaBlobPayload(nBlocks, pbs.bytes)
+
+			for _, lvl := range levels {
+				name := fmt.Sprintf("blocks=%d/per_block=%s/level=%s", nBlocks, pbs.name, lvl.name)
+				b.Run(name, func(b *testing.B) {
+					b.SetBytes(int64(len(payload)))
+					b.ReportAllocs()
+
+					compressed, _ := Compress(payload, lvl.level)
+					ratio := float64(len(compressed)) / float64(len(payload))
+					b.ResetTimer()
+					b.ReportMetric(ratio, "ratio")
+					b.ReportMetric(float64(len(payload)), "input_bytes")
+					b.ReportMetric(float64(len(compressed)), "output_bytes")
+					b.ReportMetric(float64(nBlocks), "num_blocks")
+					for i := 0; i < b.N; i++ {
+						_, _ = Compress(payload, lvl.level)
+					}
+				})
+			}
+		}
+	}
+}
+
+// BenchmarkDecompressMegaBlob benchmarks Decompress on mega-blobs containing
+// multiple blocks, paired with BenchmarkCompressMegaBlob.
+func BenchmarkDecompressMegaBlob(b *testing.B) {
+	blockCounts := []int{2, 5, 10, 20, 50, 100, 150}
+	perBlockSizes := []struct {
+		name  string
+		bytes int
+	}{
+		{"200", 300},
+		{"300", 300},
+		{"1kB", 1 * 1024},
+		{"10KB", 10 * 1024},
+		//{"100KB", 100 * 1024},
+		//{"500KB", 500 * 1024},
+	}
+
+	for _, nBlocks := range blockCounts {
+		for _, pbs := range perBlockSizes {
+			payload := makeMegaBlobPayload(nBlocks, pbs.bytes)
+			compressed, err := Compress(payload, LevelDefault)
+			if err != nil {
+				b.Fatal(err)
+			}
+			ratio := float64(len(compressed)) / float64(len(payload))
+			name := fmt.Sprintf("blocks=%d/per_block=%s", nBlocks, pbs.name)
+			b.Run(name, func(b *testing.B) {
+				b.SetBytes(int64(len(compressed)))
+				b.ReportAllocs()
+				b.ResetTimer()
+				b.ReportMetric(ratio, "ratio")
+				b.ReportMetric(float64(len(payload)), "input_bytes")
+				b.ReportMetric(float64(len(compressed)), "output_bytes")
+				b.ReportMetric(float64(nBlocks), "num_blocks")
+				for i := 0; i < b.N; i++ {
+					_, _ = Decompress(b.Context(), compressed)
+				}
+			})
+		}
+	}
+}
+
+// makeRealisticHeaderPayload builds a protobuf-serialized DAHeaderEnvelope
+// that mirrors what the DA client submits for block headers in production.
+// Each envelope contains a Header (version, height, time, hashes, chain ID,
+// proposer/validator addresses), a 65-byte block signature, a Signer
+// (20-byte address + 33-byte compressed secp256k1 pubkey), and a 65-byte
+// envelope signature.
+func makeRealisticHeaderPayload(height uint64) []byte {
+	now := uint64(time.Now().UnixNano())
+
+	// Deterministic 32-byte hashes (simulate real chain state).
+	lastHeaderHash := make([]byte, 32)
+	lastHeaderHash[0] = byte(height >> 8)
+	lastHeaderHash[1] = byte(height)
+	_, _ = rand.Read(lastHeaderHash[2:])
+
+	dataHash := make([]byte, 32)
+	_, _ = rand.Read(dataHash)
+
+	appHash := make([]byte, 32)
+	_, _ = rand.Read(appHash)
+
+	validatorHash := make([]byte, 32)
+	_, _ = rand.Read(validatorHash)
+
+	proposerAddr := make([]byte, 20)
+	proposerAddr[0] = 0xab
+	proposerAddr[1] = 0xcd
+	_, _ = rand.Read(proposerAddr[2:])
+
+	// 33-byte compressed secp256k1 public key (0x02 or 0x03 prefix).
+	pubKey := make([]byte, 33)
+	pubKey[0] = 0x02
+	_, _ = rand.Read(pubKey[1:])
+
+	// 65-byte ECDSA signatures (look random).
+	blockSig := make([]byte, 65)
+	_, _ = rand.Read(blockSig)
+
+	envelopeSig := make([]byte, 65)
+	_, _ = rand.Read(envelopeSig)
+
+	envelope := &pb.DAHeaderEnvelope{
+		Header: &pb.Header{
+			Version:         &pb.Version{Block: 1, App: 1},
+			Height:          height,
+			Time:            now,
+			LastHeaderHash:  lastHeaderHash,
+			DataHash:        dataHash,
+			AppHash:         appHash,
+			ProposerAddress: proposerAddr,
+			ValidatorHash:   validatorHash,
+			ChainId:         "evmos_9001-1",
+		},
+		Signature: blockSig,
+		Signer: &pb.Signer{
+			Address: proposerAddr,
+			PubKey:  pubKey,
+		},
+		EnvelopeSignature: envelopeSig,
+	}
+
+	raw, err := proto.Marshal(envelope)
+	if err != nil {
+		panic(fmt.Sprintf("proto.Marshal DAHeaderEnvelope: %v", err))
+	}
+	return raw
+}
+
+// makeMegaBlobHeaderPayload concatenates numHeaders independently serialized
+// DAHeaderEnvelope messages into a single mega-blob, simulating a batch of
+// consecutive block headers submitted in one DA blob.
+func makeMegaBlobHeaderPayload(numHeaders int) []byte {
+	var combined []byte
+	for i := 0; i < numHeaders; i++ {
+		hdr := makeRealisticHeaderPayload(uint64(i + 1))
+		combined = append(combined, hdr...)
+	}
+	return combined
+}
+
+// BenchmarkCompressMegaBlobHeaders benchmarks Compress on mega-blobs composed
+// of realistic ev-node block headers (DAHeaderEnvelope).
+//
+// Each header is ~330 bytes in production. We test batches of 10–500 headers
+// across all compression levels to characterize header blob compression.
+func BenchmarkCompressMegaBlobHeaders(b *testing.B) {
+	headerCounts := []int{10, 25, 50, 100, 200, 500}
+
+	levels := []struct {
+		name  string
+		level CompressionLevel
+	}{
+		{"fastest", LevelFastest},
+		{"default", LevelDefault},
+		{"best", LevelBest},
+	}
+
+	for _, nHeaders := range headerCounts {
+		payload := makeMegaBlobHeaderPayload(nHeaders)
+
+		for _, lvl := range levels {
+			name := fmt.Sprintf("headers=%d/level=%s", nHeaders, lvl.name)
+			b.Run(name, func(b *testing.B) {
+				b.SetBytes(int64(len(payload)))
+				b.ReportAllocs()
+
+				compressed, _ := Compress(payload, lvl.level)
+				ratio := float64(len(compressed)) / float64(len(payload))
+				b.ResetTimer()
+				b.ReportMetric(ratio, "ratio")
+				b.ReportMetric(float64(len(payload)), "input_bytes")
+				b.ReportMetric(float64(len(compressed)), "output_bytes")
+				b.ReportMetric(float64(nHeaders), "num_headers")
+				for i := 0; i < b.N; i++ {
+					_, _ = Compress(payload, lvl.level)
+				}
+			})
+		}
+	}
+}
+
+// BenchmarkDecompressMegaBlobHeaders benchmarks Decompress on mega-blobs
+// of block headers, paired with BenchmarkCompressMegaBlobHeaders.
+func BenchmarkDecompressMegaBlobHeaders(b *testing.B) {
+	headerCounts := []int{10, 25, 50, 100, 200, 500}
+
+	for _, nHeaders := range headerCounts {
+		payload := makeMegaBlobHeaderPayload(nHeaders)
+		compressed, err := Compress(payload, LevelDefault)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		ratio := float64(len(compressed)) / float64(len(payload))
+		name := fmt.Sprintf("headers=%d", nHeaders)
+		b.Run(name, func(b *testing.B) {
+			b.SetBytes(int64(len(compressed)))
+			b.ReportAllocs()
+			b.ResetTimer()
+			b.ReportMetric(ratio, "ratio")
+			b.ReportMetric(float64(len(payload)), "input_bytes")
+			b.ReportMetric(float64(len(compressed)), "output_bytes")
+			b.ReportMetric(float64(nHeaders), "num_headers")
+			for i := 0; i < b.N; i++ {
+				_, _ = Decompress(b.Context(), compressed)
+			}
+		})
+	}
+}
