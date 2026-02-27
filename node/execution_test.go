@@ -90,22 +90,12 @@ func waitForNodeInitialization(node *FullNode) error {
 func getExecutorFromNode(t *testing.T, node *FullNode) coreexecutor.Executor {
 	le := node.leaderElection
 	sle, ok := le.(*singleRoleElector)
-	if !ok {
-		t.Fatal("Leader election is not singleRoleElector")
-	}
+	require.True(t, ok, "Leader election is not singleRoleElector")
 	state := sle.state()
-	if state == nil {
-		t.Fatal("failoverState is nil")
-	}
-	bc := state.bc
-	if bc == nil {
-		t.Fatal("blockComponents is nil")
-	}
-	if bc.Executor != nil {
-		return bc.Executor.GetCoreExecutor()
-	}
-	t.Fatal("Executor not found in block components")
-	return nil
+	require.NotNil(t, state)
+	require.NotNil(t, state.bc)
+	require.NotNil(t, state.bc.Executor)
+	return state.bc.Executor.GetCoreExecutor()
 }
 
 func getTransactions(t *testing.T, executor coreexecutor.Executor, ctx context.Context) [][]byte {
