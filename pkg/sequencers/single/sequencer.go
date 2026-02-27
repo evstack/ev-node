@@ -359,7 +359,7 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 	// the next epoch starts at nextDaEndTime - N*1ms >= prevDaEndTime.
 	// During normal operation, use wall-clock time instead.
 	timestamp := time.Now()
-	if c.catchUpState.Load() == catchUpInProgress && !c.currentDAEndTime.IsZero() {
+	if c.catchUpState.Load() == catchUpInProgress {
 		epochStart := c.currentDAEndTime.Add(-time.Duration(c.currentEpochTxCount) * time.Millisecond)
 		timestamp = epochStart.Add(time.Duration(txIndexForTimestamp) * time.Millisecond)
 
