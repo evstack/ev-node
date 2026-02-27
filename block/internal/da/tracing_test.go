@@ -54,10 +54,11 @@ func (m *mockFullClient) Validate(ctx context.Context, ids []datypes.ID, proofs 
 	}
 	return nil, nil
 }
-func (m *mockFullClient) GetHeaderNamespace() []byte          { return []byte{0x01} }
-func (m *mockFullClient) GetDataNamespace() []byte            { return []byte{0x02} }
-func (m *mockFullClient) GetForcedInclusionNamespace() []byte { return []byte{0x03} }
-func (m *mockFullClient) HasForcedInclusionNamespace() bool   { return true }
+func (m *mockFullClient) GetLatestDAHeight(_ context.Context) (uint64, error) { return 0, nil }
+func (m *mockFullClient) GetHeaderNamespace() []byte                          { return []byte{0x01} }
+func (m *mockFullClient) GetDataNamespace() []byte                            { return []byte{0x02} }
+func (m *mockFullClient) GetForcedInclusionNamespace() []byte                 { return []byte{0x03} }
+func (m *mockFullClient) HasForcedInclusionNamespace() bool                   { return true }
 
 // setup a tracer provider + span recorder
 func setupDATrace(t *testing.T, inner FullClient) (FullClient, *tracetest.SpanRecorder) {

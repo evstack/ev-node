@@ -555,7 +555,7 @@ func setupCommonEVMEnv(t testing.TB, sut *SystemUnderTest, client tastoratypes.T
 	if evmSingleBinaryPath != "evm" {
 		localDABinary = filepath.Join(filepath.Dir(evmSingleBinaryPath), "local-da")
 	}
-	sut.ExecCmd(localDABinary, "-port", dynEndpoints.DAPort)
+	sut.ExecCmd(localDABinary, "-port", dynEndpoints.DAPort, "-block-time", "1s")
 	t.Logf("Started local DA on port %s", dynEndpoints.DAPort)
 
 	require.NotNil(t, client, "docker client is required")

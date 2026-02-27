@@ -250,6 +250,66 @@ func (_c *MockClient_GetHeaderNamespace_Call) RunAndReturn(run func() []byte) *M
 	return _c
 }
 
+// GetLatestDAHeight provides a mock function for the type MockClient
+func (_mock *MockClient) GetLatestDAHeight(ctx context.Context) (uint64, error) {
+	ret := _mock.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetLatestDAHeight")
+	}
+
+	var r0 uint64
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context) (uint64, error)); ok {
+		return returnFunc(ctx)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context) uint64); ok {
+		r0 = returnFunc(ctx)
+	} else {
+		r0 = ret.Get(0).(uint64)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = returnFunc(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockClient_GetLatestDAHeight_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLatestDAHeight'
+type MockClient_GetLatestDAHeight_Call struct {
+	*mock.Call
+}
+
+// GetLatestDAHeight is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *MockClient_Expecter) GetLatestDAHeight(ctx interface{}) *MockClient_GetLatestDAHeight_Call {
+	return &MockClient_GetLatestDAHeight_Call{Call: _e.mock.On("GetLatestDAHeight", ctx)}
+}
+
+func (_c *MockClient_GetLatestDAHeight_Call) Run(run func(ctx context.Context)) *MockClient_GetLatestDAHeight_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *MockClient_GetLatestDAHeight_Call) Return(v uint64, err error) *MockClient_GetLatestDAHeight_Call {
+	_c.Call.Return(v, err)
+	return _c
+}
+
+func (_c *MockClient_GetLatestDAHeight_Call) RunAndReturn(run func(ctx context.Context) (uint64, error)) *MockClient_GetLatestDAHeight_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // HasForcedInclusionNamespace provides a mock function for the type MockClient
 func (_mock *MockClient) HasForcedInclusionNamespace() bool {
 	ret := _mock.Called()

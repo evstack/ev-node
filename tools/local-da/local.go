@@ -19,8 +19,13 @@ import (
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
-// DefaultMaxBlobSize is the default max blob size
-const DefaultMaxBlobSize uint64 = 7 * 1024 * 1024 // 7MB
+const (
+	// DefaultMaxBlobSize is the default max blob size
+	DefaultMaxBlobSize uint64 = 7 * 1024 * 1024 // 7MB
+
+	// DefaultBlockTime is the default time between empty blocks
+	DefaultBlockTime = 1 * time.Second
+)
 
 // LocalDA is a simple implementation of in-memory DA. Not production ready! Intended only for testing!
 //
@@ -35,6 +40,8 @@ type LocalDA struct {
 	height      uint64
 	privKey     ed25519.PrivateKey
 	pubKey      ed25519.PublicKey
+	blockTime   time.Duration
+	lastTime    time.Time // tracks last timestamp to ensure monotonicity
 
 	logger zerolog.Logger
 }
@@ -51,6 +58,8 @@ func NewLocalDA(logger zerolog.Logger, opts ...func(*LocalDA) *LocalDA) *LocalDA
 		timestamps:  make(map[uint64]time.Time),
 		blobData:    make(map[uint64][]*blobrpc.Blob),
 		maxBlobSize: DefaultMaxBlobSize,
+		blockTime:   DefaultBlockTime,
+		lastTime:    time.Now(),
 		logger:      logger,
 	}
 	for _, f := range opts {
@@ -194,7 +203,7 @@ func (d *LocalDA) SubmitWithOptions(ctx context.Context, blobs []datypes.Blob, g
 	defer d.mu.Unlock()
 	ids := make([]datypes.ID, len(blobs))
 	d.height += 1
-	d.timestamps[d.height] = time.Now()
+	d.timestamps[d.height] = d.monotonicTime()
 	for i, blob := range blobs {
 		ids[i] = append(d.nextID(), d.getHash(blob)...)
 
@@ -224,7 +233,7 @@ func (d *LocalDA) Submit(ctx context.Context, blobs []datypes.Blob, gasPrice flo
 	defer d.mu.Unlock()
 	ids := make([]datypes.ID, len(blobs))
 	d.height += 1
-	d.timestamps[d.height] = time.Now()
+	d.timestamps[d.height] = d.monotonicTime()
 	for i, blob := range blobs {
 		ids[i] = append(d.nextID(), d.getHash(blob)...)
 
@@ -274,10 +283,57 @@ func (d *LocalDA) getProof(id, blob []byte) []byte {
 	return sign
 }
 
+// monotonicTime returns a timestamp that is guaranteed to be after the last recorded timestamp.
+func (d *LocalDA) monotonicTime() time.Time {
+	now := time.Now()
+	if now.After(d.lastTime) {
+		d.lastTime = now
+		return now
+	}
+	d.lastTime = d.lastTime.Add(1)
+	return d.lastTime
+}
+
 // WithMaxBlobSize returns a function that sets the max blob size of LocalDA
 func WithMaxBlobSize(maxBlobSize uint64) func(*LocalDA) *LocalDA {
 	return func(da *LocalDA) *LocalDA {
 		da.maxBlobSize = maxBlobSize
 		return da
 	}
+}
+
+// WithBlockTime returns a function that sets the block time for empty block production
+func WithBlockTime(blockTime time.Duration) func(*LocalDA) *LocalDA {
+	return func(da *LocalDA) *LocalDA {
+		da.blockTime = blockTime
+		return da
+	}
+}
+
+// Start begins producing empty blocks at the configured block time interval.
+func (d *LocalDA) Start(ctx context.Context) {
+	go func() {
+		ticker := time.NewTicker(d.blockTime)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				d.logger.Info().Msg("LocalDA: stopping empty block production")
+				return
+			case <-ticker.C:
+				d.produceEmptyBlock()
+			}
+		}
+	}()
+	d.logger.Info().Dur("blockTime", d.blockTime).Msg("LocalDA: started empty block production")
+}
+
+// produceEmptyBlock creates a new empty block at the next height.
+func (d *LocalDA) produceEmptyBlock() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.height++
+	d.timestamps[d.height] = d.monotonicTime()
+	d.logger.Debug().Uint64("height", d.height).Msg("produced empty block")
 }
