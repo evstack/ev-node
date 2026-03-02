@@ -1,0 +1,107 @@
+# Full Node
+
+## Abstract
+
+A Full Node is a top-level service that encapsulates different components of Evolve and initializes/manages them.
+
+## Details
+
+### Full Node Details
+
+A Full Node is initialized inside the Cosmos SDK start script along with the node configuration, a private key to use in the P2P client, a private key for signing blocks as a block proposer, a client creator, a genesis document, and a logger. It uses them to initialize the components described above. The components TxIndexer, BlockIndexer, and IndexerService exist to ensure cometBFT compatibility since they are needed for most of the RPC calls from the `SignClient` interface from cometBFT.
+
+Note that unlike a light node which only syncs and stores block headers seen on the P2P layer, the full node also syncs and stores full blocks seen on both the P2P network and the DA layer. Full blocks contain all the transactions published as part of the block.
+
+The Full Node mainly encapsulates and initializes/manages the following components:
+
+### genesisDoc
+
+The [genesis] document contains information about the initial state of the chain, in particular its validator set.
+
+### conf
+
+The [node configuration] contains all the necessary settings for the node to be initialized and function properly.
+
+### P2P
+
+The [peer-to-peer client] is used to gossip transactions between full nodes in the network.
+
+### Store
+
+The [Store] is initialized with `DefaultStore`, an implementation of the [store interface] which is used for storing and retrieving blocks, commits, and state.
+
+### blockComponents
+
+The [Block Components] provide a modular architecture for managing block-related operations. Instead of a single monolithic manager, the system uses specialized components:
+
+**For Aggregator Nodes:**
+
+- **Executor**: Block production (normal and lazy modes) and state transitions
+- **Reaper**: Transaction collection and submission to sequencer
+- **Submitter**: Header and data submission to DA layer
+- **Syncer**: Block retrieval and synchronization from DA and P2P
+- **Cache Manager**: Coordination and tracking across all components
+
+**For Non-Aggregator Nodes:**
+
+- **Syncer**: Block retrieval and synchronization from DA and P2P
+- **Cache Manager**: Tracking and caching of synchronized blocks
+
+This modular architecture implements header/data separation where headers and transaction data are handled independently by different components.
+
+### dalc
+
+The [Data Availability Layer Client][dalc] is used to interact with the data availability layer. It is initialized with the DA Layer and DA Config specified in the node configuration.
+
+### hSyncService
+
+The [Header Sync Service] is used for syncing signed headers between nodes over P2P. It operates independently from data sync to support light clients.
+
+### dSyncService
+
+The [Data Sync Service] is used for syncing transaction data between nodes over P2P. This service is only used by full nodes, not light nodes.
+
+## Message Structure/Communication Format
+
+The Full Node communicates with other nodes in the network using the P2P client. It also communicates with the application using the ABCI proxy connections. The communication format is based on the P2P and ABCI protocols.
+
+## Assumptions and Considerations
+
+The Full Node assumes that the configuration, private keys, client creator, genesis document, and logger are correctly passed in by the Cosmos SDK. It also assumes that the P2P client, data availability layer client, block components, and other services can be started and stopped without errors.
+
+## Implementation
+
+See [full node]
+
+## References
+
+[1] [Full Node][full node]
+
+[2] [Genesis Document][genesis]
+
+[3] [Node Configuration][node configuration]
+
+[4] [Peer to Peer Client][peer-to-peer client]
+
+[5] [Store][Store]
+
+[6] [Store Interface][store interface]
+
+[7] [Block Components][block components]
+
+[8] [Data Availability Layer Client][dalc]
+
+[9] [Header Sync Service][Header Sync Service]
+
+[10] [Data Sync Service][Data Sync Service]
+
+[full node]: https://github.com/evstack/ev-node/blob/main/node/full.go
+[genesis]: https://github.com/cometbft/cometbft/blob/main/spec/core/genesis.md
+[node configuration]: https://github.com/evstack/ev-node/blob/main/pkg/config/config.go
+[peer-to-peer client]: https://github.com/evstack/ev-node/blob/main/pkg/p2p/client.go
+[Store]: https://github.com/evstack/ev-node/blob/main/pkg/store/store.go
+[store interface]: https://github.com/evstack/ev-node/blob/main/pkg/store/types.go
+[Block Components]: https://github.com/evstack/ev-node/blob/main/block/components.go
+[dalc]: https://github.com/evstack/ev-node/blob/main/block/public.go
+[Header Sync Service]: https://github.com/evstack/ev-node/blob/main/pkg/sync/sync_service.go
+[Data Sync Service]: https://github.com/evstack/ev-node/blob/main/pkg/sync/sync_service.go
