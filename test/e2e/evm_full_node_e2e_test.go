@@ -215,10 +215,10 @@ func setupSequencerWithFullNode(t *testing.T, sut *SystemUnderTest, sequencerHom
 
 	// Common setup for both sequencer and full node
 	dcli, netID := tastoradocker.Setup(t)
-	env := setupCommonEVMEnv(t, sut, dcli, netID, WithFullNode())
+	env := SetupCommonEVMEnv(t, sut, dcli, netID, WithFullNode())
 
 	// Setup sequencer
-	setupSequencerNode(t, sut, sequencerHome, env.SequencerJWT, env.GenesisHash, env.Endpoints)
+	SetupSequencerNode(t, sut, sequencerHome, env.SequencerJWT, env.GenesisHash, env.Endpoints)
 	t.Log("Sequencer node is up")
 
 	// Get P2P address and setup full node
@@ -648,7 +648,7 @@ func setupSequencerWithFullNodeLazy(t *testing.T, sut *SystemUnderTest, sequence
 
 	// Common setup for both sequencer and full node
 	dcli, netID := tastoradocker.Setup(t)
-	env := setupCommonEVMEnv(t, sut, dcli, netID, WithFullNode())
+	env := SetupCommonEVMEnv(t, sut, dcli, netID, WithFullNode())
 
 	t.Logf("Generated test endpoints - Rollkit RPC: %s, P2P: %s, Full Node RPC: %s, P2P: %s, DA Port: %s",
 		env.Endpoints.RollkitRPCPort, env.Endpoints.RollkitP2PPort, env.Endpoints.FullNodeRPCPort, env.Endpoints.FullNodeP2PPort, env.Endpoints.DAPort)
@@ -1042,14 +1042,14 @@ func testSequencerFullNodeRestart(t *testing.T, initialLazyMode, restartLazyMode
 	t.Logf("Test mode: initial_lazy=%t, restart_lazy=%t", initialLazyMode, restartLazyMode)
 
 	dcli, netID := tastoradocker.Setup(t)
-	env := setupCommonEVMEnv(t, sut, dcli, netID, WithFullNode())
+	env := SetupCommonEVMEnv(t, sut, dcli, netID, WithFullNode())
 
 	// Setup sequencer based on initial mode
 	if initialLazyMode {
 		setupSequencerNodeLazy(t, sut, sequencerHome, env.SequencerJWT, env.GenesisHash, env.Endpoints)
 		t.Log("Sequencer node (lazy mode) is up")
 	} else {
-		setupSequencerNode(t, sut, sequencerHome, env.SequencerJWT, env.GenesisHash, env.Endpoints)
+		SetupSequencerNode(t, sut, sequencerHome, env.SequencerJWT, env.GenesisHash, env.Endpoints)
 		t.Log("Sequencer node is up")
 	}
 

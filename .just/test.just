@@ -25,7 +25,7 @@ test-integration:
 [group('test')]
 test-e2e: build build-da build-evm docker-build-if-local
     @echo "--> Running e2e tests"
-    @cd test/e2e && go test -mod=readonly -failfast -timeout=15m -tags='e2e evm' ./... --binary=../../build/testapp --evm-binary=../../build/evm
+    @cd test/e2e && go test -mod=readonly -failfast -timeout=15m -tags='e2e evm' $(go list -tags='e2e evm' ./... | grep -v /benchmark) --binary=../../build/testapp --evm-binary=../../build/evm
 
 # Run integration tests with coverage
 [group('test')]
