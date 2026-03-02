@@ -351,8 +351,6 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 	// Spread catch-up blocks across the DA epoch window for monotonically increasing timestamps:
 	//   epochStart     = daEndTime - totalEpochTxs * 1ms
 	//   blockTimestamp = epochStart + txIndexForTimestamp * 1ms
-	// The last block of an epoch lands exactly on daEndTime; the first block of
-	// the next epoch starts at nextDaEndTime - N*1ms >= prevDaEndTime.
 	// During normal operation, use wall-clock time instead.
 	timestamp := time.Now().UTC()
 	currentBatchHasForcedTxs := forcedTxConsumedCount > 0

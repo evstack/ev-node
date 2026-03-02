@@ -195,8 +195,6 @@ doneProcessing:
 	// Spread blocks across the DA epoch window to produce monotonically increasing timestamps:
 	//   epochStart     = daEndTime - totalEpochTxs * 1ms
 	//   blockTimestamp = epochStart + txIndexForTimestamp * 1ms
-	// The last block of an epoch lands exactly on daEndTime; the first block of
-	// the next epoch starts at nextDaEndTime - N*1ms >= prevDaEndTime.
 	epochStart := s.currentDAEndTime.Add(-time.Duration(s.currentEpochTxCount) * time.Millisecond)
 	timestamp := epochStart.Add(time.Duration(txIndexForTimestamp) * time.Millisecond)
 
