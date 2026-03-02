@@ -171,10 +171,12 @@ func TestGetPayload_OsakaChain_FallsBackToV5(t *testing.T) {
 
 func TestGetPayload_ForkUpgrade_SwitchesV4ToV5(t *testing.T) {
 	var mu sync.Mutex
+	var calledMethods []string
 	osakaActive := false
 
 	srv := fakeEngineServer(t, func(method string) (string, int, string) {
 		mu.Lock()
+		calledMethods = append(calledMethods, method)
 		active := osakaActive
 		mu.Unlock()
 
@@ -200,6 +202,11 @@ func TestGetPayload_ForkUpgrade_SwitchesV4ToV5(t *testing.T) {
 	_, err := client.GetPayload(ctx, engine.PayloadID{})
 	require.NoError(t, err)
 
+	mu.Lock()
+	assert.Equal(t, []string{"engine_getPayloadV4"}, calledMethods, "pre-upgrade should call V4 only")
+	calledMethods = nil
+	mu.Unlock()
+
 	// Simulate fork activation.
 	mu.Lock()
 	osakaActive = true
@@ -209,9 +216,20 @@ func TestGetPayload_ForkUpgrade_SwitchesV4ToV5(t *testing.T) {
 	_, err = client.GetPayload(ctx, engine.PayloadID{})
 	require.NoError(t, err)
 
-	// Subsequent calls: V5 directly.
+	mu.Lock()
+	assert.Equal(t, []string{"engine_getPayloadV4", "engine_getPayloadV5"}, calledMethods,
+		"first post-upgrade call should try V4 then fall back to V5")
+	calledMethods = nil
+	mu.Unlock()
+
+	// Subsequent calls: V5 directly (cached).
 	_, err = client.GetPayload(ctx, engine.PayloadID{})
 	require.NoError(t, err)
+
+	mu.Lock()
+	assert.Equal(t, []string{"engine_getPayloadV5"}, calledMethods,
+		"subsequent calls should use cached V5 directly")
+	mu.Unlock()
 }
 
 func TestGetPayload_NonForkError_Propagated(t *testing.T) {

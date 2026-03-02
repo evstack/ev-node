@@ -3,6 +3,7 @@ package evm
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/beacon/engine"
@@ -12,6 +13,12 @@ import (
 // engineErrUnsupportedFork is the Engine API error code for "Unsupported fork".
 // Defined in the Engine API specification.
 const engineErrUnsupportedFork = -38005
+
+// Engine API method names for GetPayload versions.
+const (
+	getPayloadV4Method = "engine_getPayloadV4"
+	getPayloadV5Method = "engine_getPayloadV5"
+)
 
 var _ EngineRPCClient = (*engineRPCClient)(nil)
 
@@ -41,11 +48,11 @@ func (e *engineRPCClient) ForkchoiceUpdated(ctx context.Context, state engine.Fo
 }
 
 func (e *engineRPCClient) GetPayload(ctx context.Context, payloadID engine.PayloadID) (*engine.ExecutionPayloadEnvelope, error) {
-	method := "engine_getPayloadV4"
-	altMethod := "engine_getPayloadV5"
+	method := getPayloadV4Method
+	altMethod := getPayloadV5Method
 	if e.useV5.Load() {
-		method = "engine_getPayloadV5"
-		altMethod = "engine_getPayloadV4"
+		method = getPayloadV5Method
+		altMethod = getPayloadV4Method
 	}
 
 	var result engine.ExecutionPayloadEnvelope
@@ -55,18 +62,27 @@ func (e *engineRPCClient) GetPayload(ctx context.Context, payloadID engine.Paylo
 	}
 
 	if !isUnsupportedForkErr(err) {
-		return nil, err
+		return nil, fmt.Errorf("%s payload %s: %w", method, payloadID, err)
 	}
 
 	// Primary method returned "Unsupported fork" -- try the other version.
 	err = e.client.CallContext(ctx, &result, altMethod, payloadID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s fallback after %s unsupported fork, payload %s: %w", altMethod, method, payloadID, err)
 	}
 
 	// The alt method worked -- cache it for future calls.
-	e.useV5.Store(altMethod == "engine_getPayloadV5")
+	e.useV5.Store(altMethod == getPayloadV5Method)
 	return &result, nil
+}
+
+// GetPayloadMethod returns the Engine API method name currently used by GetPayload.
+// This allows wrappers (e.g. tracing) to report the resolved version.
+func (e *engineRPCClient) GetPayloadMethod() string {
+	if e.useV5.Load() {
+		return getPayloadV5Method
+	}
+	return getPayloadV4Method
 }
 
 func (e *engineRPCClient) NewPayload(ctx context.Context, payload *engine.ExecutableData, blobHashes []string, parentBeaconBlockRoot string, executionRequests [][]byte) (*engine.PayloadStatusV1, error) {
