@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1772446881072,
+  "lastUpdate": 1772446882981,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -3433,6 +3433,180 @@ window.BENCHMARK_DATA = {
           {
             "name": "SpamoorSmoke - TxPool.GetTxs (avg)",
             "value": 1546.611111111111,
+            "unit": "us"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "marko@baricevic.me",
+            "name": "Marko",
+            "username": "tac0turtle"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "f73a1241bb0b7926f9cbf3d26ffd35501d0e04b8",
+          "message": "docs: rewrite and restructure docs (#3026)\n\n* rewrite and restructure docs\n\n* refernce and change of sequencing concept\n\n* Refactor documentation for data availability layers and node operations\n\n- Updated Celestia guide to clarify prerequisites, installation, and configuration for connecting Evolve chains to Celestia.\n- Enhanced Local DA documentation with installation instructions, configuration options, and use cases for development and testing.\n- Expanded troubleshooting guide with detailed diagnostic commands, common issues, and solutions for node operations.\n- Created comprehensive upgrades guide covering minor and major upgrades, version compatibility, and rollback procedures.\n- Added aggregator node documentation detailing configuration, block production settings, and monitoring options.\n- Introduced attester node overview with configuration and use cases for low-latency applications.\n- Removed outdated light node documentation.\n- Improved formatting and clarity in ev-reth chainspec reference for better readability.\n\n* format\n\n* claenup and comments\n\n* Update block-lifecycle.md\n\n* adjustments\n\n* docs: fix broken links, stale flag prefixes, and formatting issues (#3112)\n\n* docs: fix broken links, stale --rollkit.* flag prefixes, and escaped backticks\n\n- Fix forced-inclusion.md: based.md → based-sequencing.md (2 links)\n- Fix block-lifecycle.md: da.md → data-availability.md (2 links)\n- Fix reference/specs/overview.md: p2p.md → learn/specs/p2p.md\n- Fix running-nodes/full-node.md: relative paths to guides/\n- Fix what-is-evolve.md: remove escaped backticks around ev-node\n- Replace all --rollkit.* flags with --evnode.* in ev-node-config.md\n- Fix visualizer.md: --rollkit.rpc → --evnode.rpc\n\n* docs: fix markdownlint errors (MD040 missing code block languages, MD012 extra blank lines)\n\n- Add 'text' language specifier to 25 fenced code blocks containing ASCII\n  diagrams, log output, and formulas\n- Remove extra blank line in migration-from-cometbft.md\n- Fix non-descriptive link text in deployment.md\n\n* fix and push\n\n---------\n\nCo-authored-by: Alexander Peters <alpe@users.noreply.github.com>",
+          "timestamp": "2026-03-02T11:16:10+01:00",
+          "tree_id": "a963782a287c23f898a8cf0cf5b35097986d39dd",
+          "url": "https://github.com/evstack/ev-node/commit/f73a1241bb0b7926f9cbf3d26ffd35501d0e04b8"
+        },
+        "date": 1772446882235,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "SpamoorSmoke - Batch.Commit (avg)",
+            "value": 62.45645645645646,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Batch.Put (avg)",
+            "value": 3.2956685499058382,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Batch.SaveBlockData (avg)",
+            "value": 17.027027027027028,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Batch.SetHeight (avg)",
+            "value": 13.732732732732734,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Batch.UpdateState (avg)",
+            "value": 5.633633633633633,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - BlockExecutor.ApplyBlock (avg)",
+            "value": 6836.073619631902,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - BlockExecutor.CreateBlock (avg)",
+            "value": 4.695384615384615,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - BlockExecutor.ProduceBlock (avg)",
+            "value": 7776.676923076923,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - BlockExecutor.RetrieveBatch (avg)",
+            "value": 44.18098159509202,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - DA.Submit (avg)",
+            "value": 723.245810055866,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - DASubmitter.SubmitData (avg)",
+            "value": 1128.5,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - DASubmitter.SubmitHeaders (avg)",
+            "value": 1080.8827586206896,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Engine.ForkchoiceUpdated (avg)",
+            "value": 619.7179226069246,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Engine.GetPayload (avg)",
+            "value": 1550.4420731707316,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Engine.NewPayload (avg)",
+            "value": 2166.8662613981764,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Eth.GetBlockByNumber (avg)",
+            "value": 757.5727181544634,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Executor.ExecuteTxs (avg)",
+            "value": 6831.740740740741,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Executor.GetTxs (avg)",
+            "value": 1265.6857142857143,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Executor.SetFinal (avg)",
+            "value": 1257,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - ForcedInclusionRetriever.RetrieveForcedIncludedTxs (avg)",
+            "value": 6.746223564954683,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Sequencer.GetNextBatch (avg)",
+            "value": 33.84355828220859,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Sequencer.SubmitBatchTxs (avg)",
+            "value": 57.35294117647059,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Store.DeleteMetadata (avg)",
+            "value": 25.263013698630136,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Store.GetBlockData (avg)",
+            "value": 9.728465955701395,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Store.GetHeader (avg)",
+            "value": 9.200985221674877,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Store.GetMetadata (avg)",
+            "value": 8.188644688644688,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Store.Height (avg)",
+            "value": 11.056627255756068,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Store.NewBatch (avg)",
+            "value": 10.942942942942944,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Store.SetMetadata (avg)",
+            "value": 27.63264192139738,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - TxPool.GetTxs (avg)",
+            "value": 1242,
             "unit": "us"
           }
         ]
