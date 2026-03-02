@@ -167,12 +167,13 @@ func TestBasedSequencer_GetNextBatch_EmptyDA(t *testing.T) {
 		LastBatchData: nil,
 	}
 
+	// Empty epoch has no valid txs — sequencer returns ErrNoBatch
 	resp, err := seq.GetNextBatch(context.Background(), req)
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	require.NotNil(t, resp.Batch)
-	// Should return empty batch when DA has no transactions
-	assert.Equal(t, 0, len(resp.Batch.Transactions))
+	require.ErrorIs(t, err, block.ErrNoBatch)
+	require.Nil(t, resp)
+
+	// Checkpoint should still advance past the empty epoch
+	assert.Equal(t, uint64(101), seq.checkpoint.DAHeight)
 
 	mockRetriever.AssertExpectations(t)
 }
@@ -339,12 +340,13 @@ func TestBasedSequencer_GetNextBatch_ForcedInclusionExceedsMaxBytes(t *testing.T
 		LastBatchData: nil,
 	}
 
+	// All txs are skipped due to size — sequencer returns ErrNoBatch
 	resp, err := seq.GetNextBatch(context.Background(), req)
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	require.NotNil(t, resp.Batch)
-	// Should return empty batch since transaction exceeds max bytes
-	assert.Equal(t, 0, len(resp.Batch.Transactions))
+	require.ErrorIs(t, err, block.ErrNoBatch)
+	require.Nil(t, resp)
+
+	// Checkpoint should still advance past the epoch with the oversized tx
+	assert.Equal(t, uint64(101), seq.checkpoint.DAHeight)
 
 	mockRetriever.AssertExpectations(t)
 }
@@ -430,13 +432,12 @@ func TestBasedSequencer_GetNextBatch_HeightFromFuture(t *testing.T) {
 		LastBatchData: nil,
 	}
 
-	// Should not error, but return empty batch
+	// DA hasn't produced that block yet — sequencer returns ErrNoBatch
 	resp, err := seq.GetNextBatch(context.Background(), req)
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	assert.Equal(t, 0, len(resp.Batch.Transactions))
+	require.ErrorIs(t, err, block.ErrNoBatch)
+	require.Nil(t, resp)
 
-	// DA height should stay the same
+	// DA height should stay the same — checkpoint must not advance
 	assert.Equal(t, uint64(100), seq.checkpoint.DAHeight)
 
 	mockRetriever.AssertExpectations(t)
@@ -665,24 +666,21 @@ func TestBasedSequencer_GetNextBatch_EmptyDABatch_IncreasesDAHeight(t *testing.T
 	assert.Equal(t, uint64(100), seq.GetDAHeight())
 	assert.Equal(t, uint64(100), seq.checkpoint.DAHeight)
 
-	// First batch - empty DA block at height 100
+	// First call — empty DA epoch at height 100, no txs → ErrNoBatch.
+	// Checkpoint must still advance so the next call moves to epoch 101.
 	resp, err := seq.GetNextBatch(context.Background(), req)
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	require.NotNil(t, resp.Batch)
-	assert.Equal(t, 0, len(resp.Batch.Transactions))
+	require.ErrorIs(t, err, block.ErrNoBatch)
+	require.Nil(t, resp)
 
 	// DA height should have increased to 101 even though no transactions were processed
 	assert.Equal(t, uint64(101), seq.GetDAHeight())
 	assert.Equal(t, uint64(101), seq.checkpoint.DAHeight)
 	assert.Equal(t, uint64(0), seq.checkpoint.TxIndex)
 
-	// Second batch - empty DA block at height 101
+	// Second call — empty DA epoch at height 101, no txs → ErrNoBatch.
 	resp, err = seq.GetNextBatch(context.Background(), req)
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	require.NotNil(t, resp.Batch)
-	assert.Equal(t, 0, len(resp.Batch.Transactions))
+	require.ErrorIs(t, err, block.ErrNoBatch)
+	require.Nil(t, resp)
 
 	// DA height should have increased to 102
 	assert.Equal(t, uint64(102), seq.GetDAHeight())
@@ -801,7 +799,8 @@ func TestBasedSequencer_GetNextBatch_TimestampAdjustment_PartialBatch(t *testing
 }
 
 func TestBasedSequencer_GetNextBatch_TimestampAdjustment_EmptyBatch(t *testing.T) {
-	// Test that timestamp is zero when batch is empty
+	// Test that an empty DA epoch returns ErrNoBatch (no valid txs to include).
+	// The checkpoint must still advance past the empty epoch.
 	daEndTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
 
 	mockRetriever := common.NewMockForcedInclusionRetriever(t)
@@ -825,15 +824,13 @@ func TestBasedSequencer_GetNextBatch_TimestampAdjustment_EmptyBatch(t *testing.T
 		LastBatchData: nil,
 	}
 
+	// Empty epoch — no valid txs, sequencer returns ErrNoBatch
 	resp, err := seq.GetNextBatch(context.Background(), req)
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	require.NotNil(t, resp.Batch)
-	assert.Equal(t, 0, len(resp.Batch.Transactions))
+	require.ErrorIs(t, err, block.ErrNoBatch)
+	require.Nil(t, resp)
 
-	// When batch is empty, there are 0 remaining txs, so timestamp = daEndTime
-	expectedTimestamp := daEndTime
-	assert.Equal(t, expectedTimestamp, resp.Timestamp)
+	// Checkpoint must have advanced so the next call moves past this epoch
+	assert.Equal(t, uint64(101), seq.checkpoint.DAHeight)
 
 	mockRetriever.AssertExpectations(t)
 }

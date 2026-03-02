@@ -59,7 +59,7 @@ func NewBasedSequencer(
 		logger:           logger.With().Str("component", "based_sequencer").Logger(),
 		checkpointStore:  seqcommon.NewCheckpointStore(db, ds.NewKey("/based/checkpoint")),
 		executor:         executor,
-		currentDAEndTime: genesis.StartTime,
+		currentDAEndTime: genesis.StartTime.UTC(),
 	}
 
 	// Read state from the store to allow nodes to restart as based sequencers on a chain that had ran previously with a different sequencer type, and to initialize the timestamp floor for monotonicity guarantees after restart.
@@ -210,13 +210,6 @@ doneProcessing:
 	// the next epoch starts at nextDaEndTime - N*1ms >= prevDaEndTime.
 	epochStart := s.currentDAEndTime.Add(-time.Duration(s.currentEpochTxCount) * time.Millisecond)
 	timestamp := epochStart.Add(time.Duration(txIndexForTimestamp) * time.Millisecond)
-
-	// Clamp: the DA-derived timestamp may predate blocks that were
-	// produced or synced with wall-clock time before the node restarted
-	// as a based sequencer.  Ensure strict monotonicity.
-	if !s.lastTimestamp.IsZero() && !timestamp.After(s.lastTimestamp) {
-		timestamp = s.lastTimestamp.Add(time.Millisecond)
-	}
 	s.lastTimestamp = timestamp
 
 	if len(validTxs) == 0 {

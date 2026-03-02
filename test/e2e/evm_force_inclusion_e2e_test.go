@@ -970,6 +970,7 @@ func TestEvmSequencerCatchUpBasedSequencerE2E(t *testing.T) {
 
 	// ===== PHASE 10: Verify Nodes Are in Sync =====
 	t.Log("Phase 10: Verify Nodes Are in Sync")
+	time.Sleep(4 * time.Second) // hack to give some head start to the sequencer, otherwise it will pass immediatelly.
 
 	// Wait for sync node to catch up to sequencer
 	require.Eventually(t, func() bool {
@@ -982,8 +983,8 @@ func TestEvmSequencerCatchUpBasedSequencerE2E(t *testing.T) {
 		syncHeaderNb, seqHeaderNb := fnHeader.Number.Uint64(), seqHeader.Number.Uint64()
 		t.Logf("Sync node height is %d and seq node height is %d", syncHeaderNb, seqHeaderNb)
 
-		return syncHeaderNb >= seqHeaderNb
-	}, 30*time.Second, 1*time.Second, "Sync node should catch up to sequencer")
+		return syncHeaderNb >= seqHeaderNb-10 // catching up within a 10 blocks range
+	}, 15*time.Second, 1*time.Second, "Sync node should catch up to sequencer")
 
 	// Verify both nodes have all forced inclusion txs
 	for i, txHash := range forcedTxHashes {

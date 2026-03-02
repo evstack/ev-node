@@ -93,7 +93,7 @@ func NewSequencer(
 		queue:            NewBatchQueue(db, "batches", maxQueueSize),
 		checkpointStore:  seqcommon.NewCheckpointStore(db, ds.NewKey("/single/checkpoint")),
 		genesis:          genesis,
-		currentDAEndTime: genesis.StartTime,
+		currentDAEndTime: genesis.StartTime.UTC(),
 		executor:         executor,
 	}
 	s.SetDAHeight(genesis.DAStartHeight) // default value, will be overridden by executor or submitter
@@ -358,20 +358,15 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 	// The last block of an epoch lands exactly on daEndTime; the first block of
 	// the next epoch starts at nextDaEndTime - N*1ms >= prevDaEndTime.
 	// During normal operation, use wall-clock time instead.
-	timestamp := time.Now()
-	if c.catchUpState.Load() == catchUpInProgress {
+	timestamp := time.Now().UTC()
+	currentBatchHasForcedTxs := forcedTxConsumedCount > 0
+	if c.catchUpState.Load() == catchUpInProgress || currentBatchHasForcedTxs {
 		epochStart := c.currentDAEndTime.Add(-time.Duration(c.currentEpochTxCount) * time.Millisecond)
 		timestamp = epochStart.Add(time.Duration(txIndexForTimestamp) * time.Millisecond)
-
-		// Clamp: the DA-derived timestamp may predate blocks that were
-		// produced with time.Now() before the sequencer was restarted.
-		// Ensure strict monotonicity relative to the last produced block.
-		if !c.lastCatchUpTimestamp.IsZero() && !timestamp.After(c.lastCatchUpTimestamp) {
-			timestamp = c.lastCatchUpTimestamp.Add(time.Millisecond)
-		}
 		c.lastCatchUpTimestamp = timestamp
 	}
 
+	// In catch up modes, only produce blocks for force included txs.
 	if c.isCatchingUp() && len(batchTxs) == 0 {
 		return nil, block.ErrNoBatch
 	}

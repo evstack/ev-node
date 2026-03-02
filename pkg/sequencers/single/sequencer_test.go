@@ -2103,22 +2103,22 @@ func TestSequencer_CatchUp_MonotonicTimestamps_EmptyEpoch(t *testing.T) {
 		LastBatchData: nil,
 	}
 
-	// First call processes the empty epoch 100 — empty batch, but checkpoint advances
-	resp1, err := seq.GetNextBatch(ctx, req)
-	require.NoError(t, err)
+	// First call processes the empty epoch 100 — no txs while catching up → ErrNoBatch.
+	// The checkpoint must still advance to 101 so the next call moves on.
+	_, err = seq.GetNextBatch(ctx, req)
+	require.ErrorIs(t, err, block.ErrNoBatch, "empty catch-up epoch should return ErrNoBatch")
 	assert.True(t, seq.isCatchingUp())
-	assert.Equal(t, 0, len(resp1.Batch.Transactions), "empty epoch should produce empty batch")
-	assert.Equal(t, emptyEpochTimestamp, resp1.Timestamp,
-		"empty epoch batch should use epoch DA end time (0 remaining)")
+	assert.Equal(t, uint64(101), seq.checkpoint.DAHeight, "checkpoint should have advanced past empty epoch")
 
-	// Second call processes epoch 101 — should have later timestamp
+	// Second call processes epoch 101 — has a forced tx, should succeed with a
+	// DA-derived timestamp after emptyEpochTimestamp.
 	resp2, err := seq.GetNextBatch(ctx, req)
 	require.NoError(t, err)
 	assert.True(t, seq.isCatchingUp())
 	assert.Equal(t, 1, len(resp2.Batch.Transactions))
-	assert.True(t, resp2.Timestamp.After(resp1.Timestamp),
+	assert.True(t, resp2.Timestamp.After(emptyEpochTimestamp),
 		"epoch 101 timestamp (%v) must be after empty epoch 100 timestamp (%v)",
-		resp2.Timestamp, resp1.Timestamp)
+		resp2.Timestamp, emptyEpochTimestamp)
 }
 
 func TestSequencer_GetNextBatch_GasFilteringPreservesUnprocessedTxs(t *testing.T) {

@@ -309,6 +309,19 @@ func (s *Syncer) initializeState() error {
 	}
 	s.SetLastState(state)
 
+	// Initialize lastCheckedEpochEnd based on the restored state's DA height so that
+	// VerifyForcedInclusionTxs resumes from where we left off instead of re-scanning
+	// all epochs from genesis on every startup.
+	if epochSize := s.genesis.DAEpochForcedInclusion; epochSize > 0 && state.DAHeight >= s.genesis.DAStartHeight {
+		firstEpochEnd := s.genesis.DAStartHeight + epochSize - 1
+		if state.DAHeight >= firstEpochEnd {
+			// The last completed epoch end that is fully behind state.DAHeight.
+			elapsed := state.DAHeight - firstEpochEnd
+			completedEpochs := elapsed / epochSize
+			s.lastCheckedEpochEnd = firstEpochEnd + completedEpochs*epochSize
+		}
+	}
+
 	// Set DA height to the maximum of the genesis start height, the state's DA height, and the cached DA height.
 	// The cache's DaHeight() is initialized from store metadata, so it's always correct even after cache clear.
 	s.daRetrieverHeight.Store(max(s.genesis.DAStartHeight, s.cache.DaHeight(), state.DAHeight))
@@ -915,7 +928,7 @@ func (s *Syncer) VerifyForcedInclusionTxs(ctx context.Context, daHeight uint64, 
 	s.daBlockBytes[daHeight] = blockBytes
 	s.forcedInclusionMu.Unlock()
 
-	if daHeight < daStart {
+	if daHeight < daStart || daHeight < s.getLastState().DAHeight {
 		return nil
 	}
 
@@ -926,7 +939,17 @@ func (s *Syncer) VerifyForcedInclusionTxs(ctx context.Context, daHeight uint64, 
 
 	var maliciousCount int
 
-	for epochEnd := daStart + epochSize - 1; ; epochEnd += epochSize {
+	// Resume from the last checked epoch rather than re-scanning from genesis.
+	// If no epoch has been checked yet, start from the first epoch end.
+	firstEpochEnd := daStart + epochSize - 1
+	var startEpochEnd uint64
+	if s.lastCheckedEpochEnd == 0 || s.lastCheckedEpochEnd < firstEpochEnd {
+		startEpochEnd = firstEpochEnd
+	} else {
+		startEpochEnd = s.lastCheckedEpochEnd + epochSize
+	}
+
+	for epochEnd := startEpochEnd; ; epochEnd += epochSize {
 		epochStart := epochEnd - (epochSize - 1)
 		gracePeriod := s.gracePeriodForEpoch(epochStart, epochEnd)
 		graceBoundary := epochEnd + gracePeriod*epochSize
