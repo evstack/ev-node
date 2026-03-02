@@ -104,6 +104,7 @@ func (s *SpamoorSuite) setupEnv(cfg config) *env {
 	e2e.SetupSequencerNode(t, sut, sequencerHome, evmEnv.SequencerJWT, evmEnv.GenesisHash, evmEnv.Endpoints,
 		"--evnode.instrumentation.tracing=true",
 		"--evnode.instrumentation.tracing_endpoint", otlpHTTP,
+		// TODO: setting this to 1 produced too many spans for the local Jaeger deployment alongside everything else.
 		"--evnode.instrumentation.tracing_sample_rate", "0.1",
 		"--evnode.instrumentation.tracing_service_name", cfg.serviceName,
 	)
@@ -161,9 +162,8 @@ func (s *SpamoorSuite) collectServiceTraces(e *env, serviceName string) []e2e.Tr
 	return toTraceSpans(extractSpansFromTraces(traces))
 }
 
-// tryCollectServiceTraces attempts to fetch all traces by requesting them in
-// batches to avoid overwhelming Jaeger with a single large response.
-// Returns nil instead of failing the test if traces are unavailable.
+// tryCollectServiceTraces fetches traces from Jaeger for the given service,
+// returning nil instead of failing the test if traces are unavailable.
 func (s *SpamoorSuite) tryCollectServiceTraces(e *env, serviceName string) []e2e.TraceSpan {
 	t := s.T()
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Minute)
@@ -175,28 +175,13 @@ func (s *SpamoorSuite) tryCollectServiceTraces(e *env, serviceName string) []e2e
 		return nil
 	}
 
-	const batchSize = 200
-	var allSpans []e2e.TraceSpan
-	for batch := 0; ; batch++ {
-		traces, err := e.jaeger.External.Traces(ctx, serviceName, batchSize)
-		if err != nil {
-			if batch == 0 {
-				t.Logf("warning: failed to fetch %s traces: %v", serviceName, err)
-				return nil
-			}
-			t.Logf("warning: %s trace fetch stopped after %d batches (%d spans): %v", serviceName, batch, len(allSpans), err)
-			break
-		}
-		spans := toTraceSpans(extractSpansFromTraces(traces))
-		if len(spans) == 0 {
-			break
-		}
-		allSpans = append(allSpans, spans...)
-		if len(traces) < batchSize {
-			break
-		}
+	traces, err := e.jaeger.External.Traces(ctx, serviceName, 10000)
+	if err != nil {
+		t.Logf("warning: failed to fetch %s traces: %v", serviceName, err)
+		return nil
 	}
 
-	t.Logf("collected %d %s spans", len(allSpans), serviceName)
-	return allSpans
+	spans := toTraceSpans(extractSpansFromTraces(traces))
+	t.Logf("collected %d %s spans", len(spans), serviceName)
+	return spans
 }
