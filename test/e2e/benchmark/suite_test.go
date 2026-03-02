@@ -168,7 +168,6 @@ func (s *SpamoorSuite) tryCollectServiceTraces(e *env, serviceName string) []e2e
 				t.Logf("warning: failed to fetch %s traces: %v", serviceName, err)
 				return nil
 			}
-			// got some data before failing, use what we have
 			t.Logf("warning: %s trace fetch stopped after %d batches (%d spans): %v", serviceName, batch, len(allSpans), err)
 			break
 		}
@@ -178,7 +177,7 @@ func (s *SpamoorSuite) tryCollectServiceTraces(e *env, serviceName string) []e2e
 		}
 		allSpans = append(allSpans, spans...)
 		if len(traces) < batchSize {
-			break // got fewer traces than requested, no more available
+			break
 		}
 	}
 
