@@ -30,7 +30,7 @@ STAKING_AMOUNT="1000000000stake"
 Ensure that `.gm` folder is present at `/Users/you/.gm` (if not, follow a [Guide](./gm-world.md) to set it up) and run the following command to (re)generate an entrypoint binary out of the code:
 
 ```sh
-make install
+just install
 ```
 
 Once completed, run the following command to ensure that the `/Users/you/.gm` directory is present:
