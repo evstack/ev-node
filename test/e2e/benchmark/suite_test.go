@@ -147,6 +147,32 @@ func (s *SpamoorSuite) setupEnv(cfg config) *env {
 	}
 }
 
+// traceResult holds the collected spans from ev-node and (optionally) ev-reth.
+type traceResult struct {
+	evNode []e2e.TraceSpan
+	evReth []e2e.TraceSpan
+}
+
+// allSpans returns ev-node and ev-reth spans concatenated.
+func (tr *traceResult) allSpans() []e2e.TraceSpan {
+	return append(tr.evNode, tr.evReth...)
+}
+
+// collectTraces fetches ev-node traces (required) and ev-reth traces (optional)
+// from Jaeger, then prints reports for both.
+func (s *SpamoorSuite) collectTraces(e *env, serviceName string) *traceResult {
+	t := s.T()
+	tr := &traceResult{
+		evNode: s.collectServiceTraces(e, serviceName),
+		evReth: s.tryCollectServiceTraces(e, "ev-reth"),
+	}
+	e2e.PrintTraceReport(t, serviceName, tr.evNode)
+	if len(tr.evReth) > 0 {
+		e2e.PrintTraceReport(t, "ev-reth", tr.evReth)
+	}
+	return tr
+}
+
 // collectServiceTraces fetches traces from Jaeger for the given service and returns the spans.
 func (s *SpamoorSuite) collectServiceTraces(e *env, serviceName string) []e2e.TraceSpan {
 	ctx, cancel := context.WithTimeout(s.T().Context(), 3*time.Minute)

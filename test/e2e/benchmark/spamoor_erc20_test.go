@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/celestiaorg/tastora/framework/docker/evstack/spamoor"
-	e2e "github.com/evstack/ev-node/test/e2e"
 )
 
 // TestERC20Throughput measures ERC-20 token transfer throughput in isolation.
@@ -86,124 +85,27 @@ func (s *SpamoorSuite) TestERC20Throughput() {
 	bm, err := collectBlockMetrics(ctx, e.ethClient, startBlock, endBlock)
 	s.Require().NoError(err, "failed to collect block metrics")
 
-	// use steady-state window (first active block to last active block) for
-	// throughput calculation, excluding warm-up and cool-down periods
-	steadyState := bm.steadyStateDuration()
-	s.Require().Greater(steadyState, time.Duration(0), "expected non-zero steady-state duration")
-
-	achievedMGas := mgasPerSec(bm.TotalGasUsed, steadyState)
-	achievedTPS := float64(bm.TotalTxCount) / steadyState.Seconds()
-
-	intervalP50, intervalP99, intervalMax := bm.blockIntervalStats()
-	gasP50, gasP99 := bm.gasPerBlockStats()
-	txP50, txP99 := bm.txPerBlockStats()
-
-	t.Logf("block range: %d-%d (%d total, %d non-empty, %.1f%% non-empty)",
-		startBlock, endBlock, bm.TotalBlockCount, bm.BlockCount, bm.nonEmptyRatio())
-	t.Logf("block intervals: p50=%s, p99=%s, max=%s",
-		intervalP50.Round(time.Millisecond), intervalP99.Round(time.Millisecond), intervalMax.Round(time.Millisecond))
-	t.Logf("gas/block (non-empty): avg=%.0f, p50=%.0f, p99=%.0f", bm.avgGasPerBlock(), gasP50, gasP99)
-	t.Logf("tx/block (non-empty): avg=%.1f, p50=%.0f, p99=%.0f", bm.avgTxPerBlock(), txP50, txP99)
-	t.Logf("ERC20 throughput: %.2f MGas/s, %.1f TPS over %s steady-state (%s wall clock)",
-		achievedMGas, achievedTPS, steadyState.Round(time.Millisecond), wallClock.Round(time.Millisecond))
+	summary := bm.summarize()
+	s.Require().Greater(summary.SteadyState, time.Duration(0), "expected non-zero steady-state duration")
+	summary.log(t, startBlock, endBlock, bm.TotalBlockCount, bm.BlockCount, wallClock)
 
 	// collect and report traces
-	evNodeSpans := s.collectServiceTraces(e, serviceName)
-	evRethSpans := s.tryCollectServiceTraces(e, "ev-reth")
-	e2e.PrintTraceReport(t, serviceName, evNodeSpans)
-	if len(evRethSpans) > 0 {
-		e2e.PrintTraceReport(t, "ev-reth", evRethSpans)
+	traces := s.collectTraces(e, serviceName)
+
+	if overhead, ok := evNodeOverhead(traces.evNode); ok {
+		t.Logf("ev-node overhead: %.1f%%", overhead)
+		w.addEntry(entry{Name: "ERC20Throughput - ev-node overhead", Unit: "%", Value: overhead})
 	}
 
-	// compute ev-node overhead ratio
-	spanStats := e2e.AggregateSpanStats(evNodeSpans)
-	if produceBlock, ok := spanStats["BlockExecutor.ProduceBlock"]; ok {
-		if executeTxs, ok2 := spanStats["Executor.ExecuteTxs"]; ok2 {
-			produceAvg := float64(produceBlock.Total.Microseconds()) / float64(produceBlock.Count)
-			executeAvg := float64(executeTxs.Total.Microseconds()) / float64(executeTxs.Count)
-			if produceAvg > 0 {
-				overhead := (produceAvg - executeAvg) / produceAvg * 100
-				t.Logf("ev-node overhead: %.1f%%", overhead)
-				w.addEntry(entry{
-					Name:  "ERC20Throughput - ev-node overhead",
-					Unit:  "%",
-					Value: overhead,
-				})
-			}
-		}
-	}
-
-	// write all metrics to benchmark output
-	w.addEntry(entry{
-		Name:  "ERC20Throughput - MGas/s",
-		Unit:  "MGas/s",
-		Value: achievedMGas,
-	})
-	w.addEntry(entry{
-		Name:  "ERC20Throughput - TPS",
-		Unit:  "tx/s",
-		Value: achievedTPS,
-	})
-	w.addEntry(entry{
-		Name:  "ERC20Throughput - avg gas/block",
-		Unit:  "gas",
-		Value: bm.avgGasPerBlock(),
-	})
-	w.addEntry(entry{
-		Name:  "ERC20Throughput - avg tx/block",
-		Unit:  "count",
-		Value: bm.avgTxPerBlock(),
-	})
-	w.addEntry(entry{
-		Name:  "ERC20Throughput - blocks/s",
-		Unit:  "blocks/s",
-		Value: float64(bm.BlockCount) / steadyState.Seconds(),
-	})
-	w.addEntry(entry{
-		Name:  "ERC20Throughput - non-empty block ratio",
-		Unit:  "%",
-		Value: bm.nonEmptyRatio(),
-	})
-	w.addEntry(entry{
-		Name:  "ERC20Throughput - block interval p50",
-		Unit:  "ms",
-		Value: float64(intervalP50.Milliseconds()),
-	})
-	w.addEntry(entry{
-		Name:  "ERC20Throughput - block interval p99",
-		Unit:  "ms",
-		Value: float64(intervalP99.Milliseconds()),
-	})
-	w.addEntry(entry{
-		Name:  "ERC20Throughput - gas/block p50",
-		Unit:  "gas",
-		Value: gasP50,
-	})
-	w.addEntry(entry{
-		Name:  "ERC20Throughput - gas/block p99",
-		Unit:  "gas",
-		Value: gasP99,
-	})
-	w.addEntry(entry{
-		Name:  "ERC20Throughput - tx/block p50",
-		Unit:  "count",
-		Value: txP50,
-	})
-	w.addEntry(entry{
-		Name:  "ERC20Throughput - tx/block p99",
-		Unit:  "count",
-		Value: txP99,
-	})
-
-	// add per-span avg latencies
-	w.addSpans(append(evNodeSpans, evRethSpans...))
+	w.addEntries(summary.entries("ERC20Throughput"))
+	w.addSpans(traces.allSpans())
 
 	// assertions
 	s.Require().Greater(sent, float64(0), "at least one transaction should have been sent")
 	s.Require().Zero(failed, "no transactions should have failed")
 
 	// assert expected ev-node spans are present
-	assertSpanNames(t, evNodeSpans, []string{
+	assertSpanNames(t, traces.evNode, []string{
 		"BlockExecutor.ProduceBlock",
 		"BlockExecutor.ApplyBlock",
 		"Executor.ExecuteTxs",

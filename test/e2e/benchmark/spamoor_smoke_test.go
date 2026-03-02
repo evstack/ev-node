@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/celestiaorg/tastora/framework/docker/evstack/spamoor"
-	e2e "github.com/evstack/ev-node/test/e2e"
 )
 
 // TestSpamoorSmoke spins up reth + sequencer and a Spamoor node, starts a few
@@ -77,17 +76,11 @@ func (s *SpamoorSuite) TestSpamoorSmoke() {
 	fail := sumCounter(metrics["spamoor_transactions_failed_total"])
 
 	// collect traces
-	evNodeSpans := s.collectServiceTraces(e, "ev-node-smoke")
-	evRethSpans := s.tryCollectServiceTraces(e, "ev-reth")
-	e2e.PrintTraceReport(t, "ev-node-smoke", evNodeSpans)
-	if len(evRethSpans) > 0 {
-		e2e.PrintTraceReport(t, "ev-reth", evRethSpans)
-	}
-
-	w.addSpans(append(evNodeSpans, evRethSpans...))
+	traces := s.collectTraces(e, "ev-node-smoke")
+	w.addSpans(traces.allSpans())
 
 	// assert expected ev-node span names
-	assertSpanNames(t, evNodeSpans, []string{
+	assertSpanNames(t, traces.evNode, []string{
 		"BlockExecutor.ProduceBlock",
 		"BlockExecutor.ApplyBlock",
 		"BlockExecutor.CreateBlock",
@@ -105,8 +98,8 @@ func (s *SpamoorSuite) TestSpamoorSmoke() {
 	}, "ev-node-smoke")
 
 	// assert expected ev-reth span names when traces are available
-	if len(evRethSpans) > 0 {
-		assertSpanNames(t, evRethSpans, []string{
+	if len(traces.evReth) > 0 {
+		assertSpanNames(t, traces.evReth, []string{
 			"build_payload",
 			"execute_tx",
 			"try_build",

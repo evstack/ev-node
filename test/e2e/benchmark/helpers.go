@@ -8,10 +8,12 @@ import (
 	"math"
 	"math/big"
 	"sort"
+	"testing"
 	"time"
 
 	"github.com/celestiaorg/tastora/framework/docker/evstack/spamoor"
 	"github.com/ethereum/go-ethereum/ethclient"
+	e2e "github.com/evstack/ev-node/test/e2e"
 )
 
 // blockMetrics holds aggregated gas and transaction data across a range of blocks.
@@ -223,6 +225,104 @@ func waitForDrain(ctx context.Context, log func(string, ...any), client *ethclie
 			}
 		}
 	}
+}
+
+// blockMetricsSummary holds the computed stats from a blockMetrics measurement window.
+type blockMetricsSummary struct {
+	SteadyState   time.Duration
+	AchievedMGas  float64
+	AchievedTPS   float64
+	IntervalP50   time.Duration
+	IntervalP99   time.Duration
+	IntervalMax   time.Duration
+	GasP50        float64
+	GasP99        float64
+	TxP50         float64
+	TxP99         float64
+	AvgGas        float64
+	AvgTx         float64
+	BlocksPerSec  float64
+	NonEmptyRatio float64
+}
+
+// summarize computes all derived stats from the raw block metrics.
+func (m *blockMetrics) summarize() *blockMetricsSummary {
+	ss := m.steadyStateDuration()
+	intervalP50, intervalP99, intervalMax := m.blockIntervalStats()
+	gasP50, gasP99 := m.gasPerBlockStats()
+	txP50, txP99 := m.txPerBlockStats()
+
+	var blocksPerSec float64
+	if ss > 0 {
+		blocksPerSec = float64(m.BlockCount) / ss.Seconds()
+	}
+
+	return &blockMetricsSummary{
+		SteadyState:   ss,
+		AchievedMGas:  mgasPerSec(m.TotalGasUsed, ss),
+		AchievedTPS:   float64(m.TotalTxCount) / ss.Seconds(),
+		IntervalP50:   intervalP50,
+		IntervalP99:   intervalP99,
+		IntervalMax:   intervalMax,
+		GasP50:        gasP50,
+		GasP99:        gasP99,
+		TxP50:         txP50,
+		TxP99:         txP99,
+		AvgGas:        m.avgGasPerBlock(),
+		AvgTx:         m.avgTxPerBlock(),
+		BlocksPerSec:  blocksPerSec,
+		NonEmptyRatio: m.nonEmptyRatio(),
+	}
+}
+
+// log prints a concise summary of the block metrics to the test log.
+func (s *blockMetricsSummary) log(t testing.TB, startBlock, endBlock uint64, totalBlocks, nonEmptyBlocks int, wallClock time.Duration) {
+	t.Logf("block range: %d-%d (%d total, %d non-empty, %.1f%% non-empty)",
+		startBlock, endBlock, totalBlocks, nonEmptyBlocks, s.NonEmptyRatio)
+	t.Logf("block intervals: p50=%s, p99=%s, max=%s",
+		s.IntervalP50.Round(time.Millisecond), s.IntervalP99.Round(time.Millisecond), s.IntervalMax.Round(time.Millisecond))
+	t.Logf("gas/block (non-empty): avg=%.0f, p50=%.0f, p99=%.0f", s.AvgGas, s.GasP50, s.GasP99)
+	t.Logf("tx/block (non-empty): avg=%.1f, p50=%.0f, p99=%.0f", s.AvgTx, s.TxP50, s.TxP99)
+	t.Logf("throughput: %.2f MGas/s, %.1f TPS over %s steady-state (%s wall clock)",
+		s.AchievedMGas, s.AchievedTPS, s.SteadyState.Round(time.Millisecond), wallClock.Round(time.Millisecond))
+}
+
+// entries returns all summary metrics as result writer entries with the given prefix.
+func (s *blockMetricsSummary) entries(prefix string) []entry {
+	return []entry{
+		{Name: prefix + " - MGas/s", Unit: "MGas/s", Value: s.AchievedMGas},
+		{Name: prefix + " - TPS", Unit: "tx/s", Value: s.AchievedTPS},
+		{Name: prefix + " - avg gas/block", Unit: "gas", Value: s.AvgGas},
+		{Name: prefix + " - avg tx/block", Unit: "count", Value: s.AvgTx},
+		{Name: prefix + " - blocks/s", Unit: "blocks/s", Value: s.BlocksPerSec},
+		{Name: prefix + " - non-empty block ratio", Unit: "%", Value: s.NonEmptyRatio},
+		{Name: prefix + " - block interval p50", Unit: "ms", Value: float64(s.IntervalP50.Milliseconds())},
+		{Name: prefix + " - block interval p99", Unit: "ms", Value: float64(s.IntervalP99.Milliseconds())},
+		{Name: prefix + " - gas/block p50", Unit: "gas", Value: s.GasP50},
+		{Name: prefix + " - gas/block p99", Unit: "gas", Value: s.GasP99},
+		{Name: prefix + " - tx/block p50", Unit: "count", Value: s.TxP50},
+		{Name: prefix + " - tx/block p99", Unit: "count", Value: s.TxP99},
+	}
+}
+
+// evNodeOverhead computes the overhead percentage of ev-node's ProduceBlock
+// over the inner ExecuteTxs span. Returns the overhead and whether it was computable.
+func evNodeOverhead(spans []e2e.TraceSpan) (float64, bool) {
+	stats := e2e.AggregateSpanStats(spans)
+	produce, ok := stats["BlockExecutor.ProduceBlock"]
+	if !ok {
+		return 0, false
+	}
+	execute, ok := stats["Executor.ExecuteTxs"]
+	if !ok {
+		return 0, false
+	}
+	produceAvg := float64(produce.Total.Microseconds()) / float64(produce.Count)
+	executeAvg := float64(execute.Total.Microseconds()) / float64(execute.Count)
+	if produceAvg <= 0 {
+		return 0, false
+	}
+	return (produceAvg - executeAvg) / produceAvg * 100, true
 }
 
 // collectBlockMetrics iterates all headers in [startBlock, endBlock] to collect
