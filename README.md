@@ -33,7 +33,7 @@ To install the example `testapp`, simply run the following command at the root o
 ev-node repo:
 
 ```bash
-make install
+just install
 ```
 
 The latest TestApp example is now installed. You can verify the installation by running:
@@ -100,16 +100,16 @@ to ask questions, discuss your ideas, and connect with other contributors.
 
 ```sh
 # Run unit tests
-make test
+just test
 
 # Generate protobuf files (requires Docker)
-make proto-gen
+just proto-gen
 
 # Run linters (requires golangci-lint, markdownlint, hadolint, and yamllint)
-make lint
+just lint
 
 # Lint protobuf files (requires Docker and buf)
-make proto-lint
+just proto-lint
 
 ```
 

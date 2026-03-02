@@ -20,19 +20,19 @@ git clone --depth 1 https://github.com/evstack/ev-node.git
 cd ev-node
 
 # Build the testapp binary
-make build
+just build
 
 # Optional: Install to your Go bin directory for system-wide access
-make install
+just install
 ```
 
 Verify the installation by checking the Evolve version:
 
 ```bash
-# If you ran 'make install'
+# If you ran 'just install'
 testapp version
 
-# Or if you only ran 'make build'
+# Or if you only ran 'just build'
 ./build/testapp version
 ```
 

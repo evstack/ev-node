@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	e2e "github.com/evstack/ev-node/test/e2e"
-	"github.com/stretchr/testify/require"
 )
 
 // entry matches the customSmallerIsBetter format for github-action-benchmark.
@@ -71,7 +70,13 @@ func (w *resultWriter) flush() {
 	}
 
 	data, err := json.MarshalIndent(w.entries, "", "  ")
-	require.NoError(w.t, err, "failed to marshal benchmark JSON")
-	require.NoError(w.t, os.WriteFile(outputPath, data, 0644), "failed to write benchmark JSON to %s", outputPath)
+	if err != nil {
+		w.t.Logf("WARNING: failed to marshal benchmark JSON: %v", err)
+		return
+	}
+	if err := os.WriteFile(outputPath, data, 0644); err != nil {
+		w.t.Logf("WARNING: failed to write benchmark JSON to %s: %v", outputPath, err)
+		return
+	}
 	w.t.Logf("wrote %d benchmark entries to %s", len(w.entries), outputPath)
 }

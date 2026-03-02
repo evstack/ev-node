@@ -63,8 +63,8 @@ The generated code is committed to the repository. If you modify the proto files
 # Force regeneration by setting the environment variable
 EV_TYPES_FORCE_PROTO_GEN=1 cargo build
 
-# Or from the repository root (if a make target exists)
-make rust-proto-gen
+# Or from the repository root
+just rust-proto-gen
 ```
 
 **Important**:
@@ -88,7 +88,7 @@ To ensure consistency with CI:
 
 1. Install protoc version 25.1
 2. Use the provided script: `./client/scripts/generate-protos.sh`
-3. Or use the Makefile: `make rust-proto-gen`
+3. Or use just: `just rust-proto-gen`
 
 ### Common Issues
 

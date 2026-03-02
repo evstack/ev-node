@@ -3,6 +3,7 @@
 package benchmark
 
 import (
+	"os"
 	"time"
 
 	"github.com/celestiaorg/tastora/framework/docker/evstack/spamoor"
@@ -17,8 +18,13 @@ func (s *SpamoorSuite) TestSpamoorSmoke() {
 	w := newResultWriter(t, "SpamoorSmoke")
 	defer w.flush()
 
+	// TODO: temporary hardcoded tag, will be replaced with a proper release tag
+	rethTag := os.Getenv("EV_RETH_TAG")
+	if rethTag == "" {
+		rethTag = "pr-140"
+	}
 	e := s.setupEnv(config{
-		rethTag:     "pr-140",
+		rethTag:     rethTag,
 		serviceName: "ev-node-smoke",
 	})
 	api := e.spamoorAPI
