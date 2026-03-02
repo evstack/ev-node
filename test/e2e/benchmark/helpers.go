@@ -17,21 +17,26 @@ import (
 )
 
 // blockMetrics holds aggregated gas and transaction data across a range of blocks.
+// Only blocks containing at least one transaction are counted in BlockCount,
+// GasPerBlock, and TxPerBlock. All blocks (including empty) are counted in
+// TotalBlockCount and contribute to BlockIntervals.
 type blockMetrics struct {
-	StartBlock     uint64
-	EndBlock       uint64
-	BlockCount     int // non-empty blocks only
-	TotalBlockCount int // all blocks in range including empty
-	TotalGasUsed   uint64
-	TotalTxCount   int
-	GasPerBlock    []uint64        // non-empty blocks only
-	TxPerBlock     []int           // non-empty blocks only
-	BlockIntervals []time.Duration // intervals between all consecutive blocks (for drift)
-	FirstBlockTime time.Time
-	LastBlockTime  time.Time
+	StartBlock      uint64
+	EndBlock        uint64
+	BlockCount      int             // non-empty blocks only
+	TotalBlockCount int             // all blocks in range including empty
+	TotalGasUsed    uint64          // cumulative gas across non-empty blocks
+	TotalTxCount    int             // cumulative tx count across non-empty blocks
+	GasPerBlock     []uint64        // per-block gas for non-empty blocks only
+	TxPerBlock      []int           // per-block tx count for non-empty blocks only
+	BlockIntervals  []time.Duration // time between all consecutive blocks (including empty)
+	FirstBlockTime  time.Time       // timestamp of the first non-empty block
+	LastBlockTime   time.Time       // timestamp of the last non-empty block
 }
 
-// steadyStateDuration returns the time between the first and last active blocks.
+// steadyStateDuration returns the wall-clock time between the first and last
+// non-empty blocks. This excludes warm-up (empty blocks before the first tx)
+// and cool-down (empty blocks after the last tx) from throughput calculations.
 func (m *blockMetrics) steadyStateDuration() time.Duration {
 	if m.FirstBlockTime.IsZero() || m.LastBlockTime.IsZero() {
 		return 0
@@ -39,7 +44,8 @@ func (m *blockMetrics) steadyStateDuration() time.Duration {
 	return m.LastBlockTime.Sub(m.FirstBlockTime)
 }
 
-// avgGasPerBlock returns the mean gas used per block.
+// avgGasPerBlock returns TotalGasUsed / BlockCount, i.e. the mean gas used
+// per non-empty block.
 func (m *blockMetrics) avgGasPerBlock() float64 {
 	if m.BlockCount == 0 {
 		return 0
@@ -47,7 +53,8 @@ func (m *blockMetrics) avgGasPerBlock() float64 {
 	return float64(m.TotalGasUsed) / float64(m.BlockCount)
 }
 
-// avgTxPerBlock returns the mean transaction count per block.
+// avgTxPerBlock returns TotalTxCount / BlockCount, i.e. the mean transaction
+// count per non-empty block.
 func (m *blockMetrics) avgTxPerBlock() float64 {
 	if m.BlockCount == 0 {
 		return 0
@@ -55,7 +62,8 @@ func (m *blockMetrics) avgTxPerBlock() float64 {
 	return float64(m.TotalTxCount) / float64(m.BlockCount)
 }
 
-// nonEmptyRatio returns the percentage of blocks that contained transactions.
+// nonEmptyRatio returns (BlockCount / TotalBlockCount) * 100, i.e. the
+// percentage of blocks in the range that contained at least one transaction.
 func (m *blockMetrics) nonEmptyRatio() float64 {
 	if m.TotalBlockCount == 0 {
 		return 0
@@ -63,7 +71,9 @@ func (m *blockMetrics) nonEmptyRatio() float64 {
 	return float64(m.BlockCount) / float64(m.TotalBlockCount) * 100
 }
 
-// blockIntervalStats returns p50, p99, and max of block intervals.
+// blockIntervalStats computes percentile statistics over the time gaps between
+// all consecutive blocks (including empty ones). This measures block production
+// cadence and jitter rather than transaction throughput.
 func (m *blockMetrics) blockIntervalStats() (p50, p99, max time.Duration) {
 	if len(m.BlockIntervals) == 0 {
 		return 0, 0, 0
@@ -78,7 +88,8 @@ func (m *blockMetrics) blockIntervalStats() (p50, p99, max time.Duration) {
 		time.Duration(sorted[len(sorted)-1])
 }
 
-// gasPerBlockStats returns p50 and p99 of gas used per non-empty block.
+// gasPerBlockStats returns the 50th and 99th percentile of gas used across
+// non-empty blocks. Shows the distribution of per-block gas consumption.
 func (m *blockMetrics) gasPerBlockStats() (p50, p99 float64) {
 	if len(m.GasPerBlock) == 0 {
 		return 0, 0
@@ -91,7 +102,8 @@ func (m *blockMetrics) gasPerBlockStats() (p50, p99 float64) {
 	return percentile(sorted, 0.50), percentile(sorted, 0.99)
 }
 
-// txPerBlockStats returns p50 and p99 of tx count per non-empty block.
+// txPerBlockStats returns the 50th and 99th percentile of transaction counts
+// across non-empty blocks. Shows the distribution of per-block tx throughput.
 func (m *blockMetrics) txPerBlockStats() (p50, p99 float64) {
 	if len(m.TxPerBlock) == 0 {
 		return 0, 0
@@ -104,8 +116,9 @@ func (m *blockMetrics) txPerBlockStats() (p50, p99 float64) {
 	return percentile(sorted, 0.50), percentile(sorted, 0.99)
 }
 
-// percentile returns the p-th percentile from a pre-sorted float64 slice
-// using linear interpolation.
+// percentile returns the p-th percentile from a pre-sorted float64 slice using
+// linear interpolation between adjacent ranks. For example, p=0.50 returns the
+// median and p=0.99 returns the value below which 99% of observations fall.
 func percentile(sorted []float64, p float64) float64 {
 	if len(sorted) == 0 {
 		return 0
@@ -123,7 +136,8 @@ func percentile(sorted []float64, p float64) float64 {
 	return sorted[lower] + frac*(sorted[upper]-sorted[lower])
 }
 
-// mgasPerSec calculates the achieved throughput in megagas per second.
+// mgasPerSec computes totalGasUsed / elapsed / 1e6, giving throughput in
+// millions of gas units per second (MGas/s).
 func mgasPerSec(totalGasUsed uint64, elapsed time.Duration) float64 {
 	if elapsed <= 0 {
 		return 0
@@ -227,25 +241,41 @@ func waitForDrain(ctx context.Context, log func(string, ...any), client *ethclie
 	}
 }
 
-// blockMetricsSummary holds the computed stats from a blockMetrics measurement window.
+// blockMetricsSummary holds all derived statistics from a blockMetrics measurement
+// window. Every field is computed from the raw block data by summarize().
 type blockMetricsSummary struct {
-	SteadyState   time.Duration
-	AchievedMGas  float64
-	AchievedTPS   float64
-	IntervalP50   time.Duration
-	IntervalP99   time.Duration
-	IntervalMax   time.Duration
-	GasP50        float64
-	GasP99        float64
-	TxP50         float64
-	TxP99         float64
-	AvgGas        float64
-	AvgTx         float64
-	BlocksPerSec  float64
+	// SteadyState is the wall-clock duration between the first and last non-empty
+	// blocks, used as the denominator for throughput calculations.
+	SteadyState time.Duration
+	// AchievedMGas is total gas / steady-state seconds / 1e6 (megagas per second).
+	AchievedMGas float64
+	// AchievedTPS is total tx count / steady-state seconds.
+	AchievedTPS float64
+	// IntervalP50, IntervalP99, IntervalMax are percentile and max statistics
+	// over the time between all consecutive blocks (including empty).
+	IntervalP50 time.Duration
+	IntervalP99 time.Duration
+	IntervalMax time.Duration
+	// GasP50, GasP99 are the 50th/99th percentile of gas used per non-empty block.
+	GasP50 float64
+	GasP99 float64
+	// TxP50, TxP99 are the 50th/99th percentile of tx count per non-empty block.
+	TxP50 float64
+	TxP99 float64
+	// AvgGas is the mean gas per non-empty block (TotalGasUsed / BlockCount).
+	AvgGas float64
+	// AvgTx is the mean tx count per non-empty block (TotalTxCount / BlockCount).
+	AvgTx float64
+	// BlocksPerSec is non-empty blocks / steady-state seconds.
+	BlocksPerSec float64
+	// NonEmptyRatio is (non-empty blocks / total blocks) * 100.
 	NonEmptyRatio float64
 }
 
-// summarize computes all derived stats from the raw block metrics.
+// summarize computes all derived statistics from the raw block-level data in one
+// pass. It delegates to the individual stat methods (steadyStateDuration,
+// blockIntervalStats, gasPerBlockStats, etc.) and packages the results into a
+// blockMetricsSummary for logging and result-writing.
 func (m *blockMetrics) summarize() *blockMetricsSummary {
 	ss := m.steadyStateDuration()
 	intervalP50, intervalP99, intervalMax := m.blockIntervalStats()
@@ -275,7 +305,10 @@ func (m *blockMetrics) summarize() *blockMetricsSummary {
 	}
 }
 
-// log prints a concise summary of the block metrics to the test log.
+// log prints the block range, interval stats, per-block gas/tx stats, and
+// throughput (MGas/s + TPS) to the test log. startBlock/endBlock and
+// totalBlocks/nonEmptyBlocks are passed separately because they live on the
+// raw blockMetrics, not the summary.
 func (s *blockMetricsSummary) log(t testing.TB, startBlock, endBlock uint64, totalBlocks, nonEmptyBlocks int, wallClock time.Duration) {
 	t.Logf("block range: %d-%d (%d total, %d non-empty, %.1f%% non-empty)",
 		startBlock, endBlock, totalBlocks, nonEmptyBlocks, s.NonEmptyRatio)
@@ -287,7 +320,10 @@ func (s *blockMetricsSummary) log(t testing.TB, startBlock, endBlock uint64, tot
 		s.AchievedMGas, s.AchievedTPS, s.SteadyState.Round(time.Millisecond), wallClock.Round(time.Millisecond))
 }
 
-// entries returns all summary metrics as result writer entries with the given prefix.
+// entries returns all summary metrics as result writer entries in the
+// customSmallerIsBetter format expected by github-action-benchmark. Each entry
+// is prefixed with the given label (e.g. "ERC20Throughput") so results from
+// different tests are distinguishable in the same output file.
 func (s *blockMetricsSummary) entries(prefix string) []entry {
 	return []entry{
 		{Name: prefix + " - MGas/s", Unit: "MGas/s", Value: s.AchievedMGas},
@@ -305,8 +341,15 @@ func (s *blockMetricsSummary) entries(prefix string) []entry {
 	}
 }
 
-// evNodeOverhead computes the overhead percentage of ev-node's ProduceBlock
-// over the inner ExecuteTxs span. Returns the overhead and whether it was computable.
+// evNodeOverhead computes the fraction of block production time spent outside
+// EVM execution. It looks up the average durations of BlockExecutor.ProduceBlock
+// (the outer span covering the full block lifecycle) and Executor.ExecuteTxs
+// (the inner span covering only EVM tx execution), then returns:
+//
+//	overhead% = (avgProduce - avgExecute) / avgProduce * 100
+//
+// This captures time spent on sequencing, DA submission, header construction,
+// and other ev-node orchestration work. Returns false if either span is missing.
 func evNodeOverhead(spans []e2e.TraceSpan) (float64, bool) {
 	stats := e2e.AggregateSpanStats(spans)
 	produce, ok := stats["BlockExecutor.ProduceBlock"]
