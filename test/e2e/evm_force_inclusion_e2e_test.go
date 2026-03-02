@@ -601,7 +601,7 @@ func TestEvmSequencerCatchUpBasedSequencerE2E(t *testing.T) {
 	t.Log("Phase 1: Setup - Start Sequencer and Sync Node")
 
 	dockerClient, networkID := tastoradocker.Setup(t)
-	env := setupCommonEVMEnv(t, sut, dockerClient, networkID, WithFullNode())
+	env := SetupCommonEVMEnv(t, sut, dockerClient, networkID, WithFullNode())
 
 	// Create passphrase and JWT secret files for sequencer
 	seqPassphraseFile := createPassphraseFile(t, sequencerHome)
@@ -1020,7 +1020,7 @@ func TestEvmBasedSequencerBaselineE2E(t *testing.T) {
 	t.Log("Setting up fresh based sequencer from genesis")
 
 	dockerClient, networkID := tastoradocker.Setup(t)
-	env := setupCommonEVMEnv(t, sut, dockerClient, networkID, WithFullNode())
+	env := SetupCommonEVMEnv(t, sut, dockerClient, networkID, WithFullNode())
 
 	// Create passphrase and JWT secret files
 	passphraseFile := createPassphraseFile(t, basedSeqHome)

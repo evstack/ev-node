@@ -66,10 +66,6 @@ type Sequencer struct {
 	currentDAEndTime time.Time
 	// currentEpochTxCount is the total number of txs in the current DA epoch (used for timestamp jitter)
 	currentEpochTxCount uint64
-	// lastCatchUpTimestamp is the floor for catch-up timestamps to guarantee
-	// monotonicity after a restart.  Initialised from the last block time in
-	// the store when catch-up mode is entered.
-	lastCatchUpTimestamp time.Time
 }
 
 // NewSequencer creates a new Single Sequencer
@@ -363,7 +359,6 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 	if c.catchUpState.Load() == catchUpInProgress || currentBatchHasForcedTxs {
 		epochStart := c.currentDAEndTime.Add(-time.Duration(c.currentEpochTxCount) * time.Millisecond)
 		timestamp = epochStart.Add(time.Duration(txIndexForTimestamp) * time.Millisecond)
-		c.lastCatchUpTimestamp = timestamp
 	}
 
 	// In catch up modes, only produce blocks for force included txs.
@@ -549,22 +544,23 @@ func (c *Sequencer) updateCatchUpState(ctx context.Context) {
 	}
 
 	// At least one epoch behind - enter catch-up mode.
+	c.catchUpState.Store(catchUpInProgress)
+
 	// Read the last block time from the store so that catch-up timestamps
 	// are guaranteed to be strictly after any previously produced block.
+	// While unlikely, if this happens, this means all catch up blocks will differ from their based sequencer equivalent blocks.
 	s := store.New(store.NewEvNodeKVStore(c.db))
 	state, err := s.GetState(ctx)
 	if err == nil && !state.LastBlockTime.IsZero() {
-		c.lastCatchUpTimestamp = state.LastBlockTime
+		if state.LastBlockTime.After(c.currentDAEndTime) {
+			c.currentDAEndTime = state.LastBlockTime
+		}
+
 		c.logger.Debug().
 			Time("last_block_time", state.LastBlockTime).
 			Msg("initialized catch-up timestamp floor from last block time")
 	}
 
-	if c.lastCatchUpTimestamp.After(c.currentDAEndTime) {
-		c.currentDAEndTime = c.lastCatchUpTimestamp
-	}
-
-	c.catchUpState.Store(catchUpInProgress)
 	c.logger.Warn().
 		Uint64("checkpoint_da_height", currentDAHeight).
 		Uint64("latest_da_height", latestDAHeight).

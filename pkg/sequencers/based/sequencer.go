@@ -40,10 +40,6 @@ type BasedSequencer struct {
 	currentDAEndTime time.Time
 	// Total number of transactions in the current DA epoch (used for timestamp jitter)
 	currentEpochTxCount uint64
-	// lastTimestamp is the floor for timestamps to guarantee monotonicity
-	// after a restart on a node that already had blocks produced with wall-clock time.
-	// Initialised from the last block time in the store at construction.
-	lastTimestamp time.Time
 }
 
 // NewBasedSequencer creates a new based sequencer instance
@@ -68,15 +64,8 @@ func NewBasedSequencer(
 	s := store.New(store.NewEvNodeKVStore(db))
 	daStartHeight := genesis.DAStartHeight
 	if state, err := s.GetState(initCtx); err == nil {
-		if !state.LastBlockTime.IsZero() {
-			bs.lastTimestamp = state.LastBlockTime
-			bs.logger.Debug().
-				Time("last_block_time", state.LastBlockTime).
-				Msg("initialized timestamp floor from last block time")
-		}
 		if state.DAHeight > 0 {
-			// skip already processed epochs
-			daStartHeight = state.DAHeight
+			daStartHeight = state.DAHeight // skip already processed epochs
 		}
 	}
 	bs.SetDAHeight(daStartHeight)
@@ -210,7 +199,6 @@ doneProcessing:
 	// the next epoch starts at nextDaEndTime - N*1ms >= prevDaEndTime.
 	epochStart := s.currentDAEndTime.Add(-time.Duration(s.currentEpochTxCount) * time.Millisecond)
 	timestamp := epochStart.Add(time.Duration(txIndexForTimestamp) * time.Millisecond)
-	s.lastTimestamp = timestamp
 
 	if len(validTxs) == 0 {
 		return nil, block.ErrNoBatch
