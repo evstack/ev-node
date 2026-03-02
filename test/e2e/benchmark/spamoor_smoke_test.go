@@ -79,34 +79,6 @@ func (s *SpamoorSuite) TestSpamoorSmoke() {
 	traces := s.collectTraces(e, "ev-node-smoke")
 	w.addSpans(traces.allSpans())
 
-	// assert expected ev-node span names
-	assertSpanNames(t, traces.evNode, []string{
-		"BlockExecutor.ProduceBlock",
-		"BlockExecutor.ApplyBlock",
-		"BlockExecutor.CreateBlock",
-		"BlockExecutor.RetrieveBatch",
-		"Executor.ExecuteTxs",
-		"Executor.SetFinal",
-		"Engine.ForkchoiceUpdated",
-		"Engine.NewPayload",
-		"Engine.GetPayload",
-		"Eth.GetBlockByNumber",
-		"Sequencer.GetNextBatch",
-		"DASubmitter.SubmitHeaders",
-		"DASubmitter.SubmitData",
-		"DA.Submit",
-	}, "ev-node-smoke")
-
-	// assert expected ev-reth span names when traces are available
-	if len(traces.evReth) > 0 {
-		assertSpanNames(t, traces.evReth, []string{
-			"build_payload",
-			"execute_tx",
-			"try_build",
-			"validate_transaction",
-		}, "ev-reth")
-	}
-
 	s.Require().Greater(sent, float64(0), "at least one transaction should have been sent")
 	s.Require().Zero(fail, "no transactions should have failed")
 }

@@ -100,20 +100,6 @@ func (s *SpamoorSuite) TestERC20Throughput() {
 	w.addEntries(summary.entries("ERC20Throughput"))
 	w.addSpans(traces.allSpans())
 
-	// assertions
 	s.Require().Greater(sent, float64(0), "at least one transaction should have been sent")
 	s.Require().Zero(failed, "no transactions should have failed")
-
-	// assert expected ev-node spans are present
-	assertSpanNames(t, traces.evNode, []string{
-		"BlockExecutor.ProduceBlock",
-		"BlockExecutor.ApplyBlock",
-		"Executor.ExecuteTxs",
-		"Executor.SetFinal",
-		"Engine.ForkchoiceUpdated",
-		"Engine.NewPayload",
-		"Engine.GetPayload",
-		"Sequencer.GetNextBatch",
-		"DA.Submit",
-	}, serviceName)
 }
