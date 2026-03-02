@@ -56,7 +56,7 @@ func TestLeaseFailoverE2E(t *testing.T) {
 
 	// Get JWT secrets and setup common components first
 	dockerClient, networkID := tastoradocker.Setup(t)
-	env := setupCommonEVMEnv(t, sut, dockerClient, networkID, WithFullNode())
+	env := SetupCommonEVMEnv(t, sut, dockerClient, networkID, WithFullNode())
 	// Use a fresh reth node on the same Docker network as used by the env setup.
 	rethFn := evmtest.SetupTestRethNode(t, dockerClient, networkID)
 	jwtSecret3 := rethFn.JWTSecretHex()
@@ -257,7 +257,7 @@ func TestHASequencerRollingRestartE2E(t *testing.T) {
 
 	// Get Docker and common environment
 	dockerClient, networkID := tastoradocker.Setup(t)
-	env := setupCommonEVMEnv(t, sut, dockerClient, networkID, WithFullNode())
+	env := SetupCommonEVMEnv(t, sut, dockerClient, networkID, WithFullNode())
 	rethFn := evmtest.SetupTestRethNode(t, dockerClient, networkID)
 	jwtSecret3 := rethFn.JWTSecretHex()
 	fnInfo, err := rethFn.GetNetworkInfo(context.Background())
