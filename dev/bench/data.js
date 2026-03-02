@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1772453263086,
+  "lastUpdate": 1772453264354,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -2630,6 +2630,102 @@ window.BENCHMARK_DATA = {
             "value": 81,
             "unit": "allocs/op",
             "extra": "21974 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "marko@baricevic.me",
+            "name": "Marko",
+            "username": "tac0turtle"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "805f927798c111fcae8a9f2edeb9ab37ee20a353",
+          "message": "feat: auto-detect Engine API GetPayload version for Osaka fork (#3113)\n\n* feat: auto-detect Engine API GetPayload version for Osaka fork\n\nGetPayload now automatically selects between engine_getPayloadV4 (Prague)\nand engine_getPayloadV5 (Osaka) by caching the last successful version and\nretrying with the alternative on \"Unsupported fork\" errors (code -38005).\n\nThis handles Prague chains, Osaka-at-genesis chains, and time-based\nPrague-to-Osaka upgrades with zero configuration. At most one extra\nRPC call occurs at the fork transition point.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\n\n* fix comments\n\n* rename\n\n---------\n\nCo-authored-by: Claude Opus 4.6 <noreply@anthropic.com>",
+          "timestamp": "2026-03-02T11:47:28Z",
+          "tree_id": "3b891e4d6b22ff25318d8eff8a63852bc52680ef",
+          "url": "https://github.com/evstack/ev-node/commit/805f927798c111fcae8a9f2edeb9ab37ee20a353"
+        },
+        "date": 1772453263982,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 38899,
+            "unit": "ns/op\t    7028 B/op\t      71 allocs/op",
+            "extra": "31290 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 38899,
+            "unit": "ns/op",
+            "extra": "31290 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 7028,
+            "unit": "B/op",
+            "extra": "31290 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 71,
+            "unit": "allocs/op",
+            "extra": "31290 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 38876,
+            "unit": "ns/op\t    7468 B/op\t      81 allocs/op",
+            "extra": "31292 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 38876,
+            "unit": "ns/op",
+            "extra": "31292 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 7468,
+            "unit": "B/op",
+            "extra": "31292 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 81,
+            "unit": "allocs/op",
+            "extra": "31292 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 50055,
+            "unit": "ns/op\t   26162 B/op\t      81 allocs/op",
+            "extra": "24042 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 50055,
+            "unit": "ns/op",
+            "extra": "24042 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 26162,
+            "unit": "B/op",
+            "extra": "24042 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 81,
+            "unit": "allocs/op",
+            "extra": "24042 times\n4 procs"
           }
         ]
       }
