@@ -129,12 +129,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6.0.2
       - name: Download unit test coverage report
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8.0.0
         with:
           name: unit-test-coverage-report-${{ github.sha }}
           path: ./unit-coverage
       - name: Download integration test coverage report
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8.0.0
         with:
           name: integration-test-coverage-report-${{ github.sha }}
           path: ./integration-coverage
