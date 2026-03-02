@@ -63,9 +63,9 @@ func (t *tracedEngineRPCClient) ForkchoiceUpdated(ctx context.Context, state eng
 	return result, nil
 }
 
-// getPayloadMethoder is implemented by engineRPCClient to expose the resolved
+// payloadMethodGetter is implemented by engineRPCClient to expose the resolved
 // GetPayload Engine API method name (V4 or V5) for tracing.
-type getPayloadMethoder interface {
+type payloadMethodGetter interface {
 	GetPayloadMethod() string
 }
 
@@ -80,7 +80,7 @@ func (t *tracedEngineRPCClient) GetPayload(ctx context.Context, payloadID engine
 	result, err := t.inner.GetPayload(ctx, payloadID)
 
 	// Record the resolved method after the call so it reflects any version switch.
-	if m, ok := t.inner.(getPayloadMethoder); ok {
+	if m, ok := t.inner.(payloadMethodGetter); ok {
 		span.SetAttributes(attribute.String("method", m.GetPayloadMethod()))
 	}
 
