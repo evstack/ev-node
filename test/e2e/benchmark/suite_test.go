@@ -4,6 +4,7 @@ package benchmark
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -48,8 +49,17 @@ type env struct {
 
 // config parameterizes the per-test environment setup.
 type config struct {
-	rethTag     string
 	serviceName string
+}
+
+// TODO: temporary hardcoded tag, will be replaced with a proper release tag
+const defaultRethTag = "pr-140"
+
+func rethTag() string {
+	if tag := os.Getenv("EV_RETH_TAG"); tag != "" {
+		return tag
+	}
+	return defaultRethTag
 }
 
 // setupEnv creates a Jaeger + reth + sequencer + Spamoor environment for
@@ -70,15 +80,21 @@ func (s *SpamoorSuite) setupEnv(cfg config) *env {
 	// reth + local DA with OTLP tracing to Jaeger
 	evmEnv := e2e.SetupCommonEVMEnv(t, sut, s.dockerCli, s.networkID,
 		e2e.WithRethOpts(func(b *reth.NodeBuilder) {
-			b.WithTag(cfg.rethTag).WithEnv(
-				// ev-reth reads OTEL_EXPORTER_OTLP_ENDPOINT and passes it directly
-				// to with_endpoint(). opentelemetry-otlp v0.31 HTTP exporter does
-				// not auto-append /v1/traces, so the full path is required.
-				"OTEL_EXPORTER_OTLP_ENDPOINT="+jg.Internal.IngestHTTPEndpoint()+"/v1/traces",
-				"OTEL_EXPORTER_OTLP_PROTOCOL=http",
-				"RUST_LOG=debug",
-				"OTEL_SDK_DISABLED=false",
-			)
+			b.WithTag(rethTag()).
+				// increase values to facilitate spamoor.
+				WithAdditionalStartArgs(
+					"--rpc.max-connections", "5000",
+					"--rpc.max-tracing-requests", "1000",
+				).
+				WithEnv(
+					// ev-reth reads OTEL_EXPORTER_OTLP_ENDPOINT and passes it directly
+					// to with_endpoint(). opentelemetry-otlp v0.31 HTTP exporter does
+					// not auto-append /v1/traces, so the full path is required.
+					"OTEL_EXPORTER_OTLP_ENDPOINT="+jg.Internal.IngestHTTPEndpoint()+"/v1/traces",
+					"OTEL_EXPORTER_OTLP_PROTOCOL=http",
+					"RUST_LOG=debug",
+					"OTEL_SDK_DISABLED=false",
+				)
 		}),
 	)
 

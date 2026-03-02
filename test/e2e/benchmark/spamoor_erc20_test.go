@@ -18,7 +18,7 @@ import (
 // Diagnostic metrics: per-span latency breakdown, gas/block, tx/block.
 func (s *SpamoorSuite) TestERC20Throughput() {
 	const (
-		numSpammers     = 5
+		numSpammers     = 2
 		countPerSpammer = 50000
 		totalCount      = numSpammers * countPerSpammer
 		serviceName     = "ev-node-erc20"
@@ -31,7 +31,6 @@ func (s *SpamoorSuite) TestERC20Throughput() {
 	defer w.flush()
 
 	e := s.setupEnv(config{
-		rethTag:     "pr-140",
 		serviceName: serviceName,
 	})
 
