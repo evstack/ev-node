@@ -63,9 +63,13 @@ func NewDAClient(
 	return base
 }
 
-// ErrForceInclusionNotConfigured is returned when force inclusion is not configured.
-// It is exported because sequencers needs to check for this error.
-var ErrForceInclusionNotConfigured = da.ErrForceInclusionNotConfigured
+// Exported errors used by the sequencers
+var (
+	// ErrForceInclusionNotConfigured is returned when force inclusion is not configured.
+	ErrForceInclusionNotConfigured = da.ErrForceInclusionNotConfigured
+	// ErrNoBatch is returned when a sequencer does not have a batch to return.
+	ErrNoBatch = common.ErrNoBatch
+)
 
 // ForcedInclusionEvent represents forced inclusion transactions retrieved from DA
 type ForcedInclusionEvent = da.ForcedInclusionEvent
