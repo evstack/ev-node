@@ -529,7 +529,7 @@ func WithRethOpts(opts ...evmtest.RethNodeOpt) SetupOpt {
 	}
 }
 
-// setupCommonEVMEnv creates and initializes ev-reth instances, while also initializing the local ev-node instance
+// SetupCommonEVMEnv creates and initializes ev-reth instances, while also initializing the local ev-node instance
 // managed by sut. If a full node is also required, we can use the WithFullNode() additional option.
 func SetupCommonEVMEnv(t testing.TB, sut *SystemUnderTest, client tastoratypes.TastoraDockerClient, networkID string, opts ...SetupOpt) *EVMEnv {
 	t.Helper()

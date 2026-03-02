@@ -71,10 +71,11 @@ func (s *SpamoorSuite) setupEnv(cfg config) *env {
 	evmEnv := e2e.SetupCommonEVMEnv(t, sut, s.dockerCli, s.networkID,
 		e2e.WithRethOpts(func(b *reth.NodeBuilder) {
 			b.WithTag(cfg.rethTag).WithEnv(
+				// ev-reth reads OTEL_EXPORTER_OTLP_ENDPOINT and passes it directly
+				// to with_endpoint(). opentelemetry-otlp v0.31 HTTP exporter does
+				// not auto-append /v1/traces, so the full path is required.
 				"OTEL_EXPORTER_OTLP_ENDPOINT="+jg.Internal.IngestHTTPEndpoint()+"/v1/traces",
-				"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT="+jg.Internal.IngestHTTPEndpoint()+"/v1/traces",
-				"OTEL_EXPORTER_OTLP_PROTOCOL=http",
-				"OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=http",
+				"OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf",
 				"RUST_LOG=debug",
 				"OTEL_SDK_DISABLED=false",
 			)
@@ -117,7 +118,7 @@ func (s *SpamoorSuite) setupEnv(cfg config) *env {
 	spInfo, err := spNode.GetNetworkInfo(ctx)
 	s.Require().NoError(err, "failed to get spamoor network info")
 	apiAddr := "http://127.0.0.1:" + spInfo.External.Ports.HTTP
-	requireHTTP(t, apiAddr+"/api/spammers", 30*time.Second)
+	requireHostUp(t, apiAddr+"/api/spammers", 30*time.Second)
 
 	return &env{
 		jaeger:     jg,

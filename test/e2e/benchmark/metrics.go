@@ -3,34 +3,27 @@
 package benchmark
 
 import (
-	"fmt"
 	"net/http"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	dto "github.com/prometheus/client_model/go"
 )
 
-// requireHTTP polls a URL until it returns a 2xx status code or the timeout expires.
-func requireHTTP(t testing.TB, url string, timeout time.Duration) {
+// requireHostUp polls a URL until it returns a 2xx status code or the timeout expires.
+func requireHostUp(t testing.TB, url string, timeout time.Duration) {
 	t.Helper()
 	client := &http.Client{Timeout: 200 * time.Millisecond}
-	deadline := time.Now().Add(timeout)
-	var lastErr error
-	for time.Now().Before(deadline) {
+	require.Eventually(t, func() bool {
 		resp, err := client.Get(url)
-		if err == nil {
-			_ = resp.Body.Close()
-			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-				return
-			}
-			lastErr = fmt.Errorf("status %d", resp.StatusCode)
-		} else {
-			lastErr = err
+		if err != nil {
+			return false
 		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	t.Fatalf("daemon not ready at %s: %v", url, lastErr)
+		_ = resp.Body.Close()
+		return resp.StatusCode >= 200 && resp.StatusCode < 300
+	}, timeout, 100*time.Millisecond, "daemon not ready at %s", url)
 }
 
 // sumCounter sums all counter values in a prometheus MetricFamily.

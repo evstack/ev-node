@@ -22,8 +22,8 @@ func (j jaegerSpan) SpanDuration() time.Duration { return time.Duration(j.durati
 // extractSpansFromTraces walks Jaeger's []any response and pulls out span operation names and durations.
 func extractSpansFromTraces(traces []any) []jaegerSpan {
 	var out []jaegerSpan
-	for _, t := range traces {
-		traceMap, ok := t.(map[string]any)
+	for _, traceEntry := range traces {
+		traceMap, ok := traceEntry.(map[string]any)
 		if !ok {
 			continue
 		}

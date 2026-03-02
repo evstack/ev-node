@@ -13,6 +13,7 @@ permissions: {}
       - 'test/e2e/evm_contract_bench_test.go'
       - 'test/e2e/evm_test_common.go'
       - 'test/e2e/sut_helper.go'
+      - 'block/internal/executing/**'
       - '.github/workflows/benchmark.yml'
   workflow_dispatch:
 
