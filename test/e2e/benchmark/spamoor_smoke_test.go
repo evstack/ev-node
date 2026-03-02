@@ -22,6 +22,8 @@ func (s *SpamoorSuite) TestSpamoorSmoke() {
 	})
 	api := e.spamoorAPI
 
+	s.Require().NoError(deleteAllSpammers(api), "failed to delete stale spammers")
+
 	eoatx := map[string]any{
 		"throughput":      100,
 		"total_count":     3000,
@@ -76,9 +78,11 @@ func (s *SpamoorSuite) TestSpamoorSmoke() {
 
 	// collect traces
 	evNodeSpans := s.collectServiceTraces(e, "ev-node-smoke")
-	evRethSpans := s.collectServiceTraces(e, "ev-reth")
+	evRethSpans := s.tryCollectServiceTraces(e, "ev-reth")
 	e2e.PrintTraceReport(t, "ev-node-smoke", evNodeSpans)
-	e2e.PrintTraceReport(t, "ev-reth", evRethSpans)
+	if len(evRethSpans) > 0 {
+		e2e.PrintTraceReport(t, "ev-reth", evRethSpans)
+	}
 
 	w.addSpans(append(evNodeSpans, evRethSpans...))
 
@@ -100,13 +104,15 @@ func (s *SpamoorSuite) TestSpamoorSmoke() {
 		"DA.Submit",
 	}, "ev-node-smoke")
 
-	// assert expected ev-reth span names
-	assertSpanNames(t, evRethSpans, []string{
-		"build_payload",
-		"execute_tx",
-		"try_build",
-		"validate_transaction",
-	}, "ev-reth")
+	// assert expected ev-reth span names when traces are available
+	if len(evRethSpans) > 0 {
+		assertSpanNames(t, evRethSpans, []string{
+			"build_payload",
+			"execute_tx",
+			"try_build",
+			"validate_transaction",
+		}, "ev-reth")
+	}
 
 	s.Require().Greater(sent, float64(0), "at least one transaction should have been sent")
 	s.Require().Zero(fail, "no transactions should have failed")

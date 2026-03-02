@@ -146,6 +146,7 @@ func waitForSpamoorDone(ctx context.Context, log func(string, ...any), api *spam
 		case <-ticker.C:
 			metrics, mErr := api.GetMetrics()
 			if mErr != nil {
+				log("failed to get spamoor metrics: %v", mErr)
 				continue
 			}
 			sent = sumCounter(metrics["spamoor_transactions_sent_total"])
