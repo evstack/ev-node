@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1772183113042,
+  "lastUpdate": 1772446878887,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -948,6 +948,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 123038,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "marko@baricevic.me",
+            "name": "Marko",
+            "username": "tac0turtle"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "f73a1241bb0b7926f9cbf3d26ffd35501d0e04b8",
+          "message": "docs: rewrite and restructure docs (#3026)\n\n* rewrite and restructure docs\n\n* refernce and change of sequencing concept\n\n* Refactor documentation for data availability layers and node operations\n\n- Updated Celestia guide to clarify prerequisites, installation, and configuration for connecting Evolve chains to Celestia.\n- Enhanced Local DA documentation with installation instructions, configuration options, and use cases for development and testing.\n- Expanded troubleshooting guide with detailed diagnostic commands, common issues, and solutions for node operations.\n- Created comprehensive upgrades guide covering minor and major upgrades, version compatibility, and rollback procedures.\n- Added aggregator node documentation detailing configuration, block production settings, and monitoring options.\n- Introduced attester node overview with configuration and use cases for low-latency applications.\n- Removed outdated light node documentation.\n- Improved formatting and clarity in ev-reth chainspec reference for better readability.\n\n* format\n\n* claenup and comments\n\n* Update block-lifecycle.md\n\n* adjustments\n\n* docs: fix broken links, stale flag prefixes, and formatting issues (#3112)\n\n* docs: fix broken links, stale --rollkit.* flag prefixes, and escaped backticks\n\n- Fix forced-inclusion.md: based.md → based-sequencing.md (2 links)\n- Fix block-lifecycle.md: da.md → data-availability.md (2 links)\n- Fix reference/specs/overview.md: p2p.md → learn/specs/p2p.md\n- Fix running-nodes/full-node.md: relative paths to guides/\n- Fix what-is-evolve.md: remove escaped backticks around ev-node\n- Replace all --rollkit.* flags with --evnode.* in ev-node-config.md\n- Fix visualizer.md: --rollkit.rpc → --evnode.rpc\n\n* docs: fix markdownlint errors (MD040 missing code block languages, MD012 extra blank lines)\n\n- Add 'text' language specifier to 25 fenced code blocks containing ASCII\n  diagrams, log output, and formulas\n- Remove extra blank line in migration-from-cometbft.md\n- Fix non-descriptive link text in deployment.md\n\n* fix and push\n\n---------\n\nCo-authored-by: Alexander Peters <alpe@users.noreply.github.com>",
+          "timestamp": "2026-03-02T11:16:10+01:00",
+          "tree_id": "a963782a287c23f898a8cf0cf5b35097986d39dd",
+          "url": "https://github.com/evstack/ev-node/commit/f73a1241bb0b7926f9cbf3d26ffd35501d0e04b8"
+        },
+        "date": 1772446875860,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 918901684,
+            "unit": "ns/op\t26683124 B/op\t  117859 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 918901684,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 26683124,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 117859,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
