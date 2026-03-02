@@ -1,6 +1,6 @@
-# Implement Executor Interface
+# Executor Interface
 
-Deep dive into each method of the Executor interface.
+The Executor interface is the boundary between ev-node and your execution layer. ev-node calls these methods during block production and synchronization. This page documents each method, its contract, and example implementations.
 
 ## Interface Overview
 
@@ -219,4 +219,6 @@ func TestExecuteTxs(t *testing.T) {
 ## Next Steps
 
 - [Executor Interface Reference](/reference/interfaces/executor) — Full type definitions
-- [Testapp Source](https://github.com/evstack/ev-node/tree/main/apps/testapp) — Working example
+- [Testapp Source](https://github.com/evstack/ev-node/tree/main/apps/testapp) — Reference implementation
+- [EVM Quickstart](/getting-started/evm/quickstart) — Using the EVM executor (ev-reth)
+- [Cosmos SDK Quickstart](/getting-started/cosmos/quickstart) — Using the Cosmos SDK executor (ev-abci)

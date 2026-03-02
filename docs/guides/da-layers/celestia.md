@@ -11,38 +11,7 @@ This guide covers connecting your Evolve chain to Celestia for production data a
 
 Before starting your Evolve chain, you need a Celestia light node running and synced.
 
-### Installation
-
-Follow the [Celestia documentation](https://docs.celestia.org/how-to-guides/light-node) to install and run a light node. Refer to the Celestia docs for the latest version compatibility information.
-
-**Quick start:**
-
-> Warning: Piping a remote script directly into a shell is a supply-chain risk. Review and verify the installer before execution in production environments.
-
-```bash
-# Install celestia-node
-curl -sL https://docs.celestia.org/install.sh | bash
-```
-
-Safer flow (download, inspect, then execute):
-
-```bash
-curl -fsSL -o install-celestia.sh https://docs.celestia.org/install.sh
-less install-celestia.sh
-bash install-celestia.sh
-
-# Initialize (choose your network)
-celestia light init --p2p.network mocha
-
-# Start the node
-celestia light start --p2p.network mocha
-```
-
-### Network Options
-
-- [Arabica Devnet](https://docs.celestia.org/how-to-guides/arabica-devnet) - Development testing
-- [Mocha Testnet](https://docs.celestia.org/how-to-guides/mocha-testnet) - Pre-production testing
-- [Mainnet Beta](https://docs.celestia.org/how-to-guides/mainnet) - Production
+Follow the [Celestia light node documentation](https://docs.celestia.org/how-to-guides/light-node) to install, initialize, and start a light node for your target network (Arabica, Mocha, or Mainnet).
 
 ## Configuring Evolve for Celestia
 

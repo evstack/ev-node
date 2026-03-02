@@ -17,14 +17,14 @@ curl http://localhost:26657/status
 
 ### View Logs
 
-Use the log command that matches your runtime:
+If running in the foreground, logs are printed to stderr by default. If running as a background service, use the appropriate command:
 
 ```bash
+# foreground (default in dev)
+./evnode start ... 2>&1 | tee evnode.log
+
 # systemd service
 journalctl -u evnode -f
-
-# foreground process
-./evnode start ... 2>&1 | tee evnode.log
 
 # docker container
 docker logs -f <container_name>
@@ -234,21 +234,6 @@ rm -rf ~/.evnode/data/cache
 
 # Restart
 systemctl start ev-reth evnode
-```
-
-## Log Analysis
-
-### Enable Debug Logging
-
-```bash
-evnode start --log.level debug
-```
-
-Or in configuration:
-
-```yaml
-log:
-  level: debug
 ```
 
 ## Performance Issues

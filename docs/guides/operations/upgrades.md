@@ -270,4 +270,3 @@ Consider automating upgrades with tools like:
 ## See Also
 
 - [Troubleshooting Guide](/guides/operations/troubleshooting) - Handling upgrade issues
-- [Deployment Guide](/guides/operations/deployment) - Infrastructure setup

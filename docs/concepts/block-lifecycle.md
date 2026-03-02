@@ -320,7 +320,7 @@ flowchart TD
     E --> K[Multiply Gas Price by GasMultiplier]
 
     G --> L[Double Backoff Time]
-    G --> M[Cap at MaxBackoff - BlockTime]
+    G --> M[Cap at MaxBackoff - DABlockTime]
 
     H --> N[Split into Two Halves]
     N --> O[Submit First Half]
@@ -655,46 +655,7 @@ The components communicate through well-defined interfaces:
 
 ## Metrics
 
-The block components expose comprehensive metrics for monitoring through the shared Metrics instance:
-
-### Block Production Metrics (Executor Component)
-
-- `last_block_produced_height`: Height of the last produced block
-- `last_block_produced_time`: Timestamp of the last produced block
-- `aggregation_type`: Current aggregation mode (normal/lazy)
-- `block_size_bytes`: Size distribution of produced blocks
-- `produced_empty_blocks_total`: Count of empty blocks produced
-
-### DA Metrics (Submitter and Syncer Components)
-
-- `da_submission_attempts_total`: Total DA submission attempts
-- `da_submission_success_total`: Successful DA submissions
-- `da_submission_failure_total`: Failed DA submissions
-- `da_retrieval_attempts_total`: Total DA retrieval attempts
-- `da_retrieval_success_total`: Successful DA retrievals
-- `da_retrieval_failure_total`: Failed DA retrievals
-- `da_height`: Current DA retrieval height
-- `pending_headers_count`: Number of headers pending DA submission
-- `pending_data_count`: Number of data blocks pending DA submission
-
-### Sync Metrics (Syncer Component)
-
-- `sync_height`: Current sync height
-- `da_included_height`: Height of last DA-included block
-- `soft_confirmed_height`: Height of last soft confirmed block
-- `header_store_height`: Current header store height
-- `data_store_height`: Current data store height
-
-### Performance Metrics (All Components)
-
-- `block_production_time`: Time to produce a block
-- `da_submission_time`: Time to submit to DA
-- `state_update_time`: Time to apply block and update state
-- `channel_buffer_usage`: Usage of internal channels
-
-### Error Metrics (All Components)
-
-- `errors_total`: Total errors by type and operation
+The block components expose Prometheus metrics for monitoring block production, DA submission/retrieval, sync progress, and errors. See the [Metrics guide](/guides/metrics) for configuration and available metric names.
 
 ## Implementation
 

@@ -57,7 +57,6 @@ Evolve uses DA namespaces to organize data:
 |-----------|---------|
 | Header | Block headers |
 | Data | Transaction data |
-| Forced Inclusion | User-submitted transactions |
 
 ## Best Practices
 
