@@ -75,7 +75,7 @@ func (s *SpamoorSuite) setupEnv(cfg config) *env {
 				// to with_endpoint(). opentelemetry-otlp v0.31 HTTP exporter does
 				// not auto-append /v1/traces, so the full path is required.
 				"OTEL_EXPORTER_OTLP_ENDPOINT="+jg.Internal.IngestHTTPEndpoint()+"/v1/traces",
-				"OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf",
+				"OTEL_EXPORTER_OTLP_PROTOCOL=http",
 				"RUST_LOG=debug",
 				"OTEL_SDK_DISABLED=false",
 			)
