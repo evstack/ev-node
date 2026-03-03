@@ -640,10 +640,12 @@ func (s *Syncer) processHeightEvent(ctx context.Context, event *common.DAHeightE
 			var latestDAHeight uint64
 			if needsValidation {
 				var err error
-				latestDAHeight, err = s.daClient.GetLatestDAHeight(ctx)
+				xCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+				latestDAHeight, err = s.daClient.GetLatestDAHeight(xCtx)
+				cancel()
 				if err != nil {
 					s.logger.Warn().Err(err).Msg("failed to fetch latest DA height")
-					needsValidation = false // ignore error as height is checked in the daRetreiver
+					needsValidation = false // ignore error as height is checked in the daRetriever
 				}
 			}
 
