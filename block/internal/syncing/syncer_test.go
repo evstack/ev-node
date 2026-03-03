@@ -416,7 +416,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 		Return(nil, datypes.ErrHeightFromFuture)
 
 	go syncerInst1.processLoop()
-	syncerInst1.startSyncWorkers(context.Background())
+	syncerInst1.startSyncWorkers(t.Context())
 	syncerInst1.wg.Wait()
 	requireEmptyChan(t, errorCh)
 
@@ -479,7 +479,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 
 	// when it starts, it should fetch from the last height it stopped at
 	t.Log("sync workers on instance2 started")
-	syncerInst2.startSyncWorkers(context.Background())
+	syncerInst2.startSyncWorkers(t.Context())
 	syncerInst2.wg.Wait()
 
 	t.Log("sync workers exited")

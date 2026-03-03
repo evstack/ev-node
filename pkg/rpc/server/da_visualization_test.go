@@ -133,7 +133,7 @@ func TestHandleDASubmissions(t *testing.T) {
 		},
 	}
 	server.RecordSubmission(result, 0.5, 1, []byte{})
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/da/submissions", nil)
+	req, err := http.NewRequest(http.MethodGet, "/da/submissions", nil)
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -163,7 +163,7 @@ func TestHandleDABlobDetailsMissingID(t *testing.T) {
 	logger := zerolog.New(nil)
 	server := NewDAVisualizationServer(da, logger, true)
 
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/da/blob", nil)
+	req, err := http.NewRequest(http.MethodGet, "/da/blob", nil)
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -178,7 +178,7 @@ func TestHandleDABlobDetailsInvalidID(t *testing.T) {
 	logger := zerolog.New(nil)
 	server := NewDAVisualizationServer(da, logger, true)
 
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/da/blob?id=invalid-hex", nil)
+	req, err := http.NewRequest(http.MethodGet, "/da/blob?id=invalid-hex", nil)
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -205,7 +205,7 @@ func TestHandleDAVisualizationHTML(t *testing.T) {
 	}
 	server.RecordSubmission(result, 0.5, 1, []byte{})
 
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/da", nil)
+	req, err := http.NewRequest(http.MethodGet, "/da", nil)
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -265,7 +265,7 @@ func TestRegisterCustomHTTPEndpointsDAVisualization(t *testing.T) {
 	RegisterCustomHTTPEndpoints(mux, nil, nil, config.DefaultConfig(), nil, nopLogger, nil)
 
 	// Test /da endpoint
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/da", nil)
+	req, err := http.NewRequest(http.MethodGet, "/da", nil)
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -275,7 +275,7 @@ func TestRegisterCustomHTTPEndpointsDAVisualization(t *testing.T) {
 	assert.Equal(t, "text/html", rr.Header().Get("Content-Type"))
 
 	// Test /da/submissions endpoint
-	req, err = http.NewRequestWithContext(t.Context(), http.MethodGet, "/da/submissions", nil)
+	req, err = http.NewRequest(http.MethodGet, "/da/submissions", nil)
 	require.NoError(t, err)
 
 	rr = httptest.NewRecorder()
@@ -285,7 +285,7 @@ func TestRegisterCustomHTTPEndpointsDAVisualization(t *testing.T) {
 	assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
 
 	// Test /da/blob endpoint (missing ID should return 400)
-	req, err = http.NewRequestWithContext(t.Context(), http.MethodGet, "/da/blob", nil)
+	req, err = http.NewRequest(http.MethodGet, "/da/blob", nil)
 	require.NoError(t, err)
 
 	rr = httptest.NewRecorder()
@@ -306,7 +306,7 @@ func TestRegisterCustomHTTPEndpointsWithoutServer(t *testing.T) {
 	endpoints := []string{"/da", "/da/submissions", "/da/blob"}
 
 	for _, endpoint := range endpoints {
-		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, endpoint, nil)
+		req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 		require.NoError(t, err)
 
 		rr := httptest.NewRecorder()

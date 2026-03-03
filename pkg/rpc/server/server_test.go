@@ -30,7 +30,7 @@ import (
 
 func mustGETRequest(t *testing.T, url string) *http.Request {
 	t.Helper()
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, url, nil)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
 	require.NoError(t, err)
 	return req
 }

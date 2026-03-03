@@ -77,6 +77,11 @@ linters:
       - common-false-positives
       - legacy
       - std-error-handling
+    rules:
+      - path: _test\.go
+        linters:
+          - prealloc
+          - noctx
     paths:
       - third_party$
       - builtin$
@@ -86,8 +91,6 @@ linters:
     - errcheck
     - gocritic
     - nolintlint
-    - prealloc
-    - predeclared
     - testifylint
     - thelper
     - tparallel

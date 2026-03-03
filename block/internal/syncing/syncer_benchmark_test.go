@@ -44,7 +44,7 @@ func BenchmarkSyncerIO(b *testing.B) {
 
 				// run both loops
 				go fixt.s.processLoop()
-				fixt.s.startSyncWorkers(context.Background())
+				fixt.s.startSyncWorkers(b.Context())
 
 				require.Eventually(b, func() bool {
 					processedHeight, _ := fixt.s.store.Height(b.Context())
