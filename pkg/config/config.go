@@ -258,9 +258,9 @@ func (d *DAConfig) GetForcedInclusionNamespace() string {
 // NodeConfig contains all Rollkit specific configuration parameters
 type NodeConfig struct {
 	// Node mode configuration
-	Aggregator     bool `yaml:"aggregator" comment:"Run node in aggregator mode"`
-	BasedSequencer bool `yaml:"based_sequencer" comment:"Run node with based sequencer (fetches transactions only from DA forced inclusion namespace). Requires aggregator mode to be enabled."`
-	Light          bool `yaml:"light" comment:"Run node in light mode"`
+	Aggregator     bool `mapstructure:"aggregator" yaml:"aggregator" comment:"Run node in aggregator mode"`
+	BasedSequencer bool `mapstructure:"based_sequencer" yaml:"based_sequencer" comment:"Run node with based sequencer (fetches transactions only from DA forced inclusion namespace). Requires aggregator mode to be enabled."`
+	Light          bool `mapstructure:"light" yaml:"light" comment:"Run node in light mode"`
 
 	// Block management configuration
 	BlockTime                DurationWrapper `mapstructure:"block_time" yaml:"block_time" comment:"Block time (duration). Examples: \"500ms\", \"1s\", \"5s\", \"1m\", \"2m30s\", \"10m\"."`

@@ -123,6 +123,20 @@ func (t *tracedClient) Validate(ctx context.Context, ids []datypes.ID, proofs []
 	return res, nil
 }
 
+func (t *tracedClient) GetLatestDAHeight(ctx context.Context) (uint64, error) {
+	ctx, span := t.tracer.Start(ctx, "DA.GetLatestDAHeight")
+	defer span.End()
+
+	height, err := t.inner.GetLatestDAHeight(ctx)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return 0, err
+	}
+	span.SetAttributes(attribute.Int64("da.latest_height", int64(height)))
+	return height, nil
+}
+
 func (t *tracedClient) GetHeaderNamespace() []byte { return t.inner.GetHeaderNamespace() }
 func (t *tracedClient) GetDataNamespace() []byte   { return t.inner.GetDataNamespace() }
 func (t *tracedClient) GetForcedInclusionNamespace() []byte {

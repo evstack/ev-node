@@ -201,7 +201,7 @@ func TestAsyncBlockRetriever_StopGracefully(t *testing.T) {
 func TestBlockData_Serialization(t *testing.T) {
 	block := &BlockData{
 		Height:    100,
-		Timestamp: time.Unix(12345, 0).UTC(),
+		Timestamp: time.Unix(12345, 123456789).UTC(),
 		Blobs: [][]byte{
 			[]byte("blob1"),
 			[]byte("blob2"),
@@ -212,7 +212,7 @@ func TestBlockData_Serialization(t *testing.T) {
 	// Serialize using protobuf
 	pbBlock := &pb.BlockData{
 		Height:    block.Height,
-		Timestamp: block.Timestamp.Unix(),
+		Timestamp: block.Timestamp.UnixNano(),
 		Blobs:     block.Blobs,
 	}
 	data, err := proto.Marshal(pbBlock)
@@ -226,11 +226,11 @@ func TestBlockData_Serialization(t *testing.T) {
 
 	decoded := &BlockData{
 		Height:    decodedPb.Height,
-		Timestamp: time.Unix(decodedPb.Timestamp, 0).UTC(),
+		Timestamp: time.Unix(0, decodedPb.Timestamp).UTC(),
 		Blobs:     decodedPb.Blobs,
 	}
 
-	assert.Equal(t, block.Timestamp.Unix(), decoded.Timestamp.Unix())
+	assert.Equal(t, block.Timestamp.UnixNano(), decoded.Timestamp.UnixNano())
 	assert.Equal(t, block.Height, decoded.Height)
 	assert.Equal(t, len(block.Blobs), len(decoded.Blobs))
 	for i := range block.Blobs {
@@ -248,7 +248,7 @@ func TestBlockData_SerializationEmpty(t *testing.T) {
 	// Serialize using protobuf
 	pbBlock := &pb.BlockData{
 		Height:    block.Height,
-		Timestamp: block.Timestamp.Unix(),
+		Timestamp: block.Timestamp.UnixNano(),
 		Blobs:     block.Blobs,
 	}
 	data, err := proto.Marshal(pbBlock)
@@ -261,7 +261,7 @@ func TestBlockData_SerializationEmpty(t *testing.T) {
 
 	decoded := &BlockData{
 		Height:    decodedPb.Height,
-		Timestamp: time.Unix(decodedPb.Timestamp, 0).UTC(),
+		Timestamp: time.Unix(0, decodedPb.Timestamp).UTC(),
 		Blobs:     decodedPb.Blobs,
 	}
 

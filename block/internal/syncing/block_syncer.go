@@ -21,5 +21,5 @@ type BlockSyncer interface {
 	ValidateBlock(ctx context.Context, currState types.State, data *types.Data, header *types.SignedHeader) error
 
 	// VerifyForcedInclusionTxs verifies that forced inclusion transactions are properly handled.
-	VerifyForcedInclusionTxs(ctx context.Context, currentState types.State, data *types.Data) error
+	VerifyForcedInclusionTxs(ctx context.Context, daHeight uint64, data *types.Data) error
 }
