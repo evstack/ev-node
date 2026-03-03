@@ -893,11 +893,7 @@ func (s *Syncer) gracePeriodForEpoch(epochStart, epochEnd uint64) uint64 {
 		extra = (avgBytes - threshold) / threshold
 	}
 
-	grace := baseGracePeriodEpochs + extra
-	if grace > maxGracePeriodEpochs {
-		grace = maxGracePeriodEpochs
-	}
-	return grace
+	return min(baseGracePeriodEpochs+extra, maxGracePeriodEpochs)
 }
 
 // VerifyForcedInclusionTxs checks that every forced-inclusion tx submitted
