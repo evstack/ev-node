@@ -167,6 +167,8 @@ func (f *daFollower) followLoop() {
 
 // runSubscription opens subscriptions on both header and data namespaces (if
 // different) and processes events until a channel is closed or an error occurs.
+// A watchdog timer triggers if no events arrive within watchdogTimeout(),
+// causing a reconnect.
 func (f *daFollower) runSubscription() error {
 	headerCh, err := f.client.Subscribe(f.ctx, f.namespace)
 	if err != nil {
@@ -183,6 +185,10 @@ func (f *daFollower) runSubscription() error {
 		ch = f.mergeSubscriptions(headerCh, dataCh)
 	}
 
+	watchdogTimeout := f.watchdogTimeout()
+	watchdog := time.NewTimer(watchdogTimeout)
+	defer watchdog.Stop()
+
 	for {
 		select {
 		case <-f.ctx.Done():
@@ -192,6 +198,9 @@ func (f *daFollower) runSubscription() error {
 				return errors.New("subscription channel closed")
 			}
 			f.handleSubscriptionEvent(ev)
+			watchdog.Reset(watchdogTimeout)
+		case <-watchdog.C:
+			return errors.New("subscription watchdog: no events received, reconnecting")
 		}
 	}
 }
@@ -405,4 +414,15 @@ func (f *daFollower) backoff() time.Duration {
 		return f.daBlockTime
 	}
 	return 2 * time.Second
+}
+
+// watchdogTimeout returns how long to wait for a subscription event before
+// assuming the subscription is stalled. Defaults to 3× the DA block time.
+const watchdogMultiplier = 3
+
+func (f *daFollower) watchdogTimeout() time.Duration {
+	if f.daBlockTime > 0 {
+		return f.daBlockTime * watchdogMultiplier
+	}
+	return 30 * time.Second
 }
