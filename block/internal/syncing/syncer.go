@@ -625,9 +625,38 @@ func (s *Syncer) processHeightEvent(ctx context.Context, event *common.DAHeightE
 			}
 		}
 		if len(daHeightHints) > 0 {
+			currentDAHeight := s.daRetrieverHeight.Load()
+
+			// Only fetch the latest DA height if any hint is suspiciously far ahead.
+			const daHintMaxDrift = uint64(200)
+			needsValidation := false
+			for _, h := range daHeightHints {
+				if h > currentDAHeight+daHintMaxDrift {
+					needsValidation = true
+					break
+				}
+			}
+
+			var latestDAHeight uint64
+			if needsValidation {
+				var err error
+				latestDAHeight, err = s.daClient.GetLatestDAHeight(ctx)
+				if err != nil {
+					s.logger.Warn().Err(err).Msg("failed to fetch latest DA height")
+					needsValidation = false // ignore error as height is checked in the daRetreiver
+				}
+			}
+
 			for _, daHeightHint := range daHeightHints {
 				// Skip if we've already fetched past this height
-				if daHeightHint < s.daRetrieverHeight.Load() {
+				if daHeightHint < currentDAHeight {
+					continue
+				}
+
+				if needsValidation && daHeightHint > latestDAHeight {
+					s.logger.Warn().Uint64("da_height_hint", daHeightHint).
+						Uint64("latest_da_height", latestDAHeight).
+						Msg("ignoring unreasonable DA height hint from P2P")
 					continue
 				}
 
