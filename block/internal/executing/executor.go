@@ -337,6 +337,14 @@ func (e *Executor) initializeState() error {
 		return fmt.Errorf("failed to sync execution layer: %w", err)
 	}
 
+	// For based sequencer, advance safe/finalized since it comes from DA.
+	if e.config.Node.BasedSequencer && syncTargetHeight > 0 {
+		if err := e.exec.SetFinal(e.ctx, syncTargetHeight); err != nil {
+			e.sendCriticalError(fmt.Errorf("failed to set final height in based sequencer mode: %w", err))
+			return fmt.Errorf("failed to set final height in based sequencer mode: %w", err)
+		}
+	}
+
 	// Double-check state against Raft after replay
 	if e.raftNode != nil {
 		raftState := e.raftNode.GetState()
@@ -626,6 +634,14 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 		Uint64("height", newHeight).
 		Int("txs", len(data.Txs)).
 		Msg("produced block")
+
+	// For based sequencer, advance safe/finalized since it comes from DA.
+	if e.config.Node.BasedSequencer {
+		if err := e.exec.SetFinal(e.ctx, newHeight); err != nil {
+			e.sendCriticalError(fmt.Errorf("failed to set final height in based sequencer mode: %w", err))
+			return fmt.Errorf("failed to set final height in based sequencer mode: %w", err)
+		}
+	}
 
 	return nil
 }

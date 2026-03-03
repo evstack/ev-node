@@ -140,8 +140,7 @@ func TestLeaseFailoverE2E(t *testing.T) {
 	t.Logf("+++ Killing current leader (%s)\n", oldLeader)
 	_ = clusterNodes.Details(oldLeader).Kill()
 
-	const daStartHeight = 1
-	lastDABlockOldLeader := queryLastDAHeight(t, daStartHeight, env.SequencerJWT, env.Endpoints.GetDAAddress())
+	lastDABlockOldLeader := queryLastDAHeight(t, env.SequencerJWT, env.Endpoints.GetDAAddress())
 	t.Log("+++ Last DA block by old leader: ", lastDABlockOldLeader)
 	leaderElectionStart := time.Now()
 
@@ -160,7 +159,7 @@ func TestLeaseFailoverE2E(t *testing.T) {
 	// Verify DA progress
 	var lastDABlockNewLeader uint64
 	require.Eventually(t, func() bool {
-		lastDABlockNewLeader = queryLastDAHeight(t, lastDABlockOldLeader, env.SequencerJWT, env.Endpoints.GetDAAddress())
+		lastDABlockNewLeader = queryLastDAHeight(t, env.SequencerJWT, env.Endpoints.GetDAAddress())
 		return lastDABlockNewLeader > lastDABlockOldLeader
 	}, 2*must(time.ParseDuration(DefaultDABlockTime)), 100*time.Millisecond)
 	t.Logf("+++ Last DA block by new leader: %d\n", lastDABlockNewLeader)
@@ -220,7 +219,7 @@ func TestLeaseFailoverE2E(t *testing.T) {
 		return err == nil
 	}, time.Second, 100*time.Millisecond)
 
-	lastDABlockNewLeader = queryLastDAHeight(t, lastDABlockNewLeader, env.SequencerJWT, env.Endpoints.GetDAAddress())
+	lastDABlockNewLeader = queryLastDAHeight(t, env.SequencerJWT, env.Endpoints.GetDAAddress())
 
 	genesisHeight := state.InitialHeight
 	verifyNoDoubleSigning(t, clusterNodes, genesisHeight, state.LastBlockHeight)
@@ -228,12 +227,12 @@ func TestLeaseFailoverE2E(t *testing.T) {
 	// wait for the next DA block to ensure all blocks are propagated
 	require.Eventually(t, func() bool {
 		before := lastDABlockNewLeader
-		lastDABlockNewLeader = queryLastDAHeight(t, lastDABlockNewLeader, env.SequencerJWT, env.Endpoints.GetDAAddress())
+		lastDABlockNewLeader = queryLastDAHeight(t, env.SequencerJWT, env.Endpoints.GetDAAddress())
 		return before < lastDABlockNewLeader
 	}, 2*must(time.ParseDuration(DefaultDABlockTime)), 100*time.Millisecond)
 
 	t.Log("+++ Verifying no DA gaps...")
-	verifyDABlocks(t, daStartHeight, lastDABlockNewLeader, env.SequencerJWT, env.Endpoints.GetDAAddress(), genesisHeight, state.LastBlockHeight)
+	verifyDABlocks(t, 1, lastDABlockNewLeader, env.SequencerJWT, env.Endpoints.GetDAAddress(), genesisHeight, state.LastBlockHeight)
 
 	// Cleanup processes
 	clusterNodes.killAll()
@@ -326,8 +325,7 @@ func TestHASequencerRollingRestartE2E(t *testing.T) {
 	// Wait for at least 5 blocks to be produced before starting shutdown sequence
 	sut.AwaitNBlocks(t, 5, clusterNodes.Details(leaderNode).rpcAddr, 10*time.Second)
 
-	const daStartHeight = 1
-	initialDAHeight := queryLastDAHeight(t, daStartHeight, env.SequencerJWT, env.Endpoints.GetDAAddress())
+	initialDAHeight := queryLastDAHeight(t, env.SequencerJWT, env.Endpoints.GetDAAddress())
 	t.Logf("+++ Initial DA height: %d", initialDAHeight)
 
 	// Calculate downtime per node
@@ -510,7 +508,7 @@ func TestHASequencerRollingRestartE2E(t *testing.T) {
 		return err == nil
 	}, time.Second, 100*time.Millisecond)
 
-	lastDABlock := queryLastDAHeight(t, initialDAHeight, env.SequencerJWT, env.Endpoints.GetDAAddress())
+	lastDABlock := queryLastDAHeight(t, env.SequencerJWT, env.Endpoints.GetDAAddress())
 
 	genesisHeight := state.InitialHeight
 	verifyNoDoubleSigning(t, clusterNodes, genesisHeight, state.LastBlockHeight)
@@ -519,13 +517,13 @@ func TestHASequencerRollingRestartE2E(t *testing.T) {
 	// Wait for the next DA block to ensure all blocks are propagated
 	require.Eventually(t, func() bool {
 		before := lastDABlock
-		lastDABlock = queryLastDAHeight(t, lastDABlock, env.SequencerJWT, env.Endpoints.GetDAAddress())
+		lastDABlock = queryLastDAHeight(t, env.SequencerJWT, env.Endpoints.GetDAAddress())
 		return before < lastDABlock
 	}, 2*must(time.ParseDuration(DefaultDABlockTime)), 100*time.Millisecond)
 
 	// Verify no DA gaps
 	t.Log("+++ Verifying no DA gaps...")
-	verifyDABlocks(t, daStartHeight, lastDABlock, env.SequencerJWT, env.Endpoints.GetDAAddress(), genesisHeight, state.LastBlockHeight)
+	verifyDABlocks(t, 1, lastDABlock, env.SequencerJWT, env.Endpoints.GetDAAddress(), genesisHeight, state.LastBlockHeight)
 	t.Log("+++ No DA gaps detected ✓")
 
 	// Cleanup processes
@@ -579,10 +577,18 @@ func verifyDABlocks(t *testing.T, daStartHeight, lastDABlock uint64, jwtSecret s
 	deduplicationCache := make(map[string]uint64) // mixed header and data hashes
 
 	// Verify each block is present exactly once
+	// Note: local-da produces empty blocks on a ticker, so some DA heights may have no blobs — skip them.
 	for daHeight := daStartHeight; daHeight <= lastDABlock; daHeight++ {
 		blobs, err := blobClient.Blob.GetAll(t.Context(), daHeight, []libshare.Namespace{ns})
-		require.NoError(t, err, "height %d/%d", daHeight, lastDABlock)
-		require.NotEmpty(t, blobs)
+		if err != nil {
+			if strings.Contains(err.Error(), "blob: not found") {
+				continue
+			}
+			require.NoError(t, err, "height %d/%d", daHeight, lastDABlock)
+		}
+		if len(blobs) == 0 {
+			continue
+		}
 
 		for _, blob := range blobs {
 			if evHeight, hash, blobType := extractBlockHeight(t, blob.Data()); evHeight != 0 {
@@ -752,27 +758,15 @@ func submitTxToURL(t *testing.T, client *ethclient.Client) (common.Hash, uint64)
 
 const defaultMaxBlobSize = 2 * 1024 * 1024 // 2MB
 
-func queryLastDAHeight(t *testing.T, startHeight uint64, jwtSecret string, daAddress string) uint64 {
+func queryLastDAHeight(t *testing.T, jwtSecret string, daAddress string) uint64 {
 	t.Helper()
 	blobClient, err := blobrpc.NewClient(t.Context(), daAddress, jwtSecret, "")
 	require.NoError(t, err)
 	defer blobClient.Close()
-	ns, err := libshare.NewNamespaceFromBytes(coreda.NamespaceFromString(DefaultDANamespace).Bytes())
+	header, err := blobClient.Header.NetworkHead(t.Context())
 	require.NoError(t, err)
-	var lastDABlock = startHeight
-	for {
-		blobs, err := blobClient.Blob.GetAll(t.Context(), lastDABlock, []libshare.Namespace{ns})
-		if err != nil {
-			if strings.Contains(err.Error(), "future") {
-				return lastDABlock - 1
-			}
-			t.Fatal("failed to get blobs:", err)
-		}
-		if len(blobs) != 0 && testing.Verbose() {
-			t.Log("+++ DA block: ", lastDABlock, " blobs: ", len(blobs))
-		}
-		lastDABlock++
-	}
+	require.NotNil(t, header)
+	return header.Height
 }
 
 type nodeDetails struct {

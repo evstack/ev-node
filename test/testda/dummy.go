@@ -184,6 +184,11 @@ func (d *DummyDA) GetForcedInclusionNamespace() []byte { return nil }
 // HasForcedInclusionNamespace reports whether forced inclusion is configured.
 func (d *DummyDA) HasForcedInclusionNamespace() bool { return false }
 
+// GetLatestDAHeight returns the current DA height (the latest height available).
+func (d *DummyDA) GetLatestDAHeight(_ context.Context) (uint64, error) {
+	return d.height.Load(), nil
+}
+
 // Get retrieves blobs by ID (stub implementation).
 func (d *DummyDA) Get(_ context.Context, _ []datypes.ID, _ []byte) ([]datypes.Blob, error) {
 	return nil, nil

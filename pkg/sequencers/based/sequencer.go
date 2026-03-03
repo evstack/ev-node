@@ -17,6 +17,7 @@ import (
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	seqcommon "github.com/evstack/ev-node/pkg/sequencers/common"
+	"github.com/evstack/ev-node/pkg/store"
 )
 
 var _ coresequencer.Sequencer = (*BasedSequencer)(nil)
@@ -37,6 +38,8 @@ type BasedSequencer struct {
 	currentBatchTxs [][]byte
 	// DA epoch end time for timestamp calculation
 	currentDAEndTime time.Time
+	// Total number of transactions in the current DA epoch (used for timestamp jitter)
+	currentEpochTxCount uint64
 }
 
 // NewBasedSequencer creates a new based sequencer instance
@@ -49,12 +52,23 @@ func NewBasedSequencer(
 	executor execution.Executor,
 ) (*BasedSequencer, error) {
 	bs := &BasedSequencer{
-		logger:          logger.With().Str("component", "based_sequencer").Logger(),
-		checkpointStore: seqcommon.NewCheckpointStore(db, ds.NewKey("/based/checkpoint")),
-		executor:        executor,
+		logger:           logger.With().Str("component", "based_sequencer").Logger(),
+		checkpointStore:  seqcommon.NewCheckpointStore(db, ds.NewKey("/based/checkpoint")),
+		executor:         executor,
+		currentDAEndTime: genesis.StartTime.UTC(),
 	}
-	// based sequencers need community consensus about the da start height given no submission are done
-	bs.SetDAHeight(genesis.DAStartHeight)
+
+	// Read state from the store to allow nodes to restart as based sequencers on a chain that had ran previously with a different sequencer type, and to initialize the timestamp floor for monotonicity guarantees after restart.
+	initCtx, initCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer initCancel()
+	s := store.New(store.NewEvNodeKVStore(db))
+	daStartHeight := genesis.DAStartHeight
+	if state, err := s.GetState(initCtx); err == nil {
+		if state.DAHeight > 0 {
+			daStartHeight = state.DAHeight // skip already processed epochs
+		}
+	}
+	bs.SetDAHeight(daStartHeight)
 
 	// Load checkpoint from DB, or initialize if none exists
 	loadCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -103,12 +117,11 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 	// If we have no cached transactions or we've consumed all from the current DA epoch,
 	// fetch the next DA epoch
 	if daHeight > 0 && (len(s.currentBatchTxs) == 0 || s.checkpoint.TxIndex >= uint64(len(s.currentBatchTxs))) {
-		daEndTime, daEndHeight, err := s.fetchNextDAEpoch(ctx, req.MaxBytes)
+		daEndHeight, err := s.fetchNextDAEpoch(ctx, req.MaxBytes)
 		if err != nil {
 			return nil, err
 		}
 		daHeight = daEndHeight
-		s.currentDAEndTime = daEndTime
 	}
 
 	// Get remaining transactions from checkpoint position
@@ -152,9 +165,13 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 	}
 doneProcessing:
 
-	// Update checkpoint based on consumed transactions
+	// Update checkpoint based on consumed transactions.
+	// txIndexForTimestamp is captured before the epoch-boundary reset so the
+	// final block of an epoch lands exactly on daEndTime.
+	var txIndexForTimestamp uint64
 	if daHeight > 0 || len(batchTxs) > 0 {
 		s.checkpoint.TxIndex += consumedCount
+		txIndexForTimestamp = s.checkpoint.TxIndex
 
 		// If we've consumed all transactions from this DA epoch, move to next DA epoch
 		if s.checkpoint.TxIndex >= uint64(len(s.currentBatchTxs)) {
@@ -175,14 +192,15 @@ doneProcessing:
 			Msg("updated checkpoint after processing batch")
 	}
 
-	// Calculate timestamp based on remaining transactions after this batch
-	// timestamp corresponds to the last block time of a DA epoch, based on the remaining transactions to be executed
-	// this is done in order to handle the case where a DA epoch must fit in multiple blocks
-	var remainingTxs uint64
-	if len(s.currentBatchTxs) > 0 {
-		remainingTxs = uint64(len(s.currentBatchTxs)) - s.checkpoint.TxIndex
+	// Spread blocks across the DA epoch window to produce monotonically increasing timestamps:
+	//   epochStart     = daEndTime - totalEpochTxs * 1ms
+	//   blockTimestamp = epochStart + txIndexForTimestamp * 1ms
+	epochStart := s.currentDAEndTime.Add(-time.Duration(s.currentEpochTxCount) * time.Millisecond)
+	timestamp := epochStart.Add(time.Duration(txIndexForTimestamp) * time.Millisecond)
+
+	if len(validTxs) == 0 {
+		return nil, block.ErrNoBatch
 	}
-	timestamp := s.currentDAEndTime.Add(-time.Duration(remainingTxs) * time.Millisecond)
 
 	return &coresequencer.GetNextBatchResponse{
 		Batch:     &coresequencer.Batch{Transactions: validTxs},
@@ -202,7 +220,7 @@ func (s *BasedSequencer) getMaxGas(ctx context.Context) uint64 {
 }
 
 // fetchNextDAEpoch fetches transactions from the next DA epoch
-func (s *BasedSequencer) fetchNextDAEpoch(ctx context.Context, maxBytes uint64) (time.Time, uint64, error) {
+func (s *BasedSequencer) fetchNextDAEpoch(ctx context.Context, maxBytes uint64) (uint64, error) {
 	currentDAHeight := s.checkpoint.DAHeight
 
 	s.logger.Debug().
@@ -214,16 +232,16 @@ func (s *BasedSequencer) fetchNextDAEpoch(ctx context.Context, maxBytes uint64) 
 	if err != nil {
 		// Check if forced inclusion is not configured
 		if errors.Is(err, block.ErrForceInclusionNotConfigured) {
-			return time.Time{}, 0, block.ErrForceInclusionNotConfigured
+			return 0, block.ErrForceInclusionNotConfigured
 		} else if errors.Is(err, datypes.ErrHeightFromFuture) {
 			// If we get a height from future error, stay at current position
 			// We'll retry the same height on the next call until DA produces that block
 			s.logger.Debug().
 				Uint64("da_height", currentDAHeight).
 				Msg("DA height from future, waiting for DA to produce block")
-			return time.Time{}, 0, nil
+			return 0, nil
 		}
-		return time.Time{}, 0, fmt.Errorf("failed to retrieve forced inclusion transactions: %w", err)
+		return 0, fmt.Errorf("failed to retrieve forced inclusion transactions: %w", err)
 	}
 
 	// Validate and filter transactions by size
@@ -252,8 +270,13 @@ func (s *BasedSequencer) fetchNextDAEpoch(ctx context.Context, maxBytes uint64) 
 
 	// Cache the transactions for this DA epoch
 	s.currentBatchTxs = validTxs
+	s.currentEpochTxCount = uint64(len(validTxs))
 
-	return forcedTxsEvent.Timestamp.UTC(), forcedTxsEvent.EndDaHeight, nil
+	if daEndTime := forcedTxsEvent.Timestamp.UTC(); daEndTime.After(s.currentDAEndTime) {
+		s.currentDAEndTime = daEndTime
+	}
+
+	return forcedTxsEvent.EndDaHeight, nil
 }
 
 // VerifyBatch verifies a batch of transactions

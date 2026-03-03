@@ -25,7 +25,7 @@ const (
 type BlockData struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Height        uint64                 `protobuf:"varint,1,opt,name=height,proto3" json:"height,omitempty"`
-	Timestamp     int64                  `protobuf:"varint,2,opt,name=timestamp,proto3" json:"timestamp,omitempty"` // Unix timestamp in seconds
+	Timestamp     int64                  `protobuf:"varint,2,opt,name=timestamp,proto3" json:"timestamp,omitempty"` // Unix timestamp in nanoseconds
 	Blobs         [][]byte               `protobuf:"bytes,3,rep,name=blobs,proto3" json:"blobs,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

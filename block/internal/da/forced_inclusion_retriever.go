@@ -163,6 +163,9 @@ func (r *forcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 
 		if result.Code == datypes.StatusNotFound {
 			r.logger.Debug().Uint64("height", h).Msg("no forced inclusion blobs at height")
+			syncFetchedBlocks[h] = &BlockData{
+				Timestamp: result.Timestamp,
+			}
 			continue
 		}
 
@@ -229,6 +232,7 @@ func (r *forcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 			Msg("Failed to retrieve DA epoch.. retrying next iteration")
 
 		return &ForcedInclusionEvent{
+			Timestamp:     event.Timestamp,
 			StartDaHeight: daHeight,
 			EndDaHeight:   daHeight,
 			Txs:           [][]byte{},
