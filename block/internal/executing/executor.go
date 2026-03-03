@@ -637,7 +637,7 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 
 	// For based sequencer, advance safe/finalized since it comes from DA.
 	if e.config.Node.BasedSequencer {
-		if err := e.exec.SetFinal(e.ctx, newHeight); err != nil {
+		if err := e.exec.SetFinal(ctx, newHeight); err != nil {
 			e.sendCriticalError(fmt.Errorf("failed to set final height in based sequencer mode: %w", err))
 			return fmt.Errorf("failed to set final height in based sequencer mode: %w", err)
 		}
