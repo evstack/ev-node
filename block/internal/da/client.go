@@ -396,7 +396,7 @@ func (c *client) Subscribe(ctx context.Context, namespace []byte) (<-chan datype
 }
 
 // extractBlobData extracts raw byte slices from a subscription response,
-// filtering out nil blobs and empty data.
+// filtering out nil blobs, empty data, and blobs exceeding DefaultMaxBlobSize.
 func extractBlobData(resp *blobrpc.SubscriptionResponse) [][]byte {
 	if resp == nil || len(resp.Blobs) == 0 {
 		return nil
@@ -407,7 +407,7 @@ func extractBlobData(resp *blobrpc.SubscriptionResponse) [][]byte {
 			continue
 		}
 		data := blob.Data()
-		if len(data) == 0 {
+		if len(data) == 0 || len(data) > common.DefaultMaxBlobSize {
 			continue
 		}
 		blobs = append(blobs, data)

@@ -170,7 +170,11 @@ func (f *daFollower) followLoop() {
 // A watchdog timer triggers if no events arrive within watchdogTimeout(),
 // causing a reconnect.
 func (f *daFollower) runSubscription() error {
-	headerCh, err := f.client.Subscribe(f.ctx, f.namespace)
+	// Sub-context ensures the merge goroutine is cancelled when this function returns.
+	subCtx, subCancel := context.WithCancel(f.ctx)
+	defer subCancel()
+
+	headerCh, err := f.client.Subscribe(subCtx, f.namespace)
 	if err != nil {
 		return fmt.Errorf("subscribe header namespace: %w", err)
 	}
@@ -178,11 +182,11 @@ func (f *daFollower) runSubscription() error {
 	// If namespaces differ, subscribe to the data namespace too and fan-in.
 	ch := headerCh
 	if !bytes.Equal(f.namespace, f.dataNamespace) {
-		dataCh, err := f.client.Subscribe(f.ctx, f.dataNamespace)
+		dataCh, err := f.client.Subscribe(subCtx, f.dataNamespace)
 		if err != nil {
 			return fmt.Errorf("subscribe data namespace: %w", err)
 		}
-		ch = f.mergeSubscriptions(headerCh, dataCh)
+		ch = f.mergeSubscriptions(subCtx, headerCh, dataCh)
 	}
 
 	watchdogTimeout := f.watchdogTimeout()
@@ -191,8 +195,8 @@ func (f *daFollower) runSubscription() error {
 
 	for {
 		select {
-		case <-f.ctx.Done():
-			return f.ctx.Err()
+		case <-subCtx.Done():
+			return subCtx.Err()
 		case ev, ok := <-ch:
 			if !ok {
 				return errors.New("subscription channel closed")
@@ -205,9 +209,9 @@ func (f *daFollower) runSubscription() error {
 	}
 }
 
-// mergeSubscriptions fans two subscription channels into one, concatenating
-// blobs from both namespaces when events arrive at the same DA height.
+// mergeSubscriptions fans two subscription channels into one.
 func (f *daFollower) mergeSubscriptions(
+	ctx context.Context,
 	headerCh, dataCh <-chan datypes.SubscriptionEvent,
 ) <-chan datypes.SubscriptionEvent {
 	out := make(chan datypes.SubscriptionEvent, 16)
@@ -217,7 +221,7 @@ func (f *daFollower) mergeSubscriptions(
 			var ev datypes.SubscriptionEvent
 			var ok bool
 			select {
-			case <-f.ctx.Done():
+			case <-ctx.Done():
 				return
 			case ev, ok = <-headerCh:
 				if !ok {
@@ -232,7 +236,7 @@ func (f *daFollower) mergeSubscriptions(
 			}
 			select {
 			case out <- ev:
-			case <-f.ctx.Done():
+			case <-ctx.Done():
 				return
 			}
 		}
@@ -244,34 +248,39 @@ func (f *daFollower) mergeSubscriptions(
 // caught up (ev.Height == localDAHeight) and blobs are available, it processes
 // them inline — avoiding a DA re-fetch round trip. Otherwise, it just updates
 // highestSeenDAHeight and lets catchupLoop handle retrieval.
+//
+// Uses CAS on localDAHeight to claim exclusive access to processBlobs,
+// preventing concurrent map access with catchupLoop.
 func (f *daFollower) handleSubscriptionEvent(ev datypes.SubscriptionEvent) {
 	// Always record the highest height we've seen from the subscription.
 	f.updateHighest(ev.Height)
 
-	// Fast path: process blobs inline when caught up.
-	// Only fire when ev.Height == localDAHeight to avoid out-of-order processing.
-	if len(ev.Blobs) > 0 && ev.Height == f.localDAHeight.Load() {
+	// Fast path: try to claim this height for inline processing.
+	// CAS(N, N+1) ensures only one goroutine (followLoop or catchupLoop)
+	// can enter processBlobs for height N.
+	if len(ev.Blobs) > 0 && f.localDAHeight.CompareAndSwap(ev.Height, ev.Height+1) {
 		events := f.retriever.ProcessBlobs(f.ctx, ev.Blobs, ev.Height)
 		for _, event := range events {
 			if err := f.pipeEvent(f.ctx, event); err != nil {
+				// Roll back so catchupLoop can retry this height.
+				f.localDAHeight.Store(ev.Height)
 				f.logger.Warn().Err(err).Uint64("da_height", ev.Height).
 					Msg("failed to pipe inline event, catchup will retry")
-				return // catchupLoop already signaled via updateHighest
+				return
 			}
 		}
-		// Only advance if we produced at least one complete event.
-		// With split namespaces, the first namespace's blobs may not produce
-		// events until the second namespace's blobs arrive at the same height.
 		if len(events) != 0 {
-			f.localDAHeight.Store(ev.Height + 1)
 			f.headReached.Store(true)
 			f.logger.Debug().Uint64("da_height", ev.Height).Int("events", len(events)).
 				Msg("processed subscription blobs inline (fast path)")
+		} else {
+			// No complete events (split namespace, waiting for other half).
+			f.localDAHeight.Store(ev.Height)
 		}
 		return
 	}
 
-	// Slow path: behind or no blobs — catchupLoop will handle via signal from updateHighest.
+	// Slow path: behind, no blobs, or catchupLoop claimed this height.
 }
 
 // updateHighest atomically bumps highestSeenDAHeight and signals catchup if needed.
@@ -282,9 +291,6 @@ func (f *daFollower) updateHighest(height uint64) {
 			return
 		}
 		if f.highestSeenDAHeight.CompareAndSwap(cur, height) {
-			f.logger.Debug().
-				Uint64("da_height", height).
-				Msg("new highest DA height seen from subscription")
 			f.signalCatchup()
 			return
 		}
@@ -344,16 +350,20 @@ func (f *daFollower) runCatchup() {
 			return
 		}
 
-		if err := f.fetchAndPipeHeight(local); err != nil {
-			if !f.waitOnCatchupError(err, local) {
-				return
-			}
-			// Retry the same height after backoff.
+		// CAS claims this height — prevents followLoop from inline-processing
+		if !f.localDAHeight.CompareAndSwap(local, local+1) {
+			// followLoop already advanced past this height via inline processing.
 			continue
 		}
 
-		// Advance local height.
-		f.localDAHeight.Store(local + 1)
+		if err := f.fetchAndPipeHeight(local); err != nil {
+			// Roll back so we can retry after backoff.
+			f.localDAHeight.Store(local)
+			if !f.waitOnCatchupError(err, local) {
+				return
+			}
+			continue
+		}
 	}
 }
 

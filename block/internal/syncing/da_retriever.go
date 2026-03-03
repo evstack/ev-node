@@ -196,6 +196,9 @@ func (r *daRetriever) validateBlobResponse(res datypes.ResultRetrieve, daHeight 
 
 // ProcessBlobs processes raw blob bytes to extract headers and data and returns height events.
 // This is the public interface used by the DAFollower for inline subscription processing.
+//
+// NOT thread-safe: the caller (DAFollower) must ensure exclusive access via CAS
+// on localDAHeight before calling this method.
 func (r *daRetriever) ProcessBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent {
 	return r.processBlobs(ctx, blobs, daHeight)
 }
