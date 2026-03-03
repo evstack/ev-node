@@ -82,3 +82,10 @@ func SplitID(id []byte) (uint64, []byte, error) {
 	commitment := id[8:]
 	return binary.LittleEndian.Uint64(id[:8]), commitment, nil
 }
+
+// SubscriptionEvent is a namespace-agnostic signal that a blob was finalized at
+// Height on the DA layer. Produced by Subscribe and consumed by DA followers.
+type SubscriptionEvent struct {
+	// Height is the DA layer height at which the blob was finalized.
+	Height uint64
+}

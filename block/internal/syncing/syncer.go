@@ -21,7 +21,6 @@ import (
 	"github.com/evstack/ev-node/block/internal/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	"github.com/evstack/ev-node/pkg/config"
-	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/raft"
 	"github.com/evstack/ev-node/pkg/store"
@@ -80,6 +79,9 @@ type Syncer struct {
 	p2pHandler    p2pHandler
 	raftRetriever *raftRetriever
 
+	// DA follower (replaces the old polling daWorkerLoop)
+	daFollower DAFollower
+
 	// Forced inclusion tracking
 	forcedInclusionMu    sync.RWMutex
 	seenBlockTxs         map[string]struct{} // SHA-256 hex of every tx seen in a DA-sourced block
@@ -95,9 +97,6 @@ type Syncer struct {
 
 	// P2P wait coordination
 	p2pWaitState atomic.Value // stores p2pWaitState
-
-	// DA head-reached signal for recovery mode (stays true once DA head is seen)
-	daHeadReached atomic.Bool
 
 	// blockSyncer is the interface used for block sync operations.
 	// defaults to self, but can be wrapped with tracing.
@@ -197,7 +196,20 @@ func (s *Syncer) Start(ctx context.Context) error {
 	// Start main processing loop
 	s.wg.Go(s.processLoop)
 
-	// Start dedicated workers for DA, and pending processing
+	// Start the DA follower (subscribe + catchup) and other workers
+	s.daFollower = NewDAFollower(DAFollowerConfig{
+		Client:        s.daClient,
+		Retriever:     s.daRetriever,
+		Logger:        s.logger,
+		PipeEvent:     s.pipeEvent,
+		Namespace:     s.daClient.GetHeaderNamespace(),
+		StartDAHeight: s.daRetrieverHeight.Load(),
+		DABlockTime:   s.config.DA.BlockTime.Duration,
+	})
+	if err := s.daFollower.Start(s.ctx); err != nil {
+		return fmt.Errorf("failed to start DA follower: %w", err)
+	}
+
 	s.startSyncWorkers()
 
 	s.logger.Info().Msg("syncer started")
@@ -212,6 +224,12 @@ func (s *Syncer) Stop() error {
 
 	s.cancel()
 	s.cancelP2PWait(0)
+
+	// Stop the DA follower first (it owns its own goroutines).
+	if s.daFollower != nil {
+		s.daFollower.Stop()
+	}
+
 	s.wg.Wait()
 
 	// Skip draining if we're shutting down due to a critical error (e.g. execution
@@ -359,112 +377,22 @@ func (s *Syncer) processLoop() {
 }
 
 func (s *Syncer) startSyncWorkers() {
-	s.wg.Add(3)
-	go s.daWorkerLoop()
+	// DA follower is already started in Start().
+	s.wg.Add(2)
 	go s.pendingWorkerLoop()
 	go s.p2pWorkerLoop()
 }
 
-func (s *Syncer) daWorkerLoop() {
-	defer s.wg.Done()
-
-	s.logger.Info().Msg("starting DA worker")
-	defer s.logger.Info().Msg("DA worker stopped")
-
-	for {
-		err := s.fetchDAUntilCaughtUp()
-
-		var backoff time.Duration
-		if err == nil {
-			// No error, means we are caught up.
-			s.daHeadReached.Store(true)
-			backoff = s.config.DA.BlockTime.Duration
-		} else {
-			// Error, back off for a shorter duration.
-			backoff = s.config.DA.BlockTime.Duration
-			if backoff <= 0 {
-				backoff = 2 * time.Second
-			}
-		}
-
-		select {
-		case <-s.ctx.Done():
-			return
-		case <-time.After(backoff):
-		}
-	}
-}
-
-// HasReachedDAHead returns true once the DA worker has reached the DA head.
+// HasReachedDAHead returns true once the DA follower has caught up to the DA head.
 // Once set, it stays true.
 func (s *Syncer) HasReachedDAHead() bool {
-	return s.daHeadReached.Load()
-}
-
-func (s *Syncer) fetchDAUntilCaughtUp() error {
-	for {
-		select {
-		case <-s.ctx.Done():
-			return s.ctx.Err()
-		default:
-		}
-
-		// Check for priority heights from P2P hints first
-		var daHeight uint64
-		if priorityHeight := s.daRetriever.PopPriorityHeight(); priorityHeight > 0 {
-			// Skip if we've already fetched past this height
-			currentHeight := s.daRetrieverHeight.Load()
-			if priorityHeight < currentHeight {
-				continue
-			}
-			daHeight = priorityHeight
-			s.logger.Debug().Uint64("da_height", daHeight).Msg("fetching priority DA height from P2P hint")
-		} else {
-			daHeight = max(s.daRetrieverHeight.Load(), s.cache.DaHeight())
-		}
-
-		events, err := s.daRetriever.RetrieveFromDA(s.ctx, daHeight)
-		if err != nil {
-			switch {
-			case errors.Is(err, datypes.ErrBlobNotFound):
-				s.daRetrieverHeight.Store(daHeight + 1)
-				continue // Fetch next height immediately
-			case errors.Is(err, datypes.ErrHeightFromFuture):
-				s.logger.Debug().Err(err).Uint64("da_height", daHeight).Msg("DA is ahead of local target; backing off future height requests")
-				return nil // Caught up
-			default:
-				s.logger.Error().Err(err).Uint64("da_height", daHeight).Msg("failed to retrieve from DA; backing off DA requests")
-				return err // Other errors
-			}
-		}
-
-		if len(events) == 0 {
-			// This can happen if RetrieveFromDA returns no events and no error.
-			s.logger.Debug().Uint64("da_height", daHeight).Msg("no events returned from DA, but no error either.")
-		}
-
-		// Process DA events
-		for _, event := range events {
-			if err := s.pipeEvent(s.ctx, event); err != nil {
-				return err
-			}
-		}
-
-		// Update DA retrieval height on successful retrieval
-		// For priority fetches, only update if the priority height is ahead of current
-		// For sequential fetches, always increment
-		newHeight := daHeight + 1
-		for {
-			current := s.daRetrieverHeight.Load()
-			if newHeight <= current {
-				break // Already at or past this height
-			}
-			if s.daRetrieverHeight.CompareAndSwap(current, newHeight) {
-				break
-			}
-		}
+	if s.daFollower != nil {
+		return s.daFollower.HasReachedHead()
 	}
+	return false
 }
+
+// fetchDAUntilCaughtUp was removed — the DAFollower handles this concern.
 
 func (s *Syncer) pendingWorkerLoop() {
 	defer s.wg.Done()

@@ -42,6 +42,11 @@ type DummyDA struct {
 	tickerStop chan struct{}
 }
 
+func (d *DummyDA) Subscribe(ctx context.Context, namespace []byte) (<-chan datypes.SubscriptionEvent, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
 // Option configures a DummyDA instance.
 type Option func(*DummyDA)
 

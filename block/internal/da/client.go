@@ -350,6 +350,48 @@ func (c *client) HasForcedInclusionNamespace() bool {
 	return c.hasForcedNamespace
 }
 
+// Subscribe subscribes to blobs in the given namespace via the celestia-node
+// Subscribe API. It returns a channel that emits a SubscriptionEvent for every
+// DA block containing a matching blob. The channel is closed when ctx is
+// cancelled. The caller must drain the channel after cancellation to avoid
+// goroutine leaks.
+func (c *client) Subscribe(ctx context.Context, namespace []byte) (<-chan datypes.SubscriptionEvent, error) {
+	ns, err := share.NewNamespaceFromBytes(namespace)
+	if err != nil {
+		return nil, fmt.Errorf("invalid namespace: %w", err)
+	}
+
+	rawCh, err := c.blobAPI.Subscribe(ctx, ns)
+	if err != nil {
+		return nil, fmt.Errorf("blob subscribe: %w", err)
+	}
+
+	out := make(chan datypes.SubscriptionEvent, 16)
+	go func() {
+		defer close(out)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case resp, ok := <-rawCh:
+				if !ok {
+					return
+				}
+				if resp == nil {
+					continue
+				}
+				select {
+				case out <- datypes.SubscriptionEvent{Height: resp.Height}:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
+	}()
+
+	return out, nil
+}
+
 // Get fetches blobs by their IDs. Used for visualization and fetching specific blobs.
 func (c *client) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
 	if len(ids) == 0 {

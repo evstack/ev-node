@@ -416,12 +416,26 @@ func TestSyncLoopPersistState(t *testing.T) {
 		Return(nil, datypes.ErrHeightFromFuture)
 
 	go syncerInst1.processLoop()
+
+	// Create and start a DAFollower so DA retrieval actually happens.
+	follower1 := NewDAFollower(DAFollowerConfig{
+		Retriever:     daRtrMock,
+		Logger:        zerolog.Nop(),
+		PipeEvent:     syncerInst1.pipeEvent,
+		Namespace:     []byte("ns"),
+		StartDAHeight: syncerInst1.daRetrieverHeight.Load(),
+		DABlockTime:   cfg.DA.BlockTime.Duration,
+	}).(*daFollower)
+	follower1.ctx, follower1.cancel = context.WithCancel(ctx)
+	// Set highest so catchup runs through all mocked heights.
+	follower1.highestSeenDAHeight.Store(myFutureDAHeight)
+	go follower1.runCatchup()
 	syncerInst1.startSyncWorkers()
 	syncerInst1.wg.Wait()
 	requireEmptyChan(t, errorCh)
 
 	t.Log("sync workers on instance1 completed")
-	require.Equal(t, myFutureDAHeight, syncerInst1.daRetrieverHeight.Load())
+	require.Equal(t, myFutureDAHeight, follower1.localDAHeight.Load())
 
 	// wait for all events consumed
 	require.NoError(t, cm.SaveToStore())
@@ -479,6 +493,19 @@ func TestSyncLoopPersistState(t *testing.T) {
 
 	// when it starts, it should fetch from the last height it stopped at
 	t.Log("sync workers on instance2 started")
+
+	// Create a follower for instance 2.
+	follower2 := NewDAFollower(DAFollowerConfig{
+		Retriever:     daRtrMock,
+		Logger:        zerolog.Nop(),
+		PipeEvent:     syncerInst2.pipeEvent,
+		Namespace:     []byte("ns"),
+		StartDAHeight: syncerInst2.daRetrieverHeight.Load(),
+		DABlockTime:   cfg.DA.BlockTime.Duration,
+	}).(*daFollower)
+	follower2.ctx, follower2.cancel = context.WithCancel(ctx)
+	follower2.highestSeenDAHeight.Store(syncerInst2.daRetrieverHeight.Load() + 1)
+	go follower2.runCatchup()
 	syncerInst2.startSyncWorkers()
 	syncerInst2.wg.Wait()
 

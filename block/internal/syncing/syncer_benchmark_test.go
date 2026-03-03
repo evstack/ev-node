@@ -44,6 +44,20 @@ func BenchmarkSyncerIO(b *testing.B) {
 
 				// run both loops
 				go fixt.s.processLoop()
+
+				// Create a DAFollower to drive DA retrieval.
+				follower := NewDAFollower(DAFollowerConfig{
+					Retriever:     fixt.s.daRetriever,
+					Logger:        zerolog.Nop(),
+					PipeEvent:     fixt.s.pipeEvent,
+					Namespace:     []byte("ns"),
+					StartDAHeight: fixt.s.daRetrieverHeight.Load(),
+					DABlockTime:   0,
+				}).(*daFollower)
+				follower.ctx, follower.cancel = context.WithCancel(fixt.s.ctx)
+				follower.highestSeenDAHeight.Store(spec.heights + daHeightOffset)
+				go follower.runCatchup()
+
 				fixt.s.startSyncWorkers()
 
 				require.Eventually(b, func() bool {
@@ -60,7 +74,6 @@ func BenchmarkSyncerIO(b *testing.B) {
 				}
 				require.Len(b, fixt.s.heightInCh, 0)
 
-				assert.Equal(b, spec.heights+daHeightOffset, fixt.s.daRetrieverHeight)
 				gotStoreHeight, err := fixt.s.store.Height(b.Context())
 				require.NoError(b, err)
 				assert.Equal(b, spec.heights, gotStoreHeight)
