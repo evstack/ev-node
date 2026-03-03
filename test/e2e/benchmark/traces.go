@@ -3,10 +3,199 @@
 package benchmark
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strings"
+	"testing"
 	"time"
+
+	"github.com/celestiaorg/tastora/framework/docker/jaeger"
 
 	e2e "github.com/evstack/ev-node/test/e2e"
 )
+
+// traceProvider abstracts trace collection so tests work against a local Jaeger
+// instance or a remote VictoriaTraces deployment.
+type traceProvider interface {
+	collectSpans(ctx context.Context, serviceName string) ([]e2e.TraceSpan, error)
+	tryCollectSpans(ctx context.Context, serviceName string) []e2e.TraceSpan
+}
+
+// jaegerTraceProvider collects spans from a locally-provisioned Jaeger node.
+type jaegerTraceProvider struct {
+	node *jaeger.Node
+	t    testing.TB
+}
+
+func (j *jaegerTraceProvider) collectSpans(ctx context.Context, serviceName string) ([]e2e.TraceSpan, error) {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+
+	ok, err := j.node.External.WaitForTraces(ctx, serviceName, 1, 2*time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("error waiting for %s traces; UI: %s: %w", serviceName, j.node.External.QueryURL(), err)
+	}
+	if !ok {
+		return nil, fmt.Errorf("expected at least one trace from %s; UI: %s", serviceName, j.node.External.QueryURL())
+	}
+
+	traces, err := j.node.External.Traces(ctx, serviceName, 10000)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch %s traces: %w", serviceName, err)
+	}
+	return toTraceSpans(extractSpansFromTraces(traces)), nil
+}
+
+func (j *jaegerTraceProvider) tryCollectSpans(ctx context.Context, serviceName string) []e2e.TraceSpan {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+
+	ok, err := j.node.External.WaitForTraces(ctx, serviceName, 1, 2*time.Second)
+	if err != nil || !ok {
+		j.t.Logf("warning: could not collect %s traces (err=%v, ok=%v)", serviceName, err, ok)
+		return nil
+	}
+
+	traces, err := j.node.External.Traces(ctx, serviceName, 10000)
+	if err != nil {
+		j.t.Logf("warning: failed to fetch %s traces: %v", serviceName, err)
+		return nil
+	}
+
+	spans := toTraceSpans(extractSpansFromTraces(traces))
+	j.t.Logf("collected %d %s spans", len(spans), serviceName)
+	return spans
+}
+
+// victoriaTraceProvider collects spans from a VictoriaTraces instance via its
+// Jaeger-compatible HTTP API.
+type victoriaTraceProvider struct {
+	queryURL string
+	t        testing.TB
+}
+
+func (v *victoriaTraceProvider) collectSpans(ctx context.Context, serviceName string) ([]e2e.TraceSpan, error) {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+
+	var spans []e2e.TraceSpan
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		var err error
+		spans, err = v.fetchAllSpans(ctx, serviceName)
+		if err != nil {
+			return nil, err
+		}
+		if len(spans) > 0 {
+			return spans, nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("timed out waiting for %s traces from %s: %w", serviceName, v.queryURL, ctx.Err())
+		case <-ticker.C:
+		}
+	}
+}
+
+func (v *victoriaTraceProvider) tryCollectSpans(ctx context.Context, serviceName string) []e2e.TraceSpan {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+
+	var spans []e2e.TraceSpan
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		var err error
+		spans, err = v.fetchAllSpans(ctx, serviceName)
+		if err != nil {
+			v.t.Logf("warning: failed to fetch %s traces: %v", serviceName, err)
+			return nil
+		}
+		if len(spans) > 0 {
+			v.t.Logf("collected %d %s spans", len(spans), serviceName)
+			return spans
+		}
+
+		select {
+		case <-ctx.Done():
+			v.t.Logf("warning: timed out waiting for %s traces from %s", serviceName, v.queryURL)
+			return nil
+		case <-ticker.C:
+		}
+	}
+}
+
+const victoriaBatchSize = 1000
+
+// fetchAllSpans paginates through VictoriaTraces results using time-windowed
+// batches. It stops when a page returns fewer results than the batch size.
+func (v *victoriaTraceProvider) fetchAllSpans(ctx context.Context, serviceName string) ([]e2e.TraceSpan, error) {
+	var allSpans []e2e.TraceSpan
+	// start from 1 hour ago to catch recent traces
+	end := time.Now()
+	start := end.Add(-1 * time.Hour)
+
+	for {
+		traces, err := v.fetchTraces(ctx, serviceName, victoriaBatchSize, start, end)
+		if err != nil {
+			return nil, err
+		}
+
+		batch := toTraceSpans(extractSpansFromTraces(traces))
+		allSpans = append(allSpans, batch...)
+
+		if len(batch) < victoriaBatchSize {
+			break
+		}
+
+		// slide the window forward for the next page by using the end
+		// time of the current window; VictoriaTraces deduplicates so
+		// overlapping boundaries are safe.
+		start = end
+		end = time.Now()
+	}
+
+	return allSpans, nil
+}
+
+// jaegerAPIResponse is the envelope returned by Jaeger-compatible query APIs.
+type jaegerAPIResponse struct {
+	Data []any `json:"data"`
+}
+
+func (v *victoriaTraceProvider) fetchTraces(ctx context.Context, serviceName string, limit int, start, end time.Time) ([]any, error) {
+	url := fmt.Sprintf("%s/select/jaeger/api/traces?service=%s&limit=%d&start=%d&end=%d",
+		strings.TrimRight(v.queryURL, "/"), serviceName, limit,
+		start.UnixMicro(), end.UnixMicro())
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating request: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetching traces from %s: %w", url, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status %d from %s", resp.StatusCode, url)
+	}
+
+	var apiResp jaegerAPIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		return nil, fmt.Errorf("decoding response from %s: %w", url, err)
+	}
+
+	return apiResp.Data, nil
+}
 
 // jaegerSpan holds the fields we extract from Jaeger's untyped JSON response.
 type jaegerSpan struct {

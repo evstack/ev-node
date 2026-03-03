@@ -3,7 +3,6 @@
 package benchmark
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -40,9 +39,7 @@ func (s *SpamoorSuite) SetupTest() {
 
 // env holds a fully-wired environment created by setupEnv.
 type env struct {
-	jaeger     *jaeger.Node
-	evmEnv     *e2e.EVMEnv
-	sut        *e2e.SystemUnderTest
+	traces     traceProvider
 	spamoorAPI *spamoor.API
 	ethClient  *ethclient.Client
 }
@@ -62,10 +59,19 @@ func rethTag() string {
 	return defaultRethTag
 }
 
-// setupEnv creates a Jaeger + reth + sequencer + Spamoor environment for
+// setupEnv dispatches to either setupExternalEnv or setupLocalEnv based on
+// the BENCH_ETH_RPC_URL environment variable.
+func (s *SpamoorSuite) setupEnv(cfg config) *env {
+	if rpcURL := os.Getenv("BENCH_ETH_RPC_URL"); rpcURL != "" {
+		return s.setupExternalEnv(cfg, rpcURL)
+	}
+	return s.setupLocalEnv(cfg)
+}
+
+// setupLocalEnv creates a Jaeger + reth + sequencer + Spamoor environment for
 // a single test. Each call spins up isolated infrastructure so tests
 // can't interfere with each other.
-func (s *SpamoorSuite) setupEnv(cfg config) *env {
+func (s *SpamoorSuite) setupLocalEnv(cfg config) *env {
 	t := s.T()
 	ctx := t.Context()
 	sut := e2e.NewSystemUnderTest(t)
@@ -139,9 +145,53 @@ func (s *SpamoorSuite) setupEnv(cfg config) *env {
 	requireHostUp(t, apiAddr+"/api/spammers", 30*time.Second)
 
 	return &env{
-		jaeger:     jg,
-		evmEnv:     evmEnv,
-		sut:        sut,
+		traces:     &jaegerTraceProvider{node: jg, t: t},
+		spamoorAPI: spNode.API(),
+		ethClient:  ethClient,
+	}
+}
+
+// setupExternalEnv connects to pre-deployed infrastructure identified by
+// rpcURL. Only spamoor is provisioned by the test; reth, DA, and sequencer
+// are assumed to already be running.
+func (s *SpamoorSuite) setupExternalEnv(cfg config, rpcURL string) *env {
+	t := s.T()
+	ctx := t.Context()
+	_ = cfg // serviceName not needed for external infra setup
+
+	t.Logf("external mode: using RPC %s", rpcURL)
+
+	// eth client
+	ethClient, err := ethclient.Dial(rpcURL)
+	s.Require().NoError(err, "failed to dial external RPC %s", rpcURL)
+	t.Cleanup(func() { ethClient.Close() })
+
+	// spamoor — connects to the external RPC
+	spBuilder := spamoor.NewNodeBuilder(t.Name()).
+		WithDockerClient(s.dockerCli).
+		WithDockerNetworkID(s.networkID).
+		WithLogger(zaptest.NewLogger(t)).
+		WithRPCHosts(rpcURL).
+		WithPrivateKey(e2e.TestPrivateKey).
+		WithAdditionalStartArgs("--slot-duration", "100ms", "--startup-delay", "0")
+
+	spNode, err := spBuilder.Build(ctx)
+	s.Require().NoError(err, "failed to build spamoor node")
+	t.Cleanup(func() { _ = spNode.Remove(t.Context()) })
+	s.Require().NoError(spNode.Start(ctx), "failed to start spamoor node")
+
+	spInfo, err := spNode.GetNetworkInfo(ctx)
+	s.Require().NoError(err, "failed to get spamoor network info")
+	apiAddr := "http://127.0.0.1:" + spInfo.External.Ports.HTTP
+	requireHostUp(t, apiAddr+"/api/spammers", 30*time.Second)
+
+	// trace provider
+	traceURL := os.Getenv("BENCH_TRACE_QUERY_URL")
+	s.Require().NotEmpty(traceURL, "BENCH_TRACE_QUERY_URL must be set in external mode")
+	t.Logf("external mode: using trace query URL %s", traceURL)
+
+	return &env{
+		traces:     &victoriaTraceProvider{queryURL: traceURL, t: t},
 		spamoorAPI: spNode.API(),
 		ethClient:  ethClient,
 	}
@@ -159,55 +209,22 @@ func (tr *traceResult) allSpans() []e2e.TraceSpan {
 }
 
 // collectTraces fetches ev-node traces (required) and ev-reth traces (optional)
-// from Jaeger, then prints reports for both.
+// from the configured trace provider, then prints reports for both.
 func (s *SpamoorSuite) collectTraces(e *env, serviceName string) *traceResult {
 	t := s.T()
+	ctx := t.Context()
+
+	evNodeSpans, err := e.traces.collectSpans(ctx, serviceName)
+	s.Require().NoError(err, "failed to collect %s traces", serviceName)
+
 	tr := &traceResult{
-		evNode: s.collectServiceTraces(e, serviceName),
-		evReth: s.tryCollectServiceTraces(e, "ev-reth"),
+		evNode: evNodeSpans,
+		evReth: e.traces.tryCollectSpans(ctx, "ev-reth"),
 	}
+
 	e2e.PrintTraceReport(t, serviceName, tr.evNode)
 	if len(tr.evReth) > 0 {
 		e2e.PrintTraceReport(t, "ev-reth", tr.evReth)
 	}
 	return tr
-}
-
-// collectServiceTraces fetches traces from Jaeger for the given service and returns the spans.
-func (s *SpamoorSuite) collectServiceTraces(e *env, serviceName string) []e2e.TraceSpan {
-	ctx, cancel := context.WithTimeout(s.T().Context(), 3*time.Minute)
-	defer cancel()
-
-	ok, err := e.jaeger.External.WaitForTraces(ctx, serviceName, 1, 2*time.Second)
-	s.Require().NoError(err, "error waiting for %s traces; UI: %s", serviceName, e.jaeger.External.QueryURL())
-	s.Require().True(ok, "expected at least one trace from %s; UI: %s", serviceName, e.jaeger.External.QueryURL())
-
-	traces, err := e.jaeger.External.Traces(ctx, serviceName, 10000)
-	s.Require().NoError(err, "failed to fetch %s traces", serviceName)
-
-	return toTraceSpans(extractSpansFromTraces(traces))
-}
-
-// tryCollectServiceTraces fetches traces from Jaeger for the given service,
-// returning nil instead of failing the test if traces are unavailable.
-func (s *SpamoorSuite) tryCollectServiceTraces(e *env, serviceName string) []e2e.TraceSpan {
-	t := s.T()
-	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Minute)
-	defer cancel()
-
-	ok, err := e.jaeger.External.WaitForTraces(ctx, serviceName, 1, 2*time.Second)
-	if err != nil || !ok {
-		t.Logf("warning: could not collect %s traces (err=%v, ok=%v)", serviceName, err, ok)
-		return nil
-	}
-
-	traces, err := e.jaeger.External.Traces(ctx, serviceName, 10000)
-	if err != nil {
-		t.Logf("warning: failed to fetch %s traces: %v", serviceName, err)
-		return nil
-	}
-
-	spans := toTraceSpans(extractSpansFromTraces(traces))
-	t.Logf("collected %d %s spans", len(spans), serviceName)
-	return spans
 }
