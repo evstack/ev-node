@@ -1,8 +1,10 @@
 package syncing
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -45,6 +47,9 @@ type daFollower struct {
 
 	// Namespace to subscribe on (header namespace).
 	namespace []byte
+	// dataNamespace is the data namespace (may equal namespace when header+data
+	// share the same namespace). When different, we subscribe to both and merge.
+	dataNamespace []byte
 
 	// localDAHeight is only written by catchupLoop and read by followLoop
 	// to determine whether a catchup is needed.
@@ -76,18 +81,24 @@ type DAFollowerConfig struct {
 	Logger        zerolog.Logger
 	PipeEvent     func(ctx context.Context, event common.DAHeightEvent) error
 	Namespace     []byte
+	DataNamespace []byte // may be nil or equal to Namespace
 	StartDAHeight uint64
 	DABlockTime   time.Duration
 }
 
 // NewDAFollower creates a new daFollower.
 func NewDAFollower(cfg DAFollowerConfig) DAFollower {
+	dataNs := cfg.DataNamespace
+	if len(dataNs) == 0 {
+		dataNs = cfg.Namespace
+	}
 	f := &daFollower{
 		client:        cfg.Client,
 		retriever:     cfg.Retriever,
 		logger:        cfg.Logger.With().Str("component", "da_follower").Logger(),
 		pipeEvent:     cfg.PipeEvent,
 		namespace:     cfg.Namespace,
+		dataNamespace: dataNs,
 		catchupSignal: make(chan struct{}, 1),
 		daBlockTime:   cfg.DABlockTime,
 	}
@@ -154,12 +165,22 @@ func (f *daFollower) followLoop() {
 	}
 }
 
-// runSubscription opens a single subscription and processes events until the
-// channel is closed or an error occurs.
+// runSubscription opens subscriptions on both header and data namespaces (if
+// different) and processes events until a channel is closed or an error occurs.
 func (f *daFollower) runSubscription() error {
-	ch, err := f.client.Subscribe(f.ctx, f.namespace)
+	headerCh, err := f.client.Subscribe(f.ctx, f.namespace)
 	if err != nil {
-		return err
+		return fmt.Errorf("subscribe header namespace: %w", err)
+	}
+
+	// If namespaces differ, subscribe to the data namespace too and fan-in.
+	ch := headerCh
+	if !bytes.Equal(f.namespace, f.dataNamespace) {
+		dataCh, err := f.client.Subscribe(f.ctx, f.dataNamespace)
+		if err != nil {
+			return fmt.Errorf("subscribe data namespace: %w", err)
+		}
+		ch = f.mergeSubscriptions(headerCh, dataCh)
 	}
 
 	for {
@@ -173,6 +194,41 @@ func (f *daFollower) runSubscription() error {
 			f.handleSubscriptionEvent(ev)
 		}
 	}
+}
+
+// mergeSubscriptions fans two subscription channels into one, concatenating
+// blobs from both namespaces when events arrive at the same DA height.
+func (f *daFollower) mergeSubscriptions(
+	headerCh, dataCh <-chan datypes.SubscriptionEvent,
+) <-chan datypes.SubscriptionEvent {
+	out := make(chan datypes.SubscriptionEvent, 16)
+	go func() {
+		defer close(out)
+		for headerCh != nil || dataCh != nil {
+			var ev datypes.SubscriptionEvent
+			var ok bool
+			select {
+			case <-f.ctx.Done():
+				return
+			case ev, ok = <-headerCh:
+				if !ok {
+					headerCh = nil
+					continue
+				}
+			case ev, ok = <-dataCh:
+				if !ok {
+					dataCh = nil
+					continue
+				}
+			}
+			select {
+			case out <- ev:
+			case <-f.ctx.Done():
+				return
+			}
+		}
+	}()
+	return out
 }
 
 // handleSubscriptionEvent processes a subscription event. When the follower is
@@ -194,11 +250,15 @@ func (f *daFollower) handleSubscriptionEvent(ev datypes.SubscriptionEvent) {
 				return // catchupLoop already signaled via updateHighest
 			}
 		}
-		// Advance local height — we processed this height inline.
-		f.localDAHeight.Store(ev.Height + 1)
-		f.headReached.Store(true)
-		f.logger.Debug().Uint64("da_height", ev.Height).Int("events", len(events)).
-			Msg("processed subscription blobs inline (fast path)")
+		// Only advance if we produced at least one complete event.
+		// With split namespaces, the first namespace's blobs may not produce
+		// events until the second namespace's blobs arrive at the same height.
+		if len(events) != 0 {
+			f.localDAHeight.Store(ev.Height + 1)
+			f.headReached.Store(true)
+			f.logger.Debug().Uint64("da_height", ev.Height).Int("events", len(events)).
+				Msg("processed subscription blobs inline (fast path)")
+		}
 		return
 	}
 

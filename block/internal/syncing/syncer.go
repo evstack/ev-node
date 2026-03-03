@@ -203,6 +203,7 @@ func (s *Syncer) Start(ctx context.Context) error {
 		Logger:        s.logger,
 		PipeEvent:     s.pipeEvent,
 		Namespace:     s.daClient.GetHeaderNamespace(),
+		DataNamespace: s.daClient.GetDataNamespace(),
 		StartDAHeight: s.daRetrieverHeight.Load(),
 		DABlockTime:   s.config.DA.BlockTime.Duration,
 	})
