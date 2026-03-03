@@ -161,6 +161,9 @@ func (s *SpamoorSuite) setupExternalEnv(cfg config, rpcURL string) *env {
 
 	t.Logf("external mode: using RPC %s", rpcURL)
 
+	privateKey := os.Getenv("BENCH_PRIVATE_KEY")
+	s.Require().NotEmpty(privateKey, "BENCH_PRIVATE_KEY must be set in external mode")
+
 	// eth client
 	ethClient, err := ethclient.Dial(rpcURL)
 	s.Require().NoError(err, "failed to dial external RPC %s", rpcURL)
@@ -172,7 +175,7 @@ func (s *SpamoorSuite) setupExternalEnv(cfg config, rpcURL string) *env {
 		WithDockerNetworkID(s.networkID).
 		WithLogger(zaptest.NewLogger(t)).
 		WithRPCHosts(rpcURL).
-		WithPrivateKey(e2e.TestPrivateKey).
+		WithPrivateKey(privateKey).
 		WithAdditionalStartArgs("--slot-duration", "100ms", "--startup-delay", "0")
 
 	spNode, err := spBuilder.Build(ctx)
