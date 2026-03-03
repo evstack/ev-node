@@ -200,7 +200,7 @@ func deleteAllSpammers(api *spamoor.API) error {
 
 // waitForDrain polls the latest block until consecutiveEmpty consecutive empty
 // blocks are observed, indicating the mempool has drained.
-func waitForDrain(ctx context.Context, log func(string, ...any), client *ethclient.Client, consecutiveEmpty int) {
+func waitForDrain(ctx context.Context, log func(string, ...any), client *ethclient.Client, consecutiveEmpty int) error {
 	var emptyRun int
 	var lastBlock uint64
 	ticker := time.NewTicker(200 * time.Millisecond)
@@ -209,8 +209,7 @@ func waitForDrain(ctx context.Context, log func(string, ...any), client *ethclie
 	for {
 		select {
 		case <-ctx.Done():
-			log("drain timeout after %d consecutive empty blocks (needed %d)", emptyRun, consecutiveEmpty)
-			return
+			return fmt.Errorf("drain timeout after %d consecutive empty blocks (needed %d): %w", emptyRun, consecutiveEmpty, ctx.Err())
 		case <-ticker.C:
 			header, err := client.HeaderByNumber(ctx, nil)
 			if err != nil {
@@ -235,7 +234,7 @@ func waitForDrain(ctx context.Context, log func(string, ...any), client *ethclie
 
 			if emptyRun >= consecutiveEmpty {
 				log("mempool drained: %d consecutive empty blocks at block %d", emptyRun, num)
-				return
+				return nil
 			}
 		}
 	}
@@ -282,15 +281,16 @@ func (m *blockMetrics) summarize() *blockMetricsSummary {
 	gasP50, gasP99 := m.gasPerBlockStats()
 	txP50, txP99 := m.txPerBlockStats()
 
-	var blocksPerSec float64
+	var blocksPerSec, achievedTPS float64
 	if ss > 0 {
 		blocksPerSec = float64(m.BlockCount) / ss.Seconds()
+		achievedTPS = float64(m.TotalTxCount) / ss.Seconds()
 	}
 
 	return &blockMetricsSummary{
 		SteadyState:   ss,
 		AchievedMGas:  mgasPerSec(m.TotalGasUsed, ss),
-		AchievedTPS:   float64(m.TotalTxCount) / ss.Seconds(),
+		AchievedTPS:   achievedTPS,
 		IntervalP50:   intervalP50,
 		IntervalP99:   intervalP99,
 		IntervalMax:   intervalMax,
