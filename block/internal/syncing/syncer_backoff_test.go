@@ -256,6 +256,112 @@ func TestDAFollower_CatchupThenReachHead(t *testing.T) {
 	})
 }
 
+// TestDAFollower_InlineProcessing verifies the fast path: when the subscription
+// delivers blobs at the current localDAHeight, handleSubscriptionEvent processes
+// them inline via ProcessBlobs (not RetrieveFromDA).
+func TestDAFollower_InlineProcessing(t *testing.T) {
+	t.Run("processes_blobs_inline_when_caught_up", func(t *testing.T) {
+		daRetriever := NewMockDARetriever(t)
+
+		var pipedEvents []common.DAHeightEvent
+		pipeEvent := func(_ context.Context, ev common.DAHeightEvent) error {
+			pipedEvents = append(pipedEvents, ev)
+			return nil
+		}
+
+		follower := NewDAFollower(DAFollowerConfig{
+			Retriever:     daRetriever,
+			Logger:        zerolog.Nop(),
+			PipeEvent:     pipeEvent,
+			Namespace:     []byte("ns"),
+			StartDAHeight: 10,
+			DABlockTime:   500 * time.Millisecond,
+		}).(*daFollower)
+
+		follower.ctx, follower.cancel = context.WithCancel(t.Context())
+		defer follower.cancel()
+
+		blobs := [][]byte{[]byte("header-blob"), []byte("data-blob")}
+		expectedEvents := []common.DAHeightEvent{
+			{DaHeight: 10, Source: common.SourceDA},
+		}
+
+		// ProcessBlobs should be called (not RetrieveFromDA)
+		daRetriever.On("ProcessBlobs", mock.Anything, blobs, uint64(10)).
+			Return(expectedEvents).Once()
+
+		// Simulate subscription event at the current localDAHeight
+		follower.handleSubscriptionEvent(datypes.SubscriptionEvent{
+			Height: 10,
+			Blobs:  blobs,
+		})
+
+		// Verify: ProcessBlobs was called, events were piped, height advanced
+		require.Len(t, pipedEvents, 1, "should pipe 1 event from inline processing")
+		assert.Equal(t, uint64(10), pipedEvents[0].DaHeight)
+		assert.Equal(t, uint64(11), follower.localDAHeight.Load(), "localDAHeight should advance past processed height")
+		assert.True(t, follower.HasReachedHead(), "should mark head as reached after inline processing")
+	})
+
+	t.Run("falls_through_to_catchup_when_behind", func(t *testing.T) {
+		daRetriever := NewMockDARetriever(t)
+
+		pipeEvent := func(_ context.Context, _ common.DAHeightEvent) error { return nil }
+
+		follower := NewDAFollower(DAFollowerConfig{
+			Retriever:     daRetriever,
+			Logger:        zerolog.Nop(),
+			PipeEvent:     pipeEvent,
+			Namespace:     []byte("ns"),
+			StartDAHeight: 10,
+			DABlockTime:   500 * time.Millisecond,
+		}).(*daFollower)
+
+		follower.ctx, follower.cancel = context.WithCancel(t.Context())
+		defer follower.cancel()
+
+		// Subscription reports height 15 but local is at 10 — should NOT process inline
+		follower.handleSubscriptionEvent(datypes.SubscriptionEvent{
+			Height: 15,
+			Blobs:  [][]byte{[]byte("blob")},
+		})
+
+		// ProcessBlobs should NOT have been called
+		daRetriever.AssertNotCalled(t, "ProcessBlobs", mock.Anything, mock.Anything, mock.Anything)
+		assert.Equal(t, uint64(10), follower.localDAHeight.Load(), "localDAHeight should not change")
+		assert.Equal(t, uint64(15), follower.highestSeenDAHeight.Load(), "highestSeen should be updated")
+	})
+
+	t.Run("falls_through_when_no_blobs", func(t *testing.T) {
+		daRetriever := NewMockDARetriever(t)
+
+		pipeEvent := func(_ context.Context, _ common.DAHeightEvent) error { return nil }
+
+		follower := NewDAFollower(DAFollowerConfig{
+			Retriever:     daRetriever,
+			Logger:        zerolog.Nop(),
+			PipeEvent:     pipeEvent,
+			Namespace:     []byte("ns"),
+			StartDAHeight: 10,
+			DABlockTime:   500 * time.Millisecond,
+		}).(*daFollower)
+
+		follower.ctx, follower.cancel = context.WithCancel(t.Context())
+		defer follower.cancel()
+
+		// Subscription at current height but no blobs — should fall through
+		follower.handleSubscriptionEvent(datypes.SubscriptionEvent{
+			Height: 10,
+			Blobs:  nil,
+		})
+
+		// ProcessBlobs should NOT have been called
+		daRetriever.AssertNotCalled(t, "ProcessBlobs", mock.Anything, mock.Anything, mock.Anything)
+		assert.Equal(t, uint64(10), follower.localDAHeight.Load(), "localDAHeight should not change")
+		assert.Equal(t, uint64(10), follower.highestSeenDAHeight.Load(), "highestSeen should be updated")
+	})
+}
+
 // backoffTestGenesis creates a test genesis for the backoff tests.
 func backoffTestGenesis(addr []byte) genesis.Genesis {
 	return genesis.Genesis{

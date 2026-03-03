@@ -24,6 +24,9 @@ import (
 type DARetriever interface {
 	// RetrieveFromDA retrieves blocks from the specified DA height and returns height events
 	RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error)
+	// ProcessBlobs parses raw blob bytes at a given DA height into height events.
+	// Used by the DAFollower to process subscription blobs inline without re-fetching.
+	ProcessBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent
 	// QueuePriorityHeight queues a DA height for priority retrieval (from P2P hints).
 	// These heights take precedence over sequential fetching.
 	QueuePriorityHeight(daHeight uint64)
@@ -189,6 +192,12 @@ func (r *daRetriever) validateBlobResponse(res datypes.ResultRetrieve, daHeight 
 	default:
 		return nil
 	}
+}
+
+// ProcessBlobs processes raw blob bytes to extract headers and data and returns height events.
+// This is the public interface used by the DAFollower for inline subscription processing.
+func (r *daRetriever) ProcessBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent {
+	return r.processBlobs(ctx, blobs, daHeight)
 }
 
 // processBlobs processes retrieved blobs to extract headers and data and returns height events

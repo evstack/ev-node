@@ -381,7 +381,10 @@ func (c *client) Subscribe(ctx context.Context, namespace []byte) (<-chan datype
 					continue
 				}
 				select {
-				case out <- datypes.SubscriptionEvent{Height: resp.Height}:
+				case out <- datypes.SubscriptionEvent{
+					Height: resp.Height,
+					Blobs:  extractBlobData(resp),
+				}:
 				case <-ctx.Done():
 					return
 				}
@@ -390,6 +393,26 @@ func (c *client) Subscribe(ctx context.Context, namespace []byte) (<-chan datype
 	}()
 
 	return out, nil
+}
+
+// extractBlobData extracts raw byte slices from a subscription response,
+// filtering out nil blobs and empty data.
+func extractBlobData(resp *blobrpc.SubscriptionResponse) [][]byte {
+	if resp == nil || len(resp.Blobs) == 0 {
+		return nil
+	}
+	blobs := make([][]byte, 0, len(resp.Blobs))
+	for _, blob := range resp.Blobs {
+		if blob == nil {
+			continue
+		}
+		data := blob.Data()
+		if len(data) == 0 {
+			continue
+		}
+		blobs = append(blobs, data)
+	}
+	return blobs
 }
 
 // Get fetches blobs by their IDs. Used for visualization and fetching specific blobs.

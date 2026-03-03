@@ -88,4 +88,7 @@ func SplitID(id []byte) (uint64, []byte, error) {
 type SubscriptionEvent struct {
 	// Height is the DA layer height at which the blob was finalized.
 	Height uint64
+	// Blobs contains the raw blob data from the subscription response.
+	// When non-nil, followers can process blobs inline without re-fetching from DA.
+	Blobs [][]byte
 }

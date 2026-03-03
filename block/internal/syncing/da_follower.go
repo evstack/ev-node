@@ -17,8 +17,9 @@ import (
 // DAFollower subscribes to DA blob events and drives sequential catchup.
 //
 // Architecture:
-//   - followLoop listens on the subscription channel and atomically updates
-//     highestSeenDAHeight.
+//   - followLoop listens on the subscription channel. When caught up, it processes
+//     subscription blobs inline (fast path, no DA re-fetch). Otherwise, it updates
+//     highestSeenDAHeight and signals the catchup loop.
 //   - catchupLoop sequentially retrieves from localDAHeight → highestSeenDAHeight,
 //     piping events to the Syncer's heightInCh.
 //
@@ -169,9 +170,39 @@ func (f *daFollower) runSubscription() error {
 			if !ok {
 				return errors.New("subscription channel closed")
 			}
-			f.updateHighest(ev.Height)
+			f.handleSubscriptionEvent(ev)
 		}
 	}
+}
+
+// handleSubscriptionEvent processes a subscription event. When the follower is
+// caught up (ev.Height == localDAHeight) and blobs are available, it processes
+// them inline — avoiding a DA re-fetch round trip. Otherwise, it just updates
+// highestSeenDAHeight and lets catchupLoop handle retrieval.
+func (f *daFollower) handleSubscriptionEvent(ev datypes.SubscriptionEvent) {
+	// Always record the highest height we've seen from the subscription.
+	f.updateHighest(ev.Height)
+
+	// Fast path: process blobs inline when caught up.
+	// Only fire when ev.Height == localDAHeight to avoid out-of-order processing.
+	if len(ev.Blobs) > 0 && ev.Height == f.localDAHeight.Load() {
+		events := f.retriever.ProcessBlobs(f.ctx, ev.Blobs, ev.Height)
+		for _, event := range events {
+			if err := f.pipeEvent(f.ctx, event); err != nil {
+				f.logger.Warn().Err(err).Uint64("da_height", ev.Height).
+					Msg("failed to pipe inline event, catchup will retry")
+				return // catchupLoop already signaled via updateHighest
+			}
+		}
+		// Advance local height — we processed this height inline.
+		f.localDAHeight.Store(ev.Height + 1)
+		f.headReached.Store(true)
+		f.logger.Debug().Uint64("da_height", ev.Height).Int("events", len(events)).
+			Msg("processed subscription blobs inline (fast path)")
+		return
+	}
+
+	// Slow path: behind or no blobs — catchupLoop will handle via signal from updateHighest.
 }
 
 // updateHighest atomically bumps highestSeenDAHeight and signals catchup if needed.
