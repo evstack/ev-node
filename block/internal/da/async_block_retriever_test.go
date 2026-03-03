@@ -266,5 +266,6 @@ func TestBlockData_SerializationEmpty(t *testing.T) {
 	}
 
 	assert.Equal(t, uint64(100), decoded.Height)
+	assert.Equal(t, time.Unix(0, 0).UTC(), decoded.Timestamp)
 	assert.Equal(t, 0, len(decoded.Blobs))
 }

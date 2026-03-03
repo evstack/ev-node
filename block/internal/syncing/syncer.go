@@ -222,14 +222,14 @@ func (s *Syncer) Start(ctx context.Context) error {
 
 	s.fiRetriever = da.NewForcedInclusionRetriever(s.daClient, s.logger, s.config, s.genesis.DAStartHeight, s.genesis.DAEpochForcedInclusion)
 	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.cache, s.genesis, s.logger)
-	if currentHeight, err := s.store.Height(s.ctx); err != nil {
+	if currentHeight, err := s.store.Height(ctx); err != nil {
 		s.logger.Error().Err(err).Msg("failed to set initial processed height for p2p handler")
 	} else {
 		s.p2pHandler.SetProcessedHeight(currentHeight)
 	}
 
 	if s.raftRetriever != nil {
-		if err := s.raftRetriever.Start(s.ctx); err != nil {
+		if err := s.raftRetriever.Start(ctx); err != nil {
 			return fmt.Errorf("start raft retriever: %w", err)
 		}
 	}
@@ -242,7 +242,7 @@ func (s *Syncer) Start(ctx context.Context) error {
 	s.wg.Go(s.processLoop)
 
 	// Start dedicated workers for DA, and pending processing
-	s.startSyncWorkers()
+	s.startSyncWorkers(ctx)
 
 	s.logger.Info().Msg("syncer started")
 	return nil
@@ -389,11 +389,12 @@ func (s *Syncer) processLoop() {
 	}
 }
 
-func (s *Syncer) startSyncWorkers() {
+func (s *Syncer) startSyncWorkers(ctx context.Context) {
+	_ = ctx
 	s.wg.Add(3)
 	go s.daWorkerLoop()
 	go s.pendingWorkerLoop()
-	go s.p2pWorkerLoop()
+	go s.p2pWorkerLoop(ctx)
 }
 
 func (s *Syncer) daWorkerLoop() {
@@ -516,7 +517,7 @@ func (s *Syncer) pendingWorkerLoop() {
 	}
 }
 
-func (s *Syncer) p2pWorkerLoop() {
+func (s *Syncer) p2pWorkerLoop(ctx context.Context) {
 	defer s.wg.Done()
 
 	logger := s.logger.With().Str("worker", "p2p").Logger()
@@ -525,12 +526,12 @@ func (s *Syncer) p2pWorkerLoop() {
 
 	for {
 		select {
-		case <-s.ctx.Done():
+		case <-ctx.Done():
 			return
 		default:
 		}
 
-		currentHeight, err := s.store.Height(s.ctx)
+		currentHeight, err := s.store.Height(ctx)
 		if err != nil {
 			logger.Error().Err(err).Msg("failed to get current height for P2P worker")
 			if !s.sleepOrDone(50 * time.Millisecond) {
@@ -540,7 +541,7 @@ func (s *Syncer) p2pWorkerLoop() {
 		}
 
 		targetHeight := currentHeight + 1
-		waitCtx, cancel := context.WithCancel(s.ctx)
+		waitCtx, cancel := context.WithCancel(ctx)
 		s.setP2PWaitState(targetHeight, cancel)
 
 		err = s.p2pHandler.ProcessHeight(waitCtx, targetHeight, s.heightInCh)
@@ -876,7 +877,7 @@ func (s *Syncer) ValidateBlock(_ context.Context, currState types.State, data *t
 	// Set custom verifier for aggregator node signature
 	header.SetCustomVerifierForSyncNode(s.options.SyncNodeSignatureBytesProvider)
 
-	if err := header.ValidateBasicWithData(data); err != nil {
+	if err := header.ValidateBasicWithData(data); err != nil { //nolint:contextcheck // validation API does not accept context
 		return fmt.Errorf("invalid header: %w", err)
 	}
 
@@ -1308,10 +1309,7 @@ func (s *Syncer) RecoverFromRaft(ctx context.Context, raftState *raft.RaftBlockS
 			s.logger.Debug().Err(err).Msg("no state in store, using genesis defaults for recovery")
 			currentState = types.State{
 				ChainID:         s.genesis.ChainID,
-				InitialHeight:   s.genesis.InitialHeight,
 				LastBlockHeight: s.genesis.InitialHeight - 1,
-				LastBlockTime:   s.genesis.StartTime,
-				DAHeight:        s.genesis.DAStartHeight,
 			}
 		}
 	}

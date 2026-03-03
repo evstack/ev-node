@@ -28,6 +28,13 @@ import (
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
 
+func mustGETRequest(t *testing.T, url string) *http.Request {
+	t.Helper()
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, url, nil)
+	require.NoError(t, err)
+	return req
+}
+
 func TestGetBlock(t *testing.T) {
 	// Create a mock store
 	mockStore := mocks.NewMockStore(t)
@@ -422,7 +429,7 @@ func TestHealthLiveEndpoint(t *testing.T) {
 		server := httptest.NewServer(handler)
 		defer server.Close()
 
-		resp, err := http.Get(server.URL + "/health/live")
+		resp, err := http.DefaultClient.Do(mustGETRequest(t, server.URL+"/health/live")) //nolint:gosec // test-only request to httptest server
 		require.NoError(t, err)
 		defer resp.Body.Close()
 
@@ -447,7 +454,7 @@ func TestHealthLiveEndpoint(t *testing.T) {
 		server := httptest.NewServer(handler)
 		defer server.Close()
 
-		resp, err := http.Get(server.URL + "/health/live")
+		resp, err := http.DefaultClient.Do(mustGETRequest(t, server.URL+"/health/live")) //nolint:gosec // test-only request to httptest server
 		require.NoError(t, err)
 		defer resp.Body.Close()
 
@@ -472,7 +479,7 @@ func TestHealthLiveEndpoint(t *testing.T) {
 		server := httptest.NewServer(handler)
 		defer server.Close()
 
-		resp, err := http.Get(server.URL + "/health/live")
+		resp, err := http.DefaultClient.Do(mustGETRequest(t, server.URL+"/health/live")) //nolint:gosec // test-only request to httptest server
 		require.NoError(t, err)
 		defer resp.Body.Close()
 
@@ -548,7 +555,7 @@ func TestHealthReadyEndpoint(t *testing.T) {
 				server := httptest.NewServer(handler)
 				defer server.Close()
 
-				resp, err := http.Get(server.URL + "/health/ready")
+				resp, err := http.DefaultClient.Do(mustGETRequest(t, server.URL+"/health/ready")) //nolint:gosec // test-only request to httptest server
 				require.NoError(t, err)
 				defer resp.Body.Close()
 				require.Equal(t, tc.expectedCode, resp.StatusCode)
@@ -589,7 +596,7 @@ func TestHealthReadyEndpoint(t *testing.T) {
 			server := httptest.NewServer(handler)
 			defer server.Close()
 
-			resp, err := http.Get(server.URL + "/health/ready")
+			resp, err := http.DefaultClient.Do(mustGETRequest(t, server.URL+"/health/ready")) //nolint:gosec // test-only request to httptest server
 			require.NoError(t, err)
 			defer resp.Body.Close()
 			require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -619,7 +626,7 @@ func TestHealthReadyEndpoint(t *testing.T) {
 			server := httptest.NewServer(handler)
 			defer server.Close()
 
-			resp, err := http.Get(server.URL + "/health/ready")
+			resp, err := http.DefaultClient.Do(mustGETRequest(t, server.URL+"/health/ready")) //nolint:gosec // test-only request to httptest server
 			require.NoError(t, err)
 			defer resp.Body.Close()
 			require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)

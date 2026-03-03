@@ -134,7 +134,7 @@ func (ln *LightNode) Run(parentCtx context.Context) error {
 
 	ln.Logger.Info().Msg("halting light node and its sub services...")
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(parentCtx), 2*time.Second)
 	defer cancel()
 
 	var multiErr error

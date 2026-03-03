@@ -307,7 +307,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	n.Logger.Info().Msg("halting full node and its sub services...")
 
 	// Use a timeout context to ensure shutdown doesn't hang
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 9*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 9*time.Second)
 	defer cancel()
 
 	var shutdownMultiErr error // Variable to accumulate multiple errors

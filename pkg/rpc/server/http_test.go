@@ -29,7 +29,9 @@ func TestRegisterCustomHTTPEndpoints(t *testing.T) {
 	testServer := httptest.NewServer(mux)
 	defer testServer.Close()
 
-	resp, err := http.Get(testServer.URL + "/health/live")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, testServer.URL+"/health/live", nil)
+	assert.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req) //nolint:gosec // test-only request to httptest server
 	assert.NoError(t, err)
 	defer resp.Body.Close()
 
