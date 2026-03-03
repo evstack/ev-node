@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1772526024884,
+  "lastUpdate": 1772526026853,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -2918,6 +2918,102 @@ window.BENCHMARK_DATA = {
             "value": 81,
             "unit": "allocs/op",
             "extra": "25028 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "036633646c7fea603bdf7f407715a82cea3701dc",
+          "message": "build(deps): Bump actions/setup-go from 6.2.0 to 6.3.0 (#3118)\n\nBumps [actions/setup-go](https://github.com/actions/setup-go) from 6.2.0 to 6.3.0.\n- [Release notes](https://github.com/actions/setup-go/releases)\n- [Commits](https://github.com/actions/setup-go/compare/v6.2.0...v6.3.0)\n\n---\nupdated-dependencies:\n- dependency-name: actions/setup-go\n  dependency-version: 6.3.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-03-03T09:15:40+01:00",
+          "tree_id": "039d153e6f1b42c23d381d919ef8f2a7bb34636c",
+          "url": "https://github.com/evstack/ev-node/commit/036633646c7fea603bdf7f407715a82cea3701dc"
+        },
+        "date": 1772526026117,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 38397,
+            "unit": "ns/op\t    6998 B/op\t      71 allocs/op",
+            "extra": "32491 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 38397,
+            "unit": "ns/op",
+            "extra": "32491 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 6998,
+            "unit": "B/op",
+            "extra": "32491 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 71,
+            "unit": "allocs/op",
+            "extra": "32491 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 38503,
+            "unit": "ns/op\t    7461 B/op\t      81 allocs/op",
+            "extra": "31586 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 38503,
+            "unit": "ns/op",
+            "extra": "31586 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 7461,
+            "unit": "B/op",
+            "extra": "31586 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 81,
+            "unit": "allocs/op",
+            "extra": "31586 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 48631,
+            "unit": "ns/op\t   26133 B/op\t      81 allocs/op",
+            "extra": "25644 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 48631,
+            "unit": "ns/op",
+            "extra": "25644 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 26133,
+            "unit": "B/op",
+            "extra": "25644 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 81,
+            "unit": "allocs/op",
+            "extra": "25644 times\n4 procs"
           }
         ]
       }
