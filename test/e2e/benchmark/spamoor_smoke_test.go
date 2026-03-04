@@ -3,11 +3,9 @@
 package benchmark
 
 import (
-	"os"
 	"time"
 
 	"github.com/celestiaorg/tastora/framework/docker/evstack/spamoor"
-	e2e "github.com/evstack/ev-node/test/e2e"
 )
 
 // TestSpamoorSmoke spins up reth + sequencer and a Spamoor node, starts a few
@@ -18,16 +16,12 @@ func (s *SpamoorSuite) TestSpamoorSmoke() {
 	w := newResultWriter(t, "SpamoorSmoke")
 	defer w.flush()
 
-	// TODO: temporary hardcoded tag, will be replaced with a proper release tag
-	rethTag := os.Getenv("EV_RETH_TAG")
-	if rethTag == "" {
-		rethTag = "pr-140"
-	}
 	e := s.setupEnv(config{
-		rethTag:     rethTag,
 		serviceName: "ev-node-smoke",
 	})
 	api := e.spamoorAPI
+
+	s.Require().NoError(deleteAllSpammers(api), "failed to delete stale spammers")
 
 	eoatx := map[string]any{
 		"throughput":      100,
@@ -82,38 +76,8 @@ func (s *SpamoorSuite) TestSpamoorSmoke() {
 	fail := sumCounter(metrics["spamoor_transactions_failed_total"])
 
 	// collect traces
-	evNodeSpans := s.collectServiceTraces(e, "ev-node-smoke")
-	evRethSpans := s.collectServiceTraces(e, "ev-reth")
-	e2e.PrintTraceReport(t, "ev-node-smoke", evNodeSpans)
-	e2e.PrintTraceReport(t, "ev-reth", evRethSpans)
-
-	w.addSpans(append(evNodeSpans, evRethSpans...))
-
-	// assert expected ev-node span names
-	assertSpanNames(t, evNodeSpans, []string{
-		"BlockExecutor.ProduceBlock",
-		"BlockExecutor.ApplyBlock",
-		"BlockExecutor.CreateBlock",
-		"BlockExecutor.RetrieveBatch",
-		"Executor.ExecuteTxs",
-		"Executor.SetFinal",
-		"Engine.ForkchoiceUpdated",
-		"Engine.NewPayload",
-		"Engine.GetPayload",
-		"Eth.GetBlockByNumber",
-		"Sequencer.GetNextBatch",
-		"DASubmitter.SubmitHeaders",
-		"DASubmitter.SubmitData",
-		"DA.Submit",
-	}, "ev-node-smoke")
-
-	// assert expected ev-reth span names
-	assertSpanNames(t, evRethSpans, []string{
-		"build_payload",
-		"execute_tx",
-		"try_build",
-		"validate_transaction",
-	}, "ev-reth")
+	traces := s.collectTraces(e, "ev-node-smoke")
+	w.addSpans(traces.allSpans())
 
 	s.Require().Greater(sent, float64(0), "at least one transaction should have been sent")
 	s.Require().Zero(fail, "no transactions should have failed")
