@@ -16,9 +16,9 @@ import (
 func (s *SpamoorSuite) TestGasBurner() {
 	const (
 		numSpammers     = 4
-		countPerSpammer = 2500
+		countPerSpammer = 50000
 		totalCount      = numSpammers * countPerSpammer
-		warmupTxs       = 50
+		warmupTxs       = 500
 		serviceName     = "ev-node" // TODO: temp change
 		waitTimeout     = 5 * time.Minute
 	)
