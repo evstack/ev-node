@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	libshare "github.com/celestiaorg/go-square/v3/share"
 	"github.com/rs/zerolog"
 
 	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
@@ -26,6 +27,18 @@ const (
 	// DefaultBlockTime is the default time between empty blocks
 	DefaultBlockTime = 1 * time.Second
 )
+
+// subscriber holds a registered subscription's channel and namespace filter.
+type subscriber struct {
+	ch chan subscriptionEvent
+	ns libshare.Namespace
+}
+
+// subscriptionEvent is sent to subscribers when a new DA block is produced.
+type subscriptionEvent struct {
+	height uint64
+	blobs  []*blobrpc.Blob
+}
 
 // LocalDA is a simple implementation of in-memory DA. Not production ready! Intended only for testing!
 //
@@ -43,6 +56,10 @@ type LocalDA struct {
 	blockTime   time.Duration
 	lastTime    time.Time // tracks last timestamp to ensure monotonicity
 
+	// Subscriber registry (protected by mu)
+	subscribers map[int]*subscriber
+	nextSubID   int
+
 	logger zerolog.Logger
 }
 
@@ -57,6 +74,7 @@ func NewLocalDA(logger zerolog.Logger, opts ...func(*LocalDA) *LocalDA) *LocalDA
 		data:        make(map[uint64][]kvp),
 		timestamps:  make(map[uint64]time.Time),
 		blobData:    make(map[uint64][]*blobrpc.Blob),
+		subscribers: make(map[int]*subscriber),
 		maxBlobSize: DefaultMaxBlobSize,
 		blockTime:   DefaultBlockTime,
 		lastTime:    time.Now(),
@@ -209,6 +227,7 @@ func (d *LocalDA) SubmitWithOptions(ctx context.Context, blobs []datypes.Blob, g
 
 		d.data[d.height] = append(d.data[d.height], kvp{ids[i], blob})
 	}
+	d.notifySubscribers(d.height)
 	d.logger.Info().Uint64("newHeight", d.height).Int("count", len(ids)).Msg("SubmitWithOptions successful")
 	return ids, nil
 }
@@ -239,6 +258,7 @@ func (d *LocalDA) Submit(ctx context.Context, blobs []datypes.Blob, gasPrice flo
 
 		d.data[d.height] = append(d.data[d.height], kvp{ids[i], blob})
 	}
+	d.notifySubscribers(d.height)
 	d.logger.Info().Uint64("newHeight", d.height).Int("count", len(ids)).Msg("Submit successful")
 	return ids, nil
 }
@@ -335,5 +355,68 @@ func (d *LocalDA) produceEmptyBlock() {
 	defer d.mu.Unlock()
 	d.height++
 	d.timestamps[d.height] = d.monotonicTime()
+	d.notifySubscribers(d.height)
 	d.logger.Debug().Uint64("height", d.height).Msg("produced empty block")
+}
+
+// subscribe registers a new subscriber for blobs matching the given namespace.
+// Returns a read-only channel and a subscription ID for later unsubscription.
+// Must NOT be called with d.mu held.
+func (d *LocalDA) subscribe(ns libshare.Namespace) (<-chan subscriptionEvent, int) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	id := d.nextSubID
+	d.nextSubID++
+	ch := make(chan subscriptionEvent, 64)
+	d.subscribers[id] = &subscriber{ch: ch, ns: ns}
+	d.logger.Info().Int("subID", id).Str("namespace", hex.EncodeToString(ns.Bytes())).Msg("subscriber registered")
+	return ch, id
+}
+
+// unsubscribe removes a subscriber and closes its channel.
+// Must NOT be called with d.mu held.
+func (d *LocalDA) unsubscribe(id int) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if sub, ok := d.subscribers[id]; ok {
+		close(sub.ch)
+		delete(d.subscribers, id)
+		d.logger.Info().Int("subID", id).Msg("subscriber unregistered")
+	}
+}
+
+// notifySubscribers sends a subscriptionEvent to all registered subscribers.
+// For each subscriber, only blobs matching the subscriber's namespace are included.
+// Slow consumers (full channel) are dropped to avoid blocking block production.
+// MUST be called with d.mu held.
+func (d *LocalDA) notifySubscribers(height uint64) {
+	if len(d.subscribers) == 0 {
+		return
+	}
+
+	allBlobs := d.blobData[height] // may be nil for empty blocks
+
+	for id, sub := range d.subscribers {
+		// Filter blobs matching subscriber namespace
+		var matched []*blobrpc.Blob
+		for _, b := range allBlobs {
+			if b != nil && b.Namespace().Equals(sub.ns) {
+				matched = append(matched, b)
+			}
+		}
+
+		evt := subscriptionEvent{
+			height: height,
+			blobs:  matched,
+		}
+
+		select {
+		case sub.ch <- evt:
+		default:
+			// Slow consumer — drop to avoid blocking block production
+			d.logger.Warn().Int("subID", id).Uint64("height", height).Msg("dropping event for slow subscriber")
+		}
+	}
 }

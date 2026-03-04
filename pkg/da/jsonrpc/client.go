@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	libshare "github.com/celestiaorg/go-square/v3/share"
 	"github.com/filecoin-project/go-jsonrpc"
@@ -23,6 +24,15 @@ func (c *Client) Close() {
 	}
 }
 
+// httpToWS converts an HTTP(S) URL to a WebSocket URL.
+// go-jsonrpc requires WebSocket for channel-based subscriptions (e.g. Subscribe).
+// WebSocket connections also support regular RPC calls, so this is backward-compatible.
+func httpToWS(addr string) string {
+	addr = strings.Replace(addr, "https://", "wss://", 1)
+	addr = strings.Replace(addr, "http://", "ws://", 1)
+	return addr
+}
+
 // NewClient connects to the celestia-node RPC endpoint
 func NewClient(ctx context.Context, addr, token string, authHeaderName string) (*Client, error) {
 	var httpHeader http.Header
@@ -33,16 +43,19 @@ func NewClient(ctx context.Context, addr, token string, authHeaderName string) (
 		httpHeader = http.Header{authHeaderName: []string{fmt.Sprintf("Bearer %s", token)}}
 	}
 
+	// Use WebSocket so that channel-based subscriptions (blob.Subscribe) work.
+	wsAddr := httpToWS(addr)
+
 	var cl Client
 
 	// Connect to the blob namespace
-	blobCloser, err := jsonrpc.NewClient(ctx, addr, "blob", &cl.Blob.Internal, httpHeader)
+	blobCloser, err := jsonrpc.NewClient(ctx, wsAddr, "blob", &cl.Blob.Internal, httpHeader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to blob namespace: %w", err)
 	}
 
 	// Connect to the header namespace
-	headerCloser, err := jsonrpc.NewClient(ctx, addr, "header", &cl.Header.Internal, httpHeader)
+	headerCloser, err := jsonrpc.NewClient(ctx, wsAddr, "header", &cl.Header.Internal, httpHeader)
 	if err != nil {
 		blobCloser()
 		return nil, fmt.Errorf("failed to connect to header namespace: %w", err)
