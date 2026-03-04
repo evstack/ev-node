@@ -5,6 +5,7 @@ import (
 	crand "crypto/rand"
 	"crypto/sha512"
 	"errors"
+	"math"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -308,7 +309,7 @@ func TestSyncer_processPendingEvents(t *testing.T) {
 	cm.SetPendingEvent(1, evt1)
 	cm.SetPendingEvent(2, evt2)
 
-	s.processPendingEvents()
+	s.processPendingEvents(s.ctx)
 
 	// should have forwarded height 2 and removed both
 	select {
@@ -415,7 +416,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 		}).
 		Return(nil, datypes.ErrHeightFromFuture)
 
-	go syncerInst1.processLoop()
+	go syncerInst1.processLoop(ctx)
 
 	// Create and start a DAFollower so DA retrieval actually happens.
 	follower1 := NewDAFollower(DAFollowerConfig{
@@ -430,7 +431,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 	// Set highest so catchup runs through all mocked heights.
 	follower1.highestSeenDAHeight.Store(myFutureDAHeight)
 	go follower1.runCatchup()
-	syncerInst1.startSyncWorkers()
+	syncerInst1.startSyncWorkers(ctx)
 	syncerInst1.wg.Wait()
 	requireEmptyChan(t, errorCh)
 
@@ -506,7 +507,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 	follower2.ctx, follower2.cancel = context.WithCancel(ctx)
 	follower2.highestSeenDAHeight.Store(syncerInst2.daRetrieverHeight.Load() + 1)
 	go follower2.runCatchup()
-	syncerInst2.startSyncWorkers()
+	syncerInst2.startSyncWorkers(ctx)
 	syncerInst2.wg.Wait()
 
 	t.Log("sync workers exited")
@@ -694,10 +695,14 @@ func TestProcessHeightEvent_TriggersAsyncDARetrieval(t *testing.T) {
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), nil).Once()
 
+	// Use a mock DA client that reports a latest height above the hint
+	mockDAClient := testmocks.NewMockClient(t)
+	mockDAClient.EXPECT().GetLatestDAHeight(mock.Anything).Return(uint64(200), nil).Maybe()
+
 	s := NewSyncer(
 		st,
 		mockExec,
-		nil,
+		mockDAClient,
 		cm,
 		common.NopMetrics(),
 		cfg,
@@ -723,19 +728,7 @@ func TestProcessHeightEvent_TriggersAsyncDARetrieval(t *testing.T) {
 		DaHeightHints: [2]uint64{100, 100},
 	}
 
-	// Current height is 0 (from init), event height is 2.
-	// processHeightEvent checks:
-	// 1. height <= currentHeight (2 <= 0 -> false)
-	// 2. height != currentHeight+1 (2 != 1 -> true) -> stores as pending event
-
-	// We need to simulate height 1 being processed first so height 2 is "next"
-	// OR we can just test that it DOES NOT trigger DA retrieval if it's pending.
-	// Wait, the logic for DA retrieval is BEFORE the "next block" check?
-	// Let's check syncer.go...
-	// Yes, "If this is a P2P event with a DA height hint, trigger targeted DA retrieval" block is AFTER "If this is not the next block in sequence... return"
-
-	// So we need to be at height 1 to process height 2.
-	// Let's set the store height to 1.
+	// Set the store height to 1 so the event can be processed as "next".
 	batch, err := st.NewBatch(context.Background())
 	require.NoError(t, err)
 	require.NoError(t, batch.SetHeight(1))
@@ -746,6 +739,120 @@ func TestProcessHeightEvent_TriggersAsyncDARetrieval(t *testing.T) {
 	// Verify that the priority height was queued in the daRetriever
 	priorityHeight := s.daRetriever.PopPriorityHeight()
 	assert.Equal(t, uint64(100), priorityHeight)
+}
+
+func TestProcessHeightEvent_RejectsUnreasonableDAHint(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	require.NoError(t, err)
+
+	addr, _, _ := buildSyncTestSigner(t)
+	cfg := config.DefaultConfig()
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+
+	mockExec := testmocks.NewMockExecutor(t)
+	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), nil).Once()
+
+	// Mock DA client reports latest DA height of 100
+	mockDAClient := testmocks.NewMockClient(t)
+	mockDAClient.EXPECT().GetLatestDAHeight(mock.Anything).Return(uint64(100), nil).Maybe()
+
+	s := NewSyncer(
+		st,
+		mockExec,
+		mockDAClient,
+		cm,
+		common.NopMetrics(),
+		cfg,
+		gen,
+		extmocks.NewMockStore[*types.P2PSignedHeader](t),
+		extmocks.NewMockStore[*types.P2PData](t),
+		zerolog.Nop(),
+		common.DefaultBlockOptions(),
+		make(chan error, 1),
+		nil,
+	)
+	require.NoError(t, s.initializeState())
+	s.ctx = context.Background()
+	s.daRetriever = NewDARetriever(nil, cm, gen, zerolog.Nop())
+
+	// Set store height to 1 so event at height 2 is "next"
+	batch, err := st.NewBatch(context.Background())
+	require.NoError(t, err)
+	require.NoError(t, batch.SetHeight(1))
+	require.NoError(t, batch.Commit())
+
+	// Send a malicious P2P hint with math.MaxUint64
+	evt := common.DAHeightEvent{
+		Header:        &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: "c", Height: 2}}},
+		Data:          &types.Data{Metadata: &types.Metadata{ChainID: "c", Height: 2}},
+		Source:        common.SourceP2P,
+		DaHeightHints: [2]uint64{math.MaxUint64, math.MaxUint64},
+	}
+
+	s.processHeightEvent(t.Context(), &evt)
+
+	// Verify that NO priority height was queued — the hint was rejected
+	priorityHeight := s.daRetriever.PopPriorityHeight()
+	assert.Equal(t, uint64(0), priorityHeight, "unreasonable DA hint should be rejected")
+}
+
+func TestProcessHeightEvent_AcceptsValidDAHint(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	require.NoError(t, err)
+
+	addr, _, _ := buildSyncTestSigner(t)
+	cfg := config.DefaultConfig()
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+
+	mockExec := testmocks.NewMockExecutor(t)
+	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), nil).Once()
+
+	// Mock DA client reports latest DA height of 100
+	mockDAClient := testmocks.NewMockClient(t)
+	mockDAClient.EXPECT().GetLatestDAHeight(mock.Anything).Return(uint64(100), nil).Maybe()
+
+	s := NewSyncer(
+		st,
+		mockExec,
+		mockDAClient,
+		cm,
+		common.NopMetrics(),
+		cfg,
+		gen,
+		extmocks.NewMockStore[*types.P2PSignedHeader](t),
+		extmocks.NewMockStore[*types.P2PData](t),
+		zerolog.Nop(),
+		common.DefaultBlockOptions(),
+		make(chan error, 1),
+		nil,
+	)
+	require.NoError(t, s.initializeState())
+	s.ctx = context.Background()
+	s.daRetriever = NewDARetriever(nil, cm, gen, zerolog.Nop())
+
+	// Set store height to 1 so event at height 2 is "next"
+	batch, err := st.NewBatch(context.Background())
+	require.NoError(t, err)
+	require.NoError(t, batch.SetHeight(1))
+	require.NoError(t, batch.Commit())
+
+	// Send a valid P2P hint at height 50, which is below the latest DA height of 100
+	evt := common.DAHeightEvent{
+		Header:        &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: "c", Height: 2}}},
+		Data:          &types.Data{Metadata: &types.Metadata{ChainID: "c", Height: 2}},
+		Source:        common.SourceP2P,
+		DaHeightHints: [2]uint64{50, 50},
+	}
+
+	s.processHeightEvent(t.Context(), &evt)
+
+	// Verify that the priority height was queued — the hint is valid
+	priorityHeight := s.daRetriever.PopPriorityHeight()
+	assert.Equal(t, uint64(50), priorityHeight, "valid DA hint should be queued")
 }
 
 func TestProcessHeightEvent_SkipsDAHintWhenAlreadyFetched(t *testing.T) {
@@ -761,10 +868,14 @@ func TestProcessHeightEvent_SkipsDAHintWhenAlreadyFetched(t *testing.T) {
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), nil).Once()
 
+	// Mock DA client reports latest DA height above the hints we'll send
+	mockDAClient := testmocks.NewMockClient(t)
+	mockDAClient.EXPECT().GetLatestDAHeight(mock.Anything).Return(uint64(300), nil).Maybe()
+
 	s := NewSyncer(
 		st,
 		mockExec,
-		nil,
+		mockDAClient,
 		cm,
 		common.NopMetrics(),
 		cfg,

@@ -56,7 +56,7 @@ func TestDAFollower_BackoffOnCatchupError(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+				ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 				defer cancel()
 
 				daRetriever := NewMockDARetriever(t)
@@ -217,7 +217,7 @@ func TestDAFollower_BackoffResetOnSuccess(t *testing.T) {
 // sequential fetch from local → highest → mark head reached.
 func TestDAFollower_CatchupThenReachHead(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 		defer cancel()
 
 		daRetriever := NewMockDARetriever(t)

@@ -415,9 +415,10 @@ func (c *Client) GetPeers() ([]peer.AddrInfo, error) {
 }
 
 func (c *Client) GetNetworkInfo() (NetworkInfo, error) {
-	var addrs []string
+	hostAddrs := c.host.Addrs()
+	addrs := make([]string, 0, len(hostAddrs))
 	peerIDSuffix := "/p2p/" + c.host.ID().String()
-	for _, a := range c.host.Addrs() {
+	for _, a := range hostAddrs {
 		addr := a.String()
 		// Only append peer ID if not already present
 		if !strings.HasSuffix(addr, peerIDSuffix) {

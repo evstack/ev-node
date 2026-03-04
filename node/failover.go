@@ -180,9 +180,9 @@ func setupFailoverState(
 }
 
 func (f *failoverState) Run(pCtx context.Context) (multiErr error) {
-	stopService := func(stoppable func(context.Context) error, name string) {
+	stopService := func(stoppable func(context.Context) error, name string) { //nolint:contextcheck // shutdown uses context.Background intentionally
 		// parent context is cancelled already, so we need to create a new one
-		shutdownCtx, done := context.WithTimeout(context.Background(), 3*time.Second)
+		shutdownCtx, done := context.WithTimeout(context.Background(), 3*time.Second) //nolint:contextcheck // intentional: need fresh context for graceful shutdown after cancellation
 		defer done()
 
 		if err := stoppable(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) {
@@ -192,7 +192,7 @@ func (f *failoverState) Run(pCtx context.Context) (multiErr error) {
 	cCtx, cancel := context.WithCancel(pCtx)
 	defer cancel()
 	wg, ctx := errgroup.WithContext(cCtx)
-	wg.Go(func() (rerr error) {
+	wg.Go(func() (rerr error) { //nolint:contextcheck // block components stop API does not accept context
 		defer func() {
 			if err := f.bc.Stop(); err != nil && !errors.Is(err, context.Canceled) {
 				rerr = errors.Join(rerr, fmt.Errorf("stopping block components: %w", err))
@@ -233,7 +233,7 @@ func (f *failoverState) Run(pCtx context.Context) (multiErr error) {
 	}
 
 	wg.Go(func() error {
-		defer func() {
+		defer func() { //nolint:contextcheck // shutdown uses context.Background intentionally
 			shutdownCtx, done := context.WithTimeout(context.Background(), 3*time.Second)
 			defer done()
 			_ = f.rpcServer.Shutdown(shutdownCtx)

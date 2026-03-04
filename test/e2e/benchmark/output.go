@@ -61,6 +61,11 @@ func (w *resultWriter) addEntry(e entry) {
 	w.entries = append(w.entries, e)
 }
 
+// addEntries appends multiple entries to the results.
+func (w *resultWriter) addEntries(entries []entry) {
+	w.entries = append(w.entries, entries...)
+}
+
 // flush writes accumulated entries to the path in BENCH_JSON_OUTPUT.
 // It is a no-op when the env var is unset or no entries were added.
 func (w *resultWriter) flush() {

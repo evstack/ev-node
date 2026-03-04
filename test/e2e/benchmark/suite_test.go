@@ -4,6 +4,7 @@ package benchmark
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -48,8 +49,17 @@ type env struct {
 
 // config parameterizes the per-test environment setup.
 type config struct {
-	rethTag     string
 	serviceName string
+}
+
+// TODO: temporary hardcoded tag, will be replaced with a proper release tag
+const defaultRethTag = "pr-140"
+
+func rethTag() string {
+	if tag := os.Getenv("EV_RETH_TAG"); tag != "" {
+		return tag
+	}
+	return defaultRethTag
 }
 
 // setupEnv creates a Jaeger + reth + sequencer + Spamoor environment for
@@ -70,15 +80,21 @@ func (s *SpamoorSuite) setupEnv(cfg config) *env {
 	// reth + local DA with OTLP tracing to Jaeger
 	evmEnv := e2e.SetupCommonEVMEnv(t, sut, s.dockerCli, s.networkID,
 		e2e.WithRethOpts(func(b *reth.NodeBuilder) {
-			b.WithTag(cfg.rethTag).WithEnv(
-				// ev-reth reads OTEL_EXPORTER_OTLP_ENDPOINT and passes it directly
-				// to with_endpoint(). opentelemetry-otlp v0.31 HTTP exporter does
-				// not auto-append /v1/traces, so the full path is required.
-				"OTEL_EXPORTER_OTLP_ENDPOINT="+jg.Internal.IngestHTTPEndpoint()+"/v1/traces",
-				"OTEL_EXPORTER_OTLP_PROTOCOL=http",
-				"RUST_LOG=debug",
-				"OTEL_SDK_DISABLED=false",
-			)
+			b.WithTag(rethTag()).
+				// increase values to facilitate spamoor.
+				WithAdditionalStartArgs(
+					"--rpc.max-connections", "5000",
+					"--rpc.max-tracing-requests", "1000",
+				).
+				WithEnv(
+					// ev-reth reads OTEL_EXPORTER_OTLP_ENDPOINT and passes it directly
+					// to with_endpoint(). opentelemetry-otlp v0.31 HTTP exporter does
+					// not auto-append /v1/traces, so the full path is required.
+					"OTEL_EXPORTER_OTLP_ENDPOINT="+jg.Internal.IngestHTTPEndpoint()+"/v1/traces",
+					"OTEL_EXPORTER_OTLP_PROTOCOL=http",
+					"RUST_LOG=debug",
+					"OTEL_SDK_DISABLED=false",
+				)
 		}),
 	)
 
@@ -88,7 +104,8 @@ func (s *SpamoorSuite) setupEnv(cfg config) *env {
 	e2e.SetupSequencerNode(t, sut, sequencerHome, evmEnv.SequencerJWT, evmEnv.GenesisHash, evmEnv.Endpoints,
 		"--evnode.instrumentation.tracing=true",
 		"--evnode.instrumentation.tracing_endpoint", otlpHTTP,
-		"--evnode.instrumentation.tracing_sample_rate", "1.0",
+		// TODO: setting this to 1 produced too many spans for the local Jaeger deployment alongside everything else.
+		"--evnode.instrumentation.tracing_sample_rate", "0.1",
 		"--evnode.instrumentation.tracing_service_name", cfg.serviceName,
 	)
 	t.Log("sequencer node is up")
@@ -108,7 +125,8 @@ func (s *SpamoorSuite) setupEnv(cfg config) *env {
 		WithDockerNetworkID(evmEnv.RethNode.NetworkID).
 		WithLogger(evmEnv.RethNode.Logger).
 		WithRPCHosts(internalRPC).
-		WithPrivateKey(e2e.TestPrivateKey)
+		WithPrivateKey(e2e.TestPrivateKey).
+		WithAdditionalStartArgs("--slot-duration", "100ms", "--startup-delay", "0")
 
 	spNode, err := spBuilder.Build(ctx)
 	s.Require().NoError(err, "failed to build spamoor node")
@@ -129,6 +147,32 @@ func (s *SpamoorSuite) setupEnv(cfg config) *env {
 	}
 }
 
+// traceResult holds the collected spans from ev-node and (optionally) ev-reth.
+type traceResult struct {
+	evNode []e2e.TraceSpan
+	evReth []e2e.TraceSpan
+}
+
+// allSpans returns ev-node and ev-reth spans concatenated.
+func (tr *traceResult) allSpans() []e2e.TraceSpan {
+	return append(tr.evNode, tr.evReth...)
+}
+
+// collectTraces fetches ev-node traces (required) and ev-reth traces (optional)
+// from Jaeger, then prints reports for both.
+func (s *SpamoorSuite) collectTraces(e *env, serviceName string) *traceResult {
+	t := s.T()
+	tr := &traceResult{
+		evNode: s.collectServiceTraces(e, serviceName),
+		evReth: s.tryCollectServiceTraces(e, "ev-reth"),
+	}
+	e2e.PrintTraceReport(t, serviceName, tr.evNode)
+	if len(tr.evReth) > 0 {
+		e2e.PrintTraceReport(t, "ev-reth", tr.evReth)
+	}
+	return tr
+}
+
 // collectServiceTraces fetches traces from Jaeger for the given service and returns the spans.
 func (s *SpamoorSuite) collectServiceTraces(e *env, serviceName string) []e2e.TraceSpan {
 	ctx, cancel := context.WithTimeout(s.T().Context(), 3*time.Minute)
@@ -142,4 +186,28 @@ func (s *SpamoorSuite) collectServiceTraces(e *env, serviceName string) []e2e.Tr
 	s.Require().NoError(err, "failed to fetch %s traces", serviceName)
 
 	return toTraceSpans(extractSpansFromTraces(traces))
+}
+
+// tryCollectServiceTraces fetches traces from Jaeger for the given service,
+// returning nil instead of failing the test if traces are unavailable.
+func (s *SpamoorSuite) tryCollectServiceTraces(e *env, serviceName string) []e2e.TraceSpan {
+	t := s.T()
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Minute)
+	defer cancel()
+
+	ok, err := e.jaeger.External.WaitForTraces(ctx, serviceName, 1, 2*time.Second)
+	if err != nil || !ok {
+		t.Logf("warning: could not collect %s traces (err=%v, ok=%v)", serviceName, err, ok)
+		return nil
+	}
+
+	traces, err := e.jaeger.External.Traces(ctx, serviceName, 10000)
+	if err != nil {
+		t.Logf("warning: failed to fetch %s traces: %v", serviceName, err)
+		return nil
+	}
+
+	spans := toTraceSpans(extractSpansFromTraces(traces))
+	t.Logf("collected %d %s spans", len(spans), serviceName)
+	return spans
 }
