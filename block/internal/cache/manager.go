@@ -16,9 +16,11 @@ import (
 )
 
 const (
-	// Store key prefixes for different cache types
-	headerDAIncludedPrefix = "cache/header-da-included/"
-	dataDAIncludedPrefix   = "cache/data-da-included/"
+	// HeaderDAIncludedPrefix is the store key prefix for header DA inclusion tracking.
+	HeaderDAIncludedPrefix = "cache/header-da-included/"
+
+	// DataDAIncludedPrefix is the store key prefix for data DA inclusion tracking.
+	DataDAIncludedPrefix = "cache/data-da-included/"
 
 	// DefaultTxCacheRetention is the default time to keep transaction hashes in cache
 	DefaultTxCacheRetention = 24 * time.Hour
@@ -96,12 +98,15 @@ type implementation struct {
 
 // NewManager creates a new cache manager instance
 func NewManager(cfg config.Config, st store.Store, logger zerolog.Logger) (Manager, error) {
-	// Initialize caches with store-based persistence for DA inclusion data
-	headerCache := NewCache[types.SignedHeader](st, headerDAIncludedPrefix)
-	dataCache := NewCache[types.Data](st, dataDAIncludedPrefix)
+	// Initialize caches with store-based persistence for DA inclusion data.
+	// The heightKeyFn wires each cache to the existing per-height DA metadata
+	// so that RestoreFromStore can reconstruct only the narrow in-flight window
+	// (DAIncludedHeight, chainHeight] in O(w) instead of scanning all metadata.
+	headerCache := NewCache[types.SignedHeader](st, HeaderDAIncludedPrefix, store.GetHeightToDAHeightHeaderKey)
+	dataCache := NewCache[types.Data](st, DataDAIncludedPrefix, store.GetHeightToDAHeightDataKey)
 	// TX cache and pending events cache don't need store persistence
-	txCache := NewCache[struct{}](nil, "")
-	pendingEventsCache := NewCache[common.DAHeightEvent](nil, "")
+	txCache := NewCache[struct{}](nil, "", nil)
+	pendingEventsCache := NewCache[common.DAHeightEvent](nil, "", nil)
 
 	// Initialize pending managers
 	pendingHeaders, err := NewPendingHeaders(st, logger)
@@ -342,12 +347,15 @@ func (m *implementation) SaveToStore() error {
 }
 
 // RestoreFromStore restores the DA inclusion cache from the store.
-// This uses prefix-based queries to directly load persisted DA inclusion data,
-// avoiding expensive iteration through all blocks.
+// Each Cache.RestoreFromStore reconstructs the in-flight window from the
+// compact snapshot key (O(1) store read).  After that, initDAHeightFromStore
+// seeds maxDAHeight from the finalized-tip HeightToDAHeight metadata so that
+// DaHeight() is never 0 on a node that has already processed blocks — even
+// when the in-flight window is empty (all blocks finalized) and the snapshot
+// therefore contains no entries.
 func (m *implementation) RestoreFromStore() error {
 	ctx := context.Background()
 
-	// Restore DA inclusion data from store
 	if err := m.headerCache.RestoreFromStore(ctx); err != nil {
 		return fmt.Errorf("failed to restore header cache from store: %w", err)
 	}
@@ -384,10 +392,10 @@ func (m *implementation) ClearFromStore() error {
 	}
 
 	// Clear in-memory caches by creating new ones
-	m.headerCache = NewCache[types.SignedHeader](m.store, headerDAIncludedPrefix)
-	m.dataCache = NewCache[types.Data](m.store, dataDAIncludedPrefix)
-	m.txCache = NewCache[struct{}](nil, "")
-	m.pendingEventsCache = NewCache[common.DAHeightEvent](nil, "")
+	m.headerCache = NewCache[types.SignedHeader](m.store, HeaderDAIncludedPrefix, store.GetHeightToDAHeightHeaderKey)
+	m.dataCache = NewCache[types.Data](m.store, DataDAIncludedPrefix, store.GetHeightToDAHeightDataKey)
+	m.txCache = NewCache[struct{}](nil, "", nil)
+	m.pendingEventsCache = NewCache[common.DAHeightEvent](nil, "", nil)
 
 	// Initialize DA height from store metadata to ensure DaHeight() is never 0.
 	m.initDAHeightFromStore(ctx)
@@ -395,30 +403,35 @@ func (m *implementation) ClearFromStore() error {
 	return nil
 }
 
-// initDAHeightFromStore initializes the maxDAHeight in both header and data caches
-// from the HeightToDAHeight store metadata (final da inclusion tracking).
+// initDAHeightFromStore seeds maxDAHeight in both header and data caches from
+// the HeightToDAHeight store metadata written by the submitter when a block is
+// finalized.  This ensures DaHeight() reflects the true finalized DA tip even
+// when the in-flight snapshot is empty (all blocks finalized) or absent (fresh
+// node upgraded from a pre-snapshot version).
+//
+// It reads:
+//
+//	DAIncludedHeightKey          → the last finalized block height
+//	GetHeightToDAHeightHeaderKey → the DA height for that block's header
+//	GetHeightToDAHeightDataKey   → the DA height for that block's data
+//
+// These keys are written by setNodeHeightToDAHeight and are always present for
+// any finalized height, independently of the snapshot mechanism.
 func (m *implementation) initDAHeightFromStore(ctx context.Context) {
-	// Get the DA included height from store (last processed block height)
-	daIncludedHeightBytes, err := m.store.GetMetadata(ctx, store.DAIncludedHeightKey)
-	if err != nil || len(daIncludedHeightBytes) != 8 {
-		return
+	daIncludedBytes, err := m.store.GetMetadata(ctx, store.DAIncludedHeightKey)
+	if err != nil || len(daIncludedBytes) != 8 {
+		return // fresh node — nothing to seed
 	}
-	daIncludedHeight := binary.LittleEndian.Uint64(daIncludedHeightBytes)
+	daIncludedHeight := binary.LittleEndian.Uint64(daIncludedBytes)
 	if daIncludedHeight == 0 {
 		return
 	}
 
-	// Get header DA height for the last included height
-	headerKey := store.GetHeightToDAHeightHeaderKey(daIncludedHeight)
-	if headerBytes, err := m.store.GetMetadata(ctx, headerKey); err == nil && len(headerBytes) == 8 {
-		headerDAHeight := binary.LittleEndian.Uint64(headerBytes)
-		m.headerCache.setMaxDAHeight(headerDAHeight)
+	if headerBytes, err := m.store.GetMetadata(ctx, store.GetHeightToDAHeightHeaderKey(daIncludedHeight)); err == nil && len(headerBytes) == 8 {
+		m.headerCache.setMaxDAHeight(binary.LittleEndian.Uint64(headerBytes))
 	}
 
-	// Get data DA height for the last included height
-	dataKey := store.GetHeightToDAHeightDataKey(daIncludedHeight)
-	if dataBytes, err := m.store.GetMetadata(ctx, dataKey); err == nil && len(dataBytes) == 8 {
-		dataDAHeight := binary.LittleEndian.Uint64(dataBytes)
-		m.dataCache.setMaxDAHeight(dataDAHeight)
+	if dataBytes, err := m.store.GetMetadata(ctx, store.GetHeightToDAHeightDataKey(daIncludedHeight)); err == nil && len(dataBytes) == 8 {
+		m.dataCache.setMaxDAHeight(binary.LittleEndian.Uint64(dataBytes))
 	}
 }

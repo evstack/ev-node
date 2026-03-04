@@ -503,8 +503,24 @@ func (s *Submitter) IsHeightDAIncluded(height uint64, header *types.SignedHeader
 
 	dataCommitment := data.DACommitment()
 
+	// Primary lookup: by real content hash (the normal steady-state path).
 	_, headerIncluded := s.cache.GetHeaderDAIncluded(header.Hash().String())
 	_, dataIncluded := s.cache.GetDataDAIncluded(dataCommitment.String())
+
+	// Fallback lookup: by block height via the placeholder entry written during
+	// RestoreFromStore.  On restart the snapshot is decoded into synthetic
+	// height-keyed placeholders before the DA retriever has had a chance to
+	// re-fire SetHeaderDAIncluded with the real content hash.  Without this
+	// fallback, IsHeightDAIncluded would return false for every in-flight block
+	// immediately after a restart, stalling processDAInclusionLoop until the DA
+	// retriever catches up — even though we already know these blocks are
+	// DA-included from the persisted snapshot.
+	if !headerIncluded {
+		_, headerIncluded = s.cache.GetHeaderDAIncluded(cache.HeightPlaceholderKey(cache.HeaderDAIncludedPrefix, height))
+	}
+	if !dataIncluded {
+		_, dataIncluded = s.cache.GetDataDAIncluded(cache.HeightPlaceholderKey(cache.DataDAIncludedPrefix, height))
+	}
 
 	dataIncluded = bytes.Equal(dataCommitment, common.DataHashForEmptyTxs) || dataIncluded
 

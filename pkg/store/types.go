@@ -47,21 +47,11 @@ type Store interface {
 	NewBatch(ctx context.Context) (Batch, error)
 }
 
-// MetadataEntry represents a key-value pair from metadata storage.
-type MetadataEntry struct {
-	Key   string
-	Value []byte
-}
-
 type Metadata interface {
 	// SetMetadata saves arbitrary value in the store.
 	//
 	// This method enables evolve to safely persist any information.
 	SetMetadata(ctx context.Context, key string, value []byte) error
-
-	// GetMetadataByPrefix returns all metadata entries whose keys have the given prefix.
-	// This is more efficient than iterating through known keys when the set of keys is unknown.
-	GetMetadataByPrefix(ctx context.Context, prefix string) ([]MetadataEntry, error)
 
 	// DeleteMetadata removes a metadata key from the store.
 	DeleteMetadata(ctx context.Context, key string) error

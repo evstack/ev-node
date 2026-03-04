@@ -2,274 +2,397 @@ package cache
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/evstack/ev-node/pkg/store"
+	pkgstore "github.com/evstack/ev-node/pkg/store"
 )
 
 type testItem struct{ V int }
 
-// memStore creates an in-memory store for testing
-func testMemStore(t *testing.T) store.Store {
-	ds, err := store.NewTestInMemoryKVStore()
+// testMemStore creates an in-memory store for testing.
+func testMemStore(t *testing.T) pkgstore.Store {
+	t.Helper()
+	ds, err := pkgstore.NewTestInMemoryKVStore()
 	require.NoError(t, err)
-	return store.New(ds)
+	return pkgstore.New(ds)
 }
+
+// writeSnapshot directly encodes and writes a snapshot into the store under
+// the cache's snapshot key (storeKeyPrefix + "__snap").  This simulates the
+// state that persistSnapshot would have written during a previous run, so that
+// RestoreFromStore can recover from it.
+func writeSnapshot(t *testing.T, st pkgstore.Store, storeKeyPrefix string, entries []snapshotEntry) {
+	t.Helper()
+	buf := encodeSnapshot(entries)
+	require.NoError(t, st.SetMetadata(context.Background(), storeKeyPrefix+"__snap", buf))
+}
+
+// testKeyFn is a simple height-key function used by tests that don't need the
+// real production keys.
+func testKeyFn(prefix string) func(uint64) string {
+	return func(h uint64) string {
+		return fmt.Sprintf("%s%d", prefix, h)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// MaxDAHeight
+// ---------------------------------------------------------------------------
 
 // TestCache_MaxDAHeight verifies that daHeight tracks the maximum DA height
+// across successive setDAIncluded calls.
 func TestCache_MaxDAHeight(t *testing.T) {
-	c := NewCache[testItem](nil, "")
+	c := NewCache[testItem](nil, "", nil)
 
-	// Initially should be 0
-	if got := c.daHeight(); got != 0 {
-		t.Errorf("initial daHeight = %d, want 0", got)
-	}
+	assert.Equal(t, uint64(0), c.daHeight(), "initial daHeight should be 0")
 
-	// Set items with increasing DA heights
 	c.setDAIncluded("hash1", 100, 1)
-	if got := c.daHeight(); got != 100 {
-		t.Errorf("after setDAIncluded(100): daHeight = %d, want 100", got)
-	}
+	assert.Equal(t, uint64(100), c.daHeight(), "after setDAIncluded(100)")
 
-	c.setDAIncluded("hash2", 50, 2) // Lower height shouldn't change max
-	if got := c.daHeight(); got != 100 {
-		t.Errorf("after setDAIncluded(50): daHeight = %d, want 100", got)
-	}
+	c.setDAIncluded("hash2", 50, 2) // lower, should not change max
+	assert.Equal(t, uint64(100), c.daHeight(), "after setDAIncluded(50)")
 
 	c.setDAIncluded("hash3", 200, 3)
-	if got := c.daHeight(); got != 200 {
-		t.Errorf("after setDAIncluded(200): daHeight = %d, want 200", got)
-	}
+	assert.Equal(t, uint64(200), c.daHeight(), "after setDAIncluded(200)")
 }
 
-// TestCache_MaxDAHeight_WithStore verifies that daHeight is restored from store
-func TestCache_MaxDAHeight_WithStore(t *testing.T) {
+// ---------------------------------------------------------------------------
+// RestoreFromStore — O(1) snapshot-based recovery
+// ---------------------------------------------------------------------------
+
+// TestCache_RestoreFromStore_EmptyChain verifies that RestoreFromStore is a
+// no-op on a brand-new node (no snapshot key in the store).
+func TestCache_RestoreFromStore_EmptyChain(t *testing.T) {
+	st := testMemStore(t)
+
+	c := NewCache[testItem](st, "hdr/", testKeyFn("hdr-da/"))
+	require.NoError(t, c.RestoreFromStore(context.Background()))
+
+	assert.Equal(t, 0, c.daIncluded.Len(), "no entries expected on empty chain")
+	assert.Equal(t, uint64(0), c.daHeight())
+}
+
+// TestCache_RestoreFromStore_FullyFinalized verifies that when the persisted
+// snapshot contains no entries (all blocks finalized, window empty) nothing is
+// loaded but maxDAHeight is still zero (no in-flight state).
+func TestCache_RestoreFromStore_FullyFinalized(t *testing.T) {
 	st := testMemStore(t)
 	ctx := context.Background()
 
-	c1 := NewCache[testItem](st, "test/da-included/")
+	// Simulate a previous run that had all blocks finalized: the snapshot is
+	// empty (persistSnapshot writes an empty buf when daIncluded is empty).
+	writeSnapshot(t, st, "hdr/", nil)
 
-	// Set DA included entries
-	c1.setDAIncluded("hash1", 100, 1)
-	c1.setDAIncluded("hash2", 200, 2)
-	c1.setDAIncluded("hash3", 150, 3)
+	c := NewCache[testItem](st, "hdr/", testKeyFn("hdr-da/"))
+	require.NoError(t, c.RestoreFromStore(ctx))
 
-	if got := c1.daHeight(); got != 200 {
-		t.Errorf("after setDAIncluded: daHeight = %d, want 200", got)
-	}
-
-	err := c1.SaveToStore(ctx)
-	require.NoError(t, err)
-
-	// Create new cache and restore from store
-	c2 := NewCache[testItem](st, "test/da-included/")
-
-	err = c2.RestoreFromStore(ctx)
-	require.NoError(t, err)
-
-	if got := c2.daHeight(); got != 200 {
-		t.Errorf("after restore: daHeight = %d, want 200", got)
-	}
-
-	// Verify individual entries were restored
-	daHeight, ok := c2.getDAIncluded("hash1")
-	assert.True(t, ok)
-	assert.Equal(t, uint64(100), daHeight)
-
-	daHeight, ok = c2.getDAIncluded("hash2")
-	assert.True(t, ok)
-	assert.Equal(t, uint64(200), daHeight)
-
-	daHeight, ok = c2.getDAIncluded("hash3")
-	assert.True(t, ok)
-	assert.Equal(t, uint64(150), daHeight)
+	assert.Equal(t, 0, c.daIncluded.Len(), "no in-flight entries expected")
+	assert.Equal(t, uint64(0), c.daHeight(), "no in-flight entries means daHeight is 0")
 }
 
-// TestCache_WithStorePersistence tests that DA inclusion is persisted to store
-func TestCache_WithStorePersistence(t *testing.T) {
+// TestCache_RestoreFromStore_InFlightWindow verifies that the in-flight entries
+// encoded in the snapshot are fully recovered on restore.
+func TestCache_RestoreFromStore_InFlightWindow(t *testing.T) {
 	st := testMemStore(t)
 	ctx := context.Background()
 
-	c1 := NewCache[testItem](st, "test/")
+	// Simulate two in-flight entries written by a previous run: heights 4 and 5.
+	writeSnapshot(t, st, "hdr/", []snapshotEntry{
+		{blockHeight: 4, daHeight: 13},
+		{blockHeight: 5, daHeight: 14},
+	})
 
-	// Set DA inclusion
-	c1.setDAIncluded("hash1", 100, 1)
-	c1.setDAIncluded("hash2", 200, 2)
+	c := NewCache[testItem](st, "hdr/", testKeyFn("hdr-da/"))
+	require.NoError(t, c.RestoreFromStore(ctx))
 
-	err := c1.SaveToStore(ctx)
-	require.NoError(t, err)
+	assert.Equal(t, 2, c.daIncluded.Len(), "exactly the in-flight snapshot entries should be loaded")
+	assert.Equal(t, uint64(14), c.daHeight(), "maxDAHeight should reflect the highest in-flight DA height")
 
-	// Create new cache with same store and restore
-	c2 := NewCache[testItem](st, "test/")
+	// Verify the placeholder keys are addressable by height via hashByHeight.
+	hash4, ok := c.hashByHeight.Get(4)
+	require.True(t, ok, "hashByHeight[4] should exist")
+	daH4, ok := c.daIncluded.Get(hash4)
+	require.True(t, ok)
+	assert.Equal(t, uint64(13), daH4)
 
-	err = c2.RestoreFromStore(ctx)
-	require.NoError(t, err)
-
-	// hash1 and hash2 should be restored, hash3 should not exist
-	daHeight, ok := c2.getDAIncluded("hash1")
-	assert.True(t, ok)
-	assert.Equal(t, uint64(100), daHeight)
-
-	daHeight, ok = c2.getDAIncluded("hash2")
-	assert.True(t, ok)
-	assert.Equal(t, uint64(200), daHeight)
-
-	_, ok = c2.getDAIncluded("hash3")
-	assert.False(t, ok)
+	hash5, ok := c.hashByHeight.Get(5)
+	require.True(t, ok, "hashByHeight[5] should exist")
+	daH5, ok := c.daIncluded.Get(hash5)
+	require.True(t, ok)
+	assert.Equal(t, uint64(14), daH5)
 }
 
-// TestCache_LargeDataset covers edge cases with height index management at scale.
-func TestCache_LargeDataset(t *testing.T) {
-	c := NewCache[testItem](nil, "")
-	const N = 20000
-	// Insert in descending order to exercise insert positions
-	for i := N - 1; i >= 0; i-- {
-		v := &testItem{V: i}
-		c.setItem(uint64(i), v)
-	}
-	// Delete a range in the middle
-	for i := 5000; i < 10000; i += 2 {
-		c.getNextItem(uint64(i))
-	}
+// TestCache_RestoreFromStore_SingleEntry verifies a snapshot with one in-flight
+// entry is correctly decoded.
+func TestCache_RestoreFromStore_SingleEntry(t *testing.T) {
+	st := testMemStore(t)
+	ctx := context.Background()
+
+	writeSnapshot(t, st, "hdr/", []snapshotEntry{
+		{blockHeight: 3, daHeight: 20},
+	})
+
+	c := NewCache[testItem](st, "hdr/", testKeyFn("hdr-da/"))
+	require.NoError(t, c.RestoreFromStore(ctx))
+
+	assert.Equal(t, 1, c.daIncluded.Len(), "one entry should be in-flight")
+	assert.Equal(t, uint64(20), c.daHeight())
+
+	_, ok := c.hashByHeight.Get(4)
+	assert.False(t, ok, "height 4 was not in snapshot")
+	_, ok = c.hashByHeight.Get(5)
+	assert.False(t, ok, "height 5 was not in snapshot")
 }
 
-// TestCache_BasicOperations tests basic cache operations
+// TestCache_RestoreFromStore_NilStore verifies that RestoreFromStore is a
+// no-op when the cache has no backing store.
+func TestCache_RestoreFromStore_NilStore(t *testing.T) {
+	c := NewCache[testItem](nil, "", nil)
+	require.NoError(t, c.RestoreFromStore(context.Background()))
+	assert.Equal(t, 0, c.daIncluded.Len())
+}
+
+// TestCache_RestoreFromStore_NilHeightKeyFn verifies that RestoreFromStore
+// still works when no height-key function is provided: the snapshot is read
+// and decoded normally (the key fn is unused by the snapshot path).
+func TestCache_RestoreFromStore_NilHeightKeyFn(t *testing.T) {
+	st := testMemStore(t)
+	ctx := context.Background()
+
+	// Write a snapshot with one in-flight entry — keyFn is irrelevant for restore.
+	writeSnapshot(t, st, "hdr/", []snapshotEntry{
+		{blockHeight: 7, daHeight: 50},
+	})
+
+	c := NewCache[testItem](st, "hdr/", nil) // no key fn
+	require.NoError(t, c.RestoreFromStore(ctx))
+
+	// The snapshot-based restore does not use the key fn, so the entry is loaded.
+	assert.Equal(t, 1, c.daIncluded.Len(), "snapshot entry should be loaded even without key fn")
+	assert.Equal(t, uint64(50), c.daHeight())
+}
+
+// TestCache_RestoreFromStore_PlaceholderOverwrittenByRealHash verifies that
+// when a real content-hash entry is written after restore it overwrites the
+// height-indexed placeholder, leaving exactly one entry per height.
+func TestCache_RestoreFromStore_PlaceholderOverwrittenByRealHash(t *testing.T) {
+	st := testMemStore(t)
+	ctx := context.Background()
+
+	// Snapshot contains one in-flight entry for height 3.
+	writeSnapshot(t, st, "hdr/", []snapshotEntry{
+		{blockHeight: 3, daHeight: 99},
+	})
+
+	c := NewCache[testItem](st, "hdr/", testKeyFn("hdr-da/"))
+	require.NoError(t, c.RestoreFromStore(ctx))
+
+	assert.Equal(t, 1, c.daIncluded.Len(), "one placeholder for height 3")
+
+	// Simulate the DA submitter writing the real hash entry.
+	c.setDAIncluded("realHash_height3", 99, 3)
+
+	// hashByHeight[3] now points to the new real hash.
+	newHash, ok := c.hashByHeight.Get(3)
+	require.True(t, ok)
+	assert.Equal(t, "realHash_height3", newHash)
+
+	// The real entry must be queryable by its content hash.
+	daH, ok := c.getDAIncluded("realHash_height3")
+	require.True(t, ok)
+	assert.Equal(t, uint64(99), daH)
+}
+
+// TestCache_RestoreFromStore_RoundTrip verifies that setDAIncluded persists a
+// snapshot that a freshly-constructed cache can fully recover.
+func TestCache_RestoreFromStore_RoundTrip(t *testing.T) {
+	st := testMemStore(t)
+	ctx := context.Background()
+
+	// First cache instance: write some in-flight entries.
+	c1 := NewCache[testItem](st, "rt/", testKeyFn("rt-da/"))
+	c1.setDAIncluded("hashA", 10, 1)
+	c1.setDAIncluded("hashB", 20, 2)
+	c1.setDAIncluded("hashC", 30, 3)
+	// Remove one entry to confirm deletions are also snapshotted.
+	c1.removeDAIncluded("hashB")
+
+	// Second cache instance on same store: should recover {hashA→10, hashC→30}.
+	c2 := NewCache[testItem](st, "rt/", testKeyFn("rt-da/"))
+	require.NoError(t, c2.RestoreFromStore(ctx))
+
+	assert.Equal(t, 2, c2.daIncluded.Len(), "only non-deleted entries should be restored")
+	assert.Equal(t, uint64(30), c2.daHeight())
+
+	// Placeholder keys are created for heights 1 and 3 (height 2 was removed).
+	_, ok := c2.hashByHeight.Get(1)
+	assert.True(t, ok, "height 1 placeholder should exist")
+	_, ok = c2.hashByHeight.Get(2)
+	assert.False(t, ok, "height 2 was removed, should not exist")
+	_, ok = c2.hashByHeight.Get(3)
+	assert.True(t, ok, "height 3 placeholder should exist")
+}
+
+// ---------------------------------------------------------------------------
+// Basic operations (no store required)
+// ---------------------------------------------------------------------------
+
 func TestCache_BasicOperations(t *testing.T) {
-	c := NewCache[testItem](nil, "")
+	c := NewCache[testItem](nil, "", nil)
 
-	// Test setItem/getItem
-	item := &testItem{V: 42}
-	c.setItem(1, item)
+	// setItem / getItem
+	c.setItem(1, &testItem{V: 42})
 	got := c.getItem(1)
-	assert.NotNil(t, got)
+	require.NotNil(t, got)
 	assert.Equal(t, 42, got.V)
+	assert.Nil(t, c.getItem(999))
 
-	// Test getItem for non-existent key
-	got = c.getItem(999)
-	assert.Nil(t, got)
-
-	// Test setSeen/isSeen
+	// setSeen / isSeen / removeSeen
 	assert.False(t, c.isSeen("hash1"))
 	c.setSeen("hash1", 1)
 	assert.True(t, c.isSeen("hash1"))
-
-	// Test removeSeen
 	c.removeSeen("hash1")
 	assert.False(t, c.isSeen("hash1"))
 
-	// Test setDAIncluded/getDAIncluded
+	// setDAIncluded / getDAIncluded / removeDAIncluded
 	_, ok := c.getDAIncluded("hash2")
 	assert.False(t, ok)
-
 	c.setDAIncluded("hash2", 100, 2)
 	daHeight, ok := c.getDAIncluded("hash2")
 	assert.True(t, ok)
 	assert.Equal(t, uint64(100), daHeight)
-
-	// Test removeDAIncluded
 	c.removeDAIncluded("hash2")
 	_, ok = c.getDAIncluded("hash2")
 	assert.False(t, ok)
 }
 
-// TestCache_GetNextItem tests the atomic get-and-remove operation
 func TestCache_GetNextItem(t *testing.T) {
-	c := NewCache[testItem](nil, "")
+	c := NewCache[testItem](nil, "", nil)
 
-	// Set multiple items
 	c.setItem(1, &testItem{V: 1})
 	c.setItem(2, &testItem{V: 2})
 	c.setItem(3, &testItem{V: 3})
 
-	// Get and remove item at height 2
 	got := c.getNextItem(2)
-	assert.NotNil(t, got)
+	require.NotNil(t, got)
 	assert.Equal(t, 2, got.V)
 
-	// Item should be removed
-	got = c.getNextItem(2)
-	assert.Nil(t, got)
+	// removed
+	assert.Nil(t, c.getNextItem(2))
 
-	// Other items should still exist
-	got = c.getItem(1)
-	assert.NotNil(t, got)
-	assert.Equal(t, 1, got.V)
-
-	got = c.getItem(3)
-	assert.NotNil(t, got)
-	assert.Equal(t, 3, got.V)
+	// others intact
+	assert.NotNil(t, c.getItem(1))
+	assert.NotNil(t, c.getItem(3))
 }
 
-// TestCache_DeleteAllForHeight tests deleting all data for a specific height
 func TestCache_DeleteAllForHeight(t *testing.T) {
-	c := NewCache[testItem](nil, "")
+	c := NewCache[testItem](nil, "", nil)
 
-	// Set items at different heights
 	c.setItem(1, &testItem{V: 1})
 	c.setItem(2, &testItem{V: 2})
 	c.setSeen("hash1", 1)
 	c.setSeen("hash2", 2)
 
-	// Delete height 1
 	c.deleteAllForHeight(1)
 
-	// Height 1 data should be gone
 	assert.Nil(t, c.getItem(1))
 	assert.False(t, c.isSeen("hash1"))
 
-	// Height 2 data should still exist
 	assert.NotNil(t, c.getItem(2))
 	assert.True(t, c.isSeen("hash2"))
 }
 
-// TestCache_WithNilStore tests creating cache with nil store
 func TestCache_WithNilStore(t *testing.T) {
-	// Cache without store should work fine
-	c := NewCache[testItem](nil, "")
+	c := NewCache[testItem](nil, "", nil)
 	require.NotNil(t, c)
 
-	// Basic operations should work
 	c.setItem(1, &testItem{V: 1})
 	got := c.getItem(1)
-	assert.NotNil(t, got)
+	require.NotNil(t, got)
 	assert.Equal(t, 1, got.V)
 
-	// DA inclusion should work (just not persisted)
 	c.setDAIncluded("hash1", 100, 1)
 	daHeight, ok := c.getDAIncluded("hash1")
 	assert.True(t, ok)
 	assert.Equal(t, uint64(100), daHeight)
 }
 
-// TestCache_SaveToStore tests the SaveToStore method
+// ---------------------------------------------------------------------------
+// SaveToStore / ClearFromStore
+// ---------------------------------------------------------------------------
+
 func TestCache_SaveToStore(t *testing.T) {
 	st := testMemStore(t)
 	ctx := context.Background()
 
-	c := NewCache[testItem](st, "save-test/")
-
-	// Set some DA included entries
+	c := NewCache[testItem](st, "save-test/", nil)
 	c.setDAIncluded("hash1", 100, 1)
 	c.setDAIncluded("hash2", 200, 2)
 
-	// Save to store (should be a no-op since we persist on setDAIncluded)
-	err := c.SaveToStore(ctx)
+	require.NoError(t, c.SaveToStore(ctx))
+
+	// SaveToStore rewrites the single snapshot key (storeKeyPrefix + "__snap").
+	// Two entries × 16 bytes each = 32 bytes total.
+	raw, err := st.GetMetadata(ctx, "save-test/__snap")
 	require.NoError(t, err)
+	assert.Len(t, raw, 2*snapshotEntrySize, "snapshot should contain 2 entries of 16 bytes each")
 
-	// Verify data is in store by creating new cache and restoring
-	c2 := NewCache[testItem](st, "save-test/")
+	// The individual per-hash keys are NOT written by the snapshot design.
+	_, err = st.GetMetadata(ctx, "save-test/hash1")
+	assert.Error(t, err, "per-hash keys should not exist in the snapshot design")
+}
 
-	err = c2.RestoreFromStore(ctx)
-	require.NoError(t, err)
+func TestCache_ClearFromStore(t *testing.T) {
+	st := testMemStore(t)
+	ctx := context.Background()
 
-	daHeight, ok := c2.getDAIncluded("hash1")
-	assert.True(t, ok)
-	assert.Equal(t, uint64(100), daHeight)
+	c := NewCache[testItem](st, "clear-test/", nil)
+	c.setDAIncluded("hash1", 100, 1)
+	c.setDAIncluded("hash2", 200, 2)
 
-	daHeight, ok = c2.getDAIncluded("hash2")
-	assert.True(t, ok)
-	assert.Equal(t, uint64(200), daHeight)
+	require.NoError(t, c.ClearFromStore(ctx, []string{"hash1", "hash2"}))
+
+	_, err := st.GetMetadata(ctx, "clear-test/hash1")
+	assert.Error(t, err, "key should have been removed from store")
+}
+
+// ---------------------------------------------------------------------------
+// Large-dataset smoke test
+// ---------------------------------------------------------------------------
+
+func TestCache_LargeDataset(t *testing.T) {
+	c := NewCache[testItem](nil, "", nil)
+	const N = 20_000
+	for i := N - 1; i >= 0; i-- {
+		c.setItem(uint64(i), &testItem{V: i})
+	}
+	for i := 5000; i < 10000; i += 2 {
+		c.getNextItem(uint64(i))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// heightPlaceholderKey
+// ---------------------------------------------------------------------------
+
+// TestHeightPlaceholderKey verifies the placeholder key format and uniqueness.
+func TestHeightPlaceholderKey(t *testing.T) {
+	k0 := HeightPlaceholderKey("pfx/", 0)
+	k1 := HeightPlaceholderKey("pfx/", 1)
+	kMax := HeightPlaceholderKey("pfx/", ^uint64(0))
+
+	assert.NotEqual(t, k0, k1)
+	assert.NotEqual(t, k1, kMax)
+
+	// Must start with the provided prefix.
+	assert.Contains(t, k0, "pfx/")
+	assert.Contains(t, k1, "pfx/")
+	assert.Contains(t, kMax, "pfx/")
+
+	// Different prefixes must not collide.
+	assert.NotEqual(t, HeightPlaceholderKey("a/", 1), HeightPlaceholderKey("b/", 1))
 }

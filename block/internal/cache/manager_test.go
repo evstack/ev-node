@@ -13,6 +13,7 @@ import (
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/store"
+	pkgstore "github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -92,10 +93,10 @@ func TestManager_SaveAndRestoreFromStore(t *testing.T) {
 	st := memStore(t)
 	ctx := context.Background()
 
-	// First, we need to save some block data to the store so RestoreFromStore can find the hashes
 	h1, d1 := types.GetRandomBlock(1, 1, "test-chain")
 	h2, d2 := types.GetRandomBlock(2, 1, "test-chain")
 
+	// Write blocks to the store so store.Height() returns 2.
 	batch1, err := st.NewBatch(ctx)
 	require.NoError(t, err)
 	require.NoError(t, batch1.SaveBlockData(h1, d1, &types.Signature{}))
@@ -111,30 +112,55 @@ func TestManager_SaveAndRestoreFromStore(t *testing.T) {
 	m1, err := NewManager(cfg, st, zerolog.Nop())
 	require.NoError(t, err)
 
-	// Set DA inclusion for the blocks
+	// Simulate the submitter: write per-height DA mappings (normally done by
+	// setNodeHeightToDAHeight) and mark height 1 as finalized.
+	// Heights 1 and 2 are both submitted to DA; height 1 is finalized, height 2 is in-flight.
+	writeHeightDAMeta := func(height, daH uint64, headerKey, dataKey string) {
+		b := make([]byte, 8)
+		binary.LittleEndian.PutUint64(b, daH)
+		require.NoError(t, st.SetMetadata(ctx, pkgstore.GetHeightToDAHeightHeaderKey(height), b))
+		binary.LittleEndian.PutUint64(b, daH)
+		require.NoError(t, st.SetMetadata(ctx, pkgstore.GetHeightToDAHeightDataKey(height), b))
+		_ = headerKey
+		_ = dataKey
+	}
+	writeHeightDAMeta(1, 100, "", "")
+	writeHeightDAMeta(2, 101, "", "")
+
+	// Persist DAIncludedHeight = 1 (height 2 is still in-flight).
+	daIncludedBz := make([]byte, 8)
+	binary.LittleEndian.PutUint64(daIncludedBz, 1)
+	require.NoError(t, st.SetMetadata(ctx, pkgstore.DAIncludedHeightKey, daIncludedBz))
+
+	// Also write real content-hash entries for both heights so that
+	// SetHeaderDAIncluded / SetDataDAIncluded paths are tested.
 	m1.SetHeaderDAIncluded(h1.Hash().String(), 100, 1)
 	m1.SetDataDAIncluded(d1.DACommitment().String(), 100, 1)
 	m1.SetHeaderDAIncluded(h2.Hash().String(), 101, 2)
 	m1.SetDataDAIncluded(d2.DACommitment().String(), 101, 2)
 
-	// Persist to store
-	err = m1.SaveToStore()
-	require.NoError(t, err)
+	require.NoError(t, m1.SaveToStore())
 
 	// Create a fresh manager on same store and verify restore
 	m2, err := NewManager(cfg, st, zerolog.Nop())
 	require.NoError(t, err)
 
-	// Check DA inclusion was restored
-	daHeight, ok := m2.GetHeaderDAIncluded(h1.Hash().String())
-	assert.True(t, ok)
-	assert.Equal(t, uint64(100), daHeight)
+	// Height 1 is finalized (DAIncludedHeight = 1): IsHeightDAIncluded returns true
+	// via the height comparison, so GetHeaderDAIncluded is never consulted for it.
+	// The cache entry is not restored — this is correct and intentional.
 
-	daHeight, ok = m2.GetDataDAIncluded(d1.DACommitment().String())
-	assert.True(t, ok)
-	assert.Equal(t, uint64(100), daHeight)
+	// Height 2 is in-flight: the window restore loads a placeholder entry keyed by
+	// height.  The real content-hash entry is populated when the submitter re-processes
+	// the block after restart.  Until then, DaHeight() must reflect the in-flight DA height.
+	assert.Equal(t, uint64(101), m2.DaHeight(),
+		"DaHeight should reflect the highest in-flight DA height after restore")
 
-	daHeight, ok = m2.GetHeaderDAIncluded(h2.Hash().String())
+	// After the submitter re-fires SetHeaderDAIncluded for height 2, the real hash
+	// entry must be queryable.
+	m2.SetHeaderDAIncluded(h2.Hash().String(), 101, 2)
+	m2.SetDataDAIncluded(d2.DACommitment().String(), 101, 2)
+
+	daHeight, ok := m2.GetHeaderDAIncluded(h2.Hash().String())
 	assert.True(t, ok)
 	assert.Equal(t, uint64(101), daHeight)
 
@@ -431,14 +457,23 @@ func TestManager_DAInclusionPersistence(t *testing.T) {
 	// Verify DA height is tracked
 	assert.Equal(t, uint64(101), m1.DaHeight())
 
-	err = m1.SaveToStore()
-	require.NoError(t, err)
+	require.NoError(t, m1.SaveToStore())
 
-	// Create new manager - DA inclusion should be restored
+	// SaveToStore writes a compact snapshot key for each cache.
+	// A freshly created manager on the same store must recover the snapshot via
+	// a single GetMetadata call (O(1) restore).
 	m2, err := NewManager(cfg, st, zerolog.Nop())
 	require.NoError(t, err)
 
-	// DA inclusion should be restored from store
+	// The snapshot encodes the in-flight entries that were set above, so
+	// maxDAHeight must be restored to 101 (the higher of 100 and 101).
+	assert.Equal(t, uint64(101), m2.DaHeight(),
+		"maxDAHeight should be restored from the snapshot")
+
+	// Simulate the submitter re-firing the real entries after restart.
+	m2.SetHeaderDAIncluded(headerHash, 100, 1)
+	m2.SetDataDAIncluded(dataHash, 101, 1)
+
 	daHeight, ok := m2.GetHeaderDAIncluded(headerHash)
 	assert.True(t, ok)
 	assert.Equal(t, uint64(100), daHeight)
@@ -446,9 +481,6 @@ func TestManager_DAInclusionPersistence(t *testing.T) {
 	daHeight, ok = m2.GetDataDAIncluded(dataHash)
 	assert.True(t, ok)
 	assert.Equal(t, uint64(101), daHeight)
-
-	// Max DA height should also be restored
-	assert.Equal(t, uint64(101), m2.DaHeight())
 }
 
 func TestManager_DaHeightAfterCacheClear(t *testing.T) {
@@ -466,27 +498,34 @@ func TestManager_DaHeightAfterCacheClear(t *testing.T) {
 	require.NoError(t, batch.SetHeight(1))
 	require.NoError(t, batch.Commit())
 
-	// Set up the HeightToDAHeight metadata (simulating what submitter does)
-	headerDAHeightBytes := make([]byte, 8)
-	binary.LittleEndian.PutUint64(headerDAHeightBytes, 150)
-	require.NoError(t, st.SetMetadata(ctx, store.GetHeightToDAHeightHeaderKey(1), headerDAHeightBytes))
+	// Write the finalized-tip metadata exactly as setNodeHeightToDAHeight does
+	// in production.  initDAHeightFromStore reads these keys to seed DaHeight()
+	// after ClearCache (the snapshot is wiped, but these keys survive).
+	headerDABz := make([]byte, 8)
+	binary.LittleEndian.PutUint64(headerDABz, 150)
+	require.NoError(t, st.SetMetadata(ctx, pkgstore.GetHeightToDAHeightHeaderKey(1), headerDABz))
 
-	dataDAHeightBytes := make([]byte, 8)
-	binary.LittleEndian.PutUint64(dataDAHeightBytes, 155)
-	require.NoError(t, st.SetMetadata(ctx, store.GetHeightToDAHeightDataKey(1), dataDAHeightBytes))
+	dataDABz := make([]byte, 8)
+	binary.LittleEndian.PutUint64(dataDABz, 155)
+	require.NoError(t, st.SetMetadata(ctx, pkgstore.GetHeightToDAHeightDataKey(1), dataDABz))
 
-	// Set DAIncludedHeightKey to indicate height 1 was DA included
-	daIncludedBytes := make([]byte, 8)
-	binary.LittleEndian.PutUint64(daIncludedBytes, 1)
-	require.NoError(t, st.SetMetadata(ctx, store.DAIncludedHeightKey, daIncludedBytes))
+	daIncBz := make([]byte, 8)
+	binary.LittleEndian.PutUint64(daIncBz, 1)
+	require.NoError(t, st.SetMetadata(ctx, pkgstore.DAIncludedHeightKey, daIncBz))
 
-	// Create manager with ClearCache = true
+	// Create manager with ClearCache = true.
+	// ClearFromStore deletes the snapshot key, but initDAHeightFromStore still
+	// reads the persisted finalized-tip HeightToDAHeight metadata, so DaHeight()
+	// is seeded correctly even after the in-memory caches are wiped.
 	cfg.ClearCache = true
 	m, err := NewManager(cfg, st, zerolog.Nop())
 	require.NoError(t, err)
 
-	// DaHeight should NOT be 0 - it should be initialized from store metadata
-	assert.Equal(t, uint64(155), m.DaHeight(), "DaHeight should be initialized from HeightToDAHeight metadata even after cache clear")
+	// DaHeight must reflect the finalized-tip DA height loaded from store
+	// metadata, not 0.  The syncer uses this to seed daRetrieverHeight so the
+	// node does not re-scan DA from genesis after an operator-triggered clear.
+	assert.Equal(t, uint64(155), m.DaHeight(),
+		"DaHeight should be seeded from finalized-tip metadata even after ClearCache")
 }
 
 func TestManager_DaHeightFromStoreOnRestore(t *testing.T) {
@@ -504,25 +543,32 @@ func TestManager_DaHeightFromStoreOnRestore(t *testing.T) {
 	require.NoError(t, batch.SetHeight(1))
 	require.NoError(t, batch.Commit())
 
-	// Set up HeightToDAHeight metadata but NOT the cache entries
-	// This simulates a scenario where DA inclusion was processed but cache entries were lost
-	headerDAHeightBytes := make([]byte, 8)
-	binary.LittleEndian.PutUint64(headerDAHeightBytes, 200)
-	require.NoError(t, st.SetMetadata(ctx, store.GetHeightToDAHeightHeaderKey(1), headerDAHeightBytes))
+	// Persist the finalized-tip HeightToDAHeight metadata exactly as
+	// setNodeHeightToDAHeight does in production.  These keys are the source
+	// of truth that initDAHeightFromStore reads — they exist independently of
+	// the snapshot and survive across restarts and cache clears.
+	headerDABz := make([]byte, 8)
+	binary.LittleEndian.PutUint64(headerDABz, 200)
+	require.NoError(t, st.SetMetadata(ctx, pkgstore.GetHeightToDAHeightHeaderKey(1), headerDABz))
 
-	dataDAHeightBytes := make([]byte, 8)
-	binary.LittleEndian.PutUint64(dataDAHeightBytes, 205)
-	require.NoError(t, st.SetMetadata(ctx, store.GetHeightToDAHeightDataKey(1), dataDAHeightBytes))
+	dataDABz := make([]byte, 8)
+	binary.LittleEndian.PutUint64(dataDABz, 205)
+	require.NoError(t, st.SetMetadata(ctx, pkgstore.GetHeightToDAHeightDataKey(1), dataDABz))
 
-	daIncludedBytes := make([]byte, 8)
-	binary.LittleEndian.PutUint64(daIncludedBytes, 1)
-	require.NoError(t, st.SetMetadata(ctx, store.DAIncludedHeightKey, daIncludedBytes))
+	daIncBz := make([]byte, 8)
+	binary.LittleEndian.PutUint64(daIncBz, 1)
+	require.NoError(t, st.SetMetadata(ctx, pkgstore.DAIncludedHeightKey, daIncBz))
 
-	// Create manager without ClearCache - should restore and init from metadata
+	// Create a manager — RestoreFromStore first reads the snapshot (O(1) for
+	// in-flight entries, empty here because height 1 is fully finalized), then
+	// initDAHeightFromStore seeds maxDAHeight from the finalized-tip metadata.
 	cfg.ClearCache = false
 	m, err := NewManager(cfg, st, zerolog.Nop())
 	require.NoError(t, err)
 
-	// DaHeight should be the max from HeightToDAHeight metadata
-	assert.Equal(t, uint64(205), m.DaHeight(), "DaHeight should be initialized from HeightToDAHeight metadata on restore")
+	// DaHeight must reflect the highest DA height from the finalized-tip
+	// metadata, not 0.  Without initDAHeightFromStore this would be 0 because
+	// there are no in-flight snapshot entries.
+	assert.Equal(t, uint64(205), m.DaHeight(),
+		"DaHeight should be seeded from finalized-tip HeightToDAHeight metadata on restore")
 }
