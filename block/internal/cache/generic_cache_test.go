@@ -396,3 +396,87 @@ func TestHeightPlaceholderKey(t *testing.T) {
 	// Different prefixes must not collide.
 	assert.NotEqual(t, HeightPlaceholderKey("a/", 1), HeightPlaceholderKey("b/", 1))
 }
+
+// TestCache_NoPlaceholderLeakAfterRefire verifies that when the DA retriever
+// re-fires setDAIncluded with the real content hash after a restart, the
+// snapshot placeholder that RestoreFromStore installed is evicted from
+// daIncluded.  Without the eviction in setDAIncluded, every restart cycle
+// would leak one orphaned placeholder key per in-flight block.
+func TestCache_NoPlaceholderLeakAfterRefire(t *testing.T) {
+	st := testMemStore(t)
+	ctx := context.Background()
+
+	// Step 1: initial run — write a real hash for height 3.
+	c1 := NewCache[testItem](st, "pfx/", testKeyFn("da/"))
+	c1.setDAIncluded("realHash3", 99, 3)
+	// snapshot now contains [{blockHeight:3, daHeight:99}]
+
+	// Step 2: restart — placeholder installed for height 3.
+	c2 := NewCache[testItem](st, "pfx/", testKeyFn("da/"))
+	require.NoError(t, c2.RestoreFromStore(ctx))
+
+	placeholder := HeightPlaceholderKey("pfx/", 3)
+	_, placeholderPresent := c2.daIncluded.Get(placeholder)
+	require.True(t, placeholderPresent, "placeholder must be present immediately after restore")
+	assert.Equal(t, 1, c2.daIncluded.Len(), "only one entry expected before re-fire")
+
+	// Step 3: DA retriever re-fires with the real hash.
+	c2.setDAIncluded("realHash3", 99, 3)
+
+	// The real hash must be present.
+	daH, ok := c2.getDAIncluded("realHash3")
+	require.True(t, ok, "real hash must be present after re-fire")
+	assert.Equal(t, uint64(99), daH)
+
+	// The placeholder must be gone — no orphan leak.
+	_, placeholderPresent = c2.daIncluded.Get(placeholder)
+	assert.False(t, placeholderPresent, "placeholder must be evicted after real hash is written")
+
+	// Total entries must still be exactly one.
+	assert.Equal(t, 1, c2.daIncluded.Len(), "exactly one daIncluded entry after re-fire — no orphan")
+}
+
+// TestCache_RestartIdempotent verifies that multiple successive restarts all
+// yield a correctly functioning cache — i.e. the snapshot written after a
+// re-fire is identical in semantics to the original, so a second (or third)
+// restart still loads the right DA height via the placeholder fallback and the
+// snapshot never grows stale or accumulates phantom entries.
+func TestCache_RestartIdempotent(t *testing.T) {
+	st := testMemStore(t)
+	ctx := context.Background()
+
+	const realHash = "realHashH5"
+	const blockH = uint64(5)
+	const daH = uint64(42)
+
+	// ── Run 1: normal operation, height 5 in-flight ──────────────────────────
+	c1 := NewCache[testItem](st, "pfx/", testKeyFn("da/"))
+	c1.setDAIncluded(realHash, daH, blockH)
+	// snapshot: [{5, 42}]
+
+	for restart := 1; restart <= 3; restart++ {
+		// ── Restart N: restore from snapshot
+		cR := NewCache[testItem](st, "pfx/", testKeyFn("da/"))
+		require.NoError(t, cR.RestoreFromStore(ctx), "restart %d: RestoreFromStore", restart)
+
+		assert.Equal(t, 1, cR.daIncluded.Len(), "restart %d: one placeholder entry", restart)
+		assert.Equal(t, daH, cR.daHeight(), "restart %d: daHeight correct", restart)
+
+		// Fallback lookup by height must work.
+		gotDAH, ok := cR.getDAIncludedByHeight(blockH)
+		require.True(t, ok, "restart %d: height-based lookup must succeed", restart)
+		assert.Equal(t, daH, gotDAH, "restart %d: height-based DA height correct", restart)
+
+		// ── DA retriever re-fires with the real hash
+		cR.setDAIncluded(realHash, daH, blockH)
+
+		// After re-fire: real hash present, no orphan, snapshot updated.
+		_, realPresent := cR.daIncluded.Get(realHash)
+		assert.True(t, realPresent, "restart %d: real hash present after re-fire", restart)
+		assert.Equal(t, 1, cR.daIncluded.Len(), "restart %d: no orphan after re-fire", restart)
+
+		// The snapshot rewritten by re-fire must still encode the right data
+		// so the next restart can load it correctly.
+		// (persistSnapshot fires inside setDAIncluded, so the store is up to date.)
+	}
+}

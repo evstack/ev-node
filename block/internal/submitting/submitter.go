@@ -426,20 +426,20 @@ func (s *Submitter) sendCriticalError(err error) {
 	}
 }
 
-// setNodeHeightToDAHeight stores the mapping from a ev-node block height to the corresponding
-// DA (Data Availability) layer heights where the block's header and data were included.
-// This mapping is persisted in the store metadata and is used to track which DA heights
-// contain the block components for a given ev-node height.
-//
-// For blocks with empty transactions, both header and data use the same DA height since
-// empty transaction data is not actually published to the DA layer.
+// setNodeHeightToDAHeight persists the DA heights for a block's header and data.
+// For empty-tx blocks, both use the header DA height since no data blob is posted.
 func (s *Submitter) setNodeHeightToDAHeight(ctx context.Context, height uint64, header *types.SignedHeader, data *types.Data, genesisInclusion bool) error {
 	headerHash, dataHash := header.Hash(), data.DACommitment()
 
 	headerDaHeightBytes := make([]byte, 8)
+	// Try real hash first; fall back to height-based lookup for post-restart
+	// placeholders (before the DA retriever has re-fired the real hash).
 	daHeightForHeader, ok := s.cache.GetHeaderDAIncluded(headerHash.String())
 	if !ok {
-		return fmt.Errorf("header hash %s not found in cache", headerHash)
+		daHeightForHeader, ok = s.cache.GetHeaderDAIncludedByHeight(height)
+	}
+	if !ok {
+		return fmt.Errorf("header hash %s not found in cache for height %d", headerHash, height)
 	}
 	binary.LittleEndian.PutUint64(headerDaHeightBytes, daHeightForHeader)
 
@@ -455,7 +455,10 @@ func (s *Submitter) setNodeHeightToDAHeight(ctx context.Context, height uint64, 
 	} else {
 		daHeightForData, ok := s.cache.GetDataDAIncluded(dataHash.String())
 		if !ok {
-			return fmt.Errorf("data hash %s not found in cache", dataHash.String())
+			daHeightForData, ok = s.cache.GetDataDAIncludedByHeight(height)
+		}
+		if !ok {
+			return fmt.Errorf("data hash %s not found in cache for height %d", dataHash.String(), height)
 		}
 		binary.LittleEndian.PutUint64(dataDaHeightBytes, daHeightForData)
 
@@ -474,7 +477,6 @@ func (s *Submitter) setNodeHeightToDAHeight(ctx context.Context, height uint64, 
 			return err
 		}
 
-		// the sequencer will process DA epochs from this height.
 		if s.sequencer != nil {
 			s.sequencer.SetDAHeight(genesisDAIncludedHeight)
 			s.logger.Debug().Uint64("genesis_da_height", genesisDAIncludedHeight).Msg("initialized sequencer DA height from persisted genesis DA height")
@@ -484,10 +486,9 @@ func (s *Submitter) setNodeHeightToDAHeight(ctx context.Context, height uint64, 
 	return nil
 }
 
-// IsHeightDAIncluded checks if a height is included in DA
+// IsHeightDAIncluded reports whether the block at height has been DA-included.
 func (s *Submitter) IsHeightDAIncluded(height uint64, header *types.SignedHeader, data *types.Data) (bool, error) {
-	// If height is at or below the DA included height, it was already processed
-	// and cache entries were cleared. We know it's DA included.
+	// Already finalized — cache entries were cleared, but we know it's included.
 	if height <= s.GetDAIncludedHeight() {
 		return true, nil
 	}
@@ -503,18 +504,11 @@ func (s *Submitter) IsHeightDAIncluded(height uint64, header *types.SignedHeader
 
 	dataCommitment := data.DACommitment()
 
-	// Primary lookup: by real content hash (the normal steady-state path).
+	// Try real hash first; fall back to height-based placeholder for post-restart
+	// state before the DA retriever has re-fired the real hashes.
 	_, headerIncluded := s.cache.GetHeaderDAIncluded(header.Hash().String())
 	_, dataIncluded := s.cache.GetDataDAIncluded(dataCommitment.String())
 
-	// Fallback lookup: by block height via the placeholder entry written during
-	// RestoreFromStore.  On restart the snapshot is decoded into synthetic
-	// height-keyed placeholders before the DA retriever has had a chance to
-	// re-fire SetHeaderDAIncluded with the real content hash.  Without this
-	// fallback, IsHeightDAIncluded would return false for every in-flight block
-	// immediately after a restart, stalling processDAInclusionLoop until the DA
-	// retriever catches up — even though we already know these blocks are
-	// DA-included from the persisted snapshot.
 	if !headerIncluded {
 		_, headerIncluded = s.cache.GetHeaderDAIncluded(cache.HeightPlaceholderKey(cache.HeaderDAIncludedPrefix, height))
 	}

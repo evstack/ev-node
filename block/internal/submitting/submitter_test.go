@@ -666,3 +666,96 @@ func TestSubmitter_IsHeightDAIncluded_AfterRestart(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, included, "IsHeightDAIncluded must still return true after real hash is written")
 }
+
+// TestSubmitter_setNodeHeightToDAHeight_AfterRestart proves that
+// setNodeHeightToDAHeight succeeds for an in-flight block immediately after a
+// restart, before the DA retriever has re-fired SetHeaderDAIncluded with the
+// real content hash.
+//
+// The bug this guards against:
+//   - Snapshot encodes [blockHeight → daHeight] pairs, not real content hashes.
+//   - On restart, RestoreFromStore installs placeholder keys (indexed by height).
+//   - setNodeHeightToDAHeight calls GetHeaderDAIncluded(realHash) which MISSES.
+//   - Without the height-based fallback it returns an error and processDAInclusionLoop
+//     logs the error and stalls — the submitter can never write HeightToDAHeight
+//     metadata and DAIncludedHeight never advances.
+//   - With GetHeaderDAIncludedByHeight / GetDataDAIncludedByHeight the lookup
+//     succeeds via the placeholder and the metadata is written correctly.
+func TestSubmitter_setNodeHeightToDAHeight_AfterRestart(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+
+	// ── Step 1: pre-restart — write snapshot with height 3 in-flight ─────────
+	ds1 := dssync.MutexWrap(datastore.NewMapDatastore())
+	st1 := store.New(ds1)
+	cm1, err := cache.NewManager(config.DefaultConfig(), st1, zerolog.Nop())
+	require.NoError(t, err)
+
+	h3, d3 := newHeaderAndData("chain", 3, true)
+
+	sig := types.Signature([]byte("sig"))
+	batch, err := st1.NewBatch(ctx)
+	require.NoError(t, err)
+	require.NoError(t, batch.SaveBlockData(h3, d3, &sig))
+	require.NoError(t, batch.SetHeight(3))
+	require.NoError(t, batch.Commit())
+
+	// Mark height 3 as DA-included in the pre-restart cache.
+	// persistSnapshot fires here and writes the snapshot key to st1.
+	cm1.SetHeaderDAIncluded(h3.Hash().String(), 12, 3)
+	cm1.SetDataDAIncluded(d3.DACommitment().String(), 12, 3)
+
+	// Persist DAIncludedHeight = 2 (height 3 is in-flight, not yet finalized).
+	daIncBz := make([]byte, 8)
+	binary.LittleEndian.PutUint64(daIncBz, 2)
+	require.NoError(t, st1.SetMetadata(ctx, store.DAIncludedHeightKey, daIncBz))
+
+	// ── Step 2: simulate restart — fresh Manager, no DA retriever re-fire ─────
+	cm2, err := cache.NewManager(config.DefaultConfig(), st1, zerolog.Nop())
+	require.NoError(t, err)
+
+	// Confirm the real content hashes are NOT present after restore.
+	_, realHdrFound := cm2.GetHeaderDAIncluded(h3.Hash().String())
+	_, realDataFound := cm2.GetDataDAIncluded(d3.DACommitment().String())
+	require.False(t, realHdrFound, "real header hash must not be in cache before DA retriever re-fires")
+	require.False(t, realDataFound, "real data hash must not be in cache before DA retriever re-fires")
+
+	daIncludedHeight := &atomic.Uint64{}
+	daIncludedHeight.Store(2)
+
+	s := &Submitter{
+		store:            st1,
+		cache:            cm2,
+		logger:           zerolog.Nop(),
+		daIncludedHeight: daIncludedHeight,
+		ctx:              ctx,
+	}
+
+	// ── Step 3: call setNodeHeightToDAHeight — must succeed via fallback ──────
+	// Before this fix, GetHeaderDAIncluded(realHash) would miss and the function
+	// would return an error, stalling processDAInclusionLoop.
+	err = s.setNodeHeightToDAHeight(ctx, 3, h3, d3, false)
+	require.NoError(t, err,
+		"setNodeHeightToDAHeight must succeed via height-based fallback before DA retriever re-fires")
+
+	// ── Step 4: verify the HeightToDAHeight metadata was written correctly ─────
+	headerDABz, err := st1.GetMetadata(ctx, store.GetHeightToDAHeightHeaderKey(3))
+	require.NoError(t, err)
+	require.Len(t, headerDABz, 8)
+	assert.Equal(t, uint64(12), binary.LittleEndian.Uint64(headerDABz),
+		"header HeightToDAHeight metadata must reflect the DA height from the snapshot")
+
+	dataDABz, err := st1.GetMetadata(ctx, store.GetHeightToDAHeightDataKey(3))
+	require.NoError(t, err)
+	require.Len(t, dataDABz, 8)
+	assert.Equal(t, uint64(12), binary.LittleEndian.Uint64(dataDABz),
+		"data HeightToDAHeight metadata must reflect the DA height from the snapshot")
+
+	// ── Step 5: after DA retriever re-fires, the real-hash path still works ───
+	cm2.SetHeaderDAIncluded(h3.Hash().String(), 12, 3)
+	cm2.SetDataDAIncluded(d3.DACommitment().String(), 12, 3)
+
+	err = s.setNodeHeightToDAHeight(ctx, 3, h3, d3, false)
+	require.NoError(t, err, "setNodeHeightToDAHeight must still work once real hashes are populated")
+}

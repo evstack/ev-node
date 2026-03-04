@@ -22,8 +22,8 @@ const (
 	DefaultDAIncludedCacheSize = 200_000
 )
 
-// snapshotEntry is one record in the persisted in-flight window snapshot.
-// Encoded as 16 contiguous bytes: [blockHeight uint64 LE][daHeight uint64 LE].
+// snapshotEntry is one record in the persisted snapshot.
+// Encoded as 16 bytes: [blockHeight uint64 LE][daHeight uint64 LE].
 type snapshotEntry struct {
 	blockHeight uint64
 	daHeight    uint64
@@ -31,69 +31,50 @@ type snapshotEntry struct {
 
 const snapshotEntrySize = 16 // bytes per snapshotEntry
 
-// Cache is a generic cache that maintains items that are seen and hard confirmed.
-// Uses bounded thread-safe LRU caches to prevent unbounded memory growth.
+// Cache tracks seen blocks and DA inclusion status using bounded LRU caches.
 //
-// # Persistence strategy (O(1) restore)
+// Persistence: on every DA inclusion mutation a single snapshot key
+// (storeKeyPrefix+"__snap") is rewritten with all current in-flight
+// [blockHeight, daHeight] pairs. RestoreFromStore reads that one key on
+// startup — O(1) regardless of chain length.
 //
-// Rather than persisting one store key per DA-included hash (which required an
-// O(n) prefix scan on restore), the Cache maintains a single *window snapshot*
-// key in the store.  The snapshot encodes the full set of currently in-flight
-// entries as a compact byte slice:
-//
-//	[ blockHeight₀ uint64-LE | daHeight₀ uint64-LE ]
-//	[ blockHeight₁ uint64-LE | daHeight₁ uint64-LE ]
-//	…
-//
-// Every call to setDAIncluded, removeDAIncluded, or deleteAllForHeight
-// rewrites this single key atomically.  On startup RestoreFromStore issues
-// exactly one GetMetadata call and deserialises the slice — O(1) regardless
-// of chain height or node type.
-//
-// The snapshot key is:  storeKeyPrefix + "__snap"
+// After a restart, real content hashes are not available until the DA
+// retriever re-fires. In the meantime, placeholder keys indexed by height
+// allow lookups to succeed via getDAIncludedByHeight.
 type Cache[T any] struct {
-	// itemsByHeight stores items keyed by uint64 height.
-	// Mutex needed for atomic get-and-remove in getNextItem.
 	itemsByHeight   *lru.Cache[uint64, *T]
 	itemsByHeightMu sync.Mutex
 
-	// hashes tracks whether a given hash has been seen
 	hashes *lru.Cache[string, bool]
 
-	// daIncluded tracks the DA inclusion height for a given hash
+	// daIncluded maps hash → daHeight. Hash may be a real content hash or a
+	// height placeholder (see HeightPlaceholderKey) immediately after restore.
 	daIncluded *lru.Cache[string, uint64]
 
-	// hashByHeight tracks the hash associated with each height for pruning.
-	// Mutex needed for atomic operations in deleteAllForHeight.
+	// hashByHeight maps blockHeight → hash, used for pruning and height-based
+	// lookups. Protected by hashByHeightMu only in deleteAllForHeight where a
+	// read-then-remove must be atomic.
 	hashByHeight   *lru.Cache[uint64, string]
 	hashByHeightMu sync.Mutex
 
-	// maxDAHeight tracks the maximum DA height seen
 	maxDAHeight *atomic.Uint64
 
-	// store is used for persisting the window snapshot (optional, nil = ephemeral).
-	store store.Store
-	// storeKeyPrefix is the prefix used for store keys (header or data).
+	store          store.Store // nil = ephemeral, no persistence
 	storeKeyPrefix string
 }
 
-// snapshotKey returns the single metadata key used to persist the in-flight window.
 func (c *Cache[T]) snapshotKey() string {
 	return c.storeKeyPrefix + "__snap"
 }
 
-// NewCache returns a new Cache struct with default sizes.
-//
-// When store and keyPrefix are non-empty, setDAIncluded / removeDAIncluded /
-// deleteAllForHeight persist a compact window snapshot under a single metadata
-// key so that RestoreFromStore can recover the in-flight state with one store
-// read (O(1)).
+// NewCache creates a Cache. When store and keyPrefix are set, mutations
+// persist a snapshot so RestoreFromStore can recover in-flight state.
+// The third argument (heightKeyFn) is retained for API compatibility but unused.
 func NewCache[T any](s store.Store, keyPrefix string, _ func(uint64) string) *Cache[T] {
 	// LRU cache creation only fails if size <= 0, which won't happen with our defaults
 	itemsCache, _ := lru.New[uint64, *T](DefaultItemsCacheSize)
 	hashesCache, _ := lru.New[string, bool](DefaultHashesCacheSize)
 	daIncludedCache, _ := lru.New[string, uint64](DefaultDAIncludedCacheSize)
-	// hashByHeight must be at least as large as hashes cache to ensure proper pruning.
 	hashByHeightCache, _ := lru.New[uint64, string](DefaultHashesCacheSize)
 
 	return &Cache[T]{
@@ -121,7 +102,7 @@ func (c *Cache[T]) setItem(height uint64, item *T) {
 	c.itemsByHeight.Add(height, item)
 }
 
-// getNextItem returns the item at the specified height and removes it from cache if found.
+// getNextItem returns and removes the item at height, or nil if absent.
 func (c *Cache[T]) getNextItem(height uint64) *T {
 	c.itemsByHeightMu.Lock()
 	defer c.itemsByHeightMu.Unlock()
@@ -137,10 +118,7 @@ func (c *Cache[T]) getNextItem(height uint64) *T {
 // isSeen returns true if the hash has been seen.
 func (c *Cache[T]) isSeen(hash string) bool {
 	seen, ok := c.hashes.Get(hash)
-	if !ok {
-		return false
-	}
-	return seen
+	return ok && seen
 }
 
 // setSeen sets the hash as seen and tracks its height for pruning.
@@ -151,17 +129,27 @@ func (c *Cache[T]) setSeen(hash string, height uint64) {
 
 // getDAIncluded returns the DA height if the hash has been DA-included.
 func (c *Cache[T]) getDAIncluded(hash string) (uint64, bool) {
-	daHeight, ok := c.daIncluded.Get(hash)
+	return c.daIncluded.Get(hash)
+}
+
+// getDAIncludedByHeight resolves DA height via the height→hash index.
+// Works for both real hashes (steady state) and snapshot placeholders
+// (post-restart, before the DA retriever re-fires the real hash).
+func (c *Cache[T]) getDAIncludedByHeight(blockHeight uint64) (uint64, bool) {
+	hash, ok := c.hashByHeight.Get(blockHeight)
 	if !ok {
 		return 0, false
 	}
-	return daHeight, true
+	return c.getDAIncluded(hash)
 }
 
-// setDAIncluded sets the hash as DA-included with the given DA height and
-// tracks block height for pruning.  It also rewrites the window snapshot so
-// the in-flight state survives a crash/restart.
+// setDAIncluded records DA inclusion and persists the snapshot.
+// If a previous entry already exists at blockHeight (e.g. a placeholder from
+// RestoreFromStore), it is evicted from daIncluded to avoid orphan leaks.
 func (c *Cache[T]) setDAIncluded(hash string, daHeight uint64, blockHeight uint64) {
+	if prev, ok := c.hashByHeight.Get(blockHeight); ok && prev != hash {
+		c.daIncluded.Remove(prev)
+	}
 	c.daIncluded.Add(hash, daHeight)
 	c.hashByHeight.Add(blockHeight, hash)
 	c.setMaxDAHeight(daHeight)
@@ -220,26 +208,14 @@ func (c *Cache[T]) deleteAllForHeight(height uint64) {
 	c.persistSnapshot(context.Background())
 }
 
-// persistSnapshot serialises all current daIncluded entries into a compact
-// byte slice and writes it to the store under the single snapshot key.
-//
-// Format: N × 16 bytes where each record is:
-//
-//	[blockHeight uint64 LE][daHeight uint64 LE]
-//
-// We iterate hashByHeight (height→hash) rather than daIncluded (hash→daH)
-// because hashByHeight gives us the blockHeight we need to include in the
-// record without an inverse lookup.
-//
-// This write happens on every mutation so the store always reflects the exact
-// current in-flight window.  The payload is small (typically < 10 entries ×
-// 16 bytes = 160 bytes), so the cost is negligible.
+// persistSnapshot writes all current in-flight [blockHeight, daHeight] pairs
+// to the store under a single key. Called on every mutation; payload is tiny
+// (typically <10 entries × 16 bytes).
 func (c *Cache[T]) persistSnapshot(ctx context.Context) {
 	if c.store == nil || c.storeKeyPrefix == "" {
 		return
 	}
 
-	// Collect all height→daHeight pairs that are still in daIncluded.
 	heights := c.hashByHeight.Keys()
 	entries := make([]snapshotEntry, 0, len(heights))
 	for _, h := range heights {
@@ -254,8 +230,7 @@ func (c *Cache[T]) persistSnapshot(ctx context.Context) {
 		entries = append(entries, snapshotEntry{blockHeight: h, daHeight: daH})
 	}
 
-	buf := encodeSnapshot(entries)
-	_ = c.store.SetMetadata(ctx, c.snapshotKey(), buf)
+	_ = c.store.SetMetadata(ctx, c.snapshotKey(), encodeSnapshot(entries))
 }
 
 // encodeSnapshot serialises a slice of snapshotEntry values into a byte slice.
@@ -275,8 +250,7 @@ func decodeSnapshot(buf []byte) []snapshotEntry {
 	if len(buf) == 0 || len(buf)%snapshotEntrySize != 0 {
 		return nil
 	}
-	n := len(buf) / snapshotEntrySize
-	entries := make([]snapshotEntry, n)
+	entries := make([]snapshotEntry, len(buf)/snapshotEntrySize)
 	for i := range entries {
 		off := i * snapshotEntrySize
 		entries[i].blockHeight = binary.LittleEndian.Uint64(buf[off:])
@@ -285,19 +259,10 @@ func decodeSnapshot(buf []byte) []snapshotEntry {
 	return entries
 }
 
-// RestoreFromStore recovers the in-flight DA inclusion window from the store.
-//
-// # Complexity: O(1)
-//
-// A single GetMetadata call retrieves the window snapshot written by
-// persistSnapshot.  The snapshot encodes the complete set of in-flight entries
-// as a compact byte slice, so no iteration, prefix scan, or per-height lookup
-// is required.
-//
-// If the snapshot key is absent (brand-new node, or node upgraded from an
-// older version that did not write snapshots) the function is a no-op; the
-// in-flight state will be reconstructed naturally as the submitter / DA
-// retriever re-processes blocks.
+// RestoreFromStore loads the in-flight snapshot with a single store read.
+// Each entry is installed as a height placeholder; real hashes replace them
+// once the DA retriever re-fires SetHeaderDAIncluded after startup.
+// Missing snapshot key is treated as a no-op (fresh node or pre-snapshot version).
 func (c *Cache[T]) RestoreFromStore(ctx context.Context) error {
 	if c.store == nil || c.storeKeyPrefix == "" {
 		return nil
@@ -305,38 +270,25 @@ func (c *Cache[T]) RestoreFromStore(ctx context.Context) error {
 
 	buf, err := c.store.GetMetadata(ctx, c.snapshotKey())
 	if err != nil {
-		// Key absent — nothing to restore (new node or pre-snapshot version).
-		return nil //nolint:nilerr // ok to ignore
+		return nil //nolint:nilerr // key absent = nothing to restore
 	}
 
-	entries := decodeSnapshot(buf)
-	for _, e := range entries {
-		syntheticHash := HeightPlaceholderKey(c.storeKeyPrefix, e.blockHeight)
-		c.daIncluded.Add(syntheticHash, e.daHeight)
-		c.hashByHeight.Add(e.blockHeight, syntheticHash)
+	for _, e := range decodeSnapshot(buf) {
+		placeholder := HeightPlaceholderKey(c.storeKeyPrefix, e.blockHeight)
+		c.daIncluded.Add(placeholder, e.daHeight)
+		c.hashByHeight.Add(e.blockHeight, placeholder)
 		c.setMaxDAHeight(e.daHeight)
 	}
 
 	return nil
 }
 
-// HeightPlaceholderKey returns a deterministic, unique key used to index an
-// in-flight DA inclusion entry by block height when the real content hash is
-// not available during store restoration.
-//
-// Format: "<storeKeyPrefix>__h/<height_big_endian_hex>"
-//
-// The "__h/" infix cannot collide with real content hashes because real
-// hashes are hex-encoded 32-byte digests (64 chars) whereas height values
-// are at most 16 hex digits.
-//
-// This is exported so that callers (e.g. the submitter's IsHeightDAIncluded)
-// can perform a height-based fallback lookup immediately after a restart,
-// before the DA retriever has had a chance to re-fire SetHeaderDAIncluded with
-// the real content hash.
+// HeightPlaceholderKey returns a store key for a height-indexed DA inclusion
+// entry used when the real content hash is unavailable (e.g. after restore).
+// Format: "<prefix>__h/<height_hex_16>" — cannot collide with real 64-char hashes.
 func HeightPlaceholderKey(prefix string, height uint64) string {
 	const hexDigits = "0123456789abcdef"
-	buf := make([]byte, len(prefix)+4+16) // prefix + "__h/" + 16 hex chars
+	buf := make([]byte, len(prefix)+4+16)
 	n := copy(buf, prefix)
 	n += copy(buf[n:], "__h/")
 	for i := 15; i >= 0; i-- {
@@ -346,8 +298,7 @@ func HeightPlaceholderKey(prefix string, height uint64) string {
 	return string(buf)
 }
 
-// SaveToStore persists all current DA inclusion entries to the store by
-// rewriting the window snapshot.  This is a no-op if no store is configured.
+// SaveToStore flushes the current snapshot to the store.
 func (c *Cache[T]) SaveToStore(ctx context.Context) error {
 	if c.store == nil {
 		return nil
@@ -356,12 +307,11 @@ func (c *Cache[T]) SaveToStore(ctx context.Context) error {
 	return nil
 }
 
-// ClearFromStore removes the window snapshot from the store.
+// ClearFromStore deletes the snapshot key from the store.
 func (c *Cache[T]) ClearFromStore(ctx context.Context, _ []string) error {
 	if c.store == nil {
 		return nil
 	}
-	// Delete the snapshot key; ignore not-found.
 	_ = c.store.DeleteMetadata(ctx, c.snapshotKey())
 	return nil
 }
