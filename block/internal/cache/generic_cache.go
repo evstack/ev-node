@@ -165,14 +165,14 @@ func (c *Cache[T]) setDAIncluded(hash string, daHeight uint64, blockHeight uint6
 	c.daIncluded.Add(hash, daHeight)
 	c.hashByHeight.Add(blockHeight, hash)
 	c.setMaxDAHeight(daHeight)
-	c.persistSnapshot()
+	c.persistSnapshot(context.Background())
 }
 
 // removeDAIncluded removes the DA-included status of the hash from the cache
 // and rewrites the window snapshot.
 func (c *Cache[T]) removeDAIncluded(hash string) {
 	c.daIncluded.Remove(hash)
-	c.persistSnapshot()
+	c.persistSnapshot(context.Background())
 }
 
 // daHeight returns the maximum DA height from all DA-included items.
@@ -217,7 +217,7 @@ func (c *Cache[T]) deleteAllForHeight(height uint64) {
 		c.daIncluded.Remove(hash)
 	}
 
-	c.persistSnapshot()
+	c.persistSnapshot(context.Background())
 }
 
 // persistSnapshot serialises all current daIncluded entries into a compact
@@ -234,7 +234,7 @@ func (c *Cache[T]) deleteAllForHeight(height uint64) {
 // This write happens on every mutation so the store always reflects the exact
 // current in-flight window.  The payload is small (typically < 10 entries ×
 // 16 bytes = 160 bytes), so the cost is negligible.
-func (c *Cache[T]) persistSnapshot() {
+func (c *Cache[T]) persistSnapshot(ctx context.Context) {
 	if c.store == nil || c.storeKeyPrefix == "" {
 		return
 	}
@@ -255,7 +255,7 @@ func (c *Cache[T]) persistSnapshot() {
 	}
 
 	buf := encodeSnapshot(entries)
-	_ = c.store.SetMetadata(context.Background(), c.snapshotKey(), buf)
+	_ = c.store.SetMetadata(ctx, c.snapshotKey(), buf)
 }
 
 // encodeSnapshot serialises a slice of snapshotEntry values into a byte slice.
@@ -306,7 +306,7 @@ func (c *Cache[T]) RestoreFromStore(ctx context.Context) error {
 	buf, err := c.store.GetMetadata(ctx, c.snapshotKey())
 	if err != nil {
 		// Key absent — nothing to restore (new node or pre-snapshot version).
-		return nil
+		return nil //nolint:nilerr // ok to ignore
 	}
 
 	entries := decodeSnapshot(buf)
@@ -352,7 +352,7 @@ func (c *Cache[T]) SaveToStore(ctx context.Context) error {
 	if c.store == nil {
 		return nil
 	}
-	c.persistSnapshot()
+	c.persistSnapshot(ctx)
 	return nil
 }
 

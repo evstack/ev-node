@@ -12,7 +12,6 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/pkg/config"
-	"github.com/evstack/ev-node/pkg/store"
 	pkgstore "github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
 )
@@ -25,10 +24,10 @@ func tempConfig(t *testing.T) config.Config {
 }
 
 // helper to make an in-memory store
-func memStore(t *testing.T) store.Store {
-	ds, err := store.NewTestInMemoryKVStore()
+func memStore(t *testing.T) pkgstore.Store {
+	ds, err := pkgstore.NewTestInMemoryKVStore()
 	require.NoError(t, err)
-	return store.New(ds)
+	return pkgstore.New(ds)
 }
 
 func TestManager_HeaderDataOperations(t *testing.T) {
