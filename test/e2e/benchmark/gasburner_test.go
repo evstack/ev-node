@@ -19,7 +19,7 @@ func (s *SpamoorSuite) TestGasBurner() {
 		countPerSpammer = 2500
 		totalCount      = numSpammers * countPerSpammer
 		warmupTxs       = 50
-		serviceName     = "ev-node-gasburner"
+		serviceName     = "ev-node" // TODO: temp change
 		waitTimeout     = 5 * time.Minute
 	)
 
