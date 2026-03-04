@@ -169,13 +169,15 @@ func (s *SpamoorSuite) setupExternalEnv(cfg config, rpcURL string) *env {
 	s.Require().NoError(err, "failed to dial external RPC %s", rpcURL)
 	t.Cleanup(func() { ethClient.Close() })
 
-	// spamoor — connects to the external RPC
+	// spamoor — connects to the external RPC via host networking so it can
+	// resolve the same hostnames as the host machine.
 	spBuilder := spamoor.NewNodeBuilder(t.Name()).
 		WithDockerClient(s.dockerCli).
 		WithDockerNetworkID(s.networkID).
 		WithLogger(zaptest.NewLogger(t)).
 		WithRPCHosts(rpcURL).
 		WithPrivateKey(privateKey).
+		WithHostNetwork().
 		WithAdditionalStartArgs("--slot-duration", "100ms", "--startup-delay", "0")
 
 	spNode, err := spBuilder.Build(ctx)
