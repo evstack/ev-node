@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	tastoradocker "github.com/celestiaorg/tastora/framework/docker"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -240,10 +241,11 @@ func TestEvmContractEvents(t *testing.T) {
 
 // setupTestSequencer sets up a single sequencer node for testing.
 // Returns the ethclient, genesis hash, and a cleanup function.
-func setupTestSequencer(t *testing.T, homeDir string) (*ethclient.Client, string, func()) {
+func setupTestSequencer(t testing.TB, homeDir string, extraArgs ...string) (*ethclient.Client, string, func()) {
 	sut := NewSystemUnderTest(t)
 
-	genesisHash, seqEthURL := setupSequencerOnlyTest(t, sut, homeDir)
+	dcli, netID := tastoradocker.Setup(t)
+	genesisHash, seqEthURL := setupSequencerOnlyTest(t, sut, homeDir, dcli, netID, extraArgs...)
 	t.Logf("Sequencer started at %s (Genesis: %s)", seqEthURL, genesisHash)
 
 	client, err := ethclient.Dial(seqEthURL)
@@ -257,7 +259,7 @@ func setupTestSequencer(t *testing.T, homeDir string) (*ethclient.Client, string
 
 // deployContract helps deploy a contract and waits for its inclusion.
 // Returns the deployed contract address and the next nonce.
-func deployContract(t *testing.T, ctx context.Context, client *ethclient.Client, bytecodeStr string, nonce uint64, privateKey *ecdsa.PrivateKey, chainID *big.Int) (common.Address, uint64) {
+func deployContract(t testing.TB, ctx context.Context, client *ethclient.Client, bytecodeStr string, nonce uint64, privateKey *ecdsa.PrivateKey, chainID *big.Int) (common.Address, uint64) {
 	bytecode, err := hexutil.Decode("0x" + bytecodeStr)
 	require.NoError(t, err)
 

@@ -2,18 +2,15 @@ package server
 
 import (
 	"context"
-	"fmt"
-
-	"net/http"
-	"time"
-
 	"encoding/binary"
 	"errors"
+	"fmt"
+	"net/http"
+	"time"
 
 	"connectrpc.com/connect"
 	"connectrpc.com/grpcreflect"
 	goheader "github.com/celestiaorg/go-header"
-	datypes "github.com/evstack/ev-node/pkg/da/types"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 	"golang.org/x/net/http2"
@@ -22,6 +19,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/evstack/ev-node/pkg/config"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/pkg/telemetry"

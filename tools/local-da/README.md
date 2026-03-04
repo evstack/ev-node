@@ -11,7 +11,7 @@ It is intended to be used for testing DA layers without having to set up the act
 To build and run the local-da binary:
 
 ```sh
-make build
+just build
 ./build/local-da
 ```
 

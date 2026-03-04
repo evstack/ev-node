@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	tastoradocker "github.com/celestiaorg/tastora/framework/docker"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/stretchr/testify/require"
@@ -49,7 +50,8 @@ func TestEvmSequencerComprehensiveE2E(t *testing.T) {
 	sut := NewSystemUnderTest(t)
 
 	// Setup sequencer once for all test phases
-	genesisHash, seqURL := setupSequencerOnlyTest(t, sut, nodeHome)
+	dockerClient, networkID := tastoradocker.Setup(t)
+	genesisHash, seqURL := setupSequencerOnlyTest(t, sut, nodeHome, dockerClient, networkID)
 	t.Logf("Genesis hash: %s", genesisHash)
 
 	// Connect to EVM once for all phases

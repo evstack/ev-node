@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	tastoradocker "github.com/celestiaorg/tastora/framework/docker"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/stretchr/testify/require"
@@ -56,7 +57,8 @@ func TestEvmDARestartWithPendingBlocksE2E(t *testing.T) {
 	sut := NewSystemUnderTest(t)
 
 	// Setup sequencer and get genesis hash
-	genesisHash, seqURL := setupSequencerOnlyTest(t, sut, nodeHome)
+	dcli, netID := tastoradocker.Setup(t)
+	genesisHash, seqURL := setupSequencerOnlyTest(t, sut, nodeHome, dcli, netID)
 	t.Logf("Genesis hash: %s", genesisHash)
 
 	// Connect to EVM

@@ -252,6 +252,75 @@ func (_c *MockBatch_SaveBlockData_Call) RunAndReturn(run func(header *types.Sign
 	return _c
 }
 
+// SaveBlockDataFromBytes provides a mock function for the type MockBatch
+func (_mock *MockBatch) SaveBlockDataFromBytes(header *types.SignedHeader, headerBlob []byte, dataBlob []byte, signature *types.Signature) error {
+	ret := _mock.Called(header, headerBlob, dataBlob, signature)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SaveBlockDataFromBytes")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(*types.SignedHeader, []byte, []byte, *types.Signature) error); ok {
+		r0 = returnFunc(header, headerBlob, dataBlob, signature)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockBatch_SaveBlockDataFromBytes_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SaveBlockDataFromBytes'
+type MockBatch_SaveBlockDataFromBytes_Call struct {
+	*mock.Call
+}
+
+// SaveBlockDataFromBytes is a helper method to define mock.On call
+//   - header *types.SignedHeader
+//   - headerBlob []byte
+//   - dataBlob []byte
+//   - signature *types.Signature
+func (_e *MockBatch_Expecter) SaveBlockDataFromBytes(header interface{}, headerBlob interface{}, dataBlob interface{}, signature interface{}) *MockBatch_SaveBlockDataFromBytes_Call {
+	return &MockBatch_SaveBlockDataFromBytes_Call{Call: _e.mock.On("SaveBlockDataFromBytes", header, headerBlob, dataBlob, signature)}
+}
+
+func (_c *MockBatch_SaveBlockDataFromBytes_Call) Run(run func(header *types.SignedHeader, headerBlob []byte, dataBlob []byte, signature *types.Signature)) *MockBatch_SaveBlockDataFromBytes_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 *types.SignedHeader
+		if args[0] != nil {
+			arg0 = args[0].(*types.SignedHeader)
+		}
+		var arg1 []byte
+		if args[1] != nil {
+			arg1 = args[1].([]byte)
+		}
+		var arg2 []byte
+		if args[2] != nil {
+			arg2 = args[2].([]byte)
+		}
+		var arg3 *types.Signature
+		if args[3] != nil {
+			arg3 = args[3].(*types.Signature)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *MockBatch_SaveBlockDataFromBytes_Call) Return(err error) *MockBatch_SaveBlockDataFromBytes_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockBatch_SaveBlockDataFromBytes_Call) RunAndReturn(run func(header *types.SignedHeader, headerBlob []byte, dataBlob []byte, signature *types.Signature) error) *MockBatch_SaveBlockDataFromBytes_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SetHeight provides a mock function for the type MockBatch
 func (_mock *MockBatch) SetHeight(height uint64) error {
 	ret := _mock.Called(height)

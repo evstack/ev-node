@@ -4,10 +4,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/evstack/ev-node/block/internal/common"
-	"github.com/evstack/ev-node/pkg/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/evstack/ev-node/block/internal/common"
+	"github.com/evstack/ev-node/pkg/config"
 )
 
 func TestImmediateStrategy(t *testing.T) {

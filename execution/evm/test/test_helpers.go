@@ -9,23 +9,19 @@ import (
 	mathrand "math/rand"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
-	"github.com/celestiaorg/tastora/framework/docker"
 	"github.com/celestiaorg/tastora/framework/docker/evstack/reth"
 	"github.com/celestiaorg/tastora/framework/types"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest"
 )
 
-// Test-scoped Docker client/network mapping to avoid conflicts between tests
-var (
-	dockerClients  = make(map[string]types.TastoraDockerClient)
-	dockerNetworks = make(map[string]string)
-	dockerMutex    sync.RWMutex
-)
+// RethNodeOpt allows tests to customize the reth node builder before building.
+type RethNodeOpt func(b *reth.NodeBuilder)
 
 const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
@@ -38,43 +34,36 @@ func randomString(n int) string {
 	return string(b)
 }
 
-// getTestScopedDockerSetup returns a Docker client and network ID that are scoped to the specific test.
-func getTestScopedDockerSetup(t *testing.T) (types.TastoraDockerClient, string) {
-	t.Helper()
-
-	testKey := t.Name()
-	dockerMutex.Lock()
-	defer dockerMutex.Unlock()
-
-	dockerCli, exists := dockerClients[testKey]
-	if !exists {
-		cli, netID := docker.Setup(t)
-		dockerClients[testKey] = cli
-		dockerNetworks[testKey] = netID
-		dockerCli = cli
-	}
-	dockerNetID := dockerNetworks[testKey]
-
-	return dockerCli, dockerNetID
-}
-
 // SetupTestRethNode creates a single Reth node for testing purposes.
-func SetupTestRethNode(t *testing.T) *reth.Node {
+func SetupTestRethNode(t testing.TB, client types.TastoraDockerClient, networkID string, opts ...RethNodeOpt) *reth.Node {
 	t.Helper()
 	ctx := context.Background()
 
-	dockerCli, dockerNetID := getTestScopedDockerSetup(t)
+	testName := fmt.Sprintf("%s-%s", t.Name(), randomString(6))
+	logger := zap.NewNop()
+	if testing.Verbose() {
+		logger = zaptest.NewLogger(t)
+	}
+	b := new(reth.NodeBuilder).
+		WithTestName(testName).
+		WithLogger(logger).
+		WithImage(reth.DefaultImage()).
+		WithBin("ev-reth").
+		WithDockerClient(client).
+		WithDockerNetworkID(networkID).
+		WithGenesis([]byte(reth.DefaultEvolveGenesisJSON()))
 
-	n, err := reth.NewNodeBuilderWithTestName(t, fmt.Sprintf("%s-%s", t.Name(), randomString(6))).
-		WithDockerClient(dockerCli).
-		WithDockerNetworkID(dockerNetID).
-		WithGenesis([]byte(reth.DefaultEvolveGenesisJSON())).
-		Build(ctx)
+	for _, opt := range opts {
+		if opt != nil {
+			opt(b)
+		}
+	}
+
+	n, err := b.Build(ctx)
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = n.Remove(context.Background())
 	})
-
-	require.NoError(t, err)
 	require.NoError(t, n.Start(ctx))
 
 	ni, err := n.GetNetworkInfo(ctx)
@@ -88,7 +77,7 @@ func SetupTestRethNode(t *testing.T) *reth.Node {
 }
 
 // waitForRethContainer waits for the Reth container to be ready by polling the provided endpoints with JWT authentication.
-func waitForRethContainer(t *testing.T, jwtSecret, ethURL, engineURL string) error {
+func waitForRethContainer(t testing.TB, jwtSecret, ethURL, engineURL string) error {
 	t.Helper()
 	client := &http.Client{Timeout: 100 * time.Millisecond}
 	timer := time.NewTimer(30 * time.Second)

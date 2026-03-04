@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"github.com/celestiaorg/go-square/v3/share"
-	"github.com/evstack/ev-node/block/internal/common"
-	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 	"github.com/rs/zerolog"
 
+	"github.com/evstack/ev-node/block/internal/common"
+	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
@@ -297,6 +297,23 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 		},
 		Data: data,
 	}
+}
+
+// GetLatestDAHeight returns the latest height available on the DA layer by
+// querying the network head.
+func (c *client) GetLatestDAHeight(ctx context.Context) (uint64, error) {
+	headCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
+	defer cancel()
+
+	header, err := c.headerAPI.NetworkHead(headCtx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get DA network head: %w", err)
+	}
+	if header == nil {
+		return 0, fmt.Errorf("DA network head returned nil header")
+	}
+
+	return header.Height, nil
 }
 
 // RetrieveForcedInclusion retrieves blobs from the forced inclusion namespace at the specified height.

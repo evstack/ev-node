@@ -324,6 +324,22 @@ func (b *tracedBatch) SaveBlockData(header *types.SignedHeader, data *types.Data
 	return nil
 }
 
+func (b *tracedBatch) SaveBlockDataFromBytes(header *types.SignedHeader, headerBlob, dataBlob []byte, signature *types.Signature) error {
+	_, span := b.tracer.Start(b.ctx, "Batch.SaveBlockDataFromBytes",
+		trace.WithAttributes(attribute.Int64("height", int64(header.Height()))),
+	)
+	defer span.End()
+
+	err := b.inner.SaveBlockDataFromBytes(header, headerBlob, dataBlob, signature)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return err
+	}
+
+	return nil
+}
+
 func (b *tracedBatch) SetHeight(height uint64) error {
 	_, span := b.tracer.Start(b.ctx, "Batch.SetHeight",
 		trace.WithAttributes(attribute.Int64("height", int64(height))),

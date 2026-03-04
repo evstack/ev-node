@@ -167,6 +167,11 @@ func (b *tracingMockBatch) SaveBlockData(header *types.SignedHeader, data *types
 	return nil
 }
 
+func (b *tracingMockBatch) SaveBlockDataFromBytes(header *types.SignedHeader, _, _ []byte, signature *types.Signature) error {
+	// Delegate to SaveBlockData for test mocking purposes.
+	return b.SaveBlockData(header, nil, signature)
+}
+
 func (b *tracingMockBatch) SetHeight(height uint64) error {
 	if b.setHeightFn != nil {
 		return b.setHeightFn(height)

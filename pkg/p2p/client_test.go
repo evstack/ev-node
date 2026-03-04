@@ -13,12 +13,11 @@ import (
 	libp2p "github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
+	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/p2p/key"
@@ -287,7 +286,6 @@ func TestClientInfoMethods(t *testing.T) {
 	tempDir := t.TempDir()
 	ClientInitFiles(t, tempDir)
 	conf := config.DefaultConfig()
-	conf.RootDir = tempDir
 
 	mn := mocknet.New()
 	defer mn.Close()

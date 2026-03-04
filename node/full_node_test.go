@@ -40,7 +40,9 @@ func TestStartInstrumentationServer(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 
-	resp, err := http.Get(fmt.Sprintf("http://%s/metrics", config.Instrumentation.PrometheusListenAddr))
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("http://%s/metrics", config.Instrumentation.PrometheusListenAddr), nil)
+	require.NoError(err, "Failed to create Prometheus metrics request")
+	resp, err := http.DefaultClient.Do(req) //nolint:gosec // test-only request to local instrumentation endpoint
 	require.NoError(err, "Failed to get Prometheus metrics")
 	defer func() {
 		err := resp.Body.Close()
@@ -53,7 +55,9 @@ func TestStartInstrumentationServer(t *testing.T) {
 	require.NoError(err)
 	assert.Contains(string(body), "# HELP", "Prometheus metrics body should contain HELP lines")
 
-	resp, err = http.Get(fmt.Sprintf("http://%s/debug/pprof/", config.Instrumentation.PprofListenAddr))
+	req, err = http.NewRequest(http.MethodGet, fmt.Sprintf("http://%s/debug/pprof/", config.Instrumentation.PprofListenAddr), nil)
+	require.NoError(err, "Failed to create pprof request")
+	resp, err = http.DefaultClient.Do(req) //nolint:gosec // test-only request to local instrumentation endpoint
 	require.NoError(err, "Failed to get Pprof index")
 	defer func() {
 		err := resp.Body.Close()
@@ -66,7 +70,7 @@ func TestStartInstrumentationServer(t *testing.T) {
 	require.NoError(err)
 	assert.Contains(string(body), "Types of profiles available", "Pprof index body should contain expected text")
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(t.Context(), 1*time.Second)
 	defer cancel()
 
 	if prometheusSrv != nil {

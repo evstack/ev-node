@@ -2,7 +2,7 @@
 FROM golang:1.25-alpine AS builder
 
 #hadolint ignore=DL3018
-RUN apk add --no-cache git make gcc musl-dev linux-headers
+RUN apk add --no-cache git gcc musl-dev linux-headers
 
 # Set working directory
 WORKDIR /ev-node

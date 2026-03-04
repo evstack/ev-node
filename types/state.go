@@ -3,6 +3,7 @@ package types
 import (
 	"bytes"
 	"fmt"
+	"sync"
 	"time"
 )
 
@@ -56,12 +57,25 @@ func (s *State) NextState(header Header, stateRoot []byte) (State, error) {
 // AssertValidForNextState performs common validation of a header and data against the current state.
 // It assumes any context-specific basic header checks and verifier setup have already been performed
 func (s State) AssertValidForNextState(header *SignedHeader, data *Data) error {
-	if header.ChainID() != s.ChainID {
-		return fmt.Errorf("invalid chain ID - got %s, want %s", header.ChainID(), s.ChainID)
+	if err := s.AssertValidSequence(header); err != nil {
+		return err
 	}
 
 	if err := Validate(header, data); err != nil {
 		return fmt.Errorf("header-data validation failed: %w", err)
+	}
+	return nil
+}
+
+var (
+	basedSequencerTracking sync.Once
+	lastHeaderHashErrCount = 0
+)
+
+// AssertValidSequence performs lightweight state-sequence validation for self-produced blocks.
+func (s State) AssertValidSequence(header *SignedHeader) error {
+	if header.ChainID() != s.ChainID {
+		return fmt.Errorf("invalid chain ID - got %s, want %s", header.ChainID(), s.ChainID)
 	}
 
 	if len(s.LastHeaderHash) == 0 { // initial state
@@ -75,9 +89,20 @@ func (s State) AssertValidForNextState(header *SignedHeader, data *Data) error {
 	if headerTime := header.Time(); s.LastBlockTime.After(headerTime) {
 		return fmt.Errorf("invalid block time - got: %v, last: %v", headerTime, s.LastBlockTime)
 	}
+
+	// Trick to support the switch from a base sequencer to a normal syncing node.
+	// Based sequencers do not sign ehaders, meaning the last header hash will be different from the
+	// newly derived header hash when a base sequencer have switched to a syncing node
 	if !bytes.Equal(header.LastHeaderHash, s.LastHeaderHash) {
-		return fmt.Errorf("invalid last header hash - got: %x, want: %x", header.LastHeaderHash, s.LastHeaderHash)
+		if lastHeaderHashErrCount == 1 {
+			return fmt.Errorf("invalid last header hash - got: %x, want: %x", header.LastHeaderHash, s.LastHeaderHash)
+		}
+
+		basedSequencerTracking.Do(func() {
+			lastHeaderHashErrCount++
+		})
 	}
+
 	if !bytes.Equal(header.AppHash, s.AppHash) {
 		return fmt.Errorf("invalid last app hash - got: %x, want: %x", header.AppHash, s.AppHash)
 	}

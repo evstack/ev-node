@@ -8,6 +8,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ipfs/go-datastore"
+	"github.com/rs/zerolog"
+	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/node"
@@ -16,11 +22,6 @@ import (
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/signer"
 	filesigner "github.com/evstack/ev-node/pkg/signer/file"
-	"github.com/ipfs/go-datastore"
-	"github.com/rs/zerolog"
-	"github.com/spf13/cobra"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func createTestComponents(_ context.Context, t *testing.T) (coreexecutor.Executor, coresequencer.Sequencer, signer.Signer, *key.NodeKey, datastore.Batching, func()) {
@@ -647,9 +648,10 @@ func TestStartNodeErrors(t *testing.T) {
 			}
 			// Log level no longer needed with Nop logger
 
-			runFunc := func() {
+			runFunc := func(ctx context.Context) {
 				currentTestLogger := zerolog.Nop()
-				err := StartNode(currentTestLogger, cmd, executor, sequencer, nodeKey, ds, nodeConfig, testGenesis, node.NodeOptions{})
+				cmd.SetContext(ctx)
+				err := StartNode(currentTestLogger, cmd, executor, sequencer, nodeKey, ds, nodeConfig, testGenesis, node.NodeOptions{}) //nolint:contextcheck // test invokes command entrypoint directly
 				if tc.expectedError != "" {
 					assert.ErrorContains(t, err, tc.expectedError)
 				} else {
@@ -662,11 +664,11 @@ func TestStartNodeErrors(t *testing.T) {
 			}
 
 			if tc.expectPanic {
-				assert.Panics(t, runFunc)
+				assert.Panics(t, func() { runFunc(baseCtx) })
 			} else {
-				assert.NotPanics(t, runFunc)
+				assert.NotPanics(t, func() { runFunc(baseCtx) })
 				checkLogger := zerolog.Nop()
-				err := StartNode(checkLogger, cmd, executor, sequencer, nodeKey, ds, nodeConfig, testGenesis, node.NodeOptions{})
+				err := StartNode(checkLogger, cmd, executor, sequencer, nodeKey, ds, nodeConfig, testGenesis, node.NodeOptions{}) //nolint:contextcheck // test invokes command entrypoint directly
 				if tc.expectedError != "" {
 					assert.ErrorContains(t, err, tc.expectedError)
 				}
@@ -699,7 +701,7 @@ func newRunNodeCmd(
 		Use:     "start",
 		Aliases: []string{"node", "run"},
 		Short:   "Run the rollkit node",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error { //nolint:contextcheck // cobra RunE signature is fixed
 			return StartNode(zerolog.Nop(), cmd, executor, sequencer, nodeKey, datastore, nodeConfig, testGenesis, node.NodeOptions{})
 		},
 	}

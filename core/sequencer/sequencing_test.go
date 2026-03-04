@@ -54,9 +54,9 @@ func TestBatchHash(t *testing.T) {
 			name: "transactions with empty data",
 			batch: &Batch{
 				Transactions: [][]byte{
-					[]byte{},
+					{},
 					[]byte("normal transaction"),
-					[]byte{},
+					{},
 				},
 			},
 			wantErr: false,

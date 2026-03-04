@@ -3,11 +3,12 @@ package block
 import (
 	"context"
 
+	"github.com/rs/zerolog"
+
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
 	"github.com/evstack/ev-node/pkg/config"
 	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
-	"github.com/rs/zerolog"
 )
 
 // BlockOptions defines the options for creating block components
@@ -62,9 +63,13 @@ func NewDAClient(
 	return base
 }
 
-// ErrForceInclusionNotConfigured is returned when force inclusion is not configured.
-// It is exported because sequencers needs to check for this error.
-var ErrForceInclusionNotConfigured = da.ErrForceInclusionNotConfigured
+// Exported errors used by the sequencers
+var (
+	// ErrForceInclusionNotConfigured is returned when force inclusion is not configured.
+	ErrForceInclusionNotConfigured = da.ErrForceInclusionNotConfigured
+	// ErrNoBatch is returned when a sequencer does not have a batch to return.
+	ErrNoBatch = common.ErrNoBatch
+)
 
 // ForcedInclusionEvent represents forced inclusion transactions retrieved from DA
 type ForcedInclusionEvent = da.ForcedInclusionEvent

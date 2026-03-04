@@ -29,8 +29,8 @@ func main() {
 			// For this example, we'll run tests in all directories with go.mod.
 
 			fmt.Printf("--> Running tests in: %s\n", modDir)
-			cmd := exec.Command("go", "test", "./...", "-cover")
-			cmd.Dir = modDir // Set the working directory for the command
+			cmd := exec.Command("go", "test", "./...", "-cover") //nolint:noctx // intentionally runs module-local test command
+			cmd.Dir = modDir                                     // Set the working directory for the command
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 

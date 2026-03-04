@@ -9,11 +9,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
+	"gotest.tools/v3/assert"
+
 	"github.com/evstack/ev-node/pkg/config"
 	da "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
-	"github.com/rs/zerolog"
-	"gotest.tools/v3/assert"
 )
 
 // mockDA implements block/internal/da.Client for testing
@@ -71,6 +72,10 @@ func (m *mockDA) GetForcedInclusionNamespace() []byte {
 
 func (m *mockDA) HasForcedInclusionNamespace() bool {
 	return true
+}
+
+func (m *mockDA) GetLatestDAHeight(_ context.Context) (uint64, error) {
+	return 0, nil
 }
 
 func TestForceInclusionServer_handleSendRawTransaction_Success(t *testing.T) {

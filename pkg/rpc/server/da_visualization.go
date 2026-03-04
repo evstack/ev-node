@@ -12,9 +12,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rs/zerolog"
+
 	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
-	"github.com/rs/zerolog"
 )
 
 //go:embed templates/da_visualization.html

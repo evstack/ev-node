@@ -6,8 +6,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/evstack/ev-node/core/execution"
 	"github.com/stretchr/testify/mock"
+
+	"github.com/evstack/ev-node/core/execution"
 )
 
 // NewMockHeightAwareExecutor creates a new instance of MockHeightAwareExecutor.

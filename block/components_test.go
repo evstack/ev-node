@@ -163,7 +163,7 @@ func TestNewAggregatorComponents_Creation(t *testing.T) {
 	daClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 	daClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
 
-	components, err := NewAggregatorComponents(
+	components, err := newAggregatorComponents(
 		cfg,
 		gen,
 		memStore,
@@ -247,7 +247,7 @@ func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
 			Return(nil, criticalError).Maybe()
 
 		// Create aggregator node
-		components, err := NewAggregatorComponents(
+		components, err := newAggregatorComponents(
 			cfg,
 			gen,
 			memStore,

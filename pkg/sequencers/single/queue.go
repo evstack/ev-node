@@ -15,7 +15,6 @@ import (
 
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/store"
-
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
 

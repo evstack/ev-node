@@ -21,20 +21,21 @@ import (
 	"time"
 
 	libshare "github.com/celestiaorg/go-square/v3/share"
+	tastoradocker "github.com/celestiaorg/tastora/framework/docker"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
-	evmtest "github.com/evstack/ev-node/execution/evm/test"
-	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
-	coreda "github.com/evstack/ev-node/pkg/da/types"
-	rpcclient "github.com/evstack/ev-node/pkg/rpc/client"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/evstack/ev-node/execution/evm"
+	evmtest "github.com/evstack/ev-node/execution/evm/test"
+	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
+	coreda "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/rpc/client"
+	rpcclient "github.com/evstack/ev-node/pkg/rpc/client"
 	"github.com/evstack/ev-node/types"
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
@@ -54,8 +55,10 @@ func TestLeaseFailoverE2E(t *testing.T) {
 	workDir := t.TempDir()
 
 	// Get JWT secrets and setup common components first
-	jwtSecret, fullNodeJwtSecret, genesisHash, testEndpoints := setupCommonEVMTest(t, sut, true)
-	rethFn := evmtest.SetupTestRethNode(t)
+	dockerClient, networkID := tastoradocker.Setup(t)
+	env := SetupCommonEVMEnv(t, sut, dockerClient, networkID, WithFullNode())
+	// Use a fresh reth node on the same Docker network as used by the env setup.
+	rethFn := evmtest.SetupTestRethNode(t, dockerClient, networkID)
 	jwtSecret3 := rethFn.JWTSecretHex()
 	fnInfo, err := rethFn.GetNetworkInfo(context.Background())
 	require.NoError(t, err, "failed to get full node reth network info")
@@ -79,17 +82,17 @@ func TestLeaseFailoverE2E(t *testing.T) {
 	clusterNodes := &raftClusterNodes{
 		nodes: make(map[string]*nodeDetails),
 	}
-	node1P2PAddr := testEndpoints.GetRollkitP2PAddress()
-	node2P2PAddr := testEndpoints.GetFullNodeP2PAddress()
+	node1P2PAddr := env.Endpoints.GetRollkitP2PAddress()
+	node2P2PAddr := env.Endpoints.GetFullNodeP2PAddress()
 	node3P2PAddr := fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", mustGetAvailablePort(t))
 
 	// Start node1 (bootstrap mode)
 	go func() {
 		p2pPeers := node2P2PAddr + "," + node3P2PAddr
-		proc := setupRaftSequencerNode(t, sut, workDir, "node1", node1RaftAddr, jwtSecret, genesisHash, testEndpoints.GetDAAddress(),
-			bootstrapDir, raftCluster, p2pPeers, testEndpoints.GetRollkitRPCListen(), testEndpoints.GetRollkitP2PAddress(),
-			testEndpoints.GetSequencerEngineURL(), testEndpoints.GetSequencerEthURL(), true, passphraseFile)
-		clusterNodes.Set("node1", testEndpoints.GetRollkitRPCAddress(), proc, testEndpoints.GetSequencerEthURL(), node1RaftAddr, testEndpoints.GetRollkitP2PAddress(), testEndpoints.GetSequencerEngineURL(), testEndpoints.GetSequencerEthURL())
+		proc := setupRaftSequencerNode(t, sut, workDir, "node1", node1RaftAddr, env.SequencerJWT, env.GenesisHash, env.Endpoints.GetDAAddress(),
+			bootstrapDir, raftCluster, p2pPeers, env.Endpoints.GetRollkitRPCListen(), env.Endpoints.GetRollkitP2PAddress(),
+			env.Endpoints.GetSequencerEngineURL(), env.Endpoints.GetSequencerEthURL(), true, passphraseFile)
+		clusterNodes.Set("node1", env.Endpoints.GetRollkitRPCAddress(), proc, env.Endpoints.GetSequencerEthURL(), node1RaftAddr, env.Endpoints.GetRollkitP2PAddress(), env.Endpoints.GetSequencerEngineURL(), env.Endpoints.GetSequencerEthURL())
 		t.Log("Node1 is up")
 	}()
 
@@ -97,8 +100,8 @@ func TestLeaseFailoverE2E(t *testing.T) {
 	go func() {
 		t.Log("Starting Node2")
 		p2pPeers := node1P2PAddr + "," + node3P2PAddr
-		proc := setupRaftSequencerNode(t, sut, workDir, "node2", node2RaftAddr, fullNodeJwtSecret, genesisHash, testEndpoints.GetDAAddress(), bootstrapDir, raftCluster, p2pPeers, testEndpoints.GetFullNodeRPCListen(), testEndpoints.GetFullNodeP2PAddress(), testEndpoints.GetFullNodeEngineURL(), testEndpoints.GetFullNodeEthURL(), true, passphraseFile)
-		clusterNodes.Set("node2", testEndpoints.GetFullNodeRPCAddress(), proc, testEndpoints.GetFullNodeEthURL(), node2RaftAddr, testEndpoints.GetFullNodeP2PAddress(), testEndpoints.GetFullNodeEngineURL(), testEndpoints.GetFullNodeEthURL())
+		proc := setupRaftSequencerNode(t, sut, workDir, "node2", node2RaftAddr, env.FullNodeJWT, env.GenesisHash, env.Endpoints.GetDAAddress(), bootstrapDir, raftCluster, p2pPeers, env.Endpoints.GetFullNodeRPCListen(), env.Endpoints.GetFullNodeP2PAddress(), env.Endpoints.GetFullNodeEngineURL(), env.Endpoints.GetFullNodeEthURL(), true, passphraseFile)
+		clusterNodes.Set("node2", env.Endpoints.GetFullNodeRPCAddress(), proc, env.Endpoints.GetFullNodeEthURL(), node2RaftAddr, env.Endpoints.GetFullNodeP2PAddress(), env.Endpoints.GetFullNodeEngineURL(), env.Endpoints.GetFullNodeEthURL())
 		t.Log("Node2 is up")
 	}()
 
@@ -109,7 +112,7 @@ func TestLeaseFailoverE2E(t *testing.T) {
 		p2pPeers := node1P2PAddr + "," + node2P2PAddr
 		node3RPCListen := fmt.Sprintf("127.0.0.1:%d", mustGetAvailablePort(t))
 		ethEngineURL := fmt.Sprintf("http://127.0.0.1:%s", fullNode3EnginePort)
-		proc := setupRaftSequencerNode(t, sut, workDir, "node3", node3RaftAddr, jwtSecret3, genesisHash, testEndpoints.GetDAAddress(), bootstrapDir, raftCluster, p2pPeers, node3RPCListen, node3P2PAddr, ethEngineURL, node3EthAddr, true, passphraseFile)
+		proc := setupRaftSequencerNode(t, sut, workDir, "node3", node3RaftAddr, jwtSecret3, env.GenesisHash, env.Endpoints.GetDAAddress(), bootstrapDir, raftCluster, p2pPeers, node3RPCListen, node3P2PAddr, ethEngineURL, node3EthAddr, true, passphraseFile)
 		clusterNodes.Set("node3", "http://"+node3RPCListen, proc, node3EthAddr, node3RaftAddr, node3P2PAddr, ethEngineURL, node3EthAddr)
 		t.Log("Node3 is up")
 	}()
@@ -137,8 +140,7 @@ func TestLeaseFailoverE2E(t *testing.T) {
 	t.Logf("+++ Killing current leader (%s)\n", oldLeader)
 	_ = clusterNodes.Details(oldLeader).Kill()
 
-	const daStartHeight = 1
-	lastDABlockOldLeader := queryLastDAHeight(t, daStartHeight, jwtSecret, testEndpoints.GetDAAddress())
+	lastDABlockOldLeader := queryLastDAHeight(t, env.SequencerJWT, env.Endpoints.GetDAAddress())
 	t.Log("+++ Last DA block by old leader: ", lastDABlockOldLeader)
 	leaderElectionStart := time.Now()
 
@@ -157,7 +159,7 @@ func TestLeaseFailoverE2E(t *testing.T) {
 	// Verify DA progress
 	var lastDABlockNewLeader uint64
 	require.Eventually(t, func() bool {
-		lastDABlockNewLeader = queryLastDAHeight(t, lastDABlockOldLeader, jwtSecret, testEndpoints.GetDAAddress())
+		lastDABlockNewLeader = queryLastDAHeight(t, env.SequencerJWT, env.Endpoints.GetDAAddress())
 		return lastDABlockNewLeader > lastDABlockOldLeader
 	}, 2*must(time.ParseDuration(DefaultDABlockTime)), 100*time.Millisecond)
 	t.Logf("+++ Last DA block by new leader: %d\n", lastDABlockNewLeader)
@@ -170,7 +172,7 @@ func TestLeaseFailoverE2E(t *testing.T) {
 		}
 	}
 	oldDetails := clusterNodes.Details(oldLeader)
-	restartedNodeProcess := setupRaftSequencerNode(t, sut, workDir, oldLeader, oldDetails.raftAddr, jwtSecret, genesisHash, testEndpoints.GetDAAddress(), "", raftCluster, clusterNodes.Details(newLeader).p2pAddr, oldDetails.rpcAddr, oldDetails.p2pAddr, oldDetails.engineURL, oldDetails.ethAddr, false, passphraseFile)
+	restartedNodeProcess := setupRaftSequencerNode(t, sut, workDir, oldLeader, oldDetails.raftAddr, env.SequencerJWT, env.GenesisHash, env.Endpoints.GetDAAddress(), "", raftCluster, clusterNodes.Details(newLeader).p2pAddr, oldDetails.rpcAddr, oldDetails.p2pAddr, oldDetails.engineURL, oldDetails.ethAddr, false, passphraseFile)
 	t.Log("Restarted old leader to sync with cluster: " + oldLeader)
 
 	if IsNodeUp(t, oldDetails.rpcAddr, NodeStartupTimeout) {
@@ -217,20 +219,15 @@ func TestLeaseFailoverE2E(t *testing.T) {
 		return err == nil
 	}, time.Second, 100*time.Millisecond)
 
-	lastDABlockNewLeader = queryLastDAHeight(t, lastDABlockNewLeader, jwtSecret, testEndpoints.GetDAAddress())
-
 	genesisHeight := state.InitialHeight
 	verifyNoDoubleSigning(t, clusterNodes, genesisHeight, state.LastBlockHeight)
 
-	// wait for the next DA block to ensure all blocks are propagated
-	require.Eventually(t, func() bool {
-		before := lastDABlockNewLeader
-		lastDABlockNewLeader = queryLastDAHeight(t, lastDABlockNewLeader, jwtSecret, testEndpoints.GetDAAddress())
-		return before < lastDABlockNewLeader
-	}, 2*must(time.ParseDuration(DefaultDABlockTime)), 100*time.Millisecond)
-
+	// wait for the DA submitter to catch up — poll until all blocks are on DA
 	t.Log("+++ Verifying no DA gaps...")
-	verifyDABlocks(t, daStartHeight, lastDABlockNewLeader, jwtSecret, testEndpoints.GetDAAddress(), genesisHeight, state.LastBlockHeight)
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		lastDA := queryLastDAHeight(t, env.SequencerJWT, env.Endpoints.GetDAAddress())
+		verifyDABlocksCollect(collect, 1, lastDA, env.SequencerJWT, env.Endpoints.GetDAAddress(), genesisHeight, state.LastBlockHeight)
+	}, 3*must(time.ParseDuration(DefaultDABlockTime)), 500*time.Millisecond)
 
 	// Cleanup processes
 	clusterNodes.killAll()
@@ -252,9 +249,10 @@ func TestHASequencerRollingRestartE2E(t *testing.T) {
 
 	workDir := t.TempDir()
 
-	// Get JWT secrets and setup common components first
-	jwtSecret, fullNodeJwtSecret, genesisHash, testEndpoints := setupCommonEVMTest(t, sut, true)
-	rethFn := evmtest.SetupTestRethNode(t)
+	// Get Docker and common environment
+	dockerClient, networkID := tastoradocker.Setup(t)
+	env := SetupCommonEVMEnv(t, sut, dockerClient, networkID, WithFullNode())
+	rethFn := evmtest.SetupTestRethNode(t, dockerClient, networkID)
 	jwtSecret3 := rethFn.JWTSecretHex()
 	fnInfo, err := rethFn.GetNetworkInfo(context.Background())
 	require.NoError(t, err, "failed to get full node reth network info")
@@ -278,17 +276,17 @@ func TestHASequencerRollingRestartE2E(t *testing.T) {
 	clusterNodes := &raftClusterNodes{
 		nodes: make(map[string]*nodeDetails),
 	}
-	node1P2PAddr := testEndpoints.GetRollkitP2PAddress()
-	node2P2PAddr := testEndpoints.GetFullNodeP2PAddress()
+	node1P2PAddr := env.Endpoints.GetRollkitP2PAddress()
+	node2P2PAddr := env.Endpoints.GetFullNodeP2PAddress()
 	node3P2PAddr := fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", mustGetAvailablePort(t))
 
 	// Start node1 (bootstrap mode)
 	go func() {
 		p2pPeers := node2P2PAddr + "," + node3P2PAddr
-		proc := setupRaftSequencerNode(t, sut, workDir, "node1", node1RaftAddr, jwtSecret, genesisHash, testEndpoints.GetDAAddress(),
-			bootstrapDir, raftCluster, p2pPeers, testEndpoints.GetRollkitRPCListen(), testEndpoints.GetRollkitP2PAddress(),
-			testEndpoints.GetSequencerEngineURL(), testEndpoints.GetSequencerEthURL(), true, passphraseFile)
-		clusterNodes.Set("node1", testEndpoints.GetRollkitRPCAddress(), proc, testEndpoints.GetSequencerEthURL(), node1RaftAddr, testEndpoints.GetRollkitP2PAddress(), testEndpoints.GetSequencerEngineURL(), testEndpoints.GetSequencerEthURL())
+		proc := setupRaftSequencerNode(t, sut, workDir, "node1", node1RaftAddr, env.SequencerJWT, env.GenesisHash, env.Endpoints.GetDAAddress(),
+			bootstrapDir, raftCluster, p2pPeers, env.Endpoints.GetRollkitRPCListen(), env.Endpoints.GetRollkitP2PAddress(),
+			env.Endpoints.GetSequencerEngineURL(), env.Endpoints.GetSequencerEthURL(), true, passphraseFile)
+		clusterNodes.Set("node1", env.Endpoints.GetRollkitRPCAddress(), proc, env.Endpoints.GetSequencerEthURL(), node1RaftAddr, env.Endpoints.GetRollkitP2PAddress(), env.Endpoints.GetSequencerEngineURL(), env.Endpoints.GetSequencerEthURL())
 		t.Log("Node1 is up")
 	}()
 
@@ -296,8 +294,8 @@ func TestHASequencerRollingRestartE2E(t *testing.T) {
 	go func() {
 		t.Log("Starting Node2")
 		p2pPeers := node1P2PAddr + "," + node3P2PAddr
-		proc := setupRaftSequencerNode(t, sut, workDir, "node2", node2RaftAddr, fullNodeJwtSecret, genesisHash, testEndpoints.GetDAAddress(), bootstrapDir, raftCluster, p2pPeers, testEndpoints.GetFullNodeRPCListen(), testEndpoints.GetFullNodeP2PAddress(), testEndpoints.GetFullNodeEngineURL(), testEndpoints.GetFullNodeEthURL(), true, passphraseFile)
-		clusterNodes.Set("node2", testEndpoints.GetFullNodeRPCAddress(), proc, testEndpoints.GetFullNodeEthURL(), node2RaftAddr, testEndpoints.GetFullNodeP2PAddress(), testEndpoints.GetFullNodeEngineURL(), testEndpoints.GetFullNodeEthURL())
+		proc := setupRaftSequencerNode(t, sut, workDir, "node2", node2RaftAddr, env.FullNodeJWT, env.GenesisHash, env.Endpoints.GetDAAddress(), bootstrapDir, raftCluster, p2pPeers, env.Endpoints.GetFullNodeRPCListen(), env.Endpoints.GetFullNodeP2PAddress(), env.Endpoints.GetFullNodeEngineURL(), env.Endpoints.GetFullNodeEthURL(), true, passphraseFile)
+		clusterNodes.Set("node2", env.Endpoints.GetFullNodeRPCAddress(), proc, env.Endpoints.GetFullNodeEthURL(), node2RaftAddr, env.Endpoints.GetFullNodeP2PAddress(), env.Endpoints.GetFullNodeEngineURL(), env.Endpoints.GetFullNodeEthURL())
 		t.Log("Node2 is up")
 	}()
 
@@ -308,7 +306,7 @@ func TestHASequencerRollingRestartE2E(t *testing.T) {
 		p2pPeers := node1P2PAddr + "," + node2P2PAddr
 		node3RPCListen := fmt.Sprintf("127.0.0.1:%d", mustGetAvailablePort(t))
 		ethEngineURL := fmt.Sprintf("http://127.0.0.1:%s", fullNode3EnginePort)
-		proc := setupRaftSequencerNode(t, sut, workDir, "node3", node3RaftAddr, jwtSecret3, genesisHash, testEndpoints.GetDAAddress(), bootstrapDir, raftCluster, p2pPeers, node3RPCListen, node3P2PAddr, ethEngineURL, node3EthAddr, true, passphraseFile)
+		proc := setupRaftSequencerNode(t, sut, workDir, "node3", node3RaftAddr, jwtSecret3, env.GenesisHash, env.Endpoints.GetDAAddress(), bootstrapDir, raftCluster, p2pPeers, node3RPCListen, node3P2PAddr, ethEngineURL, node3EthAddr, true, passphraseFile)
 		clusterNodes.Set("node3", "http://"+node3RPCListen, proc, node3EthAddr, node3RaftAddr, node3P2PAddr, ethEngineURL, node3EthAddr)
 		t.Log("Node3 is up")
 	}()
@@ -322,8 +320,7 @@ func TestHASequencerRollingRestartE2E(t *testing.T) {
 	// Wait for at least 5 blocks to be produced before starting shutdown sequence
 	sut.AwaitNBlocks(t, 5, clusterNodes.Details(leaderNode).rpcAddr, 10*time.Second)
 
-	const daStartHeight = 1
-	initialDAHeight := queryLastDAHeight(t, daStartHeight, jwtSecret, testEndpoints.GetDAAddress())
+	initialDAHeight := queryLastDAHeight(t, env.SequencerJWT, env.Endpoints.GetDAAddress())
 	t.Logf("+++ Initial DA height: %d", initialDAHeight)
 
 	// Calculate downtime per node
@@ -356,9 +353,9 @@ func TestHASequencerRollingRestartE2E(t *testing.T) {
 	getNodeJWT := func(nodeName string) string {
 		switch nodeName {
 		case "node1":
-			return jwtSecret
+			return env.SequencerJWT
 		case "node2":
-			return fullNodeJwtSecret
+			return env.FullNodeJWT
 		case "node3":
 			return jwtSecret3
 		}
@@ -390,8 +387,8 @@ func TestHASequencerRollingRestartE2E(t *testing.T) {
 			time.Sleep(200 * time.Millisecond)
 		}
 
-		restartedProc := setupRaftSequencerNode(t, sut, workDir, nodeName, nodeDetails.raftAddr, nodeJWT, genesisHash,
-			testEndpoints.GetDAAddress(), "", raftCluster, p2pPeers,
+		restartedProc := setupRaftSequencerNode(t, sut, workDir, nodeName, nodeDetails.raftAddr, nodeJWT, env.GenesisHash,
+			env.Endpoints.GetDAAddress(), "", raftCluster, p2pPeers,
 			strings.TrimPrefix(nodeDetails.rpcAddr, "http://"), nodeDetails.p2pAddr,
 			nodeDetails.engineURL, nodeDetails.ethAddr, false, passphraseFile)
 
@@ -506,22 +503,16 @@ func TestHASequencerRollingRestartE2E(t *testing.T) {
 		return err == nil
 	}, time.Second, 100*time.Millisecond)
 
-	lastDABlock := queryLastDAHeight(t, initialDAHeight, jwtSecret, testEndpoints.GetDAAddress())
-
 	genesisHeight := state.InitialHeight
 	verifyNoDoubleSigning(t, clusterNodes, genesisHeight, state.LastBlockHeight)
 	t.Log("+++ No double-signing detected ✓")
 
-	// Wait for the next DA block to ensure all blocks are propagated
-	require.Eventually(t, func() bool {
-		before := lastDABlock
-		lastDABlock = queryLastDAHeight(t, lastDABlock, jwtSecret, testEndpoints.GetDAAddress())
-		return before < lastDABlock
-	}, 2*must(time.ParseDuration(DefaultDABlockTime)), 100*time.Millisecond)
-
-	// Verify no DA gaps
+	// Wait for the DA submitter to catch up — poll until all blocks are on DA
 	t.Log("+++ Verifying no DA gaps...")
-	verifyDABlocks(t, daStartHeight, lastDABlock, jwtSecret, testEndpoints.GetDAAddress(), genesisHeight, state.LastBlockHeight)
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		lastDA := queryLastDAHeight(t, env.SequencerJWT, env.Endpoints.GetDAAddress())
+		verifyDABlocksCollect(collect, 1, lastDA, env.SequencerJWT, env.Endpoints.GetDAAddress(), genesisHeight, state.LastBlockHeight)
+	}, 3*must(time.ParseDuration(DefaultDABlockTime)), 500*time.Millisecond)
 	t.Log("+++ No DA gaps detected ✓")
 
 	// Cleanup processes
@@ -575,10 +566,18 @@ func verifyDABlocks(t *testing.T, daStartHeight, lastDABlock uint64, jwtSecret s
 	deduplicationCache := make(map[string]uint64) // mixed header and data hashes
 
 	// Verify each block is present exactly once
+	// Note: local-da produces empty blocks on a ticker, so some DA heights may have no blobs — skip them.
 	for daHeight := daStartHeight; daHeight <= lastDABlock; daHeight++ {
 		blobs, err := blobClient.Blob.GetAll(t.Context(), daHeight, []libshare.Namespace{ns})
-		require.NoError(t, err, "height %d/%d", daHeight, lastDABlock)
-		require.NotEmpty(t, blobs)
+		if err != nil {
+			if strings.Contains(err.Error(), "blob: not found") {
+				continue
+			}
+			require.NoError(t, err, "height %d/%d", daHeight, lastDABlock)
+		}
+		if len(blobs) == 0 {
+			continue
+		}
 
 		for _, blob := range blobs {
 			if evHeight, hash, blobType := extractBlockHeight(t, blob.Data()); evHeight != 0 {
@@ -599,6 +598,80 @@ func verifyDABlocks(t *testing.T, daStartHeight, lastDABlock uint64, jwtSecret s
 		require.NotEmpty(t, evHeightsToEvBlockParts[h], "missing block on DA for height %d/%d", h, lastEVBlock)
 		require.Less(t, evHeightsToEvBlockParts[h], 3, "duplicate block on DA for height %d/%d", h, lastEVBlock)
 	}
+}
+
+// verifyDABlocksCollect is like verifyDABlocks but uses assert.CollectT so it can be retried
+// inside require.EventuallyWithT.
+func verifyDABlocksCollect(collect *assert.CollectT, daStartHeight, lastDABlock uint64, jwtSecret string, daAddress string, genesisHeight, lastEVBlock uint64) {
+	ctx := context.Background()
+	blobClient, err := blobrpc.NewClient(ctx, daAddress, jwtSecret, "")
+	if !assert.NoError(collect, err) {
+		return
+	}
+	defer blobClient.Close()
+
+	ns, err := libshare.NewNamespaceFromBytes(coreda.NamespaceFromString(DefaultDANamespace).Bytes())
+	if !assert.NoError(collect, err) {
+		return
+	}
+	evHeightsToEvBlockParts := make(map[uint64]int)
+	deduplicationCache := make(map[string]uint64)
+
+	for daHeight := daStartHeight; daHeight <= lastDABlock; daHeight++ {
+		blobs, err := blobClient.Blob.GetAll(ctx, daHeight, []libshare.Namespace{ns})
+		if err != nil {
+			if strings.Contains(err.Error(), "blob: not found") {
+				continue
+			}
+			assert.NoError(collect, err, "height %d/%d", daHeight, lastDABlock)
+			return
+		}
+		if len(blobs) == 0 {
+			continue
+		}
+
+		for _, blob := range blobs {
+			if evHeight, hash, blobType := extractBlockHeightRaw(blob.Data()); evHeight != 0 {
+				_ = blobType
+				if height, ok := deduplicationCache[hash.String()]; ok {
+					assert.Equal(collect, evHeight, height)
+					continue
+				}
+				assert.GreaterOrEqual(collect, evHeight, genesisHeight)
+				deduplicationCache[hash.String()] = evHeight
+				evHeightsToEvBlockParts[evHeight]++
+			}
+		}
+	}
+
+	for h := genesisHeight; h <= lastEVBlock; h++ {
+		assert.NotEmpty(collect, evHeightsToEvBlockParts[h], "missing block on DA for height %d/%d", h, lastEVBlock)
+		assert.Less(collect, evHeightsToEvBlockParts[h], 3, "duplicate block on DA for height %d/%d", h, lastEVBlock)
+	}
+}
+
+// extractBlockHeightRaw is like extractBlockHeight but doesn't require *testing.T.
+func extractBlockHeightRaw(blob []byte) (uint64, types.Hash, string) {
+	if len(blob) == 0 {
+		return 0, nil, ""
+	}
+	var headerPb pb.SignedHeader
+	if err := proto.Unmarshal(blob, &headerPb); err == nil {
+		var signedHeader types.SignedHeader
+		if err := signedHeader.FromProto(&headerPb); err == nil {
+			if err := signedHeader.Header.ValidateBasic(); err == nil {
+				return signedHeader.Height(), signedHeader.Hash(), "header"
+			}
+		}
+	}
+
+	var signedData types.SignedData
+	if err := signedData.UnmarshalBinary(blob); err == nil {
+		if signedData.Metadata != nil {
+			return signedData.Height(), signedData.Hash(), "data"
+		}
+	}
+	return 0, nil, ""
 }
 
 // extractBlockHeight attempts to decode a blob as SignedHeader or SignedData and extract the block height
@@ -748,27 +821,15 @@ func submitTxToURL(t *testing.T, client *ethclient.Client) (common.Hash, uint64)
 
 const defaultMaxBlobSize = 2 * 1024 * 1024 // 2MB
 
-func queryLastDAHeight(t *testing.T, startHeight uint64, jwtSecret string, daAddress string) uint64 {
+func queryLastDAHeight(t *testing.T, jwtSecret string, daAddress string) uint64 {
 	t.Helper()
 	blobClient, err := blobrpc.NewClient(t.Context(), daAddress, jwtSecret, "")
 	require.NoError(t, err)
 	defer blobClient.Close()
-	ns, err := libshare.NewNamespaceFromBytes(coreda.NamespaceFromString(DefaultDANamespace).Bytes())
+	header, err := blobClient.Header.NetworkHead(t.Context())
 	require.NoError(t, err)
-	var lastDABlock = startHeight
-	for {
-		blobs, err := blobClient.Blob.GetAll(t.Context(), lastDABlock, []libshare.Namespace{ns})
-		if err != nil {
-			if strings.Contains(err.Error(), "future") {
-				return lastDABlock - 1
-			}
-			t.Fatal("failed to get blobs:", err)
-		}
-		if len(blobs) != 0 && testing.Verbose() {
-			t.Log("+++ DA block: ", lastDABlock, " blobs: ", len(blobs))
-		}
-		lastDABlock++
-	}
+	require.NotNil(t, header)
+	return header.Height
 }
 
 type nodeDetails struct {

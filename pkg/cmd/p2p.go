@@ -9,10 +9,10 @@ import (
 	"text/tabwriter"
 
 	"connectrpc.com/connect"
-	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 	rpc "github.com/evstack/ev-node/types/pb/evnode/v1/v1connect"
 )
 

@@ -13,9 +13,8 @@ import (
 
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
-	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
-
 	mocks "github.com/evstack/ev-node/test/mocks"
+	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
 
 func TestAsyncBlockRetriever_GetCachedBlock_NoNamespace(t *testing.T) {
@@ -202,7 +201,7 @@ func TestAsyncBlockRetriever_StopGracefully(t *testing.T) {
 func TestBlockData_Serialization(t *testing.T) {
 	block := &BlockData{
 		Height:    100,
-		Timestamp: time.Unix(12345, 0).UTC(),
+		Timestamp: time.Unix(12345, 123456789).UTC(),
 		Blobs: [][]byte{
 			[]byte("blob1"),
 			[]byte("blob2"),
@@ -213,7 +212,7 @@ func TestBlockData_Serialization(t *testing.T) {
 	// Serialize using protobuf
 	pbBlock := &pb.BlockData{
 		Height:    block.Height,
-		Timestamp: block.Timestamp.Unix(),
+		Timestamp: block.Timestamp.UnixNano(),
 		Blobs:     block.Blobs,
 	}
 	data, err := proto.Marshal(pbBlock)
@@ -227,11 +226,11 @@ func TestBlockData_Serialization(t *testing.T) {
 
 	decoded := &BlockData{
 		Height:    decodedPb.Height,
-		Timestamp: time.Unix(decodedPb.Timestamp, 0).UTC(),
+		Timestamp: time.Unix(0, decodedPb.Timestamp).UTC(),
 		Blobs:     decodedPb.Blobs,
 	}
 
-	assert.Equal(t, block.Timestamp.Unix(), decoded.Timestamp.Unix())
+	assert.Equal(t, block.Timestamp.UnixNano(), decoded.Timestamp.UnixNano())
 	assert.Equal(t, block.Height, decoded.Height)
 	assert.Equal(t, len(block.Blobs), len(decoded.Blobs))
 	for i := range block.Blobs {
@@ -249,7 +248,7 @@ func TestBlockData_SerializationEmpty(t *testing.T) {
 	// Serialize using protobuf
 	pbBlock := &pb.BlockData{
 		Height:    block.Height,
-		Timestamp: block.Timestamp.Unix(),
+		Timestamp: block.Timestamp.UnixNano(),
 		Blobs:     block.Blobs,
 	}
 	data, err := proto.Marshal(pbBlock)
@@ -262,10 +261,11 @@ func TestBlockData_SerializationEmpty(t *testing.T) {
 
 	decoded := &BlockData{
 		Height:    decodedPb.Height,
-		Timestamp: time.Unix(decodedPb.Timestamp, 0).UTC(),
+		Timestamp: time.Unix(0, decodedPb.Timestamp).UTC(),
 		Blobs:     decodedPb.Blobs,
 	}
 
 	assert.Equal(t, uint64(100), decoded.Height)
+	assert.Equal(t, time.Unix(0, 0).UTC(), decoded.Timestamp)
 	assert.Equal(t, 0, len(decoded.Blobs))
 }

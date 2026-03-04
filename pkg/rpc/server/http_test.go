@@ -7,13 +7,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/evstack/ev-node/pkg/config"
-	"github.com/evstack/ev-node/test/mocks"
-	"github.com/evstack/ev-node/types"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	"github.com/evstack/ev-node/pkg/config"
+	"github.com/evstack/ev-node/test/mocks"
+	"github.com/evstack/ev-node/types"
 )
 
 func TestRegisterCustomHTTPEndpoints(t *testing.T) {
@@ -28,7 +29,9 @@ func TestRegisterCustomHTTPEndpoints(t *testing.T) {
 	testServer := httptest.NewServer(mux)
 	defer testServer.Close()
 
-	resp, err := http.Get(testServer.URL + "/health/live")
+	req, err := http.NewRequest(http.MethodGet, testServer.URL+"/health/live", nil)
+	assert.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req) //nolint:gosec // test-only request to httptest server
 	assert.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -43,7 +46,6 @@ func TestRegisterCustomHTTPEndpoints(t *testing.T) {
 }
 
 func TestHealthReady_aggregatorBlockDelay(t *testing.T) {
-	ctx := t.Context()
 	logger := zerolog.Nop()
 
 	type spec struct {
@@ -118,7 +120,7 @@ func TestHealthReady_aggregatorBlockDelay(t *testing.T) {
 			ts := httptest.NewServer(mux)
 			t.Cleanup(ts.Close)
 
-			req, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/health/ready", nil)
+			req, err := http.NewRequest(http.MethodGet, ts.URL+"/health/ready", nil)
 			require.NoError(t, err)
 			resp, err := http.DefaultClient.Do(req) //nolint:gosec // ok to use default client in tests
 			require.NoError(t, err)

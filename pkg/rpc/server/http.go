@@ -6,10 +6,11 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/rs/zerolog"
+
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/store"
-	"github.com/rs/zerolog"
 )
 
 // BestKnownHeightProvider returns the best-known network height observed by the node

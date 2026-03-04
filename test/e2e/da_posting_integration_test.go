@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	libshare "github.com/celestiaorg/go-square/v3/share"
 	tastoradocker "github.com/celestiaorg/tastora/framework/docker"
 	tastoraconsts "github.com/celestiaorg/tastora/framework/docker/consts"
 	"github.com/celestiaorg/tastora/framework/docker/container"
@@ -29,10 +30,10 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/bank"
 	"github.com/cosmos/cosmos-sdk/x/gov"
 	"github.com/cosmos/ibc-go/v8/modules/apps/transfer"
-	libshare "github.com/celestiaorg/go-square/v3/share"
+	"github.com/stretchr/testify/require"
+
 	"github.com/evstack/ev-node/pkg/da/jsonrpc"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
-	"github.com/stretchr/testify/require"
 )
 
 // TestEvNode_PostsToDA spins up celestia-app, a celestia bridge node and an
