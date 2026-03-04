@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1772629787435,
+  "lastUpdate": 1772647966084,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -1572,6 +1572,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 117934,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "alpe@users.noreply.github.com",
+            "name": "Alexander Peters",
+            "username": "alpe"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "c0bc14150bd7cbc2353136b202269881fbfd0142",
+          "message": "fix(node): race on caught up (#3133)\n\nfeat: add `Syncer.PendingCount` and use it to ensure the sync pipeline is drained before marking the node as caught up in failover.",
+          "timestamp": "2026-03-04T17:51:20Z",
+          "tree_id": "e2de7975904545942b3a234d86d0162e50422142",
+          "url": "https://github.com/evstack/ev-node/commit/c0bc14150bd7cbc2353136b202269881fbfd0142"
+        },
+        "date": 1772647963520,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 915432190,
+            "unit": "ns/op\t26235736 B/op\t  112879 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 915432190,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 26235736,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 112879,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
