@@ -208,7 +208,7 @@ func (s *Syncer) Start(ctx context.Context) error {
 		StartDAHeight: s.daRetrieverHeight.Load(),
 		DABlockTime:   s.config.DA.BlockTime.Duration,
 	})
-	if err := s.daFollower.Start(s.ctx); err != nil {
+	if err := s.daFollower.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start DA follower: %w", err)
 	}
 

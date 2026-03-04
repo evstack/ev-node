@@ -427,10 +427,10 @@ func TestSyncLoopPersistState(t *testing.T) {
 		StartDAHeight: syncerInst1.daRetrieverHeight.Load(),
 		DABlockTime:   cfg.DA.BlockTime.Duration,
 	}).(*daFollower)
-	follower1.ctx, follower1.cancel = context.WithCancel(ctx)
+	ctx, follower1.cancel = context.WithCancel(ctx)
 	// Set highest so catchup runs through all mocked heights.
 	follower1.highestSeenDAHeight.Store(myFutureDAHeight)
-	go follower1.runCatchup()
+	go follower1.runCatchup(ctx)
 	syncerInst1.startSyncWorkers(ctx)
 	syncerInst1.wg.Wait()
 	requireEmptyChan(t, errorCh)
@@ -504,9 +504,9 @@ func TestSyncLoopPersistState(t *testing.T) {
 		StartDAHeight: syncerInst2.daRetrieverHeight.Load(),
 		DABlockTime:   cfg.DA.BlockTime.Duration,
 	}).(*daFollower)
-	follower2.ctx, follower2.cancel = context.WithCancel(ctx)
+	ctx, follower2.cancel = context.WithCancel(ctx)
 	follower2.highestSeenDAHeight.Store(syncerInst2.daRetrieverHeight.Load() + 1)
-	go follower2.runCatchup()
+	go follower2.runCatchup(ctx)
 	syncerInst2.startSyncWorkers(ctx)
 	syncerInst2.wg.Wait()
 

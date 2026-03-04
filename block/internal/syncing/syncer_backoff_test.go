@@ -73,7 +73,7 @@ func TestDAFollower_BackoffOnCatchupError(t *testing.T) {
 					DABlockTime:   tc.daBlockTime,
 				}).(*daFollower)
 
-				follower.ctx, follower.cancel = context.WithCancel(ctx)
+				ctx, follower.cancel = context.WithCancel(ctx)
 				follower.highestSeenDAHeight.Store(102)
 
 				var callTimes []time.Time
@@ -105,7 +105,7 @@ func TestDAFollower_BackoffOnCatchupError(t *testing.T) {
 						Return(nil, datypes.ErrBlobNotFound).Once()
 				}
 
-				go follower.runCatchup()
+				go follower.runCatchup(ctx)
 				<-ctx.Done()
 
 				if tc.expectsBackoff {
@@ -157,7 +157,7 @@ func TestDAFollower_BackoffResetOnSuccess(t *testing.T) {
 			DABlockTime:   1 * time.Second,
 		}).(*daFollower)
 
-		follower.ctx, follower.cancel = context.WithCancel(ctx)
+		ctx, follower.cancel = context.WithCancel(ctx)
 		follower.highestSeenDAHeight.Store(105)
 
 		var callTimes []time.Time
@@ -198,7 +198,7 @@ func TestDAFollower_BackoffResetOnSuccess(t *testing.T) {
 			}).
 			Return(nil, datypes.ErrBlobNotFound).Once()
 
-		go follower.runCatchup()
+		go follower.runCatchup(ctx)
 		<-ctx.Done()
 
 		require.Len(t, callTimes, 3, "should make exactly 3 calls")
@@ -234,13 +234,11 @@ func TestDAFollower_CatchupThenReachHead(t *testing.T) {
 			DABlockTime:   500 * time.Millisecond,
 		}).(*daFollower)
 
-		follower.ctx, follower.cancel = context.WithCancel(ctx)
 		follower.highestSeenDAHeight.Store(5)
 
 		var fetchedHeights []uint64
 
 		for h := uint64(3); h <= 5; h++ {
-			h := h
 			daRetriever.On("RetrieveFromDA", mock.Anything, h).
 				Run(func(args mock.Arguments) {
 					fetchedHeights = append(fetchedHeights, h)
@@ -248,7 +246,7 @@ func TestDAFollower_CatchupThenReachHead(t *testing.T) {
 				Return(nil, datypes.ErrBlobNotFound).Once()
 		}
 
-		follower.runCatchup()
+		follower.runCatchup(ctx)
 
 		assert.True(t, follower.HasReachedHead(), "should have reached DA head")
 		// Heights 3, 4, 5 processed; local now at 6 which > highest (5) → caught up
@@ -278,9 +276,6 @@ func TestDAFollower_InlineProcessing(t *testing.T) {
 			DABlockTime:   500 * time.Millisecond,
 		}).(*daFollower)
 
-		follower.ctx, follower.cancel = context.WithCancel(t.Context())
-		defer follower.cancel()
-
 		blobs := [][]byte{[]byte("header-blob"), []byte("data-blob")}
 		expectedEvents := []common.DAHeightEvent{
 			{DaHeight: 10, Source: common.SourceDA},
@@ -291,7 +286,7 @@ func TestDAFollower_InlineProcessing(t *testing.T) {
 			Return(expectedEvents).Once()
 
 		// Simulate subscription event at the current localDAHeight
-		follower.handleSubscriptionEvent(datypes.SubscriptionEvent{
+		follower.handleSubscriptionEvent(t.Context(), datypes.SubscriptionEvent{
 			Height: 10,
 			Blobs:  blobs,
 		})
@@ -317,11 +312,12 @@ func TestDAFollower_InlineProcessing(t *testing.T) {
 			DABlockTime:   500 * time.Millisecond,
 		}).(*daFollower)
 
-		follower.ctx, follower.cancel = context.WithCancel(t.Context())
+		ctx := t.Context()
+		ctx, follower.cancel = context.WithCancel(ctx)
 		defer follower.cancel()
 
 		// Subscription reports height 15 but local is at 10 — should NOT process inline
-		follower.handleSubscriptionEvent(datypes.SubscriptionEvent{
+		follower.handleSubscriptionEvent(ctx, datypes.SubscriptionEvent{
 			Height: 15,
 			Blobs:  [][]byte{[]byte("blob")},
 		})
@@ -346,11 +342,8 @@ func TestDAFollower_InlineProcessing(t *testing.T) {
 			DABlockTime:   500 * time.Millisecond,
 		}).(*daFollower)
 
-		follower.ctx, follower.cancel = context.WithCancel(t.Context())
-		defer follower.cancel()
-
 		// Subscription at current height but no blobs — should fall through
-		follower.handleSubscriptionEvent(datypes.SubscriptionEvent{
+		follower.handleSubscriptionEvent(t.Context(), datypes.SubscriptionEvent{
 			Height: 10,
 			Blobs:  nil,
 		})

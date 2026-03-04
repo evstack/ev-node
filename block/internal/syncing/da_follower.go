@@ -69,7 +69,6 @@ type daFollower struct {
 	daBlockTime time.Duration
 
 	// lifecycle
-	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 }
@@ -108,11 +107,11 @@ func NewDAFollower(cfg DAFollowerConfig) DAFollower {
 
 // Start begins the follow and catchup goroutines.
 func (f *daFollower) Start(ctx context.Context) error {
-	f.ctx, f.cancel = context.WithCancel(ctx)
+	ctx, f.cancel = context.WithCancel(ctx)
 
 	f.wg.Add(2)
-	go f.followLoop()
-	go f.catchupLoop()
+	go f.followLoop(ctx)
+	go f.catchupLoop(ctx)
 
 	f.logger.Info().
 		Uint64("start_da_height", f.localDAHeight.Load()).
@@ -144,20 +143,20 @@ func (f *daFollower) signalCatchup() {
 
 // followLoop subscribes to DA blob events and keeps highestSeenDAHeight up to date.
 // When a new height appears above localDAHeight, it wakes the catchup loop.
-func (f *daFollower) followLoop() {
+func (f *daFollower) followLoop(ctx context.Context) {
 	defer f.wg.Done()
 
 	f.logger.Info().Msg("starting follow loop")
 	defer f.logger.Info().Msg("follow loop stopped")
 
 	for {
-		if err := f.runSubscription(); err != nil {
-			if f.ctx.Err() != nil {
+		if err := f.runSubscription(ctx); err != nil {
+			if ctx.Err() != nil {
 				return
 			}
 			f.logger.Warn().Err(err).Msg("DA subscription failed, reconnecting")
 			select {
-			case <-f.ctx.Done():
+			case <-ctx.Done():
 				return
 			case <-time.After(f.backoff()):
 			}
@@ -169,9 +168,9 @@ func (f *daFollower) followLoop() {
 // different) and processes events until a channel is closed or an error occurs.
 // A watchdog timer triggers if no events arrive within watchdogTimeout(),
 // causing a reconnect.
-func (f *daFollower) runSubscription() error {
+func (f *daFollower) runSubscription(ctx context.Context) error {
 	// Sub-context ensures the merge goroutine is cancelled when this function returns.
-	subCtx, subCancel := context.WithCancel(f.ctx)
+	subCtx, subCancel := context.WithCancel(ctx)
 	defer subCancel()
 
 	headerCh, err := f.client.Subscribe(subCtx, f.namespace)
@@ -201,7 +200,7 @@ func (f *daFollower) runSubscription() error {
 			if !ok {
 				return errors.New("subscription channel closed")
 			}
-			f.handleSubscriptionEvent(ev)
+			f.handleSubscriptionEvent(ctx, ev)
 			watchdog.Reset(watchdogTimeout)
 		case <-watchdog.C:
 			return errors.New("subscription watchdog: no events received, reconnecting")
@@ -251,7 +250,7 @@ func (f *daFollower) mergeSubscriptions(
 //
 // Uses CAS on localDAHeight to claim exclusive access to processBlobs,
 // preventing concurrent map access with catchupLoop.
-func (f *daFollower) handleSubscriptionEvent(ev datypes.SubscriptionEvent) {
+func (f *daFollower) handleSubscriptionEvent(ctx context.Context, ev datypes.SubscriptionEvent) {
 	// Always record the highest height we've seen from the subscription.
 	f.updateHighest(ev.Height)
 
@@ -259,9 +258,9 @@ func (f *daFollower) handleSubscriptionEvent(ev datypes.SubscriptionEvent) {
 	// CAS(N, N+1) ensures only one goroutine (followLoop or catchupLoop)
 	// can enter processBlobs for height N.
 	if len(ev.Blobs) > 0 && f.localDAHeight.CompareAndSwap(ev.Height, ev.Height+1) {
-		events := f.retriever.ProcessBlobs(f.ctx, ev.Blobs, ev.Height)
+		events := f.retriever.ProcessBlobs(ctx, ev.Blobs, ev.Height)
 		for _, event := range events {
-			if err := f.pipeEvent(f.ctx, event); err != nil {
+			if err := f.pipeEvent(ctx, event); err != nil {
 				// Roll back so catchupLoop can retry this height.
 				f.localDAHeight.Store(ev.Height)
 				f.logger.Warn().Err(err).Uint64("da_height", ev.Height).
@@ -299,7 +298,7 @@ func (f *daFollower) updateHighest(height uint64) {
 
 // catchupLoop waits for signals and sequentially retrieves DA heights
 // from localDAHeight up to highestSeenDAHeight.
-func (f *daFollower) catchupLoop() {
+func (f *daFollower) catchupLoop(ctx context.Context) {
 	defer f.wg.Done()
 
 	f.logger.Info().Msg("starting catchup loop")
@@ -307,19 +306,19 @@ func (f *daFollower) catchupLoop() {
 
 	for {
 		select {
-		case <-f.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-f.catchupSignal:
-			f.runCatchup()
+			f.runCatchup(ctx)
 		}
 	}
 }
 
 // runCatchup sequentially retrieves from localDAHeight to highestSeenDAHeight.
 // It handles priority heights first, then sequential heights.
-func (f *daFollower) runCatchup() {
+func (f *daFollower) runCatchup(ctx context.Context) {
 	for {
-		if f.ctx.Err() != nil {
+		if ctx.Err() != nil {
 			return
 		}
 
@@ -332,8 +331,8 @@ func (f *daFollower) runCatchup() {
 			f.logger.Debug().
 				Uint64("da_height", priorityHeight).
 				Msg("fetching priority DA height from P2P hint")
-			if err := f.fetchAndPipeHeight(priorityHeight); err != nil {
-				if !f.waitOnCatchupError(err, priorityHeight) {
+			if err := f.fetchAndPipeHeight(ctx, priorityHeight); err != nil {
+				if !f.waitOnCatchupError(ctx, err, priorityHeight) {
 					return
 				}
 			}
@@ -350,16 +349,16 @@ func (f *daFollower) runCatchup() {
 			return
 		}
 
-		// CAS claims this height — prevents followLoop from inline-processing
+		// CAS claims this height prevents followLoop from inline-processing
 		if !f.localDAHeight.CompareAndSwap(local, local+1) {
 			// followLoop already advanced past this height via inline processing.
 			continue
 		}
 
-		if err := f.fetchAndPipeHeight(local); err != nil {
+		if err := f.fetchAndPipeHeight(ctx, local); err != nil {
 			// Roll back so we can retry after backoff.
 			f.localDAHeight.Store(local)
-			if !f.waitOnCatchupError(err, local) {
+			if !f.waitOnCatchupError(ctx, err, local) {
 				return
 			}
 			continue
@@ -369,8 +368,8 @@ func (f *daFollower) runCatchup() {
 
 // fetchAndPipeHeight retrieves events at a single DA height and pipes them
 // to the syncer.
-func (f *daFollower) fetchAndPipeHeight(daHeight uint64) error {
-	events, err := f.retriever.RetrieveFromDA(f.ctx, daHeight)
+func (f *daFollower) fetchAndPipeHeight(ctx context.Context, daHeight uint64) error {
+	events, err := f.retriever.RetrieveFromDA(ctx, daHeight)
 	if err != nil {
 		switch {
 		case errors.Is(err, datypes.ErrBlobNotFound):
@@ -387,7 +386,7 @@ func (f *daFollower) fetchAndPipeHeight(daHeight uint64) error {
 	}
 
 	for _, event := range events {
-		if err := f.pipeEvent(f.ctx, event); err != nil {
+		if err := f.pipeEvent(ctx, event); err != nil {
 			return err
 		}
 	}
@@ -401,17 +400,17 @@ var errCaughtUp = errors.New("caught up with DA head")
 // waitOnCatchupError logs the error and backs off before retrying.
 // It returns true if the caller should continue (retry), or false if the
 // catchup loop should exit (context cancelled or caught-up sentinel).
-func (f *daFollower) waitOnCatchupError(err error, daHeight uint64) bool {
+func (f *daFollower) waitOnCatchupError(ctx context.Context, err error, daHeight uint64) bool {
 	if errors.Is(err, errCaughtUp) {
 		f.logger.Debug().Uint64("da_height", daHeight).Msg("DA catchup reached head, waiting for subscription signal")
 		return false
 	}
-	if f.ctx.Err() != nil {
+	if ctx.Err() != nil {
 		return false
 	}
 	f.logger.Warn().Err(err).Uint64("da_height", daHeight).Msg("catchup error, backing off")
 	select {
-	case <-f.ctx.Done():
+	case <-ctx.Done():
 		return false
 	case <-time.After(f.backoff()):
 		return true
