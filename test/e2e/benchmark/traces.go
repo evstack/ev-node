@@ -104,7 +104,7 @@ func (v *victoriaTraceProvider) collectSpans(ctx context.Context, serviceName st
 }
 
 func (v *victoriaTraceProvider) tryCollectSpans(ctx context.Context, serviceName string) []e2e.TraceSpan {
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
 	var spans []e2e.TraceSpan
