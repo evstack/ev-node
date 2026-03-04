@@ -15,8 +15,8 @@ import (
 // (lower is better) on the benchmark dashboard.
 func (s *SpamoorSuite) TestGasBurner() {
 	const (
-		numSpammers     = 8
-		countPerSpammer = 5000
+		numSpammers     = 4
+		countPerSpammer = 10000
 		totalCount      = numSpammers * countPerSpammer
 		warmupTxs       = 500
 		serviceName     = "ev-node" // TODO: temp change
