@@ -568,7 +568,7 @@ func TestStoreAdapter_ConcurrentAppendAndRead(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for i := range itemsPerWriter * numWriters {
-				_ = adapter.Height()
+				_ = adapter.Height() //nolint:contextcheck // external interface does not accept context
 				_, _ = adapter.Head(ctx)
 				_ = adapter.HasAt(ctx, uint64(i+1))
 			}

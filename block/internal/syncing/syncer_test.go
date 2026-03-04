@@ -309,7 +309,7 @@ func TestSyncer_processPendingEvents(t *testing.T) {
 	cm.SetPendingEvent(1, evt1)
 	cm.SetPendingEvent(2, evt2)
 
-	s.processPendingEvents()
+	s.processPendingEvents(s.ctx)
 
 	// should have forwarded height 2 and removed both
 	select {
@@ -416,8 +416,8 @@ func TestSyncLoopPersistState(t *testing.T) {
 		}).
 		Return(nil, datypes.ErrHeightFromFuture)
 
-	go syncerInst1.processLoop()
-	syncerInst1.startSyncWorkers()
+	go syncerInst1.processLoop(ctx)
+	syncerInst1.startSyncWorkers(ctx)
 	syncerInst1.wg.Wait()
 	requireEmptyChan(t, errorCh)
 
@@ -480,7 +480,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 
 	// when it starts, it should fetch from the last height it stopped at
 	t.Log("sync workers on instance2 started")
-	syncerInst2.startSyncWorkers()
+	syncerInst2.startSyncWorkers(ctx)
 	syncerInst2.wg.Wait()
 
 	t.Log("sync workers exited")

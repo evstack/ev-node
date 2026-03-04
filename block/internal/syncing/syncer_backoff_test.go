@@ -121,7 +121,7 @@ func TestSyncer_BackoffOnDAError(t *testing.T) {
 				}
 
 				// Run sync loop
-				syncer.startSyncWorkers()
+				syncer.startSyncWorkers(ctx)
 				<-ctx.Done()
 				syncer.wg.Wait()
 
@@ -220,10 +220,10 @@ func TestSyncer_BackoffResetOnSuccess(t *testing.T) {
 			Return(nil, datypes.ErrBlobNotFound).Once()
 
 		// Start process loop to handle events
-		go syncer.processLoop()
+		go syncer.processLoop(ctx)
 
 		// Run workers
-		syncer.startSyncWorkers()
+		syncer.startSyncWorkers(ctx)
 		<-ctx.Done()
 		syncer.wg.Wait()
 
@@ -293,8 +293,8 @@ func TestSyncer_BackoffBehaviorIntegration(t *testing.T) {
 			}).
 			Return(nil, datypes.ErrBlobNotFound).Once()
 
-		go syncer.processLoop()
-		syncer.startSyncWorkers()
+		go syncer.processLoop(ctx)
+		syncer.startSyncWorkers(ctx)
 		<-ctx.Done()
 		syncer.wg.Wait()
 

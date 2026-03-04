@@ -145,7 +145,6 @@ func TestDASubmitter_SubmitHeaders_Success(t *testing.T) {
 
 	// Create test signer
 	addr, pub, signer := createTestSigner(t)
-	gen.ProposerAddress = addr
 
 	// Create test headers
 	header1 := &types.SignedHeader{

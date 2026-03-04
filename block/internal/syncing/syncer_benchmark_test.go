@@ -43,8 +43,8 @@ func BenchmarkSyncerIO(b *testing.B) {
 				fixt := newBenchFixture(b, spec.heights, spec.shuffledTx, spec.daDelay, spec.execDelay, true)
 
 				// run both loops
-				go fixt.s.processLoop()
-				fixt.s.startSyncWorkers()
+				go fixt.s.processLoop(fixt.s.ctx)
+				fixt.s.startSyncWorkers(fixt.s.ctx)
 
 				require.Eventually(b, func() bool {
 					processedHeight, _ := fixt.s.store.Height(b.Context())

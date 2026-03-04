@@ -219,20 +219,15 @@ func TestLeaseFailoverE2E(t *testing.T) {
 		return err == nil
 	}, time.Second, 100*time.Millisecond)
 
-	lastDABlockNewLeader = queryLastDAHeight(t, env.SequencerJWT, env.Endpoints.GetDAAddress())
-
 	genesisHeight := state.InitialHeight
 	verifyNoDoubleSigning(t, clusterNodes, genesisHeight, state.LastBlockHeight)
 
-	// wait for the next DA block to ensure all blocks are propagated
-	require.Eventually(t, func() bool {
-		before := lastDABlockNewLeader
-		lastDABlockNewLeader = queryLastDAHeight(t, env.SequencerJWT, env.Endpoints.GetDAAddress())
-		return before < lastDABlockNewLeader
-	}, 2*must(time.ParseDuration(DefaultDABlockTime)), 100*time.Millisecond)
-
+	// wait for the DA submitter to catch up — poll until all blocks are on DA
 	t.Log("+++ Verifying no DA gaps...")
-	verifyDABlocks(t, 1, lastDABlockNewLeader, env.SequencerJWT, env.Endpoints.GetDAAddress(), genesisHeight, state.LastBlockHeight)
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		lastDA := queryLastDAHeight(t, env.SequencerJWT, env.Endpoints.GetDAAddress())
+		verifyDABlocksCollect(collect, 1, lastDA, env.SequencerJWT, env.Endpoints.GetDAAddress(), genesisHeight, state.LastBlockHeight)
+	}, 3*must(time.ParseDuration(DefaultDABlockTime)), 500*time.Millisecond)
 
 	// Cleanup processes
 	clusterNodes.killAll()
@@ -508,22 +503,16 @@ func TestHASequencerRollingRestartE2E(t *testing.T) {
 		return err == nil
 	}, time.Second, 100*time.Millisecond)
 
-	lastDABlock := queryLastDAHeight(t, env.SequencerJWT, env.Endpoints.GetDAAddress())
-
 	genesisHeight := state.InitialHeight
 	verifyNoDoubleSigning(t, clusterNodes, genesisHeight, state.LastBlockHeight)
 	t.Log("+++ No double-signing detected ✓")
 
-	// Wait for the next DA block to ensure all blocks are propagated
-	require.Eventually(t, func() bool {
-		before := lastDABlock
-		lastDABlock = queryLastDAHeight(t, env.SequencerJWT, env.Endpoints.GetDAAddress())
-		return before < lastDABlock
-	}, 2*must(time.ParseDuration(DefaultDABlockTime)), 100*time.Millisecond)
-
-	// Verify no DA gaps
+	// Wait for the DA submitter to catch up — poll until all blocks are on DA
 	t.Log("+++ Verifying no DA gaps...")
-	verifyDABlocks(t, 1, lastDABlock, env.SequencerJWT, env.Endpoints.GetDAAddress(), genesisHeight, state.LastBlockHeight)
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		lastDA := queryLastDAHeight(t, env.SequencerJWT, env.Endpoints.GetDAAddress())
+		verifyDABlocksCollect(collect, 1, lastDA, env.SequencerJWT, env.Endpoints.GetDAAddress(), genesisHeight, state.LastBlockHeight)
+	}, 3*must(time.ParseDuration(DefaultDABlockTime)), 500*time.Millisecond)
 	t.Log("+++ No DA gaps detected ✓")
 
 	// Cleanup processes
@@ -609,6 +598,80 @@ func verifyDABlocks(t *testing.T, daStartHeight, lastDABlock uint64, jwtSecret s
 		require.NotEmpty(t, evHeightsToEvBlockParts[h], "missing block on DA for height %d/%d", h, lastEVBlock)
 		require.Less(t, evHeightsToEvBlockParts[h], 3, "duplicate block on DA for height %d/%d", h, lastEVBlock)
 	}
+}
+
+// verifyDABlocksCollect is like verifyDABlocks but uses assert.CollectT so it can be retried
+// inside require.EventuallyWithT.
+func verifyDABlocksCollect(collect *assert.CollectT, daStartHeight, lastDABlock uint64, jwtSecret string, daAddress string, genesisHeight, lastEVBlock uint64) {
+	ctx := context.Background()
+	blobClient, err := blobrpc.NewClient(ctx, daAddress, jwtSecret, "")
+	if !assert.NoError(collect, err) {
+		return
+	}
+	defer blobClient.Close()
+
+	ns, err := libshare.NewNamespaceFromBytes(coreda.NamespaceFromString(DefaultDANamespace).Bytes())
+	if !assert.NoError(collect, err) {
+		return
+	}
+	evHeightsToEvBlockParts := make(map[uint64]int)
+	deduplicationCache := make(map[string]uint64)
+
+	for daHeight := daStartHeight; daHeight <= lastDABlock; daHeight++ {
+		blobs, err := blobClient.Blob.GetAll(ctx, daHeight, []libshare.Namespace{ns})
+		if err != nil {
+			if strings.Contains(err.Error(), "blob: not found") {
+				continue
+			}
+			assert.NoError(collect, err, "height %d/%d", daHeight, lastDABlock)
+			return
+		}
+		if len(blobs) == 0 {
+			continue
+		}
+
+		for _, blob := range blobs {
+			if evHeight, hash, blobType := extractBlockHeightRaw(blob.Data()); evHeight != 0 {
+				_ = blobType
+				if height, ok := deduplicationCache[hash.String()]; ok {
+					assert.Equal(collect, evHeight, height)
+					continue
+				}
+				assert.GreaterOrEqual(collect, evHeight, genesisHeight)
+				deduplicationCache[hash.String()] = evHeight
+				evHeightsToEvBlockParts[evHeight]++
+			}
+		}
+	}
+
+	for h := genesisHeight; h <= lastEVBlock; h++ {
+		assert.NotEmpty(collect, evHeightsToEvBlockParts[h], "missing block on DA for height %d/%d", h, lastEVBlock)
+		assert.Less(collect, evHeightsToEvBlockParts[h], 3, "duplicate block on DA for height %d/%d", h, lastEVBlock)
+	}
+}
+
+// extractBlockHeightRaw is like extractBlockHeight but doesn't require *testing.T.
+func extractBlockHeightRaw(blob []byte) (uint64, types.Hash, string) {
+	if len(blob) == 0 {
+		return 0, nil, ""
+	}
+	var headerPb pb.SignedHeader
+	if err := proto.Unmarshal(blob, &headerPb); err == nil {
+		var signedHeader types.SignedHeader
+		if err := signedHeader.FromProto(&headerPb); err == nil {
+			if err := signedHeader.Header.ValidateBasic(); err == nil {
+				return signedHeader.Height(), signedHeader.Hash(), "header"
+			}
+		}
+	}
+
+	var signedData types.SignedData
+	if err := signedData.UnmarshalBinary(blob); err == nil {
+		if signedData.Metadata != nil {
+			return signedData.Height(), signedData.Hash(), "data"
+		}
+	}
+	return 0, nil, ""
 }
 
 // extractBlockHeight attempts to decode a blob as SignedHeader or SignedData and extract the block height

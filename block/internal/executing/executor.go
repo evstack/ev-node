@@ -381,7 +381,6 @@ func (e *Executor) executionLoop() {
 	} else {
 		delay = time.Until(currentState.LastBlockTime.Add(e.config.Node.BlockTime.Duration))
 	}
-
 	if delay > 0 {
 		e.logger.Info().Dur("delay", delay).Msg("waiting to start block production")
 		select {
@@ -591,7 +590,7 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 			LastSubmittedDaHeaderHeight: e.cache.GetLastSubmittedHeaderHeight(),
 			LastSubmittedDaDataHeight:   e.cache.GetLastSubmittedDataHeight(),
 		}
-		if err := e.raftNode.Broadcast(e.ctx, raftState); err != nil {
+		if err := e.raftNode.Broadcast(ctx, raftState); err != nil {
 			return fmt.Errorf("failed to propose block to raft: %w", err)
 		}
 		e.logger.Debug().Uint64("height", newHeight).Msg("proposed block to raft")
@@ -617,12 +616,12 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 	// IMPORTANT: Header MUST be broadcast before data — the P2P layer validates
 	// incoming data against the current and previous header, so out-of-order
 	// delivery would cause validation failures on peers.
-	if err := e.headerBroadcaster.WriteToStoreAndBroadcast(e.ctx, &types.P2PSignedHeader{
+	if err := e.headerBroadcaster.WriteToStoreAndBroadcast(ctx, &types.P2PSignedHeader{
 		SignedHeader: header,
 	}); err != nil {
 		e.logger.Error().Err(err).Msg("failed to broadcast header")
 	}
-	if err := e.dataBroadcaster.WriteToStoreAndBroadcast(e.ctx, &types.P2PData{
+	if err := e.dataBroadcaster.WriteToStoreAndBroadcast(ctx, &types.P2PData{
 		Data: data,
 	}); err != nil {
 		e.logger.Error().Err(err).Msg("failed to broadcast data")
@@ -637,7 +636,7 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 
 	// For based sequencer, advance safe/finalized since it comes from DA.
 	if e.config.Node.BasedSequencer {
-		if err := e.exec.SetFinal(e.ctx, newHeight); err != nil {
+		if err := e.exec.SetFinal(ctx, newHeight); err != nil {
 			e.sendCriticalError(fmt.Errorf("failed to set final height in based sequencer mode: %w", err))
 			return fmt.Errorf("failed to set final height in based sequencer mode: %w", err)
 		}
