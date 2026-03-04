@@ -49,8 +49,7 @@ type config struct {
 	serviceName string
 }
 
-// TODO: temporary hardcoded tag, will be replaced with a proper release tag
-const defaultRethTag = "pr-140"
+const defaultRethTag = "main"
 
 func rethTag() string {
 	if tag := os.Getenv("EV_RETH_TAG"); tag != "" {
@@ -225,6 +224,10 @@ func (s *SpamoorSuite) collectTraces(e *env, serviceName string) *traceResult {
 	tr := &traceResult{
 		evNode: evNodeSpans,
 		evReth: e.traces.tryCollectSpans(ctx, "ev-reth"),
+	}
+
+	if link := e.traces.uiURL(serviceName); link != "" {
+		t.Logf("traces UI: %s", link)
 	}
 
 	e2e.PrintTraceReport(t, serviceName, tr.evNode)

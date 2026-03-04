@@ -36,14 +36,14 @@ func (s *SpamoorSuite) TestGasBurner() {
 	s.Require().NoError(deleteAllSpammers(api), "failed to delete stale spammers")
 
 	gasburnerCfg := map[string]any{
-		"gas_units_to_burn": 5_000_000,
+		"gas_units_to_burn": 1_000_000,
 		"total_count":       countPerSpammer,
-		"throughput":        25,
-		"max_pending":       5000,
+		"throughput":        50,
+		"max_pending":       50000,
 		"max_wallets":       500,
 		"rebroadcast":       0,
-		"base_fee":          20,
-		"tip_fee":           5,
+		"base_fee":          100,
+		"tip_fee":           50,
 		"refill_amount":     "5000000000000000000",
 		"refill_balance":    "2000000000000000000",
 		"refill_interval":   300,
