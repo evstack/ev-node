@@ -15,7 +15,7 @@ import (
 // (lower is better) on the benchmark dashboard.
 func (s *SpamoorSuite) TestGasBurner() {
 	const (
-		numSpammers     = 4
+		numSpammers     = 8
 		countPerSpammer = 2500
 		totalCount      = numSpammers * countPerSpammer
 		warmupTxs       = 50
