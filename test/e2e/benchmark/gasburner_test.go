@@ -38,7 +38,7 @@ func (s *SpamoorSuite) TestGasBurner() {
 	gasburnerCfg := map[string]any{
 		"gas_units_to_burn": 1_000_000,
 		"total_count":       countPerSpammer,
-		"throughput":        50,
+		"throughput":        200,
 		"max_pending":       50000,
 		"max_wallets":       500,
 		"rebroadcast":       0,

@@ -131,7 +131,7 @@ func (s *SpamoorSuite) setupLocalEnv(cfg config) *env {
 		WithLogger(evmEnv.RethNode.Logger).
 		WithRPCHosts(internalRPC).
 		WithPrivateKey(e2e.TestPrivateKey).
-		WithAdditionalStartArgs("--slot-duration", "100ms", "--startup-delay", "0")
+		WithAdditionalStartArgs("--slot-duration", "250ms", "--startup-delay", "0")
 
 	spNode, err := spBuilder.Build(ctx)
 	s.Require().NoError(err, "failed to build spamoor node")
@@ -177,7 +177,7 @@ func (s *SpamoorSuite) setupExternalEnv(cfg config, rpcURL string) *env {
 		WithRPCHosts(rpcURL).
 		WithPrivateKey(privateKey).
 		WithHostNetwork().
-		WithAdditionalStartArgs("--slot-duration", "100ms", "--startup-delay", "0")
+		WithAdditionalStartArgs("--slot-duration", "250ms", "--startup-delay", "0")
 
 	spNode, err := spBuilder.Build(ctx)
 	s.Require().NoError(err, "failed to build spamoor node")
