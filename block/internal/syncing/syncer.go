@@ -467,6 +467,11 @@ func (s *Syncer) fetchDAUntilCaughtUp(ctx context.Context) error {
 	}
 }
 
+// PendingCount returns the number of unprocessed height events in the pipeline.
+func (s *Syncer) PendingCount() int {
+	return len(s.heightInCh)
+}
+
 func (s *Syncer) pendingWorkerLoop(ctx context.Context) {
 	defer s.wg.Done()
 
