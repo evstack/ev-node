@@ -132,22 +132,34 @@ func (v *victoriaTraceProvider) tryCollectSpans(ctx context.Context, serviceName
 	}
 }
 
-// fetchAllSpans fetches traces from startTime to now and extracts spans.
-// startTime is set when the provider is created, ensuring only spans from the
-// current test run are included.
+const victoriaPageSize = 1000
+
+// fetchAllSpans paginates through VictoriaTraces using offset until all traces
+// in the [startTime, now] window are fetched.
 func (v *victoriaTraceProvider) fetchAllSpans(ctx context.Context, serviceName string) ([]e2e.TraceSpan, error) {
 	end := time.Now()
+	var allSpans []e2e.TraceSpan
+	offset := 0
 
-	traces, err := v.fetchTraces(ctx, serviceName, 10000, v.startTime, end)
-	if err != nil {
-		return nil, err
+	for {
+		traces, err := v.fetchTraces(ctx, serviceName, victoriaPageSize, offset, v.startTime, end)
+		if err != nil {
+			return nil, err
+		}
+
+		batch := toTraceSpans(extractSpansFromTraces(traces))
+		allSpans = append(allSpans, batch...)
+
+		if len(traces) < victoriaPageSize {
+			break
+		}
+		offset += len(traces)
 	}
 
-	spans := toTraceSpans(extractSpansFromTraces(traces))
-	v.t.Logf("fetched %d traces (%d spans) for %s in window [%s, %s]",
-		len(traces), len(spans), serviceName,
+	v.t.Logf("fetched %d spans for %s in window [%s, %s]",
+		len(allSpans), serviceName,
 		v.startTime.Format(time.RFC3339), end.Format(time.RFC3339))
-	return spans, nil
+	return allSpans, nil
 }
 
 // jaegerAPIResponse is the envelope returned by Jaeger-compatible query APIs.
@@ -155,9 +167,9 @@ type jaegerAPIResponse struct {
 	Data []any `json:"data"`
 }
 
-func (v *victoriaTraceProvider) fetchTraces(ctx context.Context, serviceName string, limit int, start, end time.Time) ([]any, error) {
-	url := fmt.Sprintf("%s/select/jaeger/api/traces?service=%s&limit=%d&start=%d&end=%d",
-		strings.TrimRight(v.queryURL, "/"), serviceName, limit,
+func (v *victoriaTraceProvider) fetchTraces(ctx context.Context, serviceName string, limit, offset int, start, end time.Time) ([]any, error) {
+	url := fmt.Sprintf("%s/select/jaeger/api/traces?service=%s&limit=%d&offset=%d&start=%d&end=%d",
+		strings.TrimRight(v.queryURL, "/"), serviceName, limit, offset,
 		start.UnixMicro(), end.UnixMicro())
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
