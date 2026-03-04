@@ -307,7 +307,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	n.Logger.Info().Msg("halting full node and its sub services...")
 
 	// Use a timeout context to ensure shutdown doesn't hang
-	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 9*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 9*time.Second) //nolint:contextcheck // intentional: need fresh context for graceful shutdown after cancellation
 	defer cancel()
 
 	var shutdownMultiErr error // Variable to accumulate multiple errors
@@ -323,7 +323,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 
 	// Shutdown Prometheus Server
 	if n.prometheusSrv != nil {
-		err := n.prometheusSrv.Shutdown(shutdownCtx)
+		err := n.prometheusSrv.Shutdown(shutdownCtx) //nolint:contextcheck // shutdownCtx is intentionally from context.Background
 		// http.ErrServerClosed is expected on graceful shutdown
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			shutdownMultiErr = errors.Join(shutdownMultiErr, fmt.Errorf("shutting down Prometheus server: %w", err))
@@ -334,7 +334,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 
 	// Shutdown Pprof Server
 	if n.pprofSrv != nil {
-		err := n.pprofSrv.Shutdown(shutdownCtx)
+		err := n.pprofSrv.Shutdown(shutdownCtx) //nolint:contextcheck // shutdownCtx is intentionally from context.Background
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			shutdownMultiErr = errors.Join(shutdownMultiErr, fmt.Errorf("shutting down pprof server: %w", err))
 		} else {

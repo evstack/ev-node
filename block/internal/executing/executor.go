@@ -381,7 +381,6 @@ func (e *Executor) executionLoop() {
 	} else {
 		delay = time.Until(currentState.LastBlockTime.Add(e.config.Node.BlockTime.Duration))
 	}
-
 	if delay > 0 {
 		e.logger.Info().Dur("delay", delay).Msg("waiting to start block production")
 		select {

@@ -164,7 +164,8 @@ func (s *Syncer) SetBlockSyncer(bs BlockSyncer) {
 
 // Start begins the syncing component
 func (s *Syncer) Start(ctx context.Context) error {
-	s.ctx, s.cancel = context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(ctx)
+	s.ctx, s.cancel = ctx, cancel
 
 	if err := s.initializeState(); err != nil {
 		return fmt.Errorf("failed to initialize syncer state: %w", err)
@@ -195,7 +196,7 @@ func (s *Syncer) Start(ctx context.Context) error {
 	}
 
 	// Start main processing loop
-	s.wg.Go(s.processLoop)
+	s.wg.Go(func() { s.processLoop(ctx) })
 
 	// Start dedicated workers for DA, and pending processing
 	s.startSyncWorkers(ctx)
@@ -342,38 +343,37 @@ func (s *Syncer) initializeState() error {
 }
 
 // processLoop is the main coordination loop for processing events
-func (s *Syncer) processLoop() {
+func (s *Syncer) processLoop(ctx context.Context) {
 	s.logger.Info().Msg("starting process loop")
 	defer s.logger.Info().Msg("process loop stopped")
 
 	for {
 		select {
-		case <-s.ctx.Done():
+		case <-ctx.Done():
 			return
 		case heightEvent, ok := <-s.heightInCh:
 			if ok {
-				s.processHeightEvent(s.ctx, &heightEvent)
+				s.processHeightEvent(ctx, &heightEvent)
 			}
 		}
 	}
 }
 
 func (s *Syncer) startSyncWorkers(ctx context.Context) {
-	_ = ctx
 	s.wg.Add(3)
-	go s.daWorkerLoop()
-	go s.pendingWorkerLoop()
+	go s.daWorkerLoop(ctx)
+	go s.pendingWorkerLoop(ctx)
 	go s.p2pWorkerLoop(ctx)
 }
 
-func (s *Syncer) daWorkerLoop() {
+func (s *Syncer) daWorkerLoop(ctx context.Context) {
 	defer s.wg.Done()
 
 	s.logger.Info().Msg("starting DA worker")
 	defer s.logger.Info().Msg("DA worker stopped")
 
 	for {
-		err := s.fetchDAUntilCaughtUp()
+		err := s.fetchDAUntilCaughtUp(ctx)
 
 		var backoff time.Duration
 		if err == nil {
@@ -389,7 +389,7 @@ func (s *Syncer) daWorkerLoop() {
 		}
 
 		select {
-		case <-s.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-time.After(backoff):
 		}
@@ -402,11 +402,11 @@ func (s *Syncer) HasReachedDAHead() bool {
 	return s.daHeadReached.Load()
 }
 
-func (s *Syncer) fetchDAUntilCaughtUp() error {
+func (s *Syncer) fetchDAUntilCaughtUp(ctx context.Context) error {
 	for {
 		select {
-		case <-s.ctx.Done():
-			return s.ctx.Err()
+		case <-ctx.Done():
+			return ctx.Err()
 		default:
 		}
 
@@ -424,7 +424,7 @@ func (s *Syncer) fetchDAUntilCaughtUp() error {
 			daHeight = max(s.daRetrieverHeight.Load(), s.cache.DaHeight())
 		}
 
-		events, err := s.daRetriever.RetrieveFromDA(s.ctx, daHeight)
+		events, err := s.daRetriever.RetrieveFromDA(ctx, daHeight)
 		if err != nil {
 			switch {
 			case errors.Is(err, datypes.ErrBlobNotFound):
@@ -446,7 +446,7 @@ func (s *Syncer) fetchDAUntilCaughtUp() error {
 
 		// Process DA events
 		for _, event := range events {
-			if err := s.pipeEvent(s.ctx, event); err != nil {
+			if err := s.pipeEvent(ctx, event); err != nil {
 				return err
 			}
 		}
@@ -467,7 +467,7 @@ func (s *Syncer) fetchDAUntilCaughtUp() error {
 	}
 }
 
-func (s *Syncer) pendingWorkerLoop() {
+func (s *Syncer) pendingWorkerLoop(ctx context.Context) {
 	defer s.wg.Done()
 
 	s.logger.Info().Msg("starting pending worker")
@@ -478,10 +478,10 @@ func (s *Syncer) pendingWorkerLoop() {
 
 	for {
 		select {
-		case <-s.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.processPendingEvents()
+			s.processPendingEvents(ctx)
 		}
 	}
 }
@@ -503,7 +503,7 @@ func (s *Syncer) p2pWorkerLoop(ctx context.Context) {
 		currentHeight, err := s.store.Height(ctx)
 		if err != nil {
 			logger.Error().Err(err).Msg("failed to get current height for P2P worker")
-			if !s.sleepOrDone(50 * time.Millisecond) {
+			if !s.sleepOrDone(ctx, 50*time.Millisecond) {
 				return
 			}
 			continue
@@ -525,13 +525,13 @@ func (s *Syncer) p2pWorkerLoop(ctx context.Context) {
 				logger.Warn().Err(err).Uint64("height", targetHeight).Msg("P2P handler failed to process height")
 			}
 
-			if !s.sleepOrDone(50 * time.Millisecond) {
+			if !s.sleepOrDone(ctx, 50*time.Millisecond) {
 				return
 			}
 			continue
 		}
 
-		if err := s.waitForStoreHeight(targetHeight); err != nil {
+		if err := s.waitForStoreHeight(ctx, targetHeight); err != nil {
 			if errors.Is(err, context.Canceled) {
 				return
 			}
@@ -1078,8 +1078,8 @@ func (s *Syncer) sendCriticalError(err error) {
 
 // processPendingEvents fetches and processes pending events from cache
 // optimistically fetches the next events from cache until no matching heights are found
-func (s *Syncer) processPendingEvents() {
-	currentHeight, err := s.store.Height(s.ctx)
+func (s *Syncer) processPendingEvents(ctx context.Context) {
+	currentHeight, err := s.store.Height(ctx)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("failed to get current height for pending events")
 		return
@@ -1104,7 +1104,7 @@ func (s *Syncer) processPendingEvents() {
 		case s.heightInCh <- heightEvent:
 			// Event was successfully sent and already removed by GetNextPendingEvent
 			s.logger.Debug().Uint64("height", nextHeight).Msg("sent pending event to processing")
-		case <-s.ctx.Done():
+		case <-ctx.Done():
 			s.cache.SetPendingEvent(nextHeight, event)
 			return
 		default:
@@ -1116,9 +1116,9 @@ func (s *Syncer) processPendingEvents() {
 	}
 }
 
-func (s *Syncer) waitForStoreHeight(target uint64) error {
+func (s *Syncer) waitForStoreHeight(ctx context.Context, target uint64) error {
 	for {
-		currentHeight, err := s.store.Height(s.ctx)
+		currentHeight, err := s.store.Height(ctx)
 		if err != nil {
 			return err
 		}
@@ -1127,20 +1127,20 @@ func (s *Syncer) waitForStoreHeight(target uint64) error {
 			return nil
 		}
 
-		if !s.sleepOrDone(10 * time.Millisecond) {
-			if s.ctx.Err() != nil {
-				return s.ctx.Err()
+		if !s.sleepOrDone(ctx, 10*time.Millisecond) {
+			if ctx.Err() != nil {
+				return ctx.Err()
 			}
 		}
 	}
 }
 
-func (s *Syncer) sleepOrDone(duration time.Duration) bool {
+func (s *Syncer) sleepOrDone(ctx context.Context, duration time.Duration) bool {
 	timer := time.NewTimer(duration)
 	defer timer.Stop()
 
 	select {
-	case <-s.ctx.Done():
+	case <-ctx.Done():
 		return false
 	case <-timer.C:
 		return true

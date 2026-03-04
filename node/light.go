@@ -134,13 +134,13 @@ func (ln *LightNode) Run(parentCtx context.Context) error {
 
 	ln.Logger.Info().Msg("halting light node and its sub services...")
 
-	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(parentCtx), 2*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second) //nolint:contextcheck // intentional: need fresh context for graceful shutdown after cancellation
 	defer cancel()
 
 	var multiErr error
 
 	// Stop Header Sync Service
-	err = ln.hSyncService.Stop(shutdownCtx)
+	err = ln.hSyncService.Stop(shutdownCtx) //nolint:contextcheck // shutdownCtx is intentionally from context.Background
 	if err != nil {
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			multiErr = errors.Join(multiErr, fmt.Errorf("stopping header sync service: %w", err))
@@ -151,7 +151,7 @@ func (ln *LightNode) Run(parentCtx context.Context) error {
 
 	// Shutdown RPC Server
 	if ln.rpcServer != nil {
-		err = ln.rpcServer.Shutdown(shutdownCtx)
+		err = ln.rpcServer.Shutdown(shutdownCtx) //nolint:contextcheck // shutdownCtx is intentionally from context.Background
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			multiErr = errors.Join(multiErr, fmt.Errorf("shutting down RPC server: %w", err))
 		} else {
