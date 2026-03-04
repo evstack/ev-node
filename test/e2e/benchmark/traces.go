@@ -72,8 +72,9 @@ func (j *jaegerTraceProvider) tryCollectSpans(ctx context.Context, serviceName s
 // victoriaTraceProvider collects spans from a VictoriaTraces instance via its
 // Jaeger-compatible HTTP API.
 type victoriaTraceProvider struct {
-	queryURL string
-	t        testing.TB
+	queryURL  string
+	t         testing.TB
+	startTime time.Time
 }
 
 func (v *victoriaTraceProvider) collectSpans(ctx context.Context, serviceName string) ([]e2e.TraceSpan, error) {
@@ -131,37 +132,22 @@ func (v *victoriaTraceProvider) tryCollectSpans(ctx context.Context, serviceName
 	}
 }
 
-const victoriaBatchSize = 1000
-
-// fetchAllSpans paginates through VictoriaTraces results using time-windowed
-// batches. It stops when a page returns fewer results than the batch size.
+// fetchAllSpans fetches traces from startTime to now and extracts spans.
+// startTime is set when the provider is created, ensuring only spans from the
+// current test run are included.
 func (v *victoriaTraceProvider) fetchAllSpans(ctx context.Context, serviceName string) ([]e2e.TraceSpan, error) {
-	var allSpans []e2e.TraceSpan
-	// start from 1 hour ago to catch recent traces
 	end := time.Now()
-	start := end.Add(-1 * time.Hour)
 
-	for {
-		traces, err := v.fetchTraces(ctx, serviceName, victoriaBatchSize, start, end)
-		if err != nil {
-			return nil, err
-		}
-
-		batch := toTraceSpans(extractSpansFromTraces(traces))
-		allSpans = append(allSpans, batch...)
-
-		if len(batch) < victoriaBatchSize {
-			break
-		}
-
-		// slide the window forward for the next page by using the end
-		// time of the current window; VictoriaTraces deduplicates so
-		// overlapping boundaries are safe.
-		start = end
-		end = time.Now()
+	traces, err := v.fetchTraces(ctx, serviceName, 10000, v.startTime, end)
+	if err != nil {
+		return nil, err
 	}
 
-	return allSpans, nil
+	spans := toTraceSpans(extractSpansFromTraces(traces))
+	v.t.Logf("fetched %d traces (%d spans) for %s in window [%s, %s]",
+		len(traces), len(spans), serviceName,
+		v.startTime.Format(time.RFC3339), end.Format(time.RFC3339))
+	return spans, nil
 }
 
 // jaegerAPIResponse is the envelope returned by Jaeger-compatible query APIs.

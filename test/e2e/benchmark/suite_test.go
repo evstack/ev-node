@@ -196,7 +196,7 @@ func (s *SpamoorSuite) setupExternalEnv(cfg config, rpcURL string) *env {
 	t.Logf("external mode: using trace query URL %s", traceURL)
 
 	return &env{
-		traces:     &victoriaTraceProvider{queryURL: traceURL, t: t},
+		traces:     &victoriaTraceProvider{queryURL: traceURL, t: t, startTime: time.Now()},
 		spamoorAPI: spNode.API(),
 		ethClient:  ethClient,
 	}
