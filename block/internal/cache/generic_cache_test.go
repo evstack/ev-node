@@ -2,7 +2,6 @@ package cache
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -31,14 +30,6 @@ func writeSnapshot(t *testing.T, st pkgstore.Store, storeKeyPrefix string, entri
 	require.NoError(t, st.SetMetadata(context.Background(), storeKeyPrefix+"__snap", buf))
 }
 
-// testKeyFn is a simple height-key function used by tests that don't need the
-// real production keys.
-func testKeyFn(prefix string) func(uint64) string {
-	return func(h uint64) string {
-		return fmt.Sprintf("%s%d", prefix, h)
-	}
-}
-
 // ---------------------------------------------------------------------------
 // MaxDAHeight
 // ---------------------------------------------------------------------------
@@ -46,7 +37,7 @@ func testKeyFn(prefix string) func(uint64) string {
 // TestCache_MaxDAHeight verifies that daHeight tracks the maximum DA height
 // across successive setDAIncluded calls.
 func TestCache_MaxDAHeight(t *testing.T) {
-	c := NewCache[testItem](nil, "", nil)
+	c := NewCache[testItem](nil, "")
 
 	assert.Equal(t, uint64(0), c.daHeight(), "initial daHeight should be 0")
 
@@ -69,7 +60,7 @@ func TestCache_MaxDAHeight(t *testing.T) {
 func TestCache_RestoreFromStore_EmptyChain(t *testing.T) {
 	st := testMemStore(t)
 
-	c := NewCache[testItem](st, "hdr/", testKeyFn("hdr-da/"))
+	c := NewCache[testItem](st, "hdr/")
 	require.NoError(t, c.RestoreFromStore(context.Background()))
 
 	assert.Equal(t, 0, c.daIncluded.Len(), "no entries expected on empty chain")
@@ -87,7 +78,7 @@ func TestCache_RestoreFromStore_FullyFinalized(t *testing.T) {
 	// empty (persistSnapshot writes an empty buf when daIncluded is empty).
 	writeSnapshot(t, st, "hdr/", nil)
 
-	c := NewCache[testItem](st, "hdr/", testKeyFn("hdr-da/"))
+	c := NewCache[testItem](st, "hdr/")
 	require.NoError(t, c.RestoreFromStore(ctx))
 
 	assert.Equal(t, 0, c.daIncluded.Len(), "no in-flight entries expected")
@@ -106,7 +97,7 @@ func TestCache_RestoreFromStore_InFlightWindow(t *testing.T) {
 		{blockHeight: 5, daHeight: 14},
 	})
 
-	c := NewCache[testItem](st, "hdr/", testKeyFn("hdr-da/"))
+	c := NewCache[testItem](st, "hdr/")
 	require.NoError(t, c.RestoreFromStore(ctx))
 
 	assert.Equal(t, 2, c.daIncluded.Len(), "exactly the in-flight snapshot entries should be loaded")
@@ -136,7 +127,7 @@ func TestCache_RestoreFromStore_SingleEntry(t *testing.T) {
 		{blockHeight: 3, daHeight: 20},
 	})
 
-	c := NewCache[testItem](st, "hdr/", testKeyFn("hdr-da/"))
+	c := NewCache[testItem](st, "hdr/")
 	require.NoError(t, c.RestoreFromStore(ctx))
 
 	assert.Equal(t, 1, c.daIncluded.Len(), "one entry should be in-flight")
@@ -151,32 +142,12 @@ func TestCache_RestoreFromStore_SingleEntry(t *testing.T) {
 // TestCache_RestoreFromStore_NilStore verifies that RestoreFromStore is a
 // no-op when the cache has no backing store.
 func TestCache_RestoreFromStore_NilStore(t *testing.T) {
-	c := NewCache[testItem](nil, "", nil)
+	c := NewCache[testItem](nil, "")
 	require.NoError(t, c.RestoreFromStore(context.Background()))
 	assert.Equal(t, 0, c.daIncluded.Len())
 }
 
-// TestCache_RestoreFromStore_NilHeightKeyFn verifies that RestoreFromStore
-// still works when no height-key function is provided: the snapshot is read
-// and decoded normally (the key fn is unused by the snapshot path).
-func TestCache_RestoreFromStore_NilHeightKeyFn(t *testing.T) {
-	st := testMemStore(t)
-	ctx := context.Background()
-
-	// Write a snapshot with one in-flight entry — keyFn is irrelevant for restore.
-	writeSnapshot(t, st, "hdr/", []snapshotEntry{
-		{blockHeight: 7, daHeight: 50},
-	})
-
-	c := NewCache[testItem](st, "hdr/", nil) // no key fn
-	require.NoError(t, c.RestoreFromStore(ctx))
-
-	// The snapshot-based restore does not use the key fn, so the entry is loaded.
-	assert.Equal(t, 1, c.daIncluded.Len(), "snapshot entry should be loaded even without key fn")
-	assert.Equal(t, uint64(50), c.daHeight())
-}
-
-// TestCache_RestoreFromStore_PlaceholderOverwrittenByRealHash verifies that
+// TestCache_RestoreFromStore_PlaceholderOverwrittenByRealHash
 // when a real content-hash entry is written after restore it overwrites the
 // height-indexed placeholder, leaving exactly one entry per height.
 func TestCache_RestoreFromStore_PlaceholderOverwrittenByRealHash(t *testing.T) {
@@ -188,7 +159,7 @@ func TestCache_RestoreFromStore_PlaceholderOverwrittenByRealHash(t *testing.T) {
 		{blockHeight: 3, daHeight: 99},
 	})
 
-	c := NewCache[testItem](st, "hdr/", testKeyFn("hdr-da/"))
+	c := NewCache[testItem](st, "hdr/")
 	require.NoError(t, c.RestoreFromStore(ctx))
 
 	assert.Equal(t, 1, c.daIncluded.Len(), "one placeholder for height 3")
@@ -214,7 +185,7 @@ func TestCache_RestoreFromStore_RoundTrip(t *testing.T) {
 	ctx := context.Background()
 
 	// First cache instance: write some in-flight entries.
-	c1 := NewCache[testItem](st, "rt/", testKeyFn("rt-da/"))
+	c1 := NewCache[testItem](st, "rt/")
 	c1.setDAIncluded("hashA", 10, 1)
 	c1.setDAIncluded("hashB", 20, 2)
 	c1.setDAIncluded("hashC", 30, 3)
@@ -222,7 +193,7 @@ func TestCache_RestoreFromStore_RoundTrip(t *testing.T) {
 	c1.removeDAIncluded("hashB")
 
 	// Second cache instance on same store: should recover {hashA→10, hashC→30}.
-	c2 := NewCache[testItem](st, "rt/", testKeyFn("rt-da/"))
+	c2 := NewCache[testItem](st, "rt/")
 	require.NoError(t, c2.RestoreFromStore(ctx))
 
 	assert.Equal(t, 2, c2.daIncluded.Len(), "only non-deleted entries should be restored")
@@ -242,7 +213,7 @@ func TestCache_RestoreFromStore_RoundTrip(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCache_BasicOperations(t *testing.T) {
-	c := NewCache[testItem](nil, "", nil)
+	c := NewCache[testItem](nil, "")
 
 	// setItem / getItem
 	c.setItem(1, &testItem{V: 42})
@@ -271,7 +242,7 @@ func TestCache_BasicOperations(t *testing.T) {
 }
 
 func TestCache_GetNextItem(t *testing.T) {
-	c := NewCache[testItem](nil, "", nil)
+	c := NewCache[testItem](nil, "")
 
 	c.setItem(1, &testItem{V: 1})
 	c.setItem(2, &testItem{V: 2})
@@ -290,7 +261,7 @@ func TestCache_GetNextItem(t *testing.T) {
 }
 
 func TestCache_DeleteAllForHeight(t *testing.T) {
-	c := NewCache[testItem](nil, "", nil)
+	c := NewCache[testItem](nil, "")
 
 	c.setItem(1, &testItem{V: 1})
 	c.setItem(2, &testItem{V: 2})
@@ -307,7 +278,7 @@ func TestCache_DeleteAllForHeight(t *testing.T) {
 }
 
 func TestCache_WithNilStore(t *testing.T) {
-	c := NewCache[testItem](nil, "", nil)
+	c := NewCache[testItem](nil, "")
 	require.NotNil(t, c)
 
 	c.setItem(1, &testItem{V: 1})
@@ -329,7 +300,7 @@ func TestCache_SaveToStore(t *testing.T) {
 	st := testMemStore(t)
 	ctx := context.Background()
 
-	c := NewCache[testItem](st, "save-test/", nil)
+	c := NewCache[testItem](st, "save-test/")
 	c.setDAIncluded("hash1", 100, 1)
 	c.setDAIncluded("hash2", 200, 2)
 
@@ -350,11 +321,11 @@ func TestCache_ClearFromStore(t *testing.T) {
 	st := testMemStore(t)
 	ctx := context.Background()
 
-	c := NewCache[testItem](st, "clear-test/", nil)
+	c := NewCache[testItem](st, "clear-test/")
 	c.setDAIncluded("hash1", 100, 1)
 	c.setDAIncluded("hash2", 200, 2)
 
-	require.NoError(t, c.ClearFromStore(ctx, []string{"hash1", "hash2"}))
+	require.NoError(t, c.ClearFromStore(ctx))
 
 	_, err := st.GetMetadata(ctx, "clear-test/hash1")
 	assert.Error(t, err, "key should have been removed from store")
@@ -365,7 +336,7 @@ func TestCache_ClearFromStore(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCache_LargeDataset(t *testing.T) {
-	c := NewCache[testItem](nil, "", nil)
+	c := NewCache[testItem](nil, "")
 	const N = 20_000
 	for i := N - 1; i >= 0; i-- {
 		c.setItem(uint64(i), &testItem{V: i})
@@ -407,12 +378,12 @@ func TestCache_NoPlaceholderLeakAfterRefire(t *testing.T) {
 	ctx := context.Background()
 
 	// Step 1: initial run — write a real hash for height 3.
-	c1 := NewCache[testItem](st, "pfx/", testKeyFn("da/"))
+	c1 := NewCache[testItem](st, "pfx/")
 	c1.setDAIncluded("realHash3", 99, 3)
 	// snapshot now contains [{blockHeight:3, daHeight:99}]
 
 	// Step 2: restart — placeholder installed for height 3.
-	c2 := NewCache[testItem](st, "pfx/", testKeyFn("da/"))
+	c2 := NewCache[testItem](st, "pfx/")
 	require.NoError(t, c2.RestoreFromStore(ctx))
 
 	placeholder := HeightPlaceholderKey("pfx/", 3)
@@ -450,13 +421,13 @@ func TestCache_RestartIdempotent(t *testing.T) {
 	const daH = uint64(42)
 
 	// ── Run 1: normal operation, height 5 in-flight ──────────────────────────
-	c1 := NewCache[testItem](st, "pfx/", testKeyFn("da/"))
+	c1 := NewCache[testItem](st, "pfx/")
 	c1.setDAIncluded(realHash, daH, blockH)
 	// snapshot: [{5, 42}]
 
 	for restart := 1; restart <= 3; restart++ {
 		// ── Restart N: restore from snapshot
-		cR := NewCache[testItem](st, "pfx/", testKeyFn("da/"))
+		cR := NewCache[testItem](st, "pfx/")
 		require.NoError(t, cR.RestoreFromStore(ctx), "restart %d: RestoreFromStore", restart)
 
 		assert.Equal(t, 1, cR.daIncluded.Len(), "restart %d: one placeholder entry", restart)

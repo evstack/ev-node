@@ -69,8 +69,7 @@ func (c *Cache[T]) snapshotKey() string {
 
 // NewCache creates a Cache. When store and keyPrefix are set, mutations
 // persist a snapshot so RestoreFromStore can recover in-flight state.
-// The third argument (heightKeyFn) is retained for API compatibility but unused.
-func NewCache[T any](s store.Store, keyPrefix string, _ func(uint64) string) *Cache[T] {
+func NewCache[T any](s store.Store, keyPrefix string) *Cache[T] {
 	// LRU cache creation only fails if size <= 0, which won't happen with our defaults
 	itemsCache, _ := lru.New[uint64, *T](DefaultItemsCacheSize)
 	hashesCache, _ := lru.New[string, bool](DefaultHashesCacheSize)
@@ -308,7 +307,7 @@ func (c *Cache[T]) SaveToStore(ctx context.Context) error {
 }
 
 // ClearFromStore deletes the snapshot key from the store.
-func (c *Cache[T]) ClearFromStore(ctx context.Context, _ []string) error {
+func (c *Cache[T]) ClearFromStore(ctx context.Context) error {
 	if c.store == nil {
 		return nil
 	}

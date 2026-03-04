@@ -103,10 +103,10 @@ type implementation struct {
 
 // NewManager creates a new Manager, restoring or clearing persisted state as configured.
 func NewManager(cfg config.Config, st store.Store, logger zerolog.Logger) (Manager, error) {
-	headerCache := NewCache[types.SignedHeader](st, HeaderDAIncludedPrefix, store.GetHeightToDAHeightHeaderKey)
-	dataCache := NewCache[types.Data](st, DataDAIncludedPrefix, store.GetHeightToDAHeightDataKey)
-	txCache := NewCache[struct{}](nil, "", nil)
-	pendingEventsCache := NewCache[common.DAHeightEvent](nil, "", nil)
+	headerCache := NewCache[types.SignedHeader](st, HeaderDAIncludedPrefix)
+	dataCache := NewCache[types.Data](st, DataDAIncludedPrefix)
+	txCache := NewCache[struct{}](nil, "")
+	pendingEventsCache := NewCache[common.DAHeightEvent](nil, "")
 
 	pendingHeaders, err := NewPendingHeaders(st, logger)
 	if err != nil {
@@ -371,17 +371,17 @@ func (m *implementation) RestoreFromStore() error {
 func (m *implementation) ClearFromStore() error {
 	ctx := context.Background()
 
-	if err := m.headerCache.ClearFromStore(ctx, m.headerCache.daIncluded.Keys()); err != nil {
+	if err := m.headerCache.ClearFromStore(ctx); err != nil {
 		return fmt.Errorf("failed to clear header cache from store: %w", err)
 	}
-	if err := m.dataCache.ClearFromStore(ctx, m.dataCache.daIncluded.Keys()); err != nil {
+	if err := m.dataCache.ClearFromStore(ctx); err != nil {
 		return fmt.Errorf("failed to clear data cache from store: %w", err)
 	}
 
-	m.headerCache = NewCache[types.SignedHeader](m.store, HeaderDAIncludedPrefix, store.GetHeightToDAHeightHeaderKey)
-	m.dataCache = NewCache[types.Data](m.store, DataDAIncludedPrefix, store.GetHeightToDAHeightDataKey)
-	m.txCache = NewCache[struct{}](nil, "", nil)
-	m.pendingEventsCache = NewCache[common.DAHeightEvent](nil, "", nil)
+	m.headerCache = NewCache[types.SignedHeader](m.store, HeaderDAIncludedPrefix)
+	m.dataCache = NewCache[types.Data](m.store, DataDAIncludedPrefix)
+	m.txCache = NewCache[struct{}](nil, "")
+	m.pendingEventsCache = NewCache[common.DAHeightEvent](nil, "")
 
 	m.initDAHeightFromStore(ctx)
 

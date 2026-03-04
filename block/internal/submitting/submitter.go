@@ -504,16 +504,16 @@ func (s *Submitter) IsHeightDAIncluded(height uint64, header *types.SignedHeader
 
 	dataCommitment := data.DACommitment()
 
-	// Try real hash first; fall back to height-based placeholder for post-restart
+	// Try real hash first; fall back to height-based lookup for post-restart
 	// state before the DA retriever has re-fired the real hashes.
 	_, headerIncluded := s.cache.GetHeaderDAIncluded(header.Hash().String())
 	_, dataIncluded := s.cache.GetDataDAIncluded(dataCommitment.String())
 
 	if !headerIncluded {
-		_, headerIncluded = s.cache.GetHeaderDAIncluded(cache.HeightPlaceholderKey(cache.HeaderDAIncludedPrefix, height))
+		_, headerIncluded = s.cache.GetHeaderDAIncludedByHeight(height)
 	}
 	if !dataIncluded {
-		_, dataIncluded = s.cache.GetDataDAIncluded(cache.HeightPlaceholderKey(cache.DataDAIncludedPrefix, height))
+		_, dataIncluded = s.cache.GetDataDAIncludedByHeight(height)
 	}
 
 	dataIncluded = bytes.Equal(dataCommitment, common.DataHashForEmptyTxs) || dataIncluded
