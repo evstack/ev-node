@@ -151,7 +151,7 @@ func (v *victoriaTraceProvider) tryCollectSpans(ctx context.Context, serviceName
 // streaming all results without the Jaeger API's 1000 trace limit.
 func (v *victoriaTraceProvider) fetchAllSpans(ctx context.Context, serviceName string) ([]e2e.TraceSpan, error) {
 	end := time.Now()
-	query := fmt.Sprintf("resource_attr:service.name:%s", serviceName)
+	query := fmt.Sprintf(`_stream:{resource_attr:service.name="%s"}`, serviceName)
 	baseURL := strings.TrimRight(v.queryURL, "/")
 	url := fmt.Sprintf("%s/select/logsql/query?query=%s&start=%s&end=%s",
 		baseURL,
