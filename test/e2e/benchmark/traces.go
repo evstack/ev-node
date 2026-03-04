@@ -3,10 +3,13 @@
 package benchmark
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	neturl "net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -21,6 +24,8 @@ import (
 type traceProvider interface {
 	collectSpans(ctx context.Context, serviceName string) ([]e2e.TraceSpan, error)
 	tryCollectSpans(ctx context.Context, serviceName string) []e2e.TraceSpan
+	// uiURL returns a link to view traces for the given service, or empty string if not available.
+	uiURL(serviceName string) string
 }
 
 // jaegerTraceProvider collects spans from a locally-provisioned Jaeger node.
@@ -46,6 +51,10 @@ func (j *jaegerTraceProvider) collectSpans(ctx context.Context, serviceName stri
 		return nil, fmt.Errorf("failed to fetch %s traces: %w", serviceName, err)
 	}
 	return toTraceSpans(extractSpansFromTraces(traces)), nil
+}
+
+func (j *jaegerTraceProvider) uiURL(_ string) string {
+	return j.node.External.QueryURL()
 }
 
 func (j *jaegerTraceProvider) tryCollectSpans(ctx context.Context, serviceName string) []e2e.TraceSpan {
@@ -75,6 +84,12 @@ type victoriaTraceProvider struct {
 	queryURL  string
 	t         testing.TB
 	startTime time.Time
+}
+
+func (v *victoriaTraceProvider) uiURL(serviceName string) string {
+	return fmt.Sprintf("%s/select/jaeger?service=%s&start=%d&end=%d",
+		strings.TrimRight(v.queryURL, "/"), serviceName,
+		v.startTime.UnixMicro(), time.Now().UnixMicro())
 }
 
 func (v *victoriaTraceProvider) collectSpans(ctx context.Context, serviceName string) ([]e2e.TraceSpan, error) {
@@ -132,45 +147,17 @@ func (v *victoriaTraceProvider) tryCollectSpans(ctx context.Context, serviceName
 	}
 }
 
-const victoriaPageSize = 1000
-
-// fetchAllSpans paginates through VictoriaTraces using offset until all traces
-// in the [startTime, now] window are fetched.
+// fetchAllSpans queries VictoriaTraces via the LogsQL API which supports
+// streaming all results without the Jaeger API's 1000 trace limit.
 func (v *victoriaTraceProvider) fetchAllSpans(ctx context.Context, serviceName string) ([]e2e.TraceSpan, error) {
 	end := time.Now()
-	var allSpans []e2e.TraceSpan
-	offset := 0
-
-	for {
-		traces, err := v.fetchTraces(ctx, serviceName, victoriaPageSize, offset, v.startTime, end)
-		if err != nil {
-			return nil, err
-		}
-
-		batch := toTraceSpans(extractSpansFromTraces(traces))
-		allSpans = append(allSpans, batch...)
-
-		if len(traces) < victoriaPageSize {
-			break
-		}
-		offset += len(traces)
-	}
-
-	v.t.Logf("fetched %d spans for %s in window [%s, %s]",
-		len(allSpans), serviceName,
-		v.startTime.Format(time.RFC3339), end.Format(time.RFC3339))
-	return allSpans, nil
-}
-
-// jaegerAPIResponse is the envelope returned by Jaeger-compatible query APIs.
-type jaegerAPIResponse struct {
-	Data []any `json:"data"`
-}
-
-func (v *victoriaTraceProvider) fetchTraces(ctx context.Context, serviceName string, limit, offset int, start, end time.Time) ([]any, error) {
-	url := fmt.Sprintf("%s/select/jaeger/api/traces?service=%s&limit=%d&offset=%d&start=%d&end=%d",
-		strings.TrimRight(v.queryURL, "/"), serviceName, limit, offset,
-		start.UnixMicro(), end.UnixMicro())
+	query := fmt.Sprintf("resource_attr:service.name:%s", serviceName)
+	baseURL := strings.TrimRight(v.queryURL, "/")
+	url := fmt.Sprintf("%s/select/logsql/query?query=%s&start=%s&end=%s",
+		baseURL,
+		neturl.QueryEscape(query),
+		v.startTime.Format(time.RFC3339Nano),
+		end.Format(time.RFC3339Nano))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -179,7 +166,7 @@ func (v *victoriaTraceProvider) fetchTraces(ctx context.Context, serviceName str
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetching traces from %s: %w", url, err)
+		return nil, fmt.Errorf("fetching spans from %s: %w", url, err)
 	}
 	defer resp.Body.Close()
 
@@ -187,12 +174,48 @@ func (v *victoriaTraceProvider) fetchTraces(ctx context.Context, serviceName str
 		return nil, fmt.Errorf("unexpected status %d from %s", resp.StatusCode, url)
 	}
 
-	var apiResp jaegerAPIResponse
-	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
-		return nil, fmt.Errorf("decoding response from %s: %w", url, err)
+	// LogsQL returns newline-delimited JSON, one span per line.
+	var spans []e2e.TraceSpan
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		var row logsqlSpan
+		if err := json.Unmarshal(line, &row); err != nil {
+			continue
+		}
+		if row.Name == "" {
+			continue
+		}
+		spans = append(spans, row)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("reading response stream: %w", err)
 	}
 
-	return apiResp.Data, nil
+	v.t.Logf("fetched %d spans for %s in window [%s, %s]",
+		len(spans), serviceName,
+		v.startTime.Format(time.RFC3339), end.Format(time.RFC3339))
+	return spans, nil
+}
+
+// logsqlSpan maps the fields returned by VictoriaTraces' LogsQL endpoint.
+type logsqlSpan struct {
+	Name     string `json:"name"`
+	Duration string `json:"duration"` // nanoseconds as string
+}
+
+func (s logsqlSpan) SpanName() string { return s.Name }
+
+func (s logsqlSpan) SpanDuration() time.Duration {
+	ns, err := strconv.ParseInt(s.Duration, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return time.Duration(ns) * time.Nanosecond
 }
 
 // jaegerSpan holds the fields we extract from Jaeger's untyped JSON response.
