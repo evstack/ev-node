@@ -97,7 +97,7 @@ func NewBasedSequencer(
 		}
 	}
 
-	bs.fiRetriever = block.NewForcedInclusionRetriever(daClient, cfg, logger, genesis.DAStartHeight, genesis.DAEpochForcedInclusion)
+	bs.fiRetriever = block.NewForcedInclusionRetriever(context.Background(), daClient, cfg, logger, genesis.DAStartHeight, genesis.DAEpochForcedInclusion)
 
 	return bs, nil
 }

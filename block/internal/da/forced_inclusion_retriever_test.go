@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"gotest.tools/v3/assert"
 
-	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/test/mocks"
@@ -18,13 +17,14 @@ import (
 func TestNewForcedInclusionRetriever(t *testing.T) {
 	client := mocks.NewMockClient(t)
 	client.On("GetForcedInclusionNamespace").Return(datypes.NamespaceFromString("test-fi-ns").Bytes()).Maybe()
+	client.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	gen := genesis.Genesis{
 		DAStartHeight:          100,
 		DAEpochForcedInclusion: 10,
 	}
 
-	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	retriever := NewForcedInclusionRetriever(context.Background(), client, zerolog.Nop(), 100*time.Millisecond, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
 	assert.Assert(t, retriever != nil)
 	retriever.Stop()
 }
@@ -39,7 +39,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NoNamespace(t *testi
 		DAEpochForcedInclusion: 10,
 	}
 
-	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	retriever := NewForcedInclusionRetriever(context.Background(), client, zerolog.Nop(), 100*time.Millisecond, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
 	defer retriever.Stop()
 	ctx := context.Background()
 
@@ -53,13 +53,14 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NotAtEpochStart(t *t
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
+	client.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	gen := genesis.Genesis{
 		DAStartHeight:          100,
 		DAEpochForcedInclusion: 10,
 	}
 
-	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	retriever := NewForcedInclusionRetriever(context.Background(), client, zerolog.Nop(), 100*time.Millisecond, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
 	defer retriever.Stop()
 	ctx := context.Background()
 
@@ -83,6 +84,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartSuccess(t 
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
+	client.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 	client.On("Retrieve", mock.Anything, mock.Anything, fiNs).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: []datypes.ID{[]byte("id1"), []byte("id2"), []byte("id3")}, Timestamp: time.Now()},
 		Data:       testBlobs,
@@ -93,7 +95,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartSuccess(t 
 		DAEpochForcedInclusion: 1, // Single height epoch
 	}
 
-	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	retriever := NewForcedInclusionRetriever(context.Background(), client, zerolog.Nop(), 100*time.Millisecond, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
 	defer retriever.Stop()
 	ctx := context.Background()
 
@@ -112,6 +114,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartNotAvailab
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
+	client.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	// Mock the first height in epoch as not available
 	client.On("Retrieve", mock.Anything, uint64(100), fiNs).Return(datypes.ResultRetrieve{
@@ -123,7 +126,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartNotAvailab
 		DAEpochForcedInclusion: 10,
 	}
 
-	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	retriever := NewForcedInclusionRetriever(context.Background(), client, zerolog.Nop(), 100*time.Millisecond, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
 	defer retriever.Stop()
 	ctx := context.Background()
 
@@ -138,6 +141,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NoBlobsAtHeight(t *t
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
+	client.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 	client.On("Retrieve", mock.Anything, uint64(100), fiNs).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound},
 	}).Once()
@@ -147,7 +151,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NoBlobsAtHeight(t *t
 		DAEpochForcedInclusion: 1, // Single height epoch
 	}
 
-	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	retriever := NewForcedInclusionRetriever(context.Background(), client, zerolog.Nop(), 100*time.Millisecond, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
 	defer retriever.Stop()
 	ctx := context.Background()
 
@@ -168,6 +172,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_MultiHeightEpoch(t *
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
+	client.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 	client.On("Retrieve", mock.Anything, uint64(102), fiNs).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: time.Now()},
 		Data:       testBlobsByHeight[102],
@@ -186,7 +191,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_MultiHeightEpoch(t *
 		DAEpochForcedInclusion: 3, // Epoch: 100-102
 	}
 
-	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	retriever := NewForcedInclusionRetriever(context.Background(), client, zerolog.Nop(), 100*time.Millisecond, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
 	defer retriever.Stop()
 	ctx := context.Background()
 
@@ -208,6 +213,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_ErrorHandling(t *tes
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
+	client.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 	client.On("Retrieve", mock.Anything, uint64(100), fiNs).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{
 			Code:    datypes.StatusError,
@@ -220,7 +226,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_ErrorHandling(t *tes
 		DAEpochForcedInclusion: 1, // Single height epoch
 	}
 
-	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	retriever := NewForcedInclusionRetriever(context.Background(), client, zerolog.Nop(), 100*time.Millisecond, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
 	defer retriever.Stop()
 	ctx := context.Background()
 
@@ -236,6 +242,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EmptyBlobsSkipped(t 
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
+	client.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 	client.On("Retrieve", mock.Anything, uint64(100), fiNs).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: time.Now()},
 		Data:       [][]byte{[]byte("tx1"), {}, []byte("tx2"), nil, []byte("tx3")},
@@ -246,7 +253,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EmptyBlobsSkipped(t 
 		DAEpochForcedInclusion: 1, // Single height epoch
 	}
 
-	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	retriever := NewForcedInclusionRetriever(context.Background(), client, zerolog.Nop(), 100*time.Millisecond, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
 	defer retriever.Stop()
 	ctx := context.Background()
 
@@ -272,6 +279,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_OrderPreserved(t *te
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
+	client.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 	// Return heights out of order to test ordering is preserved
 	client.On("Retrieve", mock.Anything, uint64(102), fiNs).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: time.Now()},
@@ -291,7 +299,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_OrderPreserved(t *te
 		DAEpochForcedInclusion: 3, // Epoch: 100-102
 	}
 
-	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	retriever := NewForcedInclusionRetriever(context.Background(), client, zerolog.Nop(), 100*time.Millisecond, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
 	defer retriever.Stop()
 	ctx := context.Background()
 

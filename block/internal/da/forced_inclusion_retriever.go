@@ -8,7 +8,6 @@ import (
 
 	"github.com/rs/zerolog"
 
-	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/types"
 )
@@ -42,9 +41,11 @@ type ForcedInclusionEvent struct {
 // NewForcedInclusionRetriever creates a new forced inclusion retriever.
 // It internally creates and manages an AsyncBlockRetriever for background prefetching.
 func NewForcedInclusionRetriever(
+	ctx context.Context,
 	client Client,
 	logger zerolog.Logger,
-	cfg config.Config,
+	daBlockTime time.Duration,
+	tracingEnabled bool,
 	daStartHeight, daEpochSize uint64,
 ) ForcedInclusionRetriever {
 	retrieverLogger := logger.With().Str("component", "forced_inclusion_retriever").Logger()
@@ -54,11 +55,11 @@ func NewForcedInclusionRetriever(
 		client,
 		logger,
 		client.GetForcedInclusionNamespace(),
-		cfg,
+		daBlockTime,
 		daStartHeight,
 		daEpochSize*2, // prefetch window: 2x epoch size
 	)
-	asyncFetcher.Start()
+	asyncFetcher.Start(ctx)
 
 	base := &forcedInclusionRetriever{
 		client:        client,
@@ -67,7 +68,7 @@ func NewForcedInclusionRetriever(
 		daEpochSize:   daEpochSize,
 		asyncFetcher:  asyncFetcher,
 	}
-	if cfg.Instrumentation.IsTracingEnabled() {
+	if tracingEnabled {
 		return withTracingForcedInclusionRetriever(base)
 	}
 	return base

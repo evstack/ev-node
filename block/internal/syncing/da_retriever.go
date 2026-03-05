@@ -5,8 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
-	"sync"
 
 	"github.com/rs/zerolog"
 	"google.golang.org/protobuf/proto"
@@ -27,11 +25,6 @@ type DARetriever interface {
 	// ProcessBlobs parses raw blob bytes at a given DA height into height events.
 	// Used by the DAFollower to process subscription blobs inline without re-fetching.
 	ProcessBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent
-	// QueuePriorityHeight queues a DA height for priority retrieval (from P2P hints).
-	// These heights take precedence over sequential fetching.
-	QueuePriorityHeight(daHeight uint64)
-	// PopPriorityHeight returns the next priority height to fetch, or 0 if none.
-	PopPriorityHeight() uint64
 }
 
 // daRetriever handles DA retrieval operations for syncing
@@ -49,12 +42,6 @@ type daRetriever struct {
 	// strictMode indicates if the node has seen a valid DAHeaderEnvelope
 	// and should now reject all legacy/unsigned headers.
 	strictMode bool
-
-	// priorityMu protects priorityHeights from concurrent access
-	priorityMu sync.Mutex
-	// priorityHeights holds DA heights from P2P hints that should be fetched
-	// before continuing sequential retrieval. Sorted in ascending order.
-	priorityHeights []uint64
 }
 
 // NewDARetriever creates a new DA retriever
@@ -65,43 +52,14 @@ func NewDARetriever(
 	logger zerolog.Logger,
 ) *daRetriever {
 	return &daRetriever{
-		client:          client,
-		cache:           cache,
-		genesis:         genesis,
-		logger:          logger.With().Str("component", "da_retriever").Logger(),
-		pendingHeaders:  make(map[uint64]*types.SignedHeader),
-		pendingData:     make(map[uint64]*types.Data),
-		strictMode:      false,
-		priorityHeights: make([]uint64, 0),
+		client:         client,
+		cache:          cache,
+		genesis:        genesis,
+		logger:         logger.With().Str("component", "da_retriever").Logger(),
+		pendingHeaders: make(map[uint64]*types.SignedHeader),
+		pendingData:    make(map[uint64]*types.Data),
+		strictMode:     false,
 	}
-}
-
-// QueuePriorityHeight queues a DA height for priority retrieval.
-// Heights from P2P hints take precedence over sequential fetching.
-func (r *daRetriever) QueuePriorityHeight(daHeight uint64) {
-	r.priorityMu.Lock()
-	defer r.priorityMu.Unlock()
-
-	idx, found := slices.BinarySearch(r.priorityHeights, daHeight)
-	if found {
-		return // Already queued
-	}
-	r.priorityHeights = slices.Insert(r.priorityHeights, idx, daHeight)
-}
-
-// PopPriorityHeight returns the next priority height to fetch, or 0 if none.
-func (r *daRetriever) PopPriorityHeight() uint64 {
-	r.priorityMu.Lock()
-	defer r.priorityMu.Unlock()
-
-	if len(r.priorityHeights) == 0 {
-		return 0
-	}
-
-	height := r.priorityHeights[0]
-	r.priorityHeights = r.priorityHeights[1:]
-
-	return height
 }
 
 // RetrieveFromDA retrieves blocks from the specified DA height and returns height events
