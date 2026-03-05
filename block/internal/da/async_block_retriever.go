@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	ds "github.com/ipfs/go-datastore"
@@ -14,14 +12,13 @@ import (
 	"github.com/rs/zerolog"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
 
 // AsyncBlockRetriever provides background prefetching of DA blocks
 type AsyncBlockRetriever interface {
-	Start()
+	Start(ctx context.Context)
 	Stop()
 	GetCachedBlock(ctx context.Context, daHeight uint64) (*BlockData, error)
 	UpdateCurrentHeight(height uint64)
@@ -35,29 +32,23 @@ type BlockData struct {
 }
 
 // asyncBlockRetriever handles background prefetching of individual DA blocks
-// from a specific namespace.
+// from a specific namespace. Wraps a da.Subscriber for the subscription
+// plumbing and implements SubscriberHandler for caching.
 type asyncBlockRetriever struct {
-	client        Client
-	logger        zerolog.Logger
-	namespace     []byte
-	daStartHeight uint64
+	subscriber *Subscriber
+	client     Client
+	logger     zerolog.Logger
+	namespace  []byte
 
 	// In-memory cache for prefetched block data
 	cache ds.Batching
 
-	// Background fetcher control
-	ctx    context.Context
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
+	// Current DA height tracking (accessed atomically via subscriber).
+	// Updated externally via UpdateCurrentHeight.
+	daStartHeight uint64
 
-	// Current DA height tracking (accessed atomically)
-	currentDAHeight atomic.Uint64
-
-	// Prefetch window - how many blocks ahead to prefetch
+	// Prefetch window - how many blocks ahead to speculatively fetch.
 	prefetchWindow uint64
-
-	// Polling interval for checking new DA heights
-	pollInterval time.Duration
 }
 
 // NewAsyncBlockRetriever creates a new async block retriever with in-memory cache.
@@ -65,61 +56,69 @@ func NewAsyncBlockRetriever(
 	client Client,
 	logger zerolog.Logger,
 	namespace []byte,
-	config config.Config,
+	daBlockTime time.Duration,
 	daStartHeight uint64,
 	prefetchWindow uint64,
 ) AsyncBlockRetriever {
 	if prefetchWindow == 0 {
-		prefetchWindow = 10 // Default: prefetch next 10 blocks
+		prefetchWindow = 10
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-
-	fetcher := &asyncBlockRetriever{
+	f := &asyncBlockRetriever{
 		client:         client,
 		logger:         logger.With().Str("component", "async_block_retriever").Logger(),
 		namespace:      namespace,
 		daStartHeight:  daStartHeight,
 		cache:          dsync.MutexWrap(ds.NewMapDatastore()),
-		ctx:            ctx,
-		cancel:         cancel,
 		prefetchWindow: prefetchWindow,
-		pollInterval:   config.DA.BlockTime.Duration,
 	}
-	fetcher.currentDAHeight.Store(daStartHeight)
-	return fetcher
+
+	var namespaces [][]byte
+	if len(namespace) > 0 {
+		namespaces = [][]byte{namespace}
+	}
+
+	f.subscriber = NewSubscriber(SubscriberConfig{
+		Client:      client,
+		Logger:      logger,
+		Namespaces:  namespaces,
+		DABlockTime: daBlockTime,
+		Handler:     f,
+	})
+	f.subscriber.SetStartHeight(daStartHeight)
+
+	return f
 }
 
-// Start begins the background prefetching process.
-func (f *asyncBlockRetriever) Start() {
-	f.wg.Add(1)
-	go f.backgroundFetchLoop()
+// Start begins the subscription follow loop and catchup loop.
+func (f *asyncBlockRetriever) Start(ctx context.Context) {
+	if err := f.subscriber.Start(ctx); err != nil {
+		f.logger.Warn().Err(err).Msg("failed to start subscriber")
+	}
 	f.logger.Debug().
 		Uint64("da_start_height", f.daStartHeight).
 		Uint64("prefetch_window", f.prefetchWindow).
-		Dur("poll_interval", f.pollInterval).
 		Msg("async block retriever started")
 }
 
-// Stop gracefully stops the background prefetching process.
+// Stop gracefully stops the background goroutines.
 func (f *asyncBlockRetriever) Stop() {
 	f.logger.Debug().Msg("stopping async block retriever")
-	f.cancel()
-	f.wg.Wait()
+	f.subscriber.Stop()
 }
 
-// UpdateCurrentHeight updates the current DA height for prefetching.
+// UpdateCurrentHeight updates the current DA height.
 func (f *asyncBlockRetriever) UpdateCurrentHeight(height uint64) {
-	// Use atomic compare-and-swap to update only if the new height is greater
 	for {
-		current := f.currentDAHeight.Load()
+		current := f.subscriber.LocalDAHeight()
 		if height <= current {
 			return
 		}
-		if f.currentDAHeight.CompareAndSwap(current, height) {
+		if f.subscriber.CompareAndSwapLocalHeight(current, height) {
 			f.logger.Debug().
 				Uint64("new_height", height).
 				Msg("updated current DA height")
+			f.cleanupOldBlocks(height)
 			return
 		}
 	}
@@ -149,7 +148,6 @@ func (f *asyncBlockRetriever) GetCachedBlock(ctx context.Context, daHeight uint6
 		return nil, fmt.Errorf("failed to get cached block: %w", err)
 	}
 
-	// Deserialize the cached block
 	var pbBlock pb.BlockData
 	if err := proto.Unmarshal(data, &pbBlock); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal cached block: %w", err)
@@ -169,138 +167,107 @@ func (f *asyncBlockRetriever) GetCachedBlock(ctx context.Context, daHeight uint6
 	return block, nil
 }
 
-// backgroundFetchLoop runs in the background and prefetches blocks ahead of time.
-func (f *asyncBlockRetriever) backgroundFetchLoop() {
-	defer f.wg.Done()
+// ---------------------------------------------------------------------------
+// SubscriberHandler implementation
+// ---------------------------------------------------------------------------
 
-	ticker := time.NewTicker(f.pollInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-f.ctx.Done():
-			return
-		case <-ticker.C:
-			f.prefetchBlocks()
-		}
+// HandleEvent caches blobs from the subscription inline.
+func (f *asyncBlockRetriever) HandleEvent(ctx context.Context, ev datypes.SubscriptionEvent) {
+	if len(ev.Blobs) > 0 {
+		f.cacheBlock(ctx, ev.Height, ev.Blobs)
 	}
 }
 
-// prefetchBlocks prefetches blocks within the prefetch window.
-func (f *asyncBlockRetriever) prefetchBlocks() {
-	if len(f.namespace) == 0 {
-		return
-	}
+// HandleCatchup fetches a single height via Retrieve and caches it.
+// Also applies the prefetch window for speculative forward fetching.
+func (f *asyncBlockRetriever) HandleCatchup(ctx context.Context, height uint64) error {
+	f.fetchAndCacheBlock(ctx, height)
 
-	currentHeight := f.currentDAHeight.Load()
-
-	// Prefetch upcoming blocks
-	for i := uint64(0); i < f.prefetchWindow; i++ {
-		targetHeight := currentHeight + i
-
-		// Check if already cached
-		key := newBlockDataKey(targetHeight)
-		_, err := f.cache.Get(f.ctx, key)
-		if err == nil {
-			// Already cached
-			continue
+	// Speculatively prefetch ahead.
+	highest := f.subscriber.HighestSeenDAHeight()
+	target := highest + f.prefetchWindow
+	for h := height + 1; h <= target; h++ {
+		if err := ctx.Err(); err != nil {
+			return err
 		}
-
-		// Fetch and cache the block
-		f.fetchAndCacheBlock(targetHeight)
+		key := newBlockDataKey(h)
+		if _, err := f.cache.Get(ctx, key); err == nil {
+			continue // Already cached.
+		}
+		f.fetchAndCacheBlock(ctx, h)
 	}
 
-	// Clean up old blocks from cache to prevent memory growth
-	f.cleanupOldBlocks(currentHeight)
+	return nil
 }
 
-// fetchAndCacheBlock fetches a block and stores it in the cache.
-func (f *asyncBlockRetriever) fetchAndCacheBlock(height uint64) {
-	f.logger.Debug().
-		Uint64("height", height).
-		Msg("prefetching block")
+// ---------------------------------------------------------------------------
+// Cache helpers
+// ---------------------------------------------------------------------------
 
-	result := f.client.Retrieve(f.ctx, height, f.namespace)
+// fetchAndCacheBlock fetches a block via Retrieve and caches it.
+func (f *asyncBlockRetriever) fetchAndCacheBlock(ctx context.Context, height uint64) {
+	f.logger.Debug().Uint64("height", height).Msg("prefetching block")
 
-	block := &BlockData{
-		Height:    height,
-		Timestamp: result.Timestamp,
-		Blobs:     [][]byte{},
-	}
+	result := f.client.Retrieve(ctx, height, f.namespace)
 
 	switch result.Code {
 	case datypes.StatusHeightFromFuture:
-		f.logger.Debug().
-			Uint64("height", height).
-			Msg("block height not yet available - will retry")
+		f.logger.Debug().Uint64("height", height).Msg("block height not yet available - will retry")
 		return
 	case datypes.StatusNotFound:
-		f.logger.Debug().
-			Uint64("height", height).
-			Msg("no blobs at height")
-		// Cache empty result to avoid re-fetching
+		f.cacheBlock(ctx, height, nil)
 	case datypes.StatusSuccess:
-		// Process each blob
+		blobs := make([][]byte, 0, len(result.Data))
 		for _, blob := range result.Data {
 			if len(blob) > 0 {
-				block.Blobs = append(block.Blobs, blob)
+				blobs = append(blobs, blob)
 			}
 		}
-		f.logger.Debug().
-			Uint64("height", height).
-			Int("blob_count", len(result.Data)).
-			Msg("processed blobs for prefetch")
+		f.cacheBlock(ctx, height, blobs)
 	default:
 		f.logger.Debug().
 			Uint64("height", height).
 			Str("status", result.Message).
 			Msg("failed to retrieve block - will retry")
-		return
+	}
+}
+
+// cacheBlock serializes and stores a block in the in-memory cache.
+func (f *asyncBlockRetriever) cacheBlock(ctx context.Context, height uint64, blobs [][]byte) {
+	if blobs == nil {
+		blobs = [][]byte{}
 	}
 
-	// Serialize and cache the block
 	pbBlock := &pb.BlockData{
-		Height:    block.Height,
-		Timestamp: block.Timestamp.UnixNano(),
-		Blobs:     block.Blobs,
+		Height:    height,
+		Timestamp: time.Now().UnixNano(),
+		Blobs:     blobs,
 	}
 	data, err := proto.Marshal(pbBlock)
 	if err != nil {
-		f.logger.Error().
-			Err(err).
-			Uint64("height", height).
-			Msg("failed to marshal block for caching")
+		f.logger.Error().Err(err).Uint64("height", height).Msg("failed to marshal block for caching")
 		return
 	}
 
 	key := newBlockDataKey(height)
-	err = f.cache.Put(f.ctx, key, data)
-	if err != nil {
-		f.logger.Error().
-			Err(err).
-			Uint64("height", height).
-			Msg("failed to cache block")
+	if err := f.cache.Put(ctx, key, data); err != nil {
+		f.logger.Error().Err(err).Uint64("height", height).Msg("failed to cache block")
 		return
 	}
 
-	f.logger.Debug().
-		Uint64("height", height).
-		Int("blob_count", len(block.Blobs)).
-		Msg("successfully prefetched and cached block")
+	f.logger.Debug().Uint64("height", height).Int("blob_count", len(blobs)).Msg("cached block")
 }
 
-// cleanupOldBlocks removes blocks older than a threshold from cache.
+// cleanupOldBlocks removes blocks older than currentHeight − prefetchWindow.
 func (f *asyncBlockRetriever) cleanupOldBlocks(currentHeight uint64) {
-	// Remove blocks older than current - prefetchWindow
 	if currentHeight < f.prefetchWindow {
 		return
 	}
 
 	cleanupThreshold := currentHeight - f.prefetchWindow
 
-	// Query all keys
 	query := dsq.Query{Prefix: "/block/"}
-	results, err := f.cache.Query(f.ctx, query)
+	results, err := f.cache.Query(context.Background(), query)
 	if err != nil {
 		f.logger.Debug().Err(err).Msg("failed to query cache for cleanup")
 		return
@@ -313,7 +280,6 @@ func (f *asyncBlockRetriever) cleanupOldBlocks(currentHeight uint64) {
 		}
 
 		key := ds.NewKey(result.Key)
-		// Extract height from key
 		var height uint64
 		_, err := fmt.Sscanf(key.String(), "/block/%d", &height)
 		if err != nil {
@@ -321,11 +287,8 @@ func (f *asyncBlockRetriever) cleanupOldBlocks(currentHeight uint64) {
 		}
 
 		if height < cleanupThreshold {
-			if err := f.cache.Delete(f.ctx, key); err != nil {
-				f.logger.Debug().
-					Err(err).
-					Uint64("height", height).
-					Msg("failed to delete old block from cache")
+			if err := f.cache.Delete(context.Background(), key); err != nil {
+				f.logger.Debug().Err(err).Uint64("height", height).Msg("failed to delete old block from cache")
 			}
 		}
 	}
