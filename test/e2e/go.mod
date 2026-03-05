@@ -23,7 +23,6 @@ require (
 
 replace (
 	github.com/evstack/ev-node => ../../
-	github.com/evstack/ev-node/core => ../../core
 	github.com/evstack/ev-node/execution/evm => ../../execution/evm
 	github.com/evstack/ev-node/execution/evm/test => ../../execution/evm/test
 )
@@ -107,7 +106,7 @@ require (
 	github.com/dvsekhvalnov/jose2go v1.8.0 // indirect
 	github.com/emicklei/dot v1.6.2 // indirect
 	github.com/ethereum/c-kzg-4844/v2 v2.1.5 // indirect
-	github.com/evstack/ev-node/core v1.0.0-rc.1 // indirect
+	github.com/evstack/ev-node/core v1.0.0 // indirect
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/ferranbt/fastssz v0.1.4 // indirect

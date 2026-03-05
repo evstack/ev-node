@@ -415,12 +415,18 @@ func (e *Executor) executionLoop() {
 				continue
 			}
 
+			start := time.Now()
 			if err := e.blockProducer.ProduceBlock(e.ctx); err != nil {
 				e.logger.Error().Err(err).Msg("failed to produce block")
 			}
 			txsAvailable = false
-			// Always reset block timer to keep ticking
-			blockTimer.Reset(e.config.Node.BlockTime.Duration)
+			// reset timer accounting for time spent producing the block
+			elapsed := time.Since(start)
+			remaining := e.config.Node.BlockTime.Duration - elapsed
+			if remaining <= 0 {
+				remaining = 0
+			}
+			blockTimer.Reset(remaining)
 
 		case <-lazyTimerCh:
 			e.logger.Debug().Msg("Lazy timer triggered block production")
