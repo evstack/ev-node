@@ -114,14 +114,12 @@ func TestManager_SaveAndRestoreFromStore(t *testing.T) {
 	// Simulate the submitter: write per-height DA mappings (normally done by
 	// setNodeHeightToDAHeight) and mark height 1 as finalized.
 	// Heights 1 and 2 are both submitted to DA; height 1 is finalized, height 2 is in-flight.
-	writeHeightDAMeta := func(height, daH uint64, headerKey, dataKey string) {
+	writeHeightDAMeta := func(height, daH uint64, _, _ string) {
 		b := make([]byte, 8)
 		binary.LittleEndian.PutUint64(b, daH)
 		require.NoError(t, st.SetMetadata(ctx, pkgstore.GetHeightToDAHeightHeaderKey(height), b))
 		binary.LittleEndian.PutUint64(b, daH)
 		require.NoError(t, st.SetMetadata(ctx, pkgstore.GetHeightToDAHeightDataKey(height), b))
-		_ = headerKey
-		_ = dataKey
 	}
 	writeHeightDAMeta(1, 100, "", "")
 	writeHeightDAMeta(2, 101, "", "")

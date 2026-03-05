@@ -32,19 +32,13 @@ type snapshotEntry struct {
 const snapshotEntrySize = 16 // bytes per snapshotEntry
 
 // Cache tracks seen blocks and DA inclusion status using bounded LRU caches.
-//
-// Persistence: on every DA inclusion mutation a single snapshot key
-// (storeKeyPrefix+"__snap") is rewritten with all current in-flight
-// [blockHeight, daHeight] pairs. RestoreFromStore reads that one key on
-// startup — O(1) regardless of chain length.
-//
-// After a restart, real content hashes are not available until the DA
-// retriever re-fires. In the meantime, placeholder keys indexed by height
-// allow lookups to succeed via getDAIncludedByHeight.
 type Cache[T any] struct {
+	// itemsByHeight stores items keyed by uint64 height.
+	// Mutex needed for atomic get-and-remove in getNextItem.
 	itemsByHeight   *lru.Cache[uint64, *T]
 	itemsByHeightMu sync.Mutex
 
+	// hashes tracks whether a given hash has been seen
 	hashes *lru.Cache[string, bool]
 
 	// daIncluded maps hash → daHeight. Hash may be a real content hash or a
@@ -57,9 +51,11 @@ type Cache[T any] struct {
 	hashByHeight   *lru.Cache[uint64, string]
 	hashByHeightMu sync.Mutex
 
+	// maxDAHeight tracks the maximum DA height seen
 	maxDAHeight *atomic.Uint64
 
-	store          store.Store // nil = ephemeral, no persistence
+	store store.Store // nil = ephemeral, no persistence
+	// storeKeyPrefix is the prefix used for store keys
 	storeKeyPrefix string
 }
 

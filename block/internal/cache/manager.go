@@ -46,7 +46,6 @@ type CacheManager interface {
 	IsDataSeen(hash string) bool
 	SetDataSeen(hash string, blockHeight uint64)
 	GetDataDAIncluded(hash string) (uint64, bool)
-	// GetDataDAIncludedByHeight is the data equivalent of GetHeaderDAIncludedByHeight.
 	GetDataDAIncludedByHeight(blockHeight uint64) (uint64, bool)
 	SetDataDAIncluded(hash string, daHeight uint64, blockHeight uint64)
 	RemoveDataDAIncluded(hash string)
@@ -204,7 +203,9 @@ func (m *implementation) IsTxSeen(hash string) bool {
 }
 
 func (m *implementation) SetTxSeen(hash string) {
+	// Use 0 as height since transactions don't have a block height yet
 	m.txCache.setSeen(hash, 0)
+	// Track timestamp for cleanup purposes
 	m.txTimestamps.Store(hash, time.Now())
 }
 
@@ -383,6 +384,7 @@ func (m *implementation) ClearFromStore() error {
 	m.txCache = NewCache[struct{}](nil, "")
 	m.pendingEventsCache = NewCache[common.DAHeightEvent](nil, "")
 
+	// Initialize DA height from store metadata to ensure DaHeight() is never 0.
 	m.initDAHeightFromStore(ctx)
 
 	return nil
