@@ -103,7 +103,7 @@ jobs:
   # single job to push all results to gh-pages sequentially, avoiding race conditions
   publish-benchmarks:
     name: Publish Benchmark Results
-    needs: [evm-benchmark, spamoor-benchmark]
+    needs: [evm-benchmark]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -115,11 +115,6 @@ jobs:
         uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
         with:
           name: evm-benchmark-results
-      - name: Download Spamoor benchmark results
-        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
-        with:
-          name: spamoor-benchmark-results
-          path: test/e2e/benchmark/
 
       # only update the benchmark baseline on push/dispatch, not on PRs
       - name: Store EVM Contract Roundtrip result
@@ -153,23 +148,4 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           alert-threshold: '150%'
           fail-on-alert: true
-          comment-on-alert: true
-
-      # delete local gh-pages so the next benchmark action step fetches fresh from remote
-      - name: Reset local gh-pages branch
-        if: always()
-        run: git branch -D gh-pages || true
-
-      - name: Store Spamoor Trace result
-        if: always()
-        uses: benchmark-action/github-action-benchmark@a7bc2366eda11037936ea57d811a43b3418d3073 # v1.21.0
-        with:
-          name: Spamoor Trace Benchmarks
-          tool: 'customSmallerIsBetter'
-          output-file-path: test/e2e/benchmark/spamoor_bench.json
-          auto-push: ${{ github.event_name != 'pull_request' }}
-          save-data-file: ${{ github.event_name != 'pull_request' }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          alert-threshold: '150%'
-          fail-on-alert: false
           comment-on-alert: true
