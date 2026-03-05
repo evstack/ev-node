@@ -396,6 +396,11 @@ func (s *Syncer) HasReachedDAHead() bool {
 
 // fetchDAUntilCaughtUp was removed — the DAFollower handles this concern.
 
+// PendingCount returns the number of unprocessed height events in the pipeline.
+func (s *Syncer) PendingCount() int {
+	return len(s.heightInCh)
+}
+
 func (s *Syncer) pendingWorkerLoop(ctx context.Context) {
 	defer s.wg.Done()
 

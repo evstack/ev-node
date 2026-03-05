@@ -315,7 +315,8 @@ func (f *failoverState) waitForCatchup(ctx context.Context) (bool, error) {
 				p2pCaughtUp = true
 			}
 
-			if daCaughtUp && p2pCaughtUp {
+			pipelineDrained := f.bc.Syncer == nil || f.bc.Syncer.PendingCount() == 0
+			if daCaughtUp && p2pCaughtUp && pipelineDrained {
 				f.logger.Info().
 					Uint64("store_height", storeHeight).
 					Uint64("max_p2p_height", maxP2PHeight).
