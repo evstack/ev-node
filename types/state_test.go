@@ -111,7 +111,27 @@ func TestAssertValidForNextState(t *testing.T) {
 			data:          &Data{},
 			expectedError: "dataHash from the header does not match with hash",
 		},
-		"last header hash mismatch": {
+		"last header hash mismatch (first time)": {
+			state: State{
+				ChainID:         "test-chain",
+				LastHeaderHash:  []byte("hash"),
+				LastBlockHeight: 1,
+				LastBlockTime:   now,
+			},
+			header: &SignedHeader{
+				Header: Header{
+					BaseHeader: BaseHeader{
+						ChainID: "test-chain", Height: 2,
+						Time: nowUnixNano,
+					},
+					DataHash:       dataHashForEmptyTxs,
+					LastHeaderHash: []byte("other-hash"),
+				},
+			},
+			data:          &Data{},
+			expectedError: "",
+		},
+		"last header hash mismatch (second time)": {
 			state: State{
 				ChainID:         "test-chain",
 				LastHeaderHash:  []byte("hash"),

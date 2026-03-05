@@ -157,7 +157,7 @@ func (f *asyncBlockRetriever) GetCachedBlock(ctx context.Context, daHeight uint6
 
 	block := &BlockData{
 		Height:    pbBlock.Height,
-		Timestamp: time.Unix(pbBlock.Timestamp, 0).UTC(),
+		Timestamp: time.Unix(0, pbBlock.Timestamp).UTC(),
 		Blobs:     pbBlock.Blobs,
 	}
 
@@ -261,7 +261,7 @@ func (f *asyncBlockRetriever) fetchAndCacheBlock(height uint64) {
 	// Serialize and cache the block
 	pbBlock := &pb.BlockData{
 		Height:    block.Height,
-		Timestamp: block.Timestamp.Unix(),
+		Timestamp: block.Timestamp.UnixNano(),
 		Blobs:     block.Blobs,
 	}
 	data, err := proto.Marshal(pbBlock)

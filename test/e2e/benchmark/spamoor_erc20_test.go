@@ -74,7 +74,9 @@ func (s *SpamoorSuite) TestERC20Throughput() {
 	// blocks, the mempool is drained and we can stop.
 	drainCtx, drainCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer drainCancel()
-	waitForDrain(drainCtx, t.Logf, e.ethClient, 10)
+	if err := waitForDrain(drainCtx, t.Logf, e.ethClient, 10); err != nil {
+		t.Logf("warning: %v", err)
+	}
 	wallClock := time.Since(loadStart)
 
 	endHeader, err := e.ethClient.HeaderByNumber(ctx, nil)

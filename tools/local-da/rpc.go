@@ -111,8 +111,8 @@ func (s *blobServer) GetProof(_ context.Context, _ uint64, _ libshare.Namespace,
 }
 
 // Included reports whether a commitment is present at a given height/namespace.
-func (s *blobServer) Included(_ context.Context, height uint64, namespace libshare.Namespace, _ *jsonrpc.Proof, commitment jsonrpc.Commitment) (bool, error) {
-	_, err := s.Get(context.Background(), height, namespace, commitment)
+func (s *blobServer) Included(ctx context.Context, height uint64, namespace libshare.Namespace, _ *jsonrpc.Proof, commitment jsonrpc.Commitment) (bool, error) {
+	_, err := s.Get(ctx, height, namespace, commitment)
 	if err != nil {
 		if errors.Is(err, datypes.ErrBlobNotFound) {
 			return false, nil

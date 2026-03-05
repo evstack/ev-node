@@ -17,6 +17,9 @@ type Client interface {
 	// Get retrieves blobs by their IDs. Used for visualization and fetching specific blobs.
 	Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error)
 
+	// GetLatestDAHeight returns the latest height available on the DA layer.
+	GetLatestDAHeight(ctx context.Context) (uint64, error)
+
 	// Namespace accessors.
 	GetHeaderNamespace() []byte
 	GetDataNamespace() []byte

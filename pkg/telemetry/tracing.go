@@ -66,12 +66,12 @@ func InitTracing(ctx context.Context, cfg *config.InstrumentationConfig, logger 
 	return tp.Shutdown, nil
 }
 
-func clamp(x, min, max float64) float64 {
-	if x < min {
-		return min
+func clamp(x, minFloat, maxFloat float64) float64 {
+	if x < minFloat {
+		return minFloat
 	}
-	if x > max {
-		return max
+	if x > maxFloat {
+		return maxFloat
 	}
 	return x
 }
