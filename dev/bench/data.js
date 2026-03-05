@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1772704125046,
+  "lastUpdate": 1772704127582,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -4502,6 +4502,102 @@ window.BENCHMARK_DATA = {
             "value": 81,
             "unit": "allocs/op",
             "extra": "24478 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": false,
+          "id": "b1e3010e428a0d1bad3a0ef2fcd8df821a88cc6c",
+          "message": "build(deps): Bump rollup from 4.22.4 to 4.59.0 in /docs in the npm_and_yarn group across 1 directory (#3136)\n\nbuild(deps): Bump rollup\n\nBumps the npm_and_yarn group with 1 update in the /docs directory: [rollup](https://github.com/rollup/rollup).\n\n\nUpdates `rollup` from 4.22.4 to 4.59.0\n- [Release notes](https://github.com/rollup/rollup/releases)\n- [Changelog](https://github.com/rollup/rollup/blob/master/CHANGELOG.md)\n- [Commits](https://github.com/rollup/rollup/compare/v4.22.4...v4.59.0)\n\n---\nupdated-dependencies:\n- dependency-name: rollup\n  dependency-version: 4.59.0\n  dependency-type: indirect\n  dependency-group: npm_and_yarn\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-03-05T09:26:29Z",
+          "tree_id": "b1eee9dfeaba9650a397d7a0e7052541d2c80540",
+          "url": "https://github.com/evstack/ev-node/commit/b1e3010e428a0d1bad3a0ef2fcd8df821a88cc6c"
+        },
+        "date": 1772704126818,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 35341,
+            "unit": "ns/op\t    6970 B/op\t      71 allocs/op",
+            "extra": "33715 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 35341,
+            "unit": "ns/op",
+            "extra": "33715 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 6970,
+            "unit": "B/op",
+            "extra": "33715 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 71,
+            "unit": "allocs/op",
+            "extra": "33715 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 36546,
+            "unit": "ns/op\t    7420 B/op\t      81 allocs/op",
+            "extra": "33280 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 36546,
+            "unit": "ns/op",
+            "extra": "33280 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 7420,
+            "unit": "B/op",
+            "extra": "33280 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 81,
+            "unit": "allocs/op",
+            "extra": "33280 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 45957,
+            "unit": "ns/op\t   26112 B/op\t      81 allocs/op",
+            "extra": "26208 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 45957,
+            "unit": "ns/op",
+            "extra": "26208 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 26112,
+            "unit": "B/op",
+            "extra": "26208 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 81,
+            "unit": "allocs/op",
+            "extra": "26208 times\n4 procs"
           }
         ]
       }
