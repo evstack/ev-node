@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1772704127582,
+  "lastUpdate": 1772704129680,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -12928,6 +12928,505 @@ window.BENCHMARK_DATA = {
           {
             "name": "SpamoorSmoke - write_trie_updates_sorted (avg)",
             "value": 17.236686390532544,
+            "unit": "us"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": false,
+          "id": "b1e3010e428a0d1bad3a0ef2fcd8df821a88cc6c",
+          "message": "build(deps): Bump rollup from 4.22.4 to 4.59.0 in /docs in the npm_and_yarn group across 1 directory (#3136)\n\nbuild(deps): Bump rollup\n\nBumps the npm_and_yarn group with 1 update in the /docs directory: [rollup](https://github.com/rollup/rollup).\n\n\nUpdates `rollup` from 4.22.4 to 4.59.0\n- [Release notes](https://github.com/rollup/rollup/releases)\n- [Changelog](https://github.com/rollup/rollup/blob/master/CHANGELOG.md)\n- [Commits](https://github.com/rollup/rollup/compare/v4.22.4...v4.59.0)\n\n---\nupdated-dependencies:\n- dependency-name: rollup\n  dependency-version: 4.59.0\n  dependency-type: indirect\n  dependency-group: npm_and_yarn\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-03-05T09:26:29Z",
+          "tree_id": "b1eee9dfeaba9650a397d7a0e7052541d2c80540",
+          "url": "https://github.com/evstack/ev-node/commit/b1e3010e428a0d1bad3a0ef2fcd8df821a88cc6c"
+        },
+        "date": 1772704128882,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "SpamoorSmoke - Batch.Commit (avg)",
+            "value": 89.47368421052632,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Batch.Put (avg)",
+            "value": 2.971830985915493,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Batch.SaveBlockData (avg)",
+            "value": 16.425531914893618,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Batch.SetHeight (avg)",
+            "value": 12.446808510638299,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Batch.UpdateState (avg)",
+            "value": 12.27659574468085,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - BlockExecutor.ApplyBlock (avg)",
+            "value": 68850.72340425532,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - BlockExecutor.CreateBlock (avg)",
+            "value": 7.916666666666667,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - BlockExecutor.ProduceBlock (avg)",
+            "value": 69965.51063829787,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - BlockExecutor.RetrieveBatch (avg)",
+            "value": 40.083333333333336,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Creating db provider (avg)",
+            "value": 6.974814814814815,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - DA.Submit (avg)",
+            "value": 1014.2352941176471,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - DASubmitter.SubmitData (avg)",
+            "value": 3956.5,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - DASubmitter.SubmitHeaders (avg)",
+            "value": 984.1333333333333,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - DatabaseProvider::commit (avg)",
+            "value": 3432.46884272997,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Engine.ForkchoiceUpdated (avg)",
+            "value": 807.8943661971831,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Engine.GetPayload (avg)",
+            "value": 30242.854166666668,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Engine.NewPayload (avg)",
+            "value": 33365.458333333336,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Eth.GetBlockByNumber (avg)",
+            "value": 972.4265734265734,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Executor.ExecuteTxs (avg)",
+            "value": 68836.74468085106,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Executor.GetTxs (avg)",
+            "value": 5909.428571428572,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Executor.SetFinal (avg)",
+            "value": 1675.2340425531916,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - ForcedInclusionRetriever.RetrieveForcedIncludedTxs (avg)",
+            "value": 6.282608695652174,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - IpfsDHT.Provide (avg)",
+            "value": 188,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - KademliaDHT.IpfsDHT.GetClosestPeers (avg)",
+            "value": 9,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - KademliaDHT.IpfsDHT.RunLookupWithFollowup (avg)",
+            "value": 3,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - KademliaDHT.IpfsDHT.RunQuery (avg)",
+            "value": 1,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - KademliaDHT.ProviderManager.AddProvider (avg)",
+            "value": 147,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Pruner::run_with_provider (avg)",
+            "value": 97.94029850746269,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Sequencer.GetNextBatch (avg)",
+            "value": 30.291666666666668,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Sequencer.SubmitBatchTxs (avg)",
+            "value": 108,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - StaticFileProviderRW::finalize (avg)",
+            "value": 972.1633663366337,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - StaticFileWriters::finalize (avg)",
+            "value": 2958.246290801187,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Store.DeleteMetadata (avg)",
+            "value": 25.274509803921568,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Store.GetBlockData (avg)",
+            "value": 11.4149377593361,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Store.GetHeader (avg)",
+            "value": 8.888324873096447,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Store.GetMetadata (avg)",
+            "value": 10.693827160493827,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Store.Height (avg)",
+            "value": 12.227906976744187,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Store.NewBatch (avg)",
+            "value": 14.631578947368421,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Store.SetMetadata (avg)",
+            "value": 25.127340823970037,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - Tx::commit (avg)",
+            "value": 462.43026706231456,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - TxPool.GetTxs (avg)",
+            "value": 5782.571428571428,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - accounts (avg)",
+            "value": 1.13595166163142,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - begin (avg)",
+            "value": 17.367952522255194,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - build_payload (avg)",
+            "value": 386.4103260869565,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - cache_for (avg)",
+            "value": 47.585798816568044,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - calculate_overlay (avg)",
+            "value": 5.187221396731055,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - commit (avg)",
+            "value": 373.0207715133531,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - compute_state_root_parallel (avg)",
+            "value": 214.86904761904762,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - compute_trie_input_task (avg)",
+            "value": 304.946587537092,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - connection (avg)",
+            "value": 150,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - contracts (avg)",
+            "value": 2.0474777448071215,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - convert_to_block (avg)",
+            "value": 12.596439169139465,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - database_provider_ro (avg)",
+            "value": 29.444444444444443,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - evm env (avg)",
+            "value": 2.798816568047337,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - execute_block (avg)",
+            "value": 133.15727002967358,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - execution (avg)",
+            "value": 1.2746268656716417,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - finish (avg)",
+            "value": 9.005917159763314,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - get_cache_for (avg)",
+            "value": 27.807692307692307,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - get_overlay (avg)",
+            "value": 13.91715976331361,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - hashed_post_state (avg)",
+            "value": 1.063063063063063,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - insert_block_mdbx_only (avg)",
+            "value": 85.50445103857567,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - insert_block_or_payload (avg)",
+            "value": 793.9821958456973,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - insert_state (avg)",
+            "value": 15.359050445103858,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - merge transitions (avg)",
+            "value": 1.0267175572519085,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - on_forkchoice_updated (avg)",
+            "value": 58.481701285855586,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - on_new_payload (avg)",
+            "value": 829.540059347181,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - on_save_blocks (avg)",
+            "value": 4971.050445103858,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - poll_next_event (avg)",
+            "value": 6.792957508041307,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - pre execution (avg)",
+            "value": 20.801186943620177,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - prewarm and caching (avg)",
+            "value": 507.4213649851632,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - prune_segments (avg)",
+            "value": 2.1194029850746268,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - save_blocks (avg)",
+            "value": 1309.4629080118693,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - save_cache (avg)",
+            "value": 320.1513353115727,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - spawn_cache_exclusive (avg)",
+            "value": 78.3620178041543,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - spawn_payload_processor (avg)",
+            "value": 82.45994065281899,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - state provider (avg)",
+            "value": 39.446745562130175,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - trie_data (avg)",
+            "value": 4.524517087667162,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - try_build (avg)",
+            "value": 442.35967302452315,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - try_connect_buffered_blocks (avg)",
+            "value": 4.667655786350148,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - try_insert_payload (avg)",
+            "value": 809.6409495548961,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - update_history_indices (avg)",
+            "value": 10.761904761904763,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - update_pipeline_stages (avg)",
+            "value": 32.89910979228487,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - validate_block_inner (avg)",
+            "value": 3.464497041420118,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - validate_block_post_execution (avg)",
+            "value": 1.8254437869822486,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - validate_block_post_execution_with_hashed_state (avg)",
+            "value": 1.2774390243902438,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - validate_block_with_state (avg)",
+            "value": 645.8011869436202,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - validate_header_against_parent (avg)",
+            "value": 1.272189349112426,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - validate_post_execution (avg)",
+            "value": 21.504451038575667,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - wait_cloned (avg)",
+            "value": 77.39670658682634,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - write_blocks_data (avg)",
+            "value": 1123.652818991098,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - write_headers (avg)",
+            "value": 25.327380952380953,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - write_receipts (avg)",
+            "value": 5.465875370919881,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - write_state (avg)",
+            "value": 17.50741839762611,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - write_transactions (avg)",
+            "value": 5.724035608308605,
+            "unit": "us"
+          },
+          {
+            "name": "SpamoorSmoke - write_trie_updates_sorted (avg)",
+            "value": 17.4540059347181,
             "unit": "us"
           }
         ]
