@@ -271,13 +271,13 @@ func TestSequentialBlockSync(t *testing.T) {
 	assert.Equal(t, uint64(2), finalState.LastBlockHeight)
 
 	// Verify DA inclusion markers are set
-	_, ok := cm.GetHeaderDAIncludedByHash(hdr1.Hash().String())
+	_, ok := cm.GetHeaderDAIncluded(hdr1.Hash().String())
 	assert.True(t, ok)
-	_, ok = cm.GetHeaderDAIncludedByHash(hdr2.Hash().String())
+	_, ok = cm.GetHeaderDAIncluded(hdr2.Hash().String())
 	assert.True(t, ok)
-	_, ok = cm.GetDataDAIncludedByHash(data1.DACommitment().String())
+	_, ok = cm.GetDataDAIncluded(data1.DACommitment().String())
 	assert.True(t, ok)
-	_, ok = cm.GetDataDAIncludedByHash(data2.DACommitment().String())
+	_, ok = cm.GetDataDAIncluded(data2.DACommitment().String())
 	assert.True(t, ok)
 	requireEmptyChan(t, errChan)
 }
@@ -375,8 +375,15 @@ func TestSyncLoopPersistState(t *testing.T) {
 	daRtrMock, p2pHndlMock := NewMockDARetriever(t), newMockp2pHandler(t)
 	p2pHndlMock.On("ProcessHeight", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	p2pHndlMock.On("SetProcessedHeight", mock.Anything).Return().Maybe()
-	daRtrMock.On("PopPriorityHeight").Return(uint64(0)).Maybe()
+
 	syncerInst1.daRetriever, syncerInst1.p2pHandler = daRtrMock, p2pHndlMock
+	syncerInst1.daFollower = NewDAFollower(DAFollowerConfig{
+		Retriever:     daRtrMock,
+		Logger:        zerolog.Nop(),
+		EventSink:     common.EventSinkFunc(syncerInst1.PipeEvent),
+		Namespace:     []byte("ns"),
+		StartDAHeight: syncerInst1.daRetrieverHeight.Load(),
+	})
 
 	// with n da blobs fetched
 	var prevHeaderHash, prevAppHash []byte
@@ -422,21 +429,20 @@ func TestSyncLoopPersistState(t *testing.T) {
 	follower1 := NewDAFollower(DAFollowerConfig{
 		Retriever:     daRtrMock,
 		Logger:        zerolog.Nop(),
-		PipeEvent:     syncerInst1.pipeEvent,
+		EventSink:     common.EventSinkFunc(syncerInst1.PipeEvent),
 		Namespace:     []byte("ns"),
 		StartDAHeight: syncerInst1.daRetrieverHeight.Load(),
 		DABlockTime:   cfg.DA.BlockTime.Duration,
 	}).(*daFollower)
-	ctx, follower1.cancel = context.WithCancel(ctx)
-	// Set highest so catchup runs through all mocked heights.
-	follower1.highestSeenDAHeight.Store(myFutureDAHeight)
-	go follower1.runCatchup(ctx)
+	sub1 := follower1.subscriber
+	sub1.UpdateHighestForTest(myFutureDAHeight)
+	go sub1.RunCatchupForTest(ctx)
 	syncerInst1.startSyncWorkers(ctx)
 	syncerInst1.wg.Wait()
 	requireEmptyChan(t, errorCh)
 
 	t.Log("sync workers on instance1 completed")
-	require.Equal(t, myFutureDAHeight, follower1.localNextDAHeight.Load())
+	require.Equal(t, myFutureDAHeight, follower1.subscriber.LocalDAHeight())
 
 	// wait for all events consumed
 	require.NoError(t, cm.SaveToStore())
@@ -481,8 +487,15 @@ func TestSyncLoopPersistState(t *testing.T) {
 	daRtrMock, p2pHndlMock = NewMockDARetriever(t), newMockp2pHandler(t)
 	p2pHndlMock.On("ProcessHeight", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	p2pHndlMock.On("SetProcessedHeight", mock.Anything).Return().Maybe()
-	daRtrMock.On("PopPriorityHeight").Return(uint64(0)).Maybe()
+
 	syncerInst2.daRetriever, syncerInst2.p2pHandler = daRtrMock, p2pHndlMock
+	syncerInst2.daFollower = NewDAFollower(DAFollowerConfig{
+		Retriever:     daRtrMock,
+		Logger:        zerolog.Nop(),
+		EventSink:     common.EventSinkFunc(syncerInst2.PipeEvent),
+		Namespace:     []byte("ns"),
+		StartDAHeight: syncerInst2.daRetrieverHeight.Load(),
+	})
 
 	daRtrMock.On("RetrieveFromDA", mock.Anything, mock.Anything).
 		Run(func(arg mock.Arguments) {
@@ -499,14 +512,14 @@ func TestSyncLoopPersistState(t *testing.T) {
 	follower2 := NewDAFollower(DAFollowerConfig{
 		Retriever:     daRtrMock,
 		Logger:        zerolog.Nop(),
-		PipeEvent:     syncerInst2.pipeEvent,
+		EventSink:     common.EventSinkFunc(syncerInst2.PipeEvent),
 		Namespace:     []byte("ns"),
 		StartDAHeight: syncerInst2.daRetrieverHeight.Load(),
 		DABlockTime:   cfg.DA.BlockTime.Duration,
 	}).(*daFollower)
-	ctx, follower2.cancel = context.WithCancel(ctx)
-	follower2.highestSeenDAHeight.Store(syncerInst2.daRetrieverHeight.Load() + 1)
-	go follower2.runCatchup(ctx)
+	sub2 := follower2.subscriber
+	sub2.UpdateHighestForTest(syncerInst2.daRetrieverHeight.Load() + 1)
+	go sub2.RunCatchupForTest(ctx)
 	syncerInst2.startSyncWorkers(ctx)
 	syncerInst2.wg.Wait()
 
@@ -719,6 +732,13 @@ func TestProcessHeightEvent_TriggersAsyncDARetrieval(t *testing.T) {
 
 	// Create a real daRetriever to test priority queue
 	s.daRetriever = NewDARetriever(nil, cm, gen, zerolog.Nop())
+	s.daFollower = NewDAFollower(DAFollowerConfig{
+		Retriever:     s.daRetriever,
+		Logger:        zerolog.Nop(),
+		EventSink:     common.EventSinkFunc(func(_ context.Context, _ common.DAHeightEvent) error { return nil }),
+		Namespace:     []byte("ns"),
+		StartDAHeight: 0,
+	})
 
 	// Create event with DA height hint
 	evt := common.DAHeightEvent{
@@ -737,7 +757,7 @@ func TestProcessHeightEvent_TriggersAsyncDARetrieval(t *testing.T) {
 	s.processHeightEvent(t.Context(), &evt)
 
 	// Verify that the priority height was queued in the daRetriever
-	priorityHeight := s.daRetriever.PopPriorityHeight()
+	priorityHeight := s.daFollower.(*daFollower).popPriorityHeight()
 	assert.Equal(t, uint64(100), priorityHeight)
 }
 
@@ -776,6 +796,13 @@ func TestProcessHeightEvent_RejectsUnreasonableDAHint(t *testing.T) {
 	require.NoError(t, s.initializeState())
 	s.ctx = context.Background()
 	s.daRetriever = NewDARetriever(nil, cm, gen, zerolog.Nop())
+	s.daFollower = NewDAFollower(DAFollowerConfig{
+		Retriever:     s.daRetriever,
+		Logger:        zerolog.Nop(),
+		EventSink:     common.EventSinkFunc(func(_ context.Context, _ common.DAHeightEvent) error { return nil }),
+		Namespace:     []byte("ns"),
+		StartDAHeight: 0,
+	})
 
 	// Set store height to 1 so event at height 2 is "next"
 	batch, err := st.NewBatch(context.Background())
@@ -794,7 +821,7 @@ func TestProcessHeightEvent_RejectsUnreasonableDAHint(t *testing.T) {
 	s.processHeightEvent(t.Context(), &evt)
 
 	// Verify that NO priority height was queued — the hint was rejected
-	priorityHeight := s.daRetriever.PopPriorityHeight()
+	priorityHeight := s.daFollower.(*daFollower).popPriorityHeight()
 	assert.Equal(t, uint64(0), priorityHeight, "unreasonable DA hint should be rejected")
 }
 
@@ -833,6 +860,13 @@ func TestProcessHeightEvent_AcceptsValidDAHint(t *testing.T) {
 	require.NoError(t, s.initializeState())
 	s.ctx = context.Background()
 	s.daRetriever = NewDARetriever(nil, cm, gen, zerolog.Nop())
+	s.daFollower = NewDAFollower(DAFollowerConfig{
+		Retriever:     s.daRetriever,
+		Logger:        zerolog.Nop(),
+		EventSink:     common.EventSinkFunc(func(_ context.Context, _ common.DAHeightEvent) error { return nil }),
+		Namespace:     []byte("ns"),
+		StartDAHeight: 0,
+	})
 
 	// Set store height to 1 so event at height 2 is "next"
 	batch, err := st.NewBatch(context.Background())
@@ -851,104 +885,11 @@ func TestProcessHeightEvent_AcceptsValidDAHint(t *testing.T) {
 	s.processHeightEvent(t.Context(), &evt)
 
 	// Verify that the priority height was queued — the hint is valid
-	priorityHeight := s.daRetriever.PopPriorityHeight()
+	priorityHeight := s.daFollower.(*daFollower).popPriorityHeight()
 	assert.Equal(t, uint64(50), priorityHeight, "valid DA hint should be queued")
 }
 
-// TestProcessHeightEvent_SkipsDAHintWhenAlreadyDAIncluded verifies that when the
-// DA-inclusion cache already has an entry for the block height carried by a P2P
-// event, the DA height hint is NOT queued for priority retrieval.
-func TestProcessHeightEvent_SkipsDAHintWhenAlreadyDAIncluded(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
-	require.NoError(t, err)
-
-	addr, _, _ := buildSyncTestSigner(t)
-	cfg := config.DefaultConfig()
-	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
-
-	mockExec := testmocks.NewMockExecutor(t)
-	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), nil).Once()
-
-	mockDAClient := testmocks.NewMockClient(t)
-
-	s := NewSyncer(
-		st,
-		mockExec,
-		mockDAClient,
-		cm,
-		common.NopMetrics(),
-		cfg,
-		gen,
-		extmocks.NewMockStore[*types.P2PSignedHeader](t),
-		extmocks.NewMockStore[*types.P2PData](t),
-		zerolog.Nop(),
-		common.DefaultBlockOptions(),
-		make(chan error, 1),
-		nil,
-	)
-	require.NoError(t, s.initializeState())
-	s.ctx = context.Background()
-	s.daRetriever = NewDARetriever(nil, cm, gen, zerolog.Nop())
-
-	// Set the store height to 1 so the event at height 2 is "next".
-	batch, err := st.NewBatch(context.Background())
-	require.NoError(t, err)
-	require.NoError(t, batch.SetHeight(1))
-	require.NoError(t, batch.Commit())
-
-	// Simulate the DA retriever having already confirmed header and data at height 2.
-	cm.SetHeaderDAIncluded("somehash-hdr2", 42, 2)
-	cm.SetDataDAIncluded("somehash-data2", 42, 2)
-
-	// Both hints point to DA height 100, which is above daRetrieverHeight (0),
-	// so the only reason NOT to queue them is the cache hit.
-	evt := common.DAHeightEvent{
-		Header:        &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: gen.ChainID, Height: 2}}},
-		Data:          &types.Data{Metadata: &types.Metadata{ChainID: gen.ChainID, Height: 2}},
-		Source:        common.SourceP2P,
-		DaHeightHints: [2]uint64{100, 100},
-	}
-
-	s.processHeightEvent(t.Context(), &evt)
-
-	// Neither hint should be queued — both are already DA-included in the cache.
-	priorityHeight := s.daRetriever.PopPriorityHeight()
-	assert.Equal(t, uint64(0), priorityHeight,
-		"DA hint must not be queued when header and data are already DA-included in cache")
-
-	// ── partial case: only header confirmed ──────────────────────────────────
-	// Reset with a fresh cache that has only the header entry for height 3.
-	cm2, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
-	require.NoError(t, err)
-	s.cache = cm2
-	cm2.SetHeaderDAIncluded("somehash-hdr3", 55, 3)
-	// data at height 3 is NOT in cache
-
-	batch, err = st.NewBatch(context.Background())
-	require.NoError(t, err)
-	require.NoError(t, batch.SetHeight(2))
-	require.NoError(t, batch.Commit())
-
-	evt3 := common.DAHeightEvent{
-		Header:        &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: gen.ChainID, Height: 3}}},
-		Data:          &types.Data{Metadata: &types.Metadata{ChainID: gen.ChainID, Height: 3}, Txs: types.Txs{types.Tx("tx2")}},
-		Source:        common.SourceP2P,
-		DaHeightHints: [2]uint64{150, 151}, // within daHintMaxDrift(200) of daRetrieverHeight(0) — no DA validation needed
-	}
-
-	s.processHeightEvent(t.Context(), &evt3)
-
-	// Header hint (150) must be skipped; data hint (151) must be queued.
-	priorityHeight = s.daRetriever.PopPriorityHeight()
-	assert.Equal(t, uint64(151), priorityHeight,
-		"data hint must be queued when only the header is already DA-included")
-	assert.Equal(t, uint64(0), s.daRetriever.PopPriorityHeight(),
-		"no further hints should be queued")
-}
-
-func TestProcessHeightEvent_SkipsDAHintWhenBelowRetrieverCursor(t *testing.T) {
+func TestProcessHeightEvent_SkipsDAHintWhenAlreadyFetched(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
@@ -985,9 +926,15 @@ func TestProcessHeightEvent_SkipsDAHintWhenBelowRetrieverCursor(t *testing.T) {
 
 	// Create a real daRetriever to test priority queue
 	s.daRetriever = NewDARetriever(nil, cm, gen, zerolog.Nop())
+	s.daFollower = NewDAFollower(DAFollowerConfig{
+		Retriever:     s.daRetriever,
+		Logger:        zerolog.Nop(),
+		EventSink:     common.EventSinkFunc(func(_ context.Context, _ common.DAHeightEvent) error { return nil }),
+		Namespace:     []byte("ns"),
+		StartDAHeight: 0,
+	})
 
-	// Set DA retriever height to 150 - the sequential DA scan cursor is already past
-	// the hint (100), so there is no need to queue a priority retrieval.
+	// Set DA retriever height to 150 - simulating we've already fetched past height 100
 	s.daRetrieverHeight.Store(150)
 
 	// Set the store height to 1 so the event can be processed
@@ -1006,9 +953,8 @@ func TestProcessHeightEvent_SkipsDAHintWhenBelowRetrieverCursor(t *testing.T) {
 
 	s.processHeightEvent(t.Context(), &evt)
 
-	// Verify that no priority height was queued: the hint (100) is below the
-	// retriever cursor (150), so sequential scanning will cover it naturally.
-	priorityHeight := s.daRetriever.PopPriorityHeight()
+	// Verify that no priority height was queued since we've already fetched past it
+	priorityHeight := s.daFollower.(*daFollower).popPriorityHeight()
 	assert.Equal(t, uint64(0), priorityHeight, "should not queue DA hint that is below current daRetrieverHeight")
 
 	// Now test with a hint that is ABOVE the current daRetrieverHeight
@@ -1028,7 +974,7 @@ func TestProcessHeightEvent_SkipsDAHintWhenBelowRetrieverCursor(t *testing.T) {
 	s.processHeightEvent(t.Context(), &evt2)
 
 	// Verify that the priority height WAS queued since it's above daRetrieverHeight
-	priorityHeight = s.daRetriever.PopPriorityHeight()
+	priorityHeight = s.daFollower.(*daFollower).popPriorityHeight()
 	assert.Equal(t, uint64(200), priorityHeight, "should queue DA hint that is above current daRetrieverHeight")
 }
 

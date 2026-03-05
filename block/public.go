@@ -84,12 +84,13 @@ type ForcedInclusionRetriever interface {
 // It internally creates and manages an AsyncBlockRetriever for background prefetching.
 // Tracing is automatically enabled when configured.
 func NewForcedInclusionRetriever(
+	ctx context.Context,
 	client DAClient,
 	cfg config.Config,
 	logger zerolog.Logger,
 	daStartHeight, daEpochSize uint64,
 ) ForcedInclusionRetriever {
-	return da.NewForcedInclusionRetriever(client, logger, cfg, daStartHeight, daEpochSize)
+	return da.NewForcedInclusionRetriever(ctx, client, logger, cfg.DA.BlockTime.Duration, cfg.Instrumentation.IsTracingEnabled(), daStartHeight, daEpochSize)
 }
 
 // Expose Raft types for consensus integration
