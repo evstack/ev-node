@@ -1,0 +1,268 @@
+//go:build evm
+
+package benchmark
+
+import (
+	"fmt"
+	"sort"
+	"strings"
+	"testing"
+	"time"
+)
+
+const maxBarWidth = 40
+
+// spanNode is a tree node used to build the span hierarchy.
+type spanNode struct {
+	span     richSpan
+	children []*spanNode
+}
+
+// printFlowchart selects the trace with the longest root span and renders an
+// ASCII tree showing the parent-child span hierarchy with proportional duration bars.
+func printFlowchart(t testing.TB, spans []richSpan) {
+	t.Helper()
+	if len(spans) == 0 {
+		return
+	}
+
+	byTrace := groupByTrace(spans)
+	root, traceID := longestRootTrace(byTrace)
+	if root == nil {
+		return
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n--- Block Production Flowchart (trace %s) ---\n\n", truncateID(traceID))
+	renderTree(&b, root, "", true, root.span.duration)
+	t.Log(b.String())
+}
+
+// printAggregateFlowchart builds a canonical tree from parent-child relationships
+// across all traces and renders average durations.
+func printAggregateFlowchart(t testing.TB, spans []richSpan) {
+	t.Helper()
+	if len(spans) == 0 {
+		return
+	}
+
+	byTrace := groupByTrace(spans)
+	agg := buildAggregateTree(byTrace)
+	if agg == nil {
+		return
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n--- Average Block Production Pipeline (%d traces) ---\n\n", len(byTrace))
+	renderAggregateTree(&b, agg, "", true, agg.avgDuration)
+	t.Log(b.String())
+}
+
+func groupByTrace(spans []richSpan) map[string][]richSpan {
+	m := make(map[string][]richSpan)
+	for _, s := range spans {
+		if s.traceID != "" {
+			m[s.traceID] = append(m[s.traceID], s)
+		}
+	}
+	return m
+}
+
+// longestRootTrace finds the trace whose root span has the longest duration
+// and returns the built tree.
+func longestRootTrace(byTrace map[string][]richSpan) (*spanNode, string) {
+	var bestRoot *spanNode
+	var bestTraceID string
+	var bestDur time.Duration
+
+	for traceID, spans := range byTrace {
+		root := buildTree(spans)
+		if root == nil {
+			continue
+		}
+		if root.span.duration > bestDur {
+			bestDur = root.span.duration
+			bestRoot = root
+			bestTraceID = traceID
+		}
+	}
+	return bestRoot, bestTraceID
+}
+
+func buildTree(spans []richSpan) *spanNode {
+	byID := make(map[string]*spanNode, len(spans))
+	idSet := make(map[string]bool, len(spans))
+	for i := range spans {
+		node := &spanNode{span: spans[i]}
+		byID[spans[i].spanID] = node
+		idSet[spans[i].spanID] = true
+	}
+
+	var root *spanNode
+	for _, node := range byID {
+		parent, hasParent := byID[node.span.parentSpanID]
+		if hasParent {
+			parent.children = append(parent.children, node)
+		}
+		// root: no parent span ID or parent not in the set
+		if node.span.parentSpanID == "" || !idSet[node.span.parentSpanID] {
+			if root == nil || node.span.duration > root.span.duration {
+				root = node
+			}
+		}
+	}
+
+	sortChildren(root)
+	return root
+}
+
+func sortChildren(node *spanNode) {
+	if node == nil {
+		return
+	}
+	sort.Slice(node.children, func(i, j int) bool {
+		return node.children[i].span.startTime.Before(node.children[j].span.startTime)
+	})
+	for _, child := range node.children {
+		sortChildren(child)
+	}
+}
+
+func renderTree(b *strings.Builder, node *spanNode, prefix string, isLast bool, rootDur time.Duration) {
+	bar := durationBar(node.span.duration, rootDur)
+	fmt.Fprintf(b, "%-48s %s %s\n", prefix+node.span.name, bar, formatDuration(node.span.duration))
+
+	childPrefix := prefix
+	if len(prefix) > 0 {
+		if isLast {
+			childPrefix = prefix[:len(prefix)-3] + "   "
+		} else {
+			childPrefix = prefix[:len(prefix)-3] + "\u2502  "
+		}
+	}
+
+	for i, child := range node.children {
+		last := i == len(node.children)-1
+		var connector string
+		if last {
+			connector = "\u2514\u2500 "
+		} else {
+			connector = "\u251c\u2500 "
+		}
+		renderTree(b, child, childPrefix+connector, last, rootDur)
+	}
+}
+
+func durationBar(d, rootDur time.Duration) string {
+	if rootDur <= 0 {
+		return ""
+	}
+	ratio := float64(d) / float64(rootDur)
+	width := int(ratio * maxBarWidth)
+	if width < 1 && d > 0 {
+		width = 1
+	}
+	return strings.Repeat("\u2588", width)
+}
+
+func formatDuration(d time.Duration) string {
+	ms := float64(d) / float64(time.Millisecond)
+	if ms >= 1 {
+		return fmt.Sprintf("%.1fms", ms)
+	}
+	return fmt.Sprintf("%.1f\u00b5s", float64(d)/float64(time.Microsecond))
+}
+
+func truncateID(id string) string {
+	if len(id) > 12 {
+		return id[:12] + "..."
+	}
+	return id
+}
+
+// aggregateNode represents a canonical span in the aggregate tree.
+type aggregateNode struct {
+	name        string
+	count       int
+	totalDur    time.Duration
+	avgDuration time.Duration
+	children    []*aggregateNode
+}
+
+func buildAggregateTree(byTrace map[string][]richSpan) *aggregateNode {
+	// build canonical structure from a representative trace (the longest root)
+	root, _ := longestRootTrace(byTrace)
+	if root == nil {
+		return nil
+	}
+
+	// collect durations for each operation name across all traces
+	dursByName := make(map[string][]time.Duration)
+	countsByName := make(map[string]int)
+	for _, spans := range byTrace {
+		// count each unique operation once per trace
+		seen := make(map[string]bool)
+		for _, s := range spans {
+			dursByName[s.name] = append(dursByName[s.name], s.duration)
+			if !seen[s.name] {
+				countsByName[s.name]++
+				seen[s.name] = true
+			}
+		}
+	}
+
+	return buildAggNode(root, dursByName, countsByName)
+}
+
+func buildAggNode(node *spanNode, dursByName map[string][]time.Duration, countsByName map[string]int) *aggregateNode {
+	durs := dursByName[node.span.name]
+	var total time.Duration
+	for _, d := range durs {
+		total += d
+	}
+	var avg time.Duration
+	if len(durs) > 0 {
+		avg = total / time.Duration(len(durs))
+	}
+
+	agg := &aggregateNode{
+		name:        node.span.name,
+		count:       countsByName[node.span.name],
+		totalDur:    total,
+		avgDuration: avg,
+	}
+
+	for _, child := range node.children {
+		agg.children = append(agg.children, buildAggNode(child, dursByName, countsByName))
+	}
+	return agg
+}
+
+func renderAggregateTree(b *strings.Builder, node *aggregateNode, prefix string, isLast bool, rootAvg time.Duration) {
+	bar := durationBar(node.avgDuration, rootAvg)
+	countStr := ""
+	if len(prefix) > 0 {
+		countStr = fmt.Sprintf(" (%d calls)", node.count)
+	}
+	fmt.Fprintf(b, "%-48s %s %s avg%s\n", prefix+node.name, bar, formatDuration(node.avgDuration), countStr)
+
+	childPrefix := prefix
+	if len(prefix) > 0 {
+		if isLast {
+			childPrefix = prefix[:len(prefix)-3] + "   "
+		} else {
+			childPrefix = prefix[:len(prefix)-3] + "\u2502  "
+		}
+	}
+
+	for i, child := range node.children {
+		last := i == len(node.children)-1
+		var connector string
+		if last {
+			connector = "\u2514\u2500 "
+		} else {
+			connector = "\u251c\u2500 "
+		}
+		renderAggregateTree(b, child, childPrefix+connector, last, rootAvg)
+	}
+}

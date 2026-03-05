@@ -192,10 +192,17 @@ func (s *SpamoorSuite) setupExternalEnv(cfg config, rpcURL string) *env {
 	// trace provider
 	traceURL := os.Getenv("BENCH_TRACE_QUERY_URL")
 	s.Require().NotEmpty(traceURL, "BENCH_TRACE_QUERY_URL must be set in external mode")
-	t.Logf("external mode: using trace query URL %s", traceURL)
+	hostFilter := os.Getenv("BENCH_TRACE_HOST_FILTER")
+	s.Require().NotEmpty(hostFilter, "BENCH_TRACE_HOST_FILTER must be set in external mode")
+	t.Logf("external mode: using trace query URL %s (host filter: %s)", traceURL, hostFilter)
 
 	return &env{
-		traces:     &victoriaTraceProvider{queryURL: traceURL, t: t, startTime: time.Now()},
+		traces: &victoriaTraceProvider{
+			queryURL:   traceURL,
+			t:          t,
+			startTime:  time.Now(),
+			hostFilter: hostFilter,
+		},
 		spamoorAPI: spNode.API(),
 		ethClient:  ethClient,
 	}
@@ -230,9 +237,18 @@ func (s *SpamoorSuite) collectTraces(e *env, serviceName string) *traceResult {
 		t.Logf("traces UI: %s", link)
 	}
 
-	e2e.PrintTraceReport(t, serviceName, tr.evNode)
-	if len(tr.evReth) > 0 {
-		e2e.PrintTraceReport(t, "ev-reth", tr.evReth)
+	if rc, ok := e.traces.(richSpanCollector); ok {
+		richSpans, err := rc.collectRichSpans(ctx, serviceName)
+		if err == nil && len(richSpans) > 0 {
+			printFlowchart(t, richSpans)
+			printAggregateFlowchart(t, richSpans)
+		}
+	} else {
+		e2e.PrintTraceReport(t, serviceName, tr.evNode)
+		if len(tr.evReth) > 0 {
+			e2e.PrintTraceReport(t, "ev-reth", tr.evReth)
+		}
 	}
+
 	return tr
 }
