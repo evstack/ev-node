@@ -70,10 +70,10 @@ func (d *DummyDA) Subscribe(ctx context.Context, _ []byte) (<-chan datypes.Subsc
 		for i, s := range d.subscribers {
 			if s == sub {
 				d.subscribers = append(d.subscribers[:i], d.subscribers[i+1:]...)
+				close(ch)
 				break
 			}
 		}
-		close(ch)
 	}()
 
 	return ch, nil

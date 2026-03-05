@@ -325,11 +325,13 @@ func (f *daFollower) runCatchup(ctx context.Context) {
 		}
 
 		// Check for priority heights from P2P hints first.
-		if priorityHeight := f.retriever.PopPriorityHeight(); priorityHeight > 0 {
-			nextHeight := f.localNextDAHeight.Load()
-			if priorityHeight < nextHeight {
-				continue
-			}
+		// We drain stale hints to avoid a tight CPU loop if many are queued.
+		priorityHeight := f.retriever.PopPriorityHeight()
+		for priorityHeight > 0 && priorityHeight < f.localNextDAHeight.Load() {
+			priorityHeight = f.retriever.PopPriorityHeight()
+		}
+
+		if priorityHeight > 0 {
 			f.logger.Debug().
 				Uint64("da_height", priorityHeight).
 				Msg("fetching priority DA height from P2P hint")
