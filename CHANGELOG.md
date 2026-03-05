@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changes
 
 - Store pending blocks separately from executed blocks key. [#3073](https://github.com/evstack/ev-node/pull/3073)
-- **BREAKING:** Docker images for `evm`, `testapp`, and `local-da` now run as non-root user `ev-node` (uid 1000) instead of `root`. Existing volumes or bind mounts with root-owned files may require a `chown` to uid 1000. See the [migration guide](https://ev.xyz/guides/migrate-docker-nonroot).
+- **BREAKING:** Docker images for `evm`, `testapp`, and `local-da` now run as non-root user `ev-node` (uid 1000) instead of `root`. Existing volumes or bind mounts with root-owned files may require a `chown` to uid 1000. See the [migration guide](https://ev.xyz/guides/migrate-docker-nonroot). [`#3082`](https://github.com/evstack/ev-node/pull/3082)
 - Fixes issues with force inclusion verification on sync nodes. [#3057](https://github.com/evstack/ev-node/pull/3057)
 - Add flag to `local-da` to produce empty DA blocks (closer to the real system). [#3057](https://github.com/evstack/ev-node/pull/3057)
 - Validate P2P DA height hints against the latest known DA height to prevent malicious peers from triggering runaway catchup . [#3128](https://github.com/evstack/ev-node/pull/3128)

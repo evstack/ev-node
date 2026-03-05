@@ -14,6 +14,8 @@ RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -o evm .
 
 FROM alpine:3.22.2
 
+ENV HOME=/home/ev-node
+
 #hadolint ignore=DL3018
 RUN apk --no-cache add ca-certificates curl
 
