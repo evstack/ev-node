@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1772697682827,
+  "lastUpdate": 1772704125046,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -1668,6 +1668,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 112319,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": false,
+          "id": "b1e3010e428a0d1bad3a0ef2fcd8df821a88cc6c",
+          "message": "build(deps): Bump rollup from 4.22.4 to 4.59.0 in /docs in the npm_and_yarn group across 1 directory (#3136)\n\nbuild(deps): Bump rollup\n\nBumps the npm_and_yarn group with 1 update in the /docs directory: [rollup](https://github.com/rollup/rollup).\n\n\nUpdates `rollup` from 4.22.4 to 4.59.0\n- [Release notes](https://github.com/rollup/rollup/releases)\n- [Changelog](https://github.com/rollup/rollup/blob/master/CHANGELOG.md)\n- [Commits](https://github.com/rollup/rollup/compare/v4.22.4...v4.59.0)\n\n---\nupdated-dependencies:\n- dependency-name: rollup\n  dependency-version: 4.59.0\n  dependency-type: indirect\n  dependency-group: npm_and_yarn\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-03-05T09:26:29Z",
+          "tree_id": "b1eee9dfeaba9650a397d7a0e7052541d2c80540",
+          "url": "https://github.com/evstack/ev-node/commit/b1e3010e428a0d1bad3a0ef2fcd8df821a88cc6c"
+        },
+        "date": 1772704113866,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 914845206,
+            "unit": "ns/op\t33987008 B/op\t  198974 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 914845206,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 33987008,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 198974,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
