@@ -30,7 +30,7 @@ require (
 	github.com/dgraph-io/ristretto/v2 v2.1.0 // indirect
 	github.com/ethereum/c-kzg-4844/v2 v2.1.5 // indirect
 	github.com/evstack/ev-node v1.0.0-rc.4 // indirect
-	github.com/evstack/ev-node/core v1.0.0-rc.1 // indirect
+	github.com/evstack/ev-node/core v1.0.0 // indirect
 	github.com/ferranbt/fastssz v0.1.4 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
