@@ -4,12 +4,13 @@ import (
 	"context"
 	crand "crypto/rand"
 	"errors"
+	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
 
 	"github.com/ipfs/go-datastore"
-	"github.com/ipfs/go-datastore/sync"
+	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
@@ -245,7 +246,7 @@ type executorTestFixture struct {
 func setupTestExecutor(t *testing.T, pendingLimit uint64) executorTestFixture {
 	t.Helper()
 
-	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	memStore := store.New(ds)
 
 	cacheManager, err := cache.NewManager(config.DefaultConfig(), memStore, zerolog.Nop())
@@ -341,4 +342,87 @@ func assertProduceBlockInvariantWithTxs(t *testing.T, txs [][]byte) {
 
 	err = prevState.AssertValidForNextState(header, data)
 	require.NoError(t, err, "Produced block failed AssertValidForNextState")
+}
+
+// stubBlockProducer records ProduceBlock call times and simulates execution by sleeping.
+type stubBlockProducer struct {
+	mu        sync.Mutex
+	callTimes []time.Time
+	execTime  time.Duration
+}
+
+func (s *stubBlockProducer) ProduceBlock(ctx context.Context) error {
+	s.mu.Lock()
+	s.callTimes = append(s.callTimes, time.Now())
+	s.mu.Unlock()
+	timer := time.NewTimer(s.execTime)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+	case <-ctx.Done():
+	}
+	return nil
+}
+
+func (s *stubBlockProducer) RetrieveBatch(context.Context) (*BatchData, error) {
+	panic("unexpected call")
+}
+
+func (s *stubBlockProducer) CreateBlock(context.Context, uint64, *BatchData) (*types.SignedHeader, *types.Data, error) {
+	panic("unexpected call")
+}
+
+func (s *stubBlockProducer) ApplyBlock(context.Context, types.Header, *types.Data) (types.State, error) {
+	panic("unexpected call")
+}
+
+func (s *stubBlockProducer) getCalls() []time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]time.Time, len(s.callTimes))
+	copy(out, s.callTimes)
+	return out
+}
+
+// TestExecutionLoop_BlockInterval verifies that the block timer accounts for
+// execution time so that the interval between block starts equals blockTime,
+// not blockTime + executionTime.
+func TestExecutionLoop_BlockInterval(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		const (
+			blockTime     = 100 * time.Millisecond
+			executionTime = 50 * time.Millisecond
+			wantBlocks    = 5
+		)
+
+		fx := setupTestExecutor(t, 1000)
+		defer fx.Cancel()
+
+		fx.Exec.config.Node.BlockTime = config.DurationWrapper{Duration: blockTime}
+
+		stub := &stubBlockProducer{execTime: executionTime}
+		fx.Exec.SetBlockProducer(stub)
+
+		done := make(chan struct{})
+		go func() {
+			fx.Exec.executionLoop()
+			close(done)
+		}()
+
+		// advance fake time enough for wantBlocks blocks
+		time.Sleep(blockTime + time.Duration(wantBlocks)*blockTime)
+
+		fx.Cancel()
+		<-done
+
+		calls := stub.getCalls()
+		require.GreaterOrEqual(t, len(calls), wantBlocks,
+			"expected at least %d blocks, got %d", wantBlocks, len(calls))
+
+		for i := 1; i < len(calls); i++ {
+			interval := calls[i].Sub(calls[i-1])
+			assert.Equal(t, blockTime, interval,
+				"block %d: interval between block starts should equal blockTime", i)
+		}
+	})
 }
