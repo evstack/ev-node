@@ -436,7 +436,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 	requireEmptyChan(t, errorCh)
 
 	t.Log("sync workers on instance1 completed")
-	require.Equal(t, myFutureDAHeight, follower1.localDAHeight.Load())
+	require.Equal(t, myFutureDAHeight, follower1.localNextDAHeight.Load())
 
 	// wait for all events consumed
 	require.NoError(t, cm.SaveToStore())

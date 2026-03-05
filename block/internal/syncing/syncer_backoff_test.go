@@ -255,7 +255,7 @@ func TestDAFollower_CatchupThenReachHead(t *testing.T) {
 }
 
 // TestDAFollower_InlineProcessing verifies the fast path: when the subscription
-// delivers blobs at the current localDAHeight, handleSubscriptionEvent processes
+// delivers blobs at the current localNextDAHeight, handleSubscriptionEvent processes
 // them inline via ProcessBlobs (not RetrieveFromDA).
 func TestDAFollower_InlineProcessing(t *testing.T) {
 	t.Run("processes_blobs_inline_when_caught_up", func(t *testing.T) {
@@ -285,7 +285,7 @@ func TestDAFollower_InlineProcessing(t *testing.T) {
 		daRetriever.On("ProcessBlobs", mock.Anything, blobs, uint64(10)).
 			Return(expectedEvents).Once()
 
-		// Simulate subscription event at the current localDAHeight
+		// Simulate subscription event at the current localNextDAHeight
 		follower.handleSubscriptionEvent(t.Context(), datypes.SubscriptionEvent{
 			Height: 10,
 			Blobs:  blobs,
@@ -294,7 +294,7 @@ func TestDAFollower_InlineProcessing(t *testing.T) {
 		// Verify: ProcessBlobs was called, events were piped, height advanced
 		require.Len(t, pipedEvents, 1, "should pipe 1 event from inline processing")
 		assert.Equal(t, uint64(10), pipedEvents[0].DaHeight)
-		assert.Equal(t, uint64(11), follower.localDAHeight.Load(), "localDAHeight should advance past processed height")
+		assert.Equal(t, uint64(11), follower.localNextDAHeight.Load(), "localNextDAHeight should advance past processed height")
 		assert.True(t, follower.HasReachedHead(), "should mark head as reached after inline processing")
 	})
 
@@ -324,7 +324,7 @@ func TestDAFollower_InlineProcessing(t *testing.T) {
 
 		// ProcessBlobs should NOT have been called
 		daRetriever.AssertNotCalled(t, "ProcessBlobs", mock.Anything, mock.Anything, mock.Anything)
-		assert.Equal(t, uint64(10), follower.localDAHeight.Load(), "localDAHeight should not change")
+		assert.Equal(t, uint64(10), follower.localNextDAHeight.Load(), "localNextDAHeight should not change")
 		assert.Equal(t, uint64(15), follower.highestSeenDAHeight.Load(), "highestSeen should be updated")
 	})
 
@@ -350,7 +350,7 @@ func TestDAFollower_InlineProcessing(t *testing.T) {
 
 		// ProcessBlobs should NOT have been called
 		daRetriever.AssertNotCalled(t, "ProcessBlobs", mock.Anything, mock.Anything, mock.Anything)
-		assert.Equal(t, uint64(10), follower.localDAHeight.Load(), "localDAHeight should not change")
+		assert.Equal(t, uint64(10), follower.localNextDAHeight.Load(), "localNextDAHeight should not change")
 		assert.Equal(t, uint64(10), follower.highestSeenDAHeight.Load(), "highestSeen should be updated")
 	})
 }

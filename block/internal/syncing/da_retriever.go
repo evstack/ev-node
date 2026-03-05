@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"sync"
+	"sync/atomic"
 
 	"github.com/rs/zerolog"
 	"google.golang.org/protobuf/proto"
@@ -43,12 +44,13 @@ type daRetriever struct {
 
 	// transient cache, only full event need to be passed to the syncer
 	// on restart, will be refetch as da height is updated by syncer
+	pendingMu      sync.Mutex
 	pendingHeaders map[uint64]*types.SignedHeader
 	pendingData    map[uint64]*types.Data
 
 	// strictMode indicates if the node has seen a valid DAHeaderEnvelope
 	// and should now reject all legacy/unsigned headers.
-	strictMode bool
+	strictMode atomic.Bool
 
 	// priorityMu protects priorityHeights from concurrent access
 	priorityMu sync.Mutex
@@ -71,7 +73,6 @@ func NewDARetriever(
 		logger:          logger.With().Str("component", "da_retriever").Logger(),
 		pendingHeaders:  make(map[uint64]*types.SignedHeader),
 		pendingData:     make(map[uint64]*types.Data),
-		strictMode:      false,
 		priorityHeights: make([]uint64, 0),
 	}
 }
@@ -198,41 +199,55 @@ func (r *daRetriever) validateBlobResponse(res datypes.ResultRetrieve, daHeight 
 // This is the public interface used by the DAFollower for inline subscription processing.
 //
 // NOT thread-safe: the caller (DAFollower) must ensure exclusive access via CAS
-// on localDAHeight before calling this method.
+// on localNextDAHeight before calling this method.
 func (r *daRetriever) ProcessBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent {
 	return r.processBlobs(ctx, blobs, daHeight)
 }
 
 // processBlobs processes retrieved blobs to extract headers and data and returns height events
 func (r *daRetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent {
-	// Decode all blobs
+	var decodedHeaders []*types.SignedHeader
+	var decodedData []*types.Data
+
+	// Decode all blobs first without holding the lock
 	for _, bz := range blobs {
 		if len(bz) == 0 {
 			continue
 		}
 
 		if header := r.tryDecodeHeader(bz, daHeight); header != nil {
-			if _, ok := r.pendingHeaders[header.Height()]; ok {
-				// a (malicious) node may have re-published valid header to another da height (should never happen)
-				// we can already discard it, only the first one is valid
-				r.logger.Debug().Uint64("height", header.Height()).Uint64("da_height", daHeight).Msg("header blob already exists for height, discarding")
-				continue
-			}
-
-			r.pendingHeaders[header.Height()] = header
+			decodedHeaders = append(decodedHeaders, header)
 			continue
 		}
 
 		if data := r.tryDecodeData(bz, daHeight); data != nil {
-			if _, ok := r.pendingData[data.Height()]; ok {
-				// a (malicious) node may have re-published valid data to another da height (should never happen)
-				// we can already discard it, only the first one is valid
-				r.logger.Debug().Uint64("height", data.Height()).Uint64("da_height", daHeight).Msg("data blob already exists for height, discarding")
-				continue
-			}
-
-			r.pendingData[data.Height()] = data
+			decodedData = append(decodedData, data)
 		}
+	}
+
+	r.pendingMu.Lock()
+	defer r.pendingMu.Unlock()
+
+	for _, header := range decodedHeaders {
+		if _, ok := r.pendingHeaders[header.Height()]; ok {
+			// a (malicious) node may have re-published valid header to another da height (should never happen)
+			// we can already discard it, only the first one is valid
+			r.logger.Debug().Uint64("height", header.Height()).Uint64("da_height", daHeight).Msg("header blob already exists for height, discarding")
+			continue
+		}
+
+		r.pendingHeaders[header.Height()] = header
+	}
+
+	for _, data := range decodedData {
+		if _, ok := r.pendingData[data.Height()]; ok {
+			// a (malicious) node may have re-published valid data to another da height (should never happen)
+			// we can already discard it, only the first one is valid
+			r.logger.Debug().Uint64("height", data.Height()).Uint64("da_height", daHeight).Msg("data blob already exists for height, discarding")
+			continue
+		}
+
+		r.pendingData[data.Height()] = data
 	}
 
 	var events []common.DAHeightEvent
@@ -294,7 +309,7 @@ func (r *daRetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedH
 	// Attempt to unmarshal as DAHeaderEnvelope and get the envelope signature
 	if envelopeSignature, err := header.UnmarshalDAEnvelope(bz); err != nil {
 		// If in strict mode, we REQUIRE an envelope.
-		if r.strictMode {
+		if r.strictMode.Load() {
 			r.logger.Warn().Err(err).Msg("strict mode is enabled, rejecting non-envelope blob")
 			return nil
 		}
@@ -328,14 +343,14 @@ func (r *daRetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedH
 			isValidEnvelope = true
 		}
 	}
-	if r.strictMode && !isValidEnvelope {
+	if r.strictMode.Load() && !isValidEnvelope {
 		r.logger.Warn().Msg("strict mode: rejecting block that is not a fully valid envelope")
 		return nil
 	}
 	// Mode Switch Logic
-	if isValidEnvelope && !r.strictMode {
+	if isValidEnvelope && !r.strictMode.Load() {
 		r.logger.Info().Uint64("height", header.Height()).Msg("valid DA envelope detected, switching to STRICT MODE")
-		r.strictMode = true
+		r.strictMode.Store(true)
 	}
 
 	// Legacy blob support implies: strictMode == false AND (!isValidEnvelope).

@@ -222,11 +222,21 @@ func (d *LocalDA) SubmitWithOptions(ctx context.Context, blobs []datypes.Blob, g
 	ids := make([]datypes.ID, len(blobs))
 	d.height += 1
 	d.timestamps[d.height] = d.monotonicTime()
+
+	nspace, _ := libshare.NewNamespaceFromBytes(ns)
+	rpcBlobs := make([]*blobrpc.Blob, len(blobs))
+
 	for i, blob := range blobs {
 		ids[i] = append(d.nextID(), d.getHash(blob)...)
 
 		d.data[d.height] = append(d.data[d.height], kvp{ids[i], blob})
+
+		if b, err := blobrpc.NewBlobV0(nspace, blob); err == nil {
+			rpcBlobs[i] = b
+		}
 	}
+	d.blobData[d.height] = rpcBlobs
+
 	d.notifySubscribers(d.height)
 	d.logger.Info().Uint64("newHeight", d.height).Int("count", len(ids)).Msg("SubmitWithOptions successful")
 	return ids, nil
@@ -253,11 +263,21 @@ func (d *LocalDA) Submit(ctx context.Context, blobs []datypes.Blob, gasPrice flo
 	ids := make([]datypes.ID, len(blobs))
 	d.height += 1
 	d.timestamps[d.height] = d.monotonicTime()
+
+	nspace, _ := libshare.NewNamespaceFromBytes(ns)
+	rpcBlobs := make([]*blobrpc.Blob, len(blobs))
+
 	for i, blob := range blobs {
 		ids[i] = append(d.nextID(), d.getHash(blob)...)
 
 		d.data[d.height] = append(d.data[d.height], kvp{ids[i], blob})
+
+		if b, err := blobrpc.NewBlobV0(nspace, blob); err == nil {
+			rpcBlobs[i] = b
+		}
 	}
+	d.blobData[d.height] = rpcBlobs
+
 	d.notifySubscribers(d.height)
 	d.logger.Info().Uint64("newHeight", d.height).Int("count", len(ids)).Msg("Submit successful")
 	return ids, nil

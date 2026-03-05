@@ -79,7 +79,6 @@ type Syncer struct {
 	p2pHandler    p2pHandler
 	raftRetriever *raftRetriever
 
-	// DA follower (replaces the old polling daWorkerLoop)
 	daFollower DAFollower
 
 	// Forced inclusion tracking
@@ -209,6 +208,8 @@ func (s *Syncer) Start(ctx context.Context) error {
 		DABlockTime:   s.config.DA.BlockTime.Duration,
 	})
 	if err := s.daFollower.Start(ctx); err != nil {
+		s.cancel()
+		s.wg.Wait()
 		return fmt.Errorf("failed to start DA follower: %w", err)
 	}
 
@@ -393,8 +394,6 @@ func (s *Syncer) HasReachedDAHead() bool {
 	}
 	return false
 }
-
-// fetchDAUntilCaughtUp was removed — the DAFollower handles this concern.
 
 // PendingCount returns the number of unprocessed height events in the pipeline.
 func (s *Syncer) PendingCount() int {

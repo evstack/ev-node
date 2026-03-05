@@ -43,8 +43,8 @@ func BenchmarkSyncerIO(b *testing.B) {
 				fixt := newBenchFixture(b, spec.heights, spec.shuffledTx, spec.daDelay, spec.execDelay, true)
 
 				// run both loops
-				ctx := b.Context()
-				go fixt.s.processLoop(ctx)
+				runCtx := fixt.s.ctx
+				go fixt.s.processLoop(runCtx)
 
 				// Create a DAFollower to drive DA retrieval.
 				follower := NewDAFollower(DAFollowerConfig{
@@ -56,12 +56,12 @@ func BenchmarkSyncerIO(b *testing.B) {
 					DABlockTime:   0,
 				}).(*daFollower)
 				follower.highestSeenDAHeight.Store(spec.heights + daHeightOffset)
-				go follower.runCatchup(ctx)
+				go follower.runCatchup(runCtx)
 
-				fixt.s.startSyncWorkers(ctx)
+				fixt.s.startSyncWorkers(runCtx)
 
 				require.Eventually(b, func() bool {
-					processedHeight, _ := fixt.s.store.Height(ctx)
+					processedHeight, _ := fixt.s.store.Height(b.Context())
 					return processedHeight == spec.heights
 				}, 5*time.Second, 50*time.Microsecond)
 				fixt.s.cancel()
@@ -75,7 +75,7 @@ func BenchmarkSyncerIO(b *testing.B) {
 				require.Len(b, fixt.s.heightInCh, 0)
 
 				assert.Equal(b, spec.heights+daHeightOffset, fixt.s.daRetrieverHeight)
-				gotStoreHeight, err := fixt.s.store.Height(ctx)
+				gotStoreHeight, err := fixt.s.store.Height(b.Context())
 				require.NoError(b, err)
 				assert.Equal(b, spec.heights, gotStoreHeight)
 			}
