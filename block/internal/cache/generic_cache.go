@@ -3,11 +3,13 @@ package cache
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
 
 	lru "github.com/hashicorp/golang-lru/v2"
+	ds "github.com/ipfs/go-datastore"
 
 	"github.com/evstack/ev-node/pkg/store"
 )
@@ -266,7 +268,10 @@ func (c *Cache[T]) RestoreFromStore(ctx context.Context) error {
 
 	buf, err := c.store.GetMetadata(ctx, c.snapshotKey())
 	if err != nil {
-		return nil //nolint:nilerr // key absent = nothing to restore
+		if errors.Is(err, ds.ErrNotFound) {
+			return nil // key absent = fresh node or pre-snapshot version, nothing to restore
+		}
+		return fmt.Errorf("reading cache snapshot from store: %w", err)
 	}
 
 	for _, e := range decodeSnapshot(buf) {
