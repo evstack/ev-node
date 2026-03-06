@@ -124,7 +124,7 @@ func TestSubmitter_IsHeightDAIncluded(t *testing.T) {
 
 	h1, d1 := newHeaderAndData("chain", 3, true)
 	h2, d2 := newHeaderAndData("chain", 4, true)
-	h3, d3 := newHeaderAndData("chain", 2, true) // already DA included, cache was cleared
+	_, d3 := newHeaderAndData("chain", 2, true) // already DA included, cache was cleared
 
 	cm.SetHeaderDAIncluded(h1.Hash().String(), 100, 3)
 	cm.SetDataDAIncluded(d1.DACommitment().String(), 100, 3)
@@ -134,21 +134,20 @@ func TestSubmitter_IsHeightDAIncluded(t *testing.T) {
 
 	specs := map[string]struct {
 		height uint64
-		header *types.SignedHeader
 		data   *types.Data
 		exp    bool
 		expErr bool
 	}{
-		"below store height and cached":          {height: 3, header: h1, data: d1, exp: true},
-		"above store height":                     {height: 6, header: h2, data: d2, exp: false},
-		"data missing":                           {height: 4, header: h2, data: d2, exp: false},
-		"at daIncludedHeight - cache cleared":    {height: 2, header: h3, data: d3, exp: true},
-		"below daIncludedHeight - cache cleared": {height: 1, header: h3, data: d3, exp: true},
+		"below store height and cached":          {height: 3, data: d1, exp: true},
+		"above store height":                     {height: 6, data: d2, exp: false},
+		"data missing":                           {height: 4, data: d2, exp: false},
+		"at daIncludedHeight - cache cleared":    {height: 2, data: d3, exp: true},
+		"below daIncludedHeight - cache cleared": {height: 1, data: d3, exp: true},
 	}
 
 	for name, spec := range specs {
 		t.Run(name, func(t *testing.T) {
-			included, err := s.IsHeightDAIncluded(spec.height, spec.header, spec.data)
+			included, err := s.IsHeightDAIncluded(spec.height, spec.data)
 			if spec.expErr {
 				require.Error(t, err)
 				return
@@ -200,7 +199,7 @@ func TestSubmitter_setSequencerHeightToDAHeight(t *testing.T) {
 	mockStore.On("SetMetadata", mock.Anything, dataKey, dBz).Return(nil).Once()
 	mockStore.On("SetMetadata", mock.Anything, store.GenesisDAHeightKey, gBz).Return(nil).Once()
 
-	require.NoError(t, s.setNodeHeightToDAHeight(ctx, 1, h, d, true))
+	require.NoError(t, s.setNodeHeightToDAHeight(ctx, 1, d, true))
 }
 
 func TestSubmitter_setNodeHeightToDAHeight_Errors(t *testing.T) {
@@ -214,11 +213,11 @@ func TestSubmitter_setNodeHeightToDAHeight_Errors(t *testing.T) {
 	// No cache entries -> expect error on missing header
 	_, ok := cm.GetHeaderDAIncluded(h.Hash().String())
 	assert.False(t, ok)
-	assert.Error(t, s.setNodeHeightToDAHeight(ctx, 1, h, d, false))
+	assert.Error(t, s.setNodeHeightToDAHeight(ctx, 1, d, false))
 
 	// Add header, missing data
 	cm.SetHeaderDAIncluded(h.Hash().String(), 10, 1)
-	assert.Error(t, s.setNodeHeightToDAHeight(ctx, 1, h, d, false))
+	assert.Error(t, s.setNodeHeightToDAHeight(ctx, 1, d, false))
 }
 
 func TestSubmitter_initializeDAIncludedHeight(t *testing.T) {
@@ -649,7 +648,7 @@ func TestSubmitter_IsHeightDAIncluded_AfterRestart(t *testing.T) {
 	_, realHeaderFound := cm2.GetHeaderDAIncluded(h3.Hash().String())
 	assert.False(t, realHeaderFound, "real hash must not be present before DA retriever re-fires")
 
-	included, err := s.IsHeightDAIncluded(3, h3, d3)
+	included, err := s.IsHeightDAIncluded(3, d3)
 	require.NoError(t, err)
 	assert.True(t, included,
 		"IsHeightDAIncluded must return true for in-flight height using snapshot placeholder, "+
@@ -662,7 +661,7 @@ func TestSubmitter_IsHeightDAIncluded_AfterRestart(t *testing.T) {
 	_, realHeaderFound = cm2.GetHeaderDAIncluded(h3.Hash().String())
 	assert.True(t, realHeaderFound, "real hash must be present after DA retriever re-fires")
 
-	included, err = s.IsHeightDAIncluded(3, h3, d3)
+	included, err = s.IsHeightDAIncluded(3, d3)
 	require.NoError(t, err)
 	assert.True(t, included, "IsHeightDAIncluded must still return true after real hash is written")
 }
@@ -675,9 +674,9 @@ func TestSubmitter_IsHeightDAIncluded_AfterRestart(t *testing.T) {
 // The bug this guards against:
 //   - Snapshot encodes [blockHeight → daHeight] pairs, not real content hashes.
 //   - On restart, RestoreFromStore installs placeholder keys (indexed by height).
-//   - setNodeHeightToDAHeight calls GetHeaderDAIncluded(realHash) which MISSES.
-//   - Without the height-based fallback it returns an error and processDAInclusionLoop
-//     logs the error and stalls — the submitter can never write HeightToDAHeight
+//   - setNodeHeightToDAHeight uses GetHeaderDAIncludedByHeight which resolves
+//     the placeholder entry directly, so it succeeds before the DA retriever
+//     re-fires SetHeaderDAIncluded with the real content hash.
 //     metadata and DAIncludedHeight never advances.
 //   - With GetHeaderDAIncludedByHeight / GetDataDAIncludedByHeight the lookup
 //     succeeds via the placeholder and the metadata is written correctly.
@@ -735,9 +734,9 @@ func TestSubmitter_setNodeHeightToDAHeight_AfterRestart(t *testing.T) {
 	// ── Step 3: call setNodeHeightToDAHeight — must succeed via fallback ──────
 	// Before this fix, GetHeaderDAIncluded(realHash) would miss and the function
 	// would return an error, stalling processDAInclusionLoop.
-	err = s.setNodeHeightToDAHeight(ctx, 3, h3, d3, false)
+	err = s.setNodeHeightToDAHeight(ctx, 3, d3, false)
 	require.NoError(t, err,
-		"setNodeHeightToDAHeight must succeed via height-based fallback before DA retriever re-fires")
+		"setNodeHeightToDAHeight must succeed via height-based lookup before DA retriever re-fires")
 
 	// ── Step 4: verify the HeightToDAHeight metadata was written correctly ─────
 	headerDABz, err := st1.GetMetadata(ctx, store.GetHeightToDAHeightHeaderKey(3))
@@ -756,6 +755,6 @@ func TestSubmitter_setNodeHeightToDAHeight_AfterRestart(t *testing.T) {
 	cm2.SetHeaderDAIncluded(h3.Hash().String(), 12, 3)
 	cm2.SetDataDAIncluded(d3.DACommitment().String(), 12, 3)
 
-	err = s.setNodeHeightToDAHeight(ctx, 3, h3, d3, false)
+	err = s.setNodeHeightToDAHeight(ctx, 3, d3, false)
 	require.NoError(t, err, "setNodeHeightToDAHeight must still work once real hashes are populated")
 }

@@ -324,20 +324,20 @@ func (s *Submitter) processDAInclusionLoop() {
 				nextHeight := currentDAIncluded + 1
 
 				// Get block data first
-				header, data, err := s.store.GetBlockData(s.ctx, nextHeight)
+				_, data, err := s.store.GetBlockData(s.ctx, nextHeight)
 				if err != nil {
 					break
 				}
 
 				// Check if this height is DA included
-				if included, err := s.IsHeightDAIncluded(nextHeight, header, data); err != nil || !included {
+				if included, err := s.IsHeightDAIncluded(nextHeight, data); err != nil || !included {
 					break
 				}
 
 				s.logger.Debug().Uint64("height", nextHeight).Msg("advancing DA included height")
 
 				// Set node height to DA height mapping using already retrieved data
-				if err := s.setNodeHeightToDAHeight(s.ctx, nextHeight, header, data, currentDAIncluded == 0); err != nil {
+				if err := s.setNodeHeightToDAHeight(s.ctx, nextHeight, data, currentDAIncluded == 0); err != nil {
 					s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("failed to set node height to DA height mapping")
 					break
 				}
@@ -428,18 +428,13 @@ func (s *Submitter) sendCriticalError(err error) {
 
 // setNodeHeightToDAHeight persists the DA heights for a block's header and data.
 // For empty-tx blocks, both use the header DA height since no data blob is posted.
-func (s *Submitter) setNodeHeightToDAHeight(ctx context.Context, height uint64, header *types.SignedHeader, data *types.Data, genesisInclusion bool) error {
-	headerHash, dataHash := header.Hash(), data.DACommitment()
+func (s *Submitter) setNodeHeightToDAHeight(ctx context.Context, height uint64, data *types.Data, genesisInclusion bool) error {
+	dataHash := data.DACommitment()
 
 	headerDaHeightBytes := make([]byte, 8)
-	// Try real hash first; fall back to height-based lookup for post-restart
-	// placeholders (before the DA retriever has re-fired the real hash).
-	daHeightForHeader, ok := s.cache.GetHeaderDAIncluded(headerHash.String())
+	daHeightForHeader, ok := s.cache.GetHeaderDAIncludedByHeight(height)
 	if !ok {
-		daHeightForHeader, ok = s.cache.GetHeaderDAIncludedByHeight(height)
-	}
-	if !ok {
-		return fmt.Errorf("header hash %s not found in cache for height %d", headerHash, height)
+		return fmt.Errorf("header for height %d not found in cache", height)
 	}
 	binary.LittleEndian.PutUint64(headerDaHeightBytes, daHeightForHeader)
 
@@ -453,12 +448,9 @@ func (s *Submitter) setNodeHeightToDAHeight(ctx context.Context, height uint64, 
 	if bytes.Equal(dataHash, common.DataHashForEmptyTxs) {
 		binary.LittleEndian.PutUint64(dataDaHeightBytes, daHeightForHeader)
 	} else {
-		daHeightForData, ok := s.cache.GetDataDAIncluded(dataHash.String())
+		daHeightForData, ok := s.cache.GetDataDAIncludedByHeight(height)
 		if !ok {
-			daHeightForData, ok = s.cache.GetDataDAIncludedByHeight(height)
-		}
-		if !ok {
-			return fmt.Errorf("data hash %s not found in cache for height %d", dataHash.String(), height)
+			return fmt.Errorf("data for height %d not found in cache", height)
 		}
 		binary.LittleEndian.PutUint64(dataDaHeightBytes, daHeightForData)
 
@@ -487,7 +479,7 @@ func (s *Submitter) setNodeHeightToDAHeight(ctx context.Context, height uint64, 
 }
 
 // IsHeightDAIncluded reports whether the block at height has been DA-included.
-func (s *Submitter) IsHeightDAIncluded(height uint64, header *types.SignedHeader, data *types.Data) (bool, error) {
+func (s *Submitter) IsHeightDAIncluded(height uint64, data *types.Data) (bool, error) {
 	// Already finalized — cache entries were cleared, but we know it's included.
 	if height <= s.GetDAIncludedHeight() {
 		return true, nil
@@ -504,17 +496,8 @@ func (s *Submitter) IsHeightDAIncluded(height uint64, header *types.SignedHeader
 
 	dataCommitment := data.DACommitment()
 
-	// Try real hash first; fall back to height-based lookup for post-restart
-	// state before the DA retriever has re-fired the real hashes.
-	_, headerIncluded := s.cache.GetHeaderDAIncluded(header.Hash().String())
-	_, dataIncluded := s.cache.GetDataDAIncluded(dataCommitment.String())
-
-	if !headerIncluded {
-		_, headerIncluded = s.cache.GetHeaderDAIncludedByHeight(height)
-	}
-	if !dataIncluded {
-		_, dataIncluded = s.cache.GetDataDAIncludedByHeight(height)
-	}
+	_, headerIncluded := s.cache.GetHeaderDAIncludedByHeight(height)
+	_, dataIncluded := s.cache.GetDataDAIncludedByHeight(height)
 
 	dataIncluded = bytes.Equal(dataCommitment, common.DataHashForEmptyTxs) || dataIncluded
 
