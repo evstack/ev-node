@@ -325,10 +325,14 @@ func TestCache_ClearFromStore(t *testing.T) {
 	c.setDAIncluded("hash1", 100, 1)
 	c.setDAIncluded("hash2", 200, 2)
 
+	// Verify the snapshot key was written before clearing.
+	_, err := st.GetMetadata(ctx, "clear-test/__snap")
+	require.NoError(t, err, "snapshot key should exist before ClearFromStore")
+
 	require.NoError(t, c.ClearFromStore(ctx))
 
-	_, err := st.GetMetadata(ctx, "clear-test/hash1")
-	assert.Error(t, err, "key should have been removed from store")
+	_, err = st.GetMetadata(ctx, "clear-test/__snap")
+	assert.Error(t, err, "snapshot key should have been removed from store")
 }
 
 // ---------------------------------------------------------------------------

@@ -1368,7 +1368,7 @@ func TestSequencer_CatchUp_SkipsMempoolDuringCatchUp(t *testing.T) {
 	require.NoError(t, err)
 
 	// Submit several mempool transactions
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		_, err = seq.SubmitBatchTxs(ctx, coresequencer.SubmitBatchTxsRequest{
 			Id:    []byte("test-chain"),
 			Batch: &coresequencer.Batch{Transactions: [][]byte{[]byte("mempool-tx")}},
@@ -1741,7 +1741,7 @@ func TestSequencer_CatchUp_MultiEpochReplay(t *testing.T) {
 	}
 
 	// Process the 3 old epochs — all should be catch-up (no mempool)
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		resp, err := seq.GetNextBatch(ctx, req)
 		require.NoError(t, err)
 		assert.True(t, seq.isCatchingUp(), "should be catching up during epoch %d", 100+i)
@@ -2005,7 +2005,7 @@ func TestSequencer_CatchUp_MonotonicTimestamps(t *testing.T) {
 
 	// Produce 3 blocks from epoch 100 (1 tx each due to gas filter)
 	var timestamps []time.Time
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		resp, err := seq.GetNextBatch(ctx, req)
 		require.NoError(t, err)
 		assert.True(t, seq.isCatchingUp(), "should be catching up during block %d", i)

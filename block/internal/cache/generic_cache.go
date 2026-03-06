@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -148,14 +149,14 @@ func (c *Cache[T]) setDAIncluded(hash string, daHeight uint64, blockHeight uint6
 	c.daIncluded.Add(hash, daHeight)
 	c.hashByHeight.Add(blockHeight, hash)
 	c.setMaxDAHeight(daHeight)
-	c.persistSnapshot(context.Background())
+	_ = c.persistSnapshot(context.Background())
 }
 
 // removeDAIncluded removes the DA-included status of the hash from the cache
 // and rewrites the window snapshot.
 func (c *Cache[T]) removeDAIncluded(hash string) {
 	c.daIncluded.Remove(hash)
-	c.persistSnapshot(context.Background())
+	_ = c.persistSnapshot(context.Background())
 }
 
 // daHeight returns the maximum DA height from all DA-included items.
@@ -200,15 +201,15 @@ func (c *Cache[T]) deleteAllForHeight(height uint64) {
 		c.daIncluded.Remove(hash)
 	}
 
-	c.persistSnapshot(context.Background())
+	_ = c.persistSnapshot(context.Background())
 }
 
 // persistSnapshot writes all current in-flight [blockHeight, daHeight] pairs
 // to the store under a single key. Called on every mutation; payload is tiny
 // (typically <10 entries × 16 bytes).
-func (c *Cache[T]) persistSnapshot(ctx context.Context) {
+func (c *Cache[T]) persistSnapshot(ctx context.Context) error {
 	if c.store == nil || c.storeKeyPrefix == "" {
-		return
+		return nil
 	}
 
 	heights := c.hashByHeight.Keys()
@@ -225,7 +226,7 @@ func (c *Cache[T]) persistSnapshot(ctx context.Context) {
 		entries = append(entries, snapshotEntry{blockHeight: h, daHeight: daH})
 	}
 
-	_ = c.store.SetMetadata(ctx, c.snapshotKey(), encodeSnapshot(entries))
+	return c.store.SetMetadata(ctx, c.snapshotKey(), encodeSnapshot(entries))
 }
 
 // encodeSnapshot serialises a slice of snapshotEntry values into a byte slice.
@@ -298,7 +299,9 @@ func (c *Cache[T]) SaveToStore(ctx context.Context) error {
 	if c.store == nil {
 		return nil
 	}
-	c.persistSnapshot(ctx)
+	if err := c.persistSnapshot(ctx); err != nil {
+		return fmt.Errorf("saving cache snapshot: %w", err)
+	}
 	return nil
 }
 
@@ -307,6 +310,8 @@ func (c *Cache[T]) ClearFromStore(ctx context.Context) error {
 	if c.store == nil {
 		return nil
 	}
-	_ = c.store.DeleteMetadata(ctx, c.snapshotKey())
+	if err := c.store.DeleteMetadata(ctx, c.snapshotKey()); err != nil {
+		return fmt.Errorf("clearing cache snapshot: %w", err)
+	}
 	return nil
 }
