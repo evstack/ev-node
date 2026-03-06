@@ -211,7 +211,7 @@ func TestSubmitter_setNodeHeightToDAHeight_Errors(t *testing.T) {
 	h, d := newHeaderAndData("chain", 1, true)
 
 	// No cache entries -> expect error on missing header
-	_, ok := cm.GetHeaderDAIncluded(h.Hash().String())
+	_, ok := cm.GetHeaderDAIncludedByHash(h.Hash().String())
 	assert.False(t, ok)
 	assert.Error(t, s.setNodeHeightToDAHeight(ctx, 1, d, false))
 
@@ -537,10 +537,10 @@ func TestSubmitter_CacheClearedOnHeightInclusion(t *testing.T) {
 	assert.False(t, cm.IsDataSeen(d2.DACommitment().String()), "height 2 data should be cleared from cache")
 
 	// Verify DA inclusion status is removed for processed heights (cleaned up after finalization)
-	_, h1DAIncluded := cm.GetHeaderDAIncluded(h1.Hash().String())
-	_, d1DAIncluded := cm.GetDataDAIncluded(d1.DACommitment().String())
-	_, h2DAIncluded := cm.GetHeaderDAIncluded(h2.Hash().String())
-	_, d2DAIncluded := cm.GetDataDAIncluded(d2.DACommitment().String())
+	_, h1DAIncluded := cm.GetHeaderDAIncludedByHash(h1.Hash().String())
+	_, d1DAIncluded := cm.GetDataDAIncludedByHash(d1.DACommitment().String())
+	_, h2DAIncluded := cm.GetHeaderDAIncludedByHash(h2.Hash().String())
+	_, d2DAIncluded := cm.GetDataDAIncludedByHash(d2.DACommitment().String())
 	assert.False(t, h1DAIncluded, "height 1 header DA inclusion status should be removed after finalization")
 	assert.False(t, d1DAIncluded, "height 1 data DA inclusion status should be removed after finalization")
 	assert.False(t, h2DAIncluded, "height 2 header DA inclusion status should be removed after finalization")
@@ -551,8 +551,8 @@ func TestSubmitter_CacheClearedOnHeightInclusion(t *testing.T) {
 	assert.True(t, cm.IsDataSeen(d3.DACommitment().String()), "height 3 data should remain in cache")
 
 	// Verify height 3 has no DA inclusion status since it wasn't processed
-	_, h3DAIncluded := cm.GetHeaderDAIncluded(h3.Hash().String())
-	_, d3DAIncluded := cm.GetDataDAIncluded(d3.DACommitment().String())
+	_, h3DAIncluded := cm.GetHeaderDAIncludedByHash(h3.Hash().String())
+	_, d3DAIncluded := cm.GetDataDAIncludedByHash(d3.DACommitment().String())
 	assert.False(t, h3DAIncluded, "height 3 header should not have DA inclusion status")
 	assert.False(t, d3DAIncluded, "height 3 data should not have DA inclusion status")
 }
@@ -645,7 +645,7 @@ func TestSubmitter_IsHeightDAIncluded_AfterRestart(t *testing.T) {
 	// ── Step 3: check IsHeightDAIncluded BEFORE DA retriever re-fires ─────────
 	// Height 3 is in-flight: above daIncludedHeight (2) so we can't short-circuit.
 	// The real hashes are NOT in cm2 yet — only the snapshot placeholders are.
-	_, realHeaderFound := cm2.GetHeaderDAIncluded(h3.Hash().String())
+	_, realHeaderFound := cm2.GetHeaderDAIncludedByHash(h3.Hash().String())
 	assert.False(t, realHeaderFound, "real hash must not be present before DA retriever re-fires")
 
 	included, err := s.IsHeightDAIncluded(3, d3)
@@ -658,7 +658,7 @@ func TestSubmitter_IsHeightDAIncluded_AfterRestart(t *testing.T) {
 	cm2.SetHeaderDAIncluded(h3.Hash().String(), 12, 3)
 	cm2.SetDataDAIncluded(d3.DACommitment().String(), 12, 3)
 
-	_, realHeaderFound = cm2.GetHeaderDAIncluded(h3.Hash().String())
+	_, realHeaderFound = cm2.GetHeaderDAIncludedByHash(h3.Hash().String())
 	assert.True(t, realHeaderFound, "real hash must be present after DA retriever re-fires")
 
 	included, err = s.IsHeightDAIncluded(3, d3)
@@ -715,8 +715,8 @@ func TestSubmitter_setNodeHeightToDAHeight_AfterRestart(t *testing.T) {
 	require.NoError(t, err)
 
 	// Confirm the real content hashes are NOT present after restore.
-	_, realHdrFound := cm2.GetHeaderDAIncluded(h3.Hash().String())
-	_, realDataFound := cm2.GetDataDAIncluded(d3.DACommitment().String())
+	_, realHdrFound := cm2.GetHeaderDAIncludedByHash(h3.Hash().String())
+	_, realDataFound := cm2.GetDataDAIncludedByHash(d3.DACommitment().String())
 	require.False(t, realHdrFound, "real header hash must not be in cache before DA retriever re-fires")
 	require.False(t, realDataFound, "real data hash must not be in cache before DA retriever re-fires")
 
@@ -732,7 +732,7 @@ func TestSubmitter_setNodeHeightToDAHeight_AfterRestart(t *testing.T) {
 	}
 
 	// ── Step 3: call setNodeHeightToDAHeight — must succeed via fallback ──────
-	// Before this fix, GetHeaderDAIncluded(realHash) would miss and the function
+	// Before this fix, GetHeaderDAIncludedByHash(realHash) would miss and the function
 	// would return an error, stalling processDAInclusionLoop.
 	err = s.setNodeHeightToDAHeight(ctx, 3, d3, false)
 	require.NoError(t, err,

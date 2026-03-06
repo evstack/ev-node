@@ -46,9 +46,9 @@ func TestManager_HeaderDataOperations(t *testing.T) {
 
 	m.SetHeaderDAIncluded("h1", 10, 2)
 	m.SetDataDAIncluded("d1", 11, 2)
-	_, ok := m.GetHeaderDAIncluded("h1")
+	_, ok := m.GetHeaderDAIncludedByHeight(2)
 	assert.True(t, ok)
-	_, ok = m.GetDataDAIncluded("d1")
+	_, ok = m.GetDataDAIncludedByHeight(2)
 	assert.True(t, ok)
 }
 
@@ -143,7 +143,7 @@ func TestManager_SaveAndRestoreFromStore(t *testing.T) {
 	require.NoError(t, err)
 
 	// Height 1 is finalized (DAIncludedHeight = 1): IsHeightDAIncluded returns true
-	// via the height comparison, so GetHeaderDAIncluded is never consulted for it.
+	// via the height comparison, so GetHeaderDAIncludedByHash is never consulted for it.
 	// The cache entry is not restored — this is correct and intentional.
 
 	// Height 2 is in-flight: the window restore loads a placeholder entry keyed by
@@ -157,11 +157,11 @@ func TestManager_SaveAndRestoreFromStore(t *testing.T) {
 	m2.SetHeaderDAIncluded(h2.Hash().String(), 101, 2)
 	m2.SetDataDAIncluded(d2.DACommitment().String(), 101, 2)
 
-	daHeight, ok := m2.GetHeaderDAIncluded(h2.Hash().String())
+	daHeight, ok := m2.GetHeaderDAIncludedByHeight(2)
 	assert.True(t, ok)
 	assert.Equal(t, uint64(101), daHeight)
 
-	daHeight, ok = m2.GetDataDAIncluded(d2.DACommitment().String())
+	daHeight, ok = m2.GetDataDAIncludedByHeight(2)
 	assert.True(t, ok)
 	assert.Equal(t, uint64(101), daHeight)
 }
@@ -471,11 +471,11 @@ func TestManager_DAInclusionPersistence(t *testing.T) {
 	m2.SetHeaderDAIncluded(headerHash, 100, 1)
 	m2.SetDataDAIncluded(dataHash, 101, 1)
 
-	daHeight, ok := m2.GetHeaderDAIncluded(headerHash)
+	daHeight, ok := m2.GetHeaderDAIncludedByHeight(1)
 	assert.True(t, ok)
 	assert.Equal(t, uint64(100), daHeight)
 
-	daHeight, ok = m2.GetDataDAIncluded(dataHash)
+	daHeight, ok = m2.GetDataDAIncludedByHeight(1)
 	assert.True(t, ok)
 	assert.Equal(t, uint64(101), daHeight)
 }

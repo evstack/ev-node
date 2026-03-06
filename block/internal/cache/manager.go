@@ -34,10 +34,7 @@ type CacheManager interface {
 	// Header operations
 	IsHeaderSeen(hash string) bool
 	SetHeaderSeen(hash string, blockHeight uint64)
-	GetHeaderDAIncluded(hash string) (uint64, bool)
-	// GetHeaderDAIncludedByHeight looks up DA height via the height→hash index.
-	// Works for both real hashes (steady state) and snapshot placeholders
-	// (post-restart, before the DA retriever re-fires the real hash).
+	GetHeaderDAIncludedByHash(hash string) (uint64, bool)
 	GetHeaderDAIncludedByHeight(blockHeight uint64) (uint64, bool)
 	SetHeaderDAIncluded(hash string, daHeight uint64, blockHeight uint64)
 	RemoveHeaderDAIncluded(hash string)
@@ -45,9 +42,9 @@ type CacheManager interface {
 	// Data operations
 	IsDataSeen(hash string) bool
 	SetDataSeen(hash string, blockHeight uint64)
-	GetDataDAIncluded(hash string) (uint64, bool)
+	GetDataDAIncludedByHash(daCommitmentHash string) (uint64, bool)
 	GetDataDAIncludedByHeight(blockHeight uint64) (uint64, bool)
-	SetDataDAIncluded(hash string, daHeight uint64, blockHeight uint64)
+	SetDataDAIncluded(daCommitmentHash string, daHeight uint64, blockHeight uint64)
 	RemoveDataDAIncluded(hash string)
 
 	// Transaction operations
@@ -153,7 +150,7 @@ func (m *implementation) SetHeaderSeen(hash string, blockHeight uint64) {
 	m.headerCache.setSeen(hash, blockHeight)
 }
 
-func (m *implementation) GetHeaderDAIncluded(hash string) (uint64, bool) {
+func (m *implementation) GetHeaderDAIncludedByHash(hash string) (uint64, bool) {
 	return m.headerCache.getDAIncluded(hash)
 }
 
@@ -182,16 +179,16 @@ func (m *implementation) SetDataSeen(hash string, blockHeight uint64) {
 	m.dataCache.setSeen(hash, blockHeight)
 }
 
-func (m *implementation) GetDataDAIncluded(hash string) (uint64, bool) {
-	return m.dataCache.getDAIncluded(hash)
+func (m *implementation) GetDataDAIncludedByHash(daCommitmentHash string) (uint64, bool) {
+	return m.dataCache.getDAIncluded(daCommitmentHash)
 }
 
 func (m *implementation) GetDataDAIncludedByHeight(blockHeight uint64) (uint64, bool) {
 	return m.dataCache.getDAIncludedByHeight(blockHeight)
 }
 
-func (m *implementation) SetDataDAIncluded(hash string, daHeight uint64, blockHeight uint64) {
-	m.dataCache.setDAIncluded(hash, daHeight, blockHeight)
+func (m *implementation) SetDataDAIncluded(daCommitmentHash string, daHeight uint64, blockHeight uint64) {
+	m.dataCache.setDAIncluded(daCommitmentHash, daHeight, blockHeight)
 }
 
 func (m *implementation) RemoveDataDAIncluded(hash string) {

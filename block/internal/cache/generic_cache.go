@@ -126,8 +126,8 @@ func (c *Cache[T]) setSeen(hash string, height uint64) {
 }
 
 // getDAIncluded returns the DA height if the hash has been DA-included.
-func (c *Cache[T]) getDAIncluded(hash string) (uint64, bool) {
-	return c.daIncluded.Get(hash)
+func (c *Cache[T]) getDAIncluded(daCommitmentHash string) (uint64, bool) {
+	return c.daIncluded.Get(daCommitmentHash)
 }
 
 // getDAIncludedByHeight resolves DA height via the height→hash index.
