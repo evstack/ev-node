@@ -198,8 +198,6 @@ func (c *Cache[T]) deleteAllForHeight(height uint64) {
 
 	if ok {
 		c.hashes.Remove(hash)
-		// Remove from daIncluded without triggering a snapshot write — we will
-		// write the snapshot once below after the removal is applied.
 		c.daIncluded.Remove(hash)
 	}
 
