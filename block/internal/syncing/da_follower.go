@@ -111,6 +111,7 @@ func (f *daFollower) Start(ctx context.Context) error {
 
 	f.wg.Add(2)
 	go f.followLoop(ctx)
+	f.signalCatchup()
 	go f.catchupLoop(ctx)
 
 	f.logger.Info().
@@ -347,7 +348,7 @@ func (f *daFollower) runCatchup(ctx context.Context) {
 		local := f.localNextDAHeight.Load()
 		highest := f.highestSeenDAHeight.Load()
 
-		if local > highest {
+		if highest > 0 && local > highest {
 			// Caught up.
 			f.headReached.Store(true)
 			return

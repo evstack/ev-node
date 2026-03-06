@@ -161,11 +161,17 @@ func (s *Syncer) SetBlockSyncer(bs BlockSyncer) {
 }
 
 // Start begins the syncing component
-func (s *Syncer) Start(ctx context.Context) error {
+func (s *Syncer) Start(ctx context.Context) (err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	s.ctx, s.cancel = ctx, cancel
 
-	if err := s.initializeState(); err != nil {
+	defer func() {
+		if err != nil {
+			_ = s.Stop()
+		}
+	}()
+
+	if err = s.initializeState(); err != nil {
 		return fmt.Errorf("failed to initialize syncer state: %w", err)
 	}
 
@@ -177,14 +183,16 @@ func (s *Syncer) Start(ctx context.Context) error {
 
 	s.fiRetriever = da.NewForcedInclusionRetriever(s.daClient, s.logger, s.config, s.genesis.DAStartHeight, s.genesis.DAEpochForcedInclusion)
 	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.cache, s.genesis, s.logger)
-	if currentHeight, err := s.store.Height(ctx); err != nil {
-		s.logger.Error().Err(err).Msg("failed to set initial processed height for p2p handler")
+
+	currentHeight, initErr := s.store.Height(ctx)
+	if initErr != nil {
+		s.logger.Error().Err(initErr).Msg("failed to set initial processed height for p2p handler")
 	} else {
 		s.p2pHandler.SetProcessedHeight(currentHeight)
 	}
 
 	if s.raftRetriever != nil {
-		if err := s.raftRetriever.Start(ctx); err != nil {
+		if err = s.raftRetriever.Start(ctx); err != nil {
 			return fmt.Errorf("start raft retriever: %w", err)
 		}
 	}
@@ -207,9 +215,7 @@ func (s *Syncer) Start(ctx context.Context) error {
 		StartDAHeight: s.daRetrieverHeight.Load(),
 		DABlockTime:   s.config.DA.BlockTime.Duration,
 	})
-	if err := s.daFollower.Start(ctx); err != nil {
-		s.cancel()
-		s.wg.Wait()
+	if err = s.daFollower.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start DA follower: %w", err)
 	}
 

@@ -64,6 +64,7 @@ var RunCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("failed to create blob client: %w", err)
 		}
+		defer blobClient.Close()
 
 		daClient := block.NewDAClient(blobClient, nodeConfig, logger)
 
