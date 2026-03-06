@@ -18,6 +18,7 @@ import '.just/lint.just'
 import '.just/codegen.just'
 import '.just/run.just'
 import '.just/tools.just'
+import '.just/security.just'
 
 # List available recipes when running `just` with no args
 default:
