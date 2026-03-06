@@ -422,10 +422,7 @@ func (e *Executor) executionLoop() {
 			txsAvailable = false
 			// reset timer accounting for time spent producing the block
 			elapsed := time.Since(start)
-			remaining := e.config.Node.BlockTime.Duration - elapsed
-			if remaining <= 0 {
-				remaining = 0
-			}
+			remaining := max(e.config.Node.BlockTime.Duration-elapsed, 0)
 			blockTimer.Reset(remaining)
 
 		case <-lazyTimerCh:

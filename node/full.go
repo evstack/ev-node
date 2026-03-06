@@ -104,12 +104,12 @@ func newFullNode(
 	}
 
 	leaderFactory := func() (raftpkg.Runnable, error) {
-		logger.Info().Msg("Starting aggregator-MODE")
+		logger.Info().Msg("Starting aggregator node")
 		nodeConfig.Node.Aggregator = true
 		return newAggregatorMode(nodeConfig, signer, genesis, exec, sequencer, daClient, logger, evstore, blockMetrics, nodeOpts, raftNode, p2pClient)
 	}
 	followerFactory := func() (raftpkg.Runnable, error) {
-		logger.Info().Msg("Starting sync-MODE")
+		logger.Info().Msg("Starting syncing node")
 		nodeConfig.Node.Aggregator = false
 		return newSyncMode(nodeConfig, genesis, exec, daClient, logger, evstore, blockMetrics, nodeOpts, raftNode, p2pClient)
 	}
