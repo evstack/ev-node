@@ -354,9 +354,7 @@ func (s *Submitter) processDAInclusionLoop() {
 				currentDAIncluded = nextHeight
 
 				// Persist DA included height
-				bz := make([]byte, 8)
-				binary.LittleEndian.PutUint64(bz, nextHeight)
-				if err := s.store.SetMetadata(s.ctx, store.DAIncludedHeightKey, bz); err != nil {
+				if err := putUint64Metadata(s.ctx, s.store, store.DAIncludedHeightKey, nextHeight); err != nil {
 					s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("failed to persist DA included height")
 				}
 
@@ -415,6 +413,13 @@ func (s *Submitter) initializeDAIncludedHeight(ctx context.Context) error {
 	return nil
 }
 
+// putUint64Metadata encodes val as 8-byte little-endian and writes it to the store.
+func putUint64Metadata(ctx context.Context, st store.Store, key string, val uint64) error {
+	bz := make([]byte, 8)
+	binary.LittleEndian.PutUint64(bz, val)
+	return st.SetMetadata(ctx, key, bz)
+}
+
 // sendCriticalError sends a critical error to the error channel without blocking
 func (s *Submitter) sendCriticalError(err error) {
 	if s.errorCh != nil {
@@ -431,41 +436,33 @@ func (s *Submitter) sendCriticalError(err error) {
 func (s *Submitter) setNodeHeightToDAHeight(ctx context.Context, height uint64, data *types.Data, genesisInclusion bool) error {
 	dataHash := data.DACommitment()
 
-	headerDaHeightBytes := make([]byte, 8)
 	daHeightForHeader, ok := s.cache.GetHeaderDAIncludedByHeight(height)
 	if !ok {
 		return fmt.Errorf("header for height %d not found in cache", height)
 	}
-	binary.LittleEndian.PutUint64(headerDaHeightBytes, daHeightForHeader)
 
-	if err := s.store.SetMetadata(ctx, store.GetHeightToDAHeightHeaderKey(height), headerDaHeightBytes); err != nil {
+	if err := putUint64Metadata(ctx, s.store, store.GetHeightToDAHeightHeaderKey(height), daHeightForHeader); err != nil {
 		return err
 	}
 
 	genesisDAIncludedHeight := daHeightForHeader
-	dataDaHeightBytes := make([]byte, 8)
-	// For empty transactions, use the same DA height as the header
-	if bytes.Equal(dataHash, common.DataHashForEmptyTxs) {
-		binary.LittleEndian.PutUint64(dataDaHeightBytes, daHeightForHeader)
-	} else {
+	// For empty transactions, use the same DA height as the header.
+	dataDAHeight := daHeightForHeader
+	if !bytes.Equal(dataHash, common.DataHashForEmptyTxs) {
 		daHeightForData, ok := s.cache.GetDataDAIncludedByHeight(height)
 		if !ok {
 			return fmt.Errorf("data for height %d not found in cache", height)
 		}
-		binary.LittleEndian.PutUint64(dataDaHeightBytes, daHeightForData)
-
+		dataDAHeight = daHeightForData
 		// if data posted before header, use data da included height for genesis da height
 		genesisDAIncludedHeight = min(daHeightForData, genesisDAIncludedHeight)
 	}
-	if err := s.store.SetMetadata(ctx, store.GetHeightToDAHeightDataKey(height), dataDaHeightBytes); err != nil {
+	if err := putUint64Metadata(ctx, s.store, store.GetHeightToDAHeightDataKey(height), dataDAHeight); err != nil {
 		return err
 	}
 
 	if genesisInclusion {
-		genesisDAIncludedHeightBytes := make([]byte, 8)
-		binary.LittleEndian.PutUint64(genesisDAIncludedHeightBytes, genesisDAIncludedHeight)
-
-		if err := s.store.SetMetadata(ctx, store.GenesisDAHeightKey, genesisDAIncludedHeightBytes); err != nil {
+		if err := putUint64Metadata(ctx, s.store, store.GenesisDAHeightKey, genesisDAIncludedHeight); err != nil {
 			return err
 		}
 
