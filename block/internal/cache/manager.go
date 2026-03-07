@@ -387,23 +387,29 @@ func (m *implementation) ClearFromStore() error {
 	return nil
 }
 
+// getMetadataUint64 reads an 8-byte little-endian uint64 from store metadata.
+// Returns 0, false if the key is absent, errors, or the value is not 8 bytes.
+func getMetadataUint64(ctx context.Context, st store.Store, key string) (uint64, bool) {
+	b, err := st.GetMetadata(ctx, key)
+	if err != nil || len(b) != 8 {
+		return 0, false
+	}
+	return binary.LittleEndian.Uint64(b), true
+}
+
 // initDAHeightFromStore seeds maxDAHeight from the HeightToDAHeight metadata
 // written by the submitter for the last finalized block. This ensures
 // DaHeight() is non-zero on restart even when the in-flight snapshot is empty.
 func (m *implementation) initDAHeightFromStore(ctx context.Context) {
-	daIncludedBytes, err := m.store.GetMetadata(ctx, store.DAIncludedHeightKey)
-	if err != nil || len(daIncludedBytes) != 8 {
-		return
-	}
-	daIncludedHeight := binary.LittleEndian.Uint64(daIncludedBytes)
-	if daIncludedHeight == 0 {
+	daIncludedHeight, ok := getMetadataUint64(ctx, m.store, store.DAIncludedHeightKey)
+	if !ok || daIncludedHeight == 0 {
 		return
 	}
 
-	if b, err := m.store.GetMetadata(ctx, store.GetHeightToDAHeightHeaderKey(daIncludedHeight)); err == nil && len(b) == 8 {
-		m.headerCache.setMaxDAHeight(binary.LittleEndian.Uint64(b))
+	if h, ok := getMetadataUint64(ctx, m.store, store.GetHeightToDAHeightHeaderKey(daIncludedHeight)); ok {
+		m.headerCache.setMaxDAHeight(h)
 	}
-	if b, err := m.store.GetMetadata(ctx, store.GetHeightToDAHeightDataKey(daIncludedHeight)); err == nil && len(b) == 8 {
-		m.dataCache.setMaxDAHeight(binary.LittleEndian.Uint64(b))
+	if h, ok := getMetadataUint64(ctx, m.store, store.GetHeightToDAHeightDataKey(daIncludedHeight)); ok {
+		m.dataCache.setMaxDAHeight(h)
 	}
 }
