@@ -2,11 +2,18 @@ package store
 
 import (
 	"context"
+	"errors"
 
 	ds "github.com/ipfs/go-datastore"
 
 	"github.com/evstack/ev-node/types"
 )
+
+// ErrNotFound is returned when a key is not present in the store.
+var ErrNotFound = ds.ErrNotFound
+
+// IsNotFound reports whether err (or any error in its chain) is a not-found error.
+func IsNotFound(err error) bool { return errors.Is(err, ds.ErrNotFound) }
 
 // Batch provides atomic operations for the store
 type Batch interface {

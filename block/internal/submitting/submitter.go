@@ -349,14 +349,15 @@ func (s *Submitter) processDAInclusionLoop() {
 					return
 				}
 
+				// Persist DA included height before advancing in-memory state
+				if err := putUint64Metadata(s.ctx, s.store, store.DAIncludedHeightKey, nextHeight); err != nil {
+					s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("failed to persist DA included height")
+					break
+				}
+
 				// Update DA included height
 				s.SetDAIncludedHeight(nextHeight)
 				currentDAIncluded = nextHeight
-
-				// Persist DA included height
-				if err := putUint64Metadata(s.ctx, s.store, store.DAIncludedHeightKey, nextHeight); err != nil {
-					s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("failed to persist DA included height")
-				}
 
 				// Delete height cache for that height
 				// This can only be performed after the height has been persisted to store
