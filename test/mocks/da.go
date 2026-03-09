@@ -493,8 +493,8 @@ func (_c *MockClient_Submit_Call) RunAndReturn(run func(ctx context.Context, dat
 }
 
 // Subscribe provides a mock function for the type MockClient
-func (_mock *MockClient) Subscribe(ctx context.Context, namespace []byte) (<-chan da.SubscriptionEvent, error) {
-	ret := _mock.Called(ctx, namespace)
+func (_mock *MockClient) Subscribe(ctx context.Context, namespace []byte, fetchTimestamp bool) (<-chan da.SubscriptionEvent, error) {
+	ret := _mock.Called(ctx, namespace, fetchTimestamp)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Subscribe")
@@ -502,18 +502,18 @@ func (_mock *MockClient) Subscribe(ctx context.Context, namespace []byte) (<-cha
 
 	var r0 <-chan da.SubscriptionEvent
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []byte) (<-chan da.SubscriptionEvent, error)); ok {
-		return returnFunc(ctx, namespace)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []byte, bool) (<-chan da.SubscriptionEvent, error)); ok {
+		return returnFunc(ctx, namespace, fetchTimestamp)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []byte) <-chan da.SubscriptionEvent); ok {
-		r0 = returnFunc(ctx, namespace)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []byte, bool) <-chan da.SubscriptionEvent); ok {
+		r0 = returnFunc(ctx, namespace, fetchTimestamp)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(<-chan da.SubscriptionEvent)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, []byte) error); ok {
-		r1 = returnFunc(ctx, namespace)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []byte, bool) error); ok {
+		r1 = returnFunc(ctx, namespace, fetchTimestamp)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -528,11 +528,12 @@ type MockClient_Subscribe_Call struct {
 // Subscribe is a helper method to define mock.On call
 //   - ctx context.Context
 //   - namespace []byte
-func (_e *MockClient_Expecter) Subscribe(ctx interface{}, namespace interface{}) *MockClient_Subscribe_Call {
-	return &MockClient_Subscribe_Call{Call: _e.mock.On("Subscribe", ctx, namespace)}
+//   - fetchTimestamp bool
+func (_e *MockClient_Expecter) Subscribe(ctx interface{}, namespace interface{}, fetchTimestamp interface{}) *MockClient_Subscribe_Call {
+	return &MockClient_Subscribe_Call{Call: _e.mock.On("Subscribe", ctx, namespace, fetchTimestamp)}
 }
 
-func (_c *MockClient_Subscribe_Call) Run(run func(ctx context.Context, namespace []byte)) *MockClient_Subscribe_Call {
+func (_c *MockClient_Subscribe_Call) Run(run func(ctx context.Context, namespace []byte, fetchTimestamp bool)) *MockClient_Subscribe_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -542,9 +543,14 @@ func (_c *MockClient_Subscribe_Call) Run(run func(ctx context.Context, namespace
 		if args[1] != nil {
 			arg1 = args[1].([]byte)
 		}
+		var arg2 bool
+		if args[2] != nil {
+			arg2 = args[2].(bool)
+		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -555,7 +561,7 @@ func (_c *MockClient_Subscribe_Call) Return(subscriptionEventCh <-chan da.Subscr
 	return _c
 }
 
-func (_c *MockClient_Subscribe_Call) RunAndReturn(run func(ctx context.Context, namespace []byte) (<-chan da.SubscriptionEvent, error)) *MockClient_Subscribe_Call {
+func (_c *MockClient_Subscribe_Call) RunAndReturn(run func(ctx context.Context, namespace []byte, fetchTimestamp bool) (<-chan da.SubscriptionEvent, error)) *MockClient_Subscribe_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -60,7 +60,7 @@ func TestAsyncBlockRetriever_SubscriptionDrivenCaching(t *testing.T) {
 		Blobs:  testBlobs,
 	}
 
-	client.On("Subscribe", mock.Anything, fiNs).Return((<-chan datypes.SubscriptionEvent)(subCh), nil).Once()
+	client.On("Subscribe", mock.Anything, fiNs, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(subCh), nil).Once()
 	// Catchup loop may call Retrieve for heights beyond 100 — stub those.
 	client.On("Retrieve", mock.Anything, mock.Anything, fiNs).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture},
@@ -68,7 +68,7 @@ func TestAsyncBlockRetriever_SubscriptionDrivenCaching(t *testing.T) {
 
 	// On second subscribe (after watchdog timeout) just block forever.
 	blockCh := make(chan datypes.SubscriptionEvent)
-	client.On("Subscribe", mock.Anything, fiNs).Return((<-chan datypes.SubscriptionEvent)(blockCh), nil).Maybe()
+	client.On("Subscribe", mock.Anything, fiNs, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(blockCh), nil).Maybe()
 
 	logger := zerolog.Nop()
 	fetcher := NewAsyncBlockRetriever(client, logger, fiNs, 200*time.Millisecond, 100, 5)
@@ -109,9 +109,9 @@ func TestAsyncBlockRetriever_CatchupFillsGaps(t *testing.T) {
 	subCh := make(chan datypes.SubscriptionEvent, 1)
 	subCh <- datypes.SubscriptionEvent{Height: 105}
 
-	client.On("Subscribe", mock.Anything, fiNs).Return((<-chan datypes.SubscriptionEvent)(subCh), nil).Once()
+	client.On("Subscribe", mock.Anything, fiNs, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(subCh), nil).Once()
 	blockCh := make(chan datypes.SubscriptionEvent)
-	client.On("Subscribe", mock.Anything, fiNs).Return((<-chan datypes.SubscriptionEvent)(blockCh), nil).Maybe()
+	client.On("Subscribe", mock.Anything, fiNs, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(blockCh), nil).Maybe()
 
 	// Height 102 has blobs; rest return not found or future.
 	client.On("Retrieve", mock.Anything, uint64(102), fiNs).Return(datypes.ResultRetrieve{
@@ -159,9 +159,9 @@ func TestAsyncBlockRetriever_HeightFromFuture(t *testing.T) {
 	subCh := make(chan datypes.SubscriptionEvent, 1)
 	subCh <- datypes.SubscriptionEvent{Height: 100}
 
-	client.On("Subscribe", mock.Anything, fiNs).Return((<-chan datypes.SubscriptionEvent)(subCh), nil).Once()
+	client.On("Subscribe", mock.Anything, fiNs, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(subCh), nil).Once()
 	blockCh := make(chan datypes.SubscriptionEvent)
-	client.On("Subscribe", mock.Anything, fiNs).Return((<-chan datypes.SubscriptionEvent)(blockCh), nil).Maybe()
+	client.On("Subscribe", mock.Anything, fiNs, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(blockCh), nil).Maybe()
 
 	// All Retrieve calls return HeightFromFuture.
 	client.On("Retrieve", mock.Anything, mock.Anything, fiNs).Return(datypes.ResultRetrieve{
@@ -190,7 +190,7 @@ func TestAsyncBlockRetriever_StopGracefully(t *testing.T) {
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 
 	blockCh := make(chan datypes.SubscriptionEvent)
-	client.On("Subscribe", mock.Anything, fiNs).Return((<-chan datypes.SubscriptionEvent)(blockCh), nil).Maybe()
+	client.On("Subscribe", mock.Anything, fiNs, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(blockCh), nil).Maybe()
 
 	logger := zerolog.Nop()
 	fetcher := NewAsyncBlockRetriever(client, logger, fiNs, 100*time.Millisecond, 100, 10)
@@ -214,7 +214,7 @@ func TestAsyncBlockRetriever_ReconnectOnSubscriptionError(t *testing.T) {
 	// First subscription closes immediately (simulating error).
 	closedCh := make(chan datypes.SubscriptionEvent)
 	close(closedCh)
-	client.On("Subscribe", mock.Anything, fiNs).Return((<-chan datypes.SubscriptionEvent)(closedCh), nil).Once()
+	client.On("Subscribe", mock.Anything, fiNs, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(closedCh), nil).Once()
 
 	// Second subscription delivers a blob.
 	subCh := make(chan datypes.SubscriptionEvent, 1)
@@ -222,11 +222,11 @@ func TestAsyncBlockRetriever_ReconnectOnSubscriptionError(t *testing.T) {
 		Height: 100,
 		Blobs:  testBlobs,
 	}
-	client.On("Subscribe", mock.Anything, fiNs).Return((<-chan datypes.SubscriptionEvent)(subCh), nil).Once()
+	client.On("Subscribe", mock.Anything, fiNs, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(subCh), nil).Once()
 
 	// Third+ subscribe returns a blocking channel so it doesn't loop forever.
 	blockCh := make(chan datypes.SubscriptionEvent)
-	client.On("Subscribe", mock.Anything, fiNs).Return((<-chan datypes.SubscriptionEvent)(blockCh), nil).Maybe()
+	client.On("Subscribe", mock.Anything, fiNs, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(blockCh), nil).Maybe()
 
 	// Stub Retrieve for catchup.
 	client.On("Retrieve", mock.Anything, mock.Anything, fiNs).Return(datypes.ResultRetrieve{

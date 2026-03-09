@@ -71,7 +71,7 @@ func createTestSequencer(t *testing.T, mockRetriever *common.MockForcedInclusion
 	// Mock the forced inclusion namespace call
 	mockDAClient.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
 	mockDAClient.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
-	mockDAClient.MockClient.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
+	mockDAClient.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	mockExec := createDefaultMockExecutor(t)
 
@@ -470,7 +470,7 @@ func TestBasedSequencer_CheckpointPersistence(t *testing.T) {
 	}
 	mockDAClient.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
 	mockDAClient.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
-	mockDAClient.MockClient.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
+	mockDAClient.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	// Create first sequencer
 	mockExec1 := createDefaultMockExecutor(t)
@@ -498,7 +498,7 @@ func TestBasedSequencer_CheckpointPersistence(t *testing.T) {
 	}
 	mockDAClient2.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
 	mockDAClient2.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
-	mockDAClient2.MockClient.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
+	mockDAClient2.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 	mockExec2 := createDefaultMockExecutor(t)
 	seq2, err := NewBasedSequencer(mockDAClient2, config.DefaultConfig(), db, gen, zerolog.Nop(), mockExec2)
 	require.NoError(t, err)
@@ -545,7 +545,7 @@ func TestBasedSequencer_CrashRecoveryMidEpoch(t *testing.T) {
 
 	mockDAClient.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
 	mockDAClient.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
-	mockDAClient.MockClient.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
+	mockDAClient.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	// Create mock executor that postpones tx2 on first call
 	filterCallCount := 0
@@ -606,7 +606,7 @@ func TestBasedSequencer_CrashRecoveryMidEpoch(t *testing.T) {
 	}
 	mockDAClient2.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
 	mockDAClient2.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
-	mockDAClient2.MockClient.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
+	mockDAClient2.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	seq2, err := NewBasedSequencer(mockDAClient2, config.DefaultConfig(), db, gen, zerolog.Nop(), mockExec)
 	require.NoError(t, err)
@@ -932,7 +932,7 @@ func TestBasedSequencer_GetNextBatch_GasFilteringPreservesUnprocessedTxs(t *test
 	}
 	mockDAClient.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
 	mockDAClient.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
-	mockDAClient.MockClient.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
+	mockDAClient.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	seq, err := NewBasedSequencer(mockDAClient, config.DefaultConfig(), db, gen, zerolog.New(zerolog.NewTestWriter(t)), mockExec)
 	require.NoError(t, err)

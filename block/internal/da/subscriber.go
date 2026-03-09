@@ -34,6 +34,8 @@ type SubscriberConfig struct {
 	Namespaces  [][]byte // subscribe to all, merge into one channel
 	DABlockTime time.Duration
 	Handler     SubscriberHandler
+	// Deprecated: Remove with https://github.com/evstack/ev-node/issues/3142
+	FetchBlockTimestamp bool // the timestamp comes with an extra api call before Celestia v0.29.1-mocha.
 }
 
 // Subscriber is a shared DA subscription primitive that encapsulates the
@@ -66,6 +68,9 @@ type Subscriber struct {
 	// daBlockTime used as backoff and watchdog base.
 	daBlockTime time.Duration
 
+	// Deprecated: Remove with https://github.com/evstack/ev-node/issues/3142
+	fetchBlockTimestamp bool
+
 	// lifecycle
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -74,12 +79,13 @@ type Subscriber struct {
 // NewSubscriber creates a new Subscriber.
 func NewSubscriber(cfg SubscriberConfig) *Subscriber {
 	s := &Subscriber{
-		client:        cfg.Client,
-		logger:        cfg.Logger,
-		handler:       cfg.Handler,
-		namespaces:    cfg.Namespaces,
-		catchupSignal: make(chan struct{}, 1),
-		daBlockTime:   cfg.DABlockTime,
+		client:              cfg.Client,
+		logger:              cfg.Logger,
+		handler:             cfg.Handler,
+		namespaces:          cfg.Namespaces,
+		catchupSignal:       make(chan struct{}, 1),
+		daBlockTime:         cfg.DABlockTime,
+		fetchBlockTimestamp: cfg.FetchBlockTimestamp,
 	}
 	return s
 }
@@ -92,7 +98,7 @@ func (s *Subscriber) SetStartHeight(height uint64) {
 // Start begins the follow and catchup goroutines.
 func (s *Subscriber) Start(ctx context.Context) error {
 	if len(s.namespaces) == 0 {
-		return nil // Nothing to subscribe to.
+		return errors.New("no namespaces configured")
 	}
 
 	ctx, s.cancel = context.WithCancel(ctx)
@@ -227,7 +233,7 @@ func (s *Subscriber) subscribe(ctx context.Context) (<-chan datypes.Subscription
 	}
 
 	// Subscribe to the first namespace.
-	ch, err := s.client.Subscribe(ctx, s.namespaces[0])
+	ch, err := s.client.Subscribe(ctx, s.namespaces[0], s.fetchBlockTimestamp)
 	if err != nil {
 		return nil, fmt.Errorf("subscribe namespace 0: %w", err)
 	}
@@ -237,7 +243,7 @@ func (s *Subscriber) subscribe(ctx context.Context) (<-chan datypes.Subscription
 		if bytes.Equal(s.namespaces[i], s.namespaces[0]) {
 			continue // Same namespace, skip duplicate.
 		}
-		ch2, err := s.client.Subscribe(ctx, s.namespaces[i])
+		ch2, err := s.client.Subscribe(ctx, s.namespaces[i], s.fetchBlockTimestamp)
 		if err != nil {
 			return nil, fmt.Errorf("subscribe namespace %d: %w", i, err)
 		}
@@ -295,10 +301,6 @@ func (s *Subscriber) updateHighest(height uint64) {
 		}
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Catchup loop
-// ---------------------------------------------------------------------------
 
 // catchupLoop waits for signals and sequentially catches up.
 func (s *Subscriber) catchupLoop(ctx context.Context) {
@@ -369,10 +371,6 @@ func (s *Subscriber) waitOnCatchupError(ctx context.Context, err error, daHeight
 		return true
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Timing helpers
-// ---------------------------------------------------------------------------
 
 func (s *Subscriber) backoff() time.Duration {
 	if s.daBlockTime > 0 {

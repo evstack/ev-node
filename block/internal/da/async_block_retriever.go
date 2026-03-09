@@ -79,11 +79,12 @@ func NewAsyncBlockRetriever(
 	}
 
 	f.subscriber = NewSubscriber(SubscriberConfig{
-		Client:      client,
-		Logger:      logger,
-		Namespaces:  namespaces,
-		DABlockTime: daBlockTime,
-		Handler:     f,
+		Client:              client,
+		Logger:              logger,
+		Namespaces:          namespaces,
+		DABlockTime:         daBlockTime,
+		Handler:             f,
+		FetchBlockTimestamp: true,
 	})
 	f.subscriber.SetStartHeight(daStartHeight)
 
@@ -118,7 +119,7 @@ func (f *asyncBlockRetriever) UpdateCurrentHeight(height uint64) {
 			f.logger.Debug().
 				Uint64("new_height", height).
 				Msg("updated current DA height")
-			f.cleanupOldBlocks(height)
+			f.cleanupOldBlocks(context.Background(), height)
 			return
 		}
 	}
@@ -167,14 +168,10 @@ func (f *asyncBlockRetriever) GetCachedBlock(ctx context.Context, daHeight uint6
 	return block, nil
 }
 
-// ---------------------------------------------------------------------------
-// SubscriberHandler implementation
-// ---------------------------------------------------------------------------
-
 // HandleEvent caches blobs from the subscription inline.
 func (f *asyncBlockRetriever) HandleEvent(ctx context.Context, ev datypes.SubscriptionEvent) {
 	if len(ev.Blobs) > 0 {
-		f.cacheBlock(ctx, ev.Height, ev.Blobs)
+		f.cacheBlock(ctx, ev.Height, ev.Timestamp, ev.Blobs)
 	}
 }
 
@@ -215,7 +212,7 @@ func (f *asyncBlockRetriever) fetchAndCacheBlock(ctx context.Context, height uin
 		f.logger.Debug().Uint64("height", height).Msg("block height not yet available - will retry")
 		return
 	case datypes.StatusNotFound:
-		f.cacheBlock(ctx, height, nil)
+		f.cacheBlock(ctx, height, result.Timestamp, nil)
 	case datypes.StatusSuccess:
 		blobs := make([][]byte, 0, len(result.Data))
 		for _, blob := range result.Data {
@@ -223,7 +220,7 @@ func (f *asyncBlockRetriever) fetchAndCacheBlock(ctx context.Context, height uin
 				blobs = append(blobs, blob)
 			}
 		}
-		f.cacheBlock(ctx, height, blobs)
+		f.cacheBlock(ctx, height, result.Timestamp, blobs)
 	default:
 		f.logger.Debug().
 			Uint64("height", height).
@@ -233,33 +230,33 @@ func (f *asyncBlockRetriever) fetchAndCacheBlock(ctx context.Context, height uin
 }
 
 // cacheBlock serializes and stores a block in the in-memory cache.
-func (f *asyncBlockRetriever) cacheBlock(ctx context.Context, height uint64, blobs [][]byte) {
+func (f *asyncBlockRetriever) cacheBlock(ctx context.Context, daHeight uint64, daTimestamp time.Time, blobs [][]byte) {
 	if blobs == nil {
 		blobs = [][]byte{}
 	}
 
 	pbBlock := &pb.BlockData{
-		Height:    height,
-		Timestamp: time.Now().UnixNano(),
+		Height:    daHeight,
+		Timestamp: daTimestamp.UnixNano(),
 		Blobs:     blobs,
 	}
 	data, err := proto.Marshal(pbBlock)
 	if err != nil {
-		f.logger.Error().Err(err).Uint64("height", height).Msg("failed to marshal block for caching")
+		f.logger.Error().Err(err).Uint64("height", daHeight).Msg("failed to marshal block for caching")
 		return
 	}
 
-	key := newBlockDataKey(height)
+	key := newBlockDataKey(daHeight)
 	if err := f.cache.Put(ctx, key, data); err != nil {
-		f.logger.Error().Err(err).Uint64("height", height).Msg("failed to cache block")
+		f.logger.Error().Err(err).Uint64("height", daHeight).Msg("failed to cache block")
 		return
 	}
 
-	f.logger.Debug().Uint64("height", height).Int("blob_count", len(blobs)).Msg("cached block")
+	f.logger.Debug().Uint64("height", daHeight).Int("blob_count", len(blobs)).Msg("cached block")
 }
 
 // cleanupOldBlocks removes blocks older than currentHeight − prefetchWindow.
-func (f *asyncBlockRetriever) cleanupOldBlocks(currentHeight uint64) {
+func (f *asyncBlockRetriever) cleanupOldBlocks(ctx context.Context, currentHeight uint64) {
 	if currentHeight < f.prefetchWindow {
 		return
 	}
@@ -267,7 +264,7 @@ func (f *asyncBlockRetriever) cleanupOldBlocks(currentHeight uint64) {
 	cleanupThreshold := currentHeight - f.prefetchWindow
 
 	query := dsq.Query{Prefix: "/block/"}
-	results, err := f.cache.Query(context.Background(), query)
+	results, err := f.cache.Query(ctx, query)
 	if err != nil {
 		f.logger.Debug().Err(err).Msg("failed to query cache for cleanup")
 		return
@@ -287,7 +284,7 @@ func (f *asyncBlockRetriever) cleanupOldBlocks(currentHeight uint64) {
 		}
 
 		if height < cleanupThreshold {
-			if err := f.cache.Delete(context.Background(), key); err != nil {
+			if err := f.cache.Delete(ctx, key); err != nil {
 				f.logger.Debug().Err(err).Uint64("height", height).Msg("failed to delete old block from cache")
 			}
 		}
