@@ -23,17 +23,10 @@ func tempConfig(t *testing.T) config.Config {
 	return cfg
 }
 
-// helper to make an in-memory store
-func memStore(t *testing.T) pkgstore.Store {
-	ds, err := pkgstore.NewTestInMemoryKVStore()
-	require.NoError(t, err)
-	return pkgstore.New(ds)
-}
-
 func TestManager_HeaderDataOperations(t *testing.T) {
 	t.Parallel()
 	cfg := tempConfig(t)
-	st := memStore(t)
+	st := testMemStore(t)
 
 	m, err := NewManager(cfg, st, zerolog.Nop())
 	require.NoError(t, err)
@@ -55,7 +48,7 @@ func TestManager_HeaderDataOperations(t *testing.T) {
 func TestManager_PendingEventsCRUD(t *testing.T) {
 	t.Parallel()
 	cfg := tempConfig(t)
-	st := memStore(t)
+	st := testMemStore(t)
 
 	m, err := NewManager(cfg, st, zerolog.Nop())
 	require.NoError(t, err)
@@ -89,7 +82,7 @@ func TestManager_PendingEventsCRUD(t *testing.T) {
 func TestManager_SaveAndRestoreFromStore(t *testing.T) {
 	t.Parallel()
 	cfg := tempConfig(t)
-	st := memStore(t)
+	st := testMemStore(t)
 	ctx := context.Background()
 
 	h1, d1 := types.GetRandomBlock(1, 1, "test-chain")
@@ -169,7 +162,7 @@ func TestManager_SaveAndRestoreFromStore(t *testing.T) {
 func TestManager_GetNextPendingEvent_NonExistent(t *testing.T) {
 	t.Parallel()
 	cfg := tempConfig(t)
-	st := memStore(t)
+	st := testMemStore(t)
 
 	m, err := NewManager(cfg, st, zerolog.Nop())
 	require.NoError(t, err)
@@ -181,7 +174,7 @@ func TestManager_GetNextPendingEvent_NonExistent(t *testing.T) {
 
 func TestPendingHeadersAndData_Flow(t *testing.T) {
 	t.Parallel()
-	st := memStore(t)
+	st := testMemStore(t)
 	ctx := context.Background()
 	logger := zerolog.Nop()
 
@@ -247,7 +240,7 @@ func TestPendingHeadersAndData_Flow(t *testing.T) {
 func TestManager_TxOperations(t *testing.T) {
 	t.Parallel()
 	cfg := tempConfig(t)
-	st := memStore(t)
+	st := testMemStore(t)
 
 	m, err := NewManager(cfg, st, zerolog.Nop())
 	require.NoError(t, err)
@@ -268,7 +261,7 @@ func TestManager_TxOperations(t *testing.T) {
 func TestManager_CleanupOldTxs(t *testing.T) {
 	t.Parallel()
 	cfg := tempConfig(t)
-	st := memStore(t)
+	st := testMemStore(t)
 
 	m, err := NewManager(cfg, st, zerolog.Nop())
 	require.NoError(t, err)
@@ -296,7 +289,7 @@ func TestManager_CleanupOldTxs(t *testing.T) {
 func TestManager_CleanupOldTxs_SelectiveRemoval(t *testing.T) {
 	t.Parallel()
 	cfg := tempConfig(t)
-	st := memStore(t)
+	st := testMemStore(t)
 
 	m, err := NewManager(cfg, st, zerolog.Nop())
 	require.NoError(t, err)
@@ -330,7 +323,7 @@ func TestManager_CleanupOldTxs_SelectiveRemoval(t *testing.T) {
 func TestManager_CleanupOldTxs_DefaultDuration(t *testing.T) {
 	t.Parallel()
 	cfg := tempConfig(t)
-	st := memStore(t)
+	st := testMemStore(t)
 
 	m, err := NewManager(cfg, st, zerolog.Nop())
 	require.NoError(t, err)
@@ -359,7 +352,7 @@ func TestManager_CleanupOldTxs_DefaultDuration(t *testing.T) {
 func TestManager_CleanupOldTxs_NoTransactions(t *testing.T) {
 	t.Parallel()
 	cfg := tempConfig(t)
-	st := memStore(t)
+	st := testMemStore(t)
 
 	m, err := NewManager(cfg, st, zerolog.Nop())
 	require.NoError(t, err)
@@ -372,7 +365,7 @@ func TestManager_CleanupOldTxs_NoTransactions(t *testing.T) {
 func TestManager_TxCache_NotPersistedToStore(t *testing.T) {
 	t.Parallel()
 	cfg := tempConfig(t)
-	st := memStore(t)
+	st := testMemStore(t)
 
 	// Create first manager and add transactions
 	m1, err := NewManager(cfg, st, zerolog.Nop())
@@ -400,7 +393,7 @@ func TestManager_TxCache_NotPersistedToStore(t *testing.T) {
 func TestManager_DeleteHeight_PreservesTxCache(t *testing.T) {
 	t.Parallel()
 	cfg := tempConfig(t)
-	st := memStore(t)
+	st := testMemStore(t)
 
 	m, err := NewManager(cfg, st, zerolog.Nop())
 	require.NoError(t, err)
@@ -429,7 +422,7 @@ func TestManager_DeleteHeight_PreservesTxCache(t *testing.T) {
 func TestManager_DAInclusionPersistence(t *testing.T) {
 	t.Parallel()
 	cfg := tempConfig(t)
-	st := memStore(t)
+	st := testMemStore(t)
 	ctx := context.Background()
 
 	// Create blocks and save to store
@@ -484,7 +477,7 @@ func TestManager_DaHeightAfterCacheClear(t *testing.T) {
 	t.Parallel()
 
 	cfg := tempConfig(t)
-	st := memStore(t)
+	st := testMemStore(t)
 	ctx := context.Background()
 
 	// Store a block first
@@ -529,7 +522,7 @@ func TestManager_DaHeightFromStoreOnRestore(t *testing.T) {
 	t.Parallel()
 
 	cfg := tempConfig(t)
-	st := memStore(t)
+	st := testMemStore(t)
 	ctx := context.Background()
 
 	// Store a block first

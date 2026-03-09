@@ -15,6 +15,9 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
+// isNotFound is a convenience alias for store.IsNotFound.
+var isNotFound = store.IsNotFound
+
 const (
 	// HeaderDAIncludedPrefix is the store key prefix for header DA inclusion tracking.
 	HeaderDAIncludedPrefix = "cache/header-da-included/"
@@ -387,23 +390,45 @@ func (m *implementation) ClearFromStore() error {
 	return nil
 }
 
+// getMetadataUint64 reads an 8-byte little-endian uint64 from store metadata.
+// Returns (0, false, nil) when the key is absent and a non-nil error for
+// genuine backend failures or malformed values.
+func getMetadataUint64(ctx context.Context, st store.Store, key string) (uint64, bool, error) {
+	b, err := st.GetMetadata(ctx, key)
+	if err != nil {
+		// Key absent — not an error, just missing.
+		if isNotFound(err) {
+			return 0, false, nil
+		}
+		return 0, false, fmt.Errorf("read metadata %q: %w", key, err)
+	}
+	if len(b) != 8 {
+		return 0, false, fmt.Errorf("invalid metadata length for %q: %d", key, len(b))
+	}
+	return binary.LittleEndian.Uint64(b), true, nil
+}
+
 // initDAHeightFromStore seeds maxDAHeight from the HeightToDAHeight metadata
 // written by the submitter for the last finalized block. This ensures
 // DaHeight() is non-zero on restart even when the in-flight snapshot is empty.
 func (m *implementation) initDAHeightFromStore(ctx context.Context) {
-	daIncludedBytes, err := m.store.GetMetadata(ctx, store.DAIncludedHeightKey)
-	if err != nil || len(daIncludedBytes) != 8 {
+	daIncludedHeight, ok, err := getMetadataUint64(ctx, m.store, store.DAIncludedHeightKey)
+	if err != nil {
+		m.logger.Error().Err(err).Msg("failed to read DA included height from store")
 		return
 	}
-	daIncludedHeight := binary.LittleEndian.Uint64(daIncludedBytes)
-	if daIncludedHeight == 0 {
+	if !ok || daIncludedHeight == 0 {
 		return
 	}
 
-	if b, err := m.store.GetMetadata(ctx, store.GetHeightToDAHeightHeaderKey(daIncludedHeight)); err == nil && len(b) == 8 {
-		m.headerCache.setMaxDAHeight(binary.LittleEndian.Uint64(b))
+	if h, ok, err := getMetadataUint64(ctx, m.store, store.GetHeightToDAHeightHeaderKey(daIncludedHeight)); err != nil {
+		m.logger.Error().Err(err).Msg("failed to read header DA height from store")
+	} else if ok {
+		m.headerCache.setMaxDAHeight(h)
 	}
-	if b, err := m.store.GetMetadata(ctx, store.GetHeightToDAHeightDataKey(daIncludedHeight)); err == nil && len(b) == 8 {
-		m.dataCache.setMaxDAHeight(binary.LittleEndian.Uint64(b))
+	if h, ok, err := getMetadataUint64(ctx, m.store, store.GetHeightToDAHeightDataKey(daIncludedHeight)); err != nil {
+		m.logger.Error().Err(err).Msg("failed to read data DA height from store")
+	} else if ok {
+		m.dataCache.setMaxDAHeight(h)
 	}
 }
