@@ -50,7 +50,7 @@ func (m *mockDA) Get(ctx context.Context, ids []da.ID, namespace []byte) ([]da.B
 	return nil, nil
 }
 
-func (m *mockDA) Subscribe(_ context.Context, _ []byte) (<-chan da.SubscriptionEvent, error) {
+func (m *mockDA) Subscribe(_ context.Context, _ []byte, _ bool) (<-chan da.SubscriptionEvent, error) {
 	// Not needed in these tests; return a closed channel.
 	ch := make(chan da.SubscriptionEvent)
 	close(ch)

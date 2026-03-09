@@ -380,7 +380,7 @@ func TestSequencer_GetNextBatch_ForcedInclusionAndBatch_MaxBytes(t *testing.T) {
 	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
-	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
+	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	// DA head is at 100 — same as sequencer start, no catch-up needed
 	mockDA.MockClient.On("GetLatestDAHeight", mock.Anything).Return(uint64(100), nil).Maybe()
@@ -472,7 +472,7 @@ func TestSequencer_GetNextBatch_ForcedInclusion_ExceedsMaxBytes(t *testing.T) {
 	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
-	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
+	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	// DA head is at 100 — same as sequencer start, no catch-up needed
 	mockDA.MockClient.On("GetLatestDAHeight", mock.Anything).Return(uint64(100), nil).Maybe()
@@ -556,7 +556,7 @@ func TestSequencer_GetNextBatch_AlwaysCheckPendingForcedInclusion(t *testing.T) 
 	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
-	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
+	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	// DA head is at 100 — same as sequencer start, no catch-up needed
 	mockDA.MockClient.On("GetLatestDAHeight", mock.Anything).Return(uint64(100), nil).Maybe()
@@ -898,7 +898,7 @@ func TestSequencer_CheckpointPersistence_CrashRecovery(t *testing.T) {
 	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
-	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
+	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	// DA head is at 101 — close to sequencer start (100), no catch-up needed.
 	// Use Maybe() since two sequencer instances share this mock.
@@ -1002,7 +1002,7 @@ func TestSequencer_GetNextBatch_EmptyDABatch_IncreasesDAHeight(t *testing.T) {
 	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
-	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
+	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	// DA head is at 100 — same as sequencer start, no catch-up needed
 	mockDA.MockClient.On("GetLatestDAHeight", mock.Anything).Return(uint64(100), nil).Maybe()
@@ -1096,7 +1096,7 @@ func TestSequencer_GetNextBatch_WithGasFiltering(t *testing.T) {
 	mockDA.MockClient.On("GetBlobsAtHeight", mock.Anything, mock.Anything, mock.Anything).
 		Return(forcedTxs, nil).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
-	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
+	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return([]byte("forced")).Maybe()
 	mockDA.MockClient.On("MaxBlobSize", mock.Anything).Return(uint64(1000000), nil).Maybe()
 
@@ -1196,7 +1196,7 @@ func TestSequencer_GetNextBatch_GasFilterError(t *testing.T) {
 
 	mockDA := newMockFullDAClient(t)
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
-	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
+	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return([]byte("forced")).Maybe()
 	mockDA.MockClient.On("MaxBlobSize", mock.Anything).Return(uint64(1000000), nil).Maybe()
 
@@ -1261,7 +1261,7 @@ func TestSequencer_CatchUp_DetectsOldEpoch(t *testing.T) {
 	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
-	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
+	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	// DA head is at height 105 — sequencer starts at 100 with epoch size 1,
 	// so it has missed 5 epochs (>1), triggering catch-up.
@@ -1332,7 +1332,7 @@ func TestSequencer_CatchUp_SkipsMempoolDuringCatchUp(t *testing.T) {
 	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
-	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
+	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	// DA head is at 105 — sequencer starts at 100 with epoch size 1,
 	// so it has missed multiple epochs, triggering catch-up.
@@ -1425,7 +1425,7 @@ func TestSequencer_CatchUp_UsesDATimestamp(t *testing.T) {
 	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
-	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
+	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	// DA head is at 105 — multiple epochs ahead, triggers catch-up
 	mockDA.MockClient.On("GetLatestDAHeight", mock.Anything).Return(uint64(105), nil).Once()
@@ -1485,7 +1485,7 @@ func TestSequencer_CatchUp_ExitsCatchUpAtDAHead(t *testing.T) {
 	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
-	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
+	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	// DA head is at 105 — multiple epochs ahead, triggers catch-up
 	mockDA.MockClient.On("GetLatestDAHeight", mock.Anything).Return(uint64(105), nil).Once()
@@ -1567,7 +1567,7 @@ func TestSequencer_CatchUp_HeightFromFutureExitsCatchUp(t *testing.T) {
 	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
-	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
+	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	// DA head is at 105 — multiple epochs ahead, triggers catch-up
 	mockDA.MockClient.On("GetLatestDAHeight", mock.Anything).Return(uint64(105), nil).Once()
@@ -1634,7 +1634,7 @@ func TestSequencer_CatchUp_NoCatchUpWhenRecentEpoch(t *testing.T) {
 	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
-	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
+	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	// DA head is at 100 — sequencer starts at 100 with epoch size 1,
 	// so it is within the same epoch (0 missed). No catch-up.
@@ -1701,7 +1701,7 @@ func TestSequencer_CatchUp_MultiEpochReplay(t *testing.T) {
 	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
-	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
+	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	// DA head is at 106 — sequencer starts at 100 with epoch size 1,
 	// so it has missed 6 epochs (>1), triggering catch-up.
@@ -1853,7 +1853,7 @@ func TestSequencer_CatchUp_CheckpointAdvancesDuringCatchUp(t *testing.T) {
 	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
-	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
+	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	// DA head is at 105 — multiple epochs ahead, triggers catch-up
 	mockDA.MockClient.On("GetLatestDAHeight", mock.Anything).Return(uint64(105), nil).Once()
@@ -1946,7 +1946,7 @@ func TestSequencer_CatchUp_MonotonicTimestamps(t *testing.T) {
 	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
-	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
+	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	// DA head is far ahead — triggers catch-up
 	mockDA.MockClient.On("GetLatestDAHeight", mock.Anything).Return(uint64(110), nil).Once()
@@ -2073,7 +2073,7 @@ func TestSequencer_CatchUp_MonotonicTimestamps_EmptyEpoch(t *testing.T) {
 	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
-	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
+	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	mockDA.MockClient.On("GetLatestDAHeight", mock.Anything).Return(uint64(110), nil).Once()
 
@@ -2150,7 +2150,7 @@ func TestSequencer_GetNextBatch_GasFilteringPreservesUnprocessedTxs(t *testing.T
 
 	mockDA := newMockFullDAClient(t)
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
-	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
+	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return([]byte("forced")).Maybe()
 	mockDA.MockClient.On("MaxBlobSize", mock.Anything).Return(uint64(1000000), nil).Maybe()
 

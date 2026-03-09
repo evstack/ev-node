@@ -22,14 +22,14 @@ type mockFullClient struct {
 	getFn       func(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error)
 	getProofsFn func(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error)
 	validateFn  func(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error)
-	subscribeFn func(ctx context.Context, namespace []byte) (<-chan datypes.SubscriptionEvent, error)
+	subscribeFn func(ctx context.Context, namespace []byte, ts bool) (<-chan datypes.SubscriptionEvent, error)
 }
 
-func (m *mockFullClient) Subscribe(ctx context.Context, namespace []byte) (<-chan datypes.SubscriptionEvent, error) {
+func (m *mockFullClient) Subscribe(ctx context.Context, namespace []byte, ts bool) (<-chan datypes.SubscriptionEvent, error) {
 	if m.subscribeFn == nil {
 		panic("not expected to be called")
 	}
-	return m.subscribeFn(ctx, namespace)
+	return m.subscribeFn(ctx, namespace, ts)
 }
 
 func (m *mockFullClient) Submit(ctx context.Context, data [][]byte, gasPrice float64, namespace []byte, options []byte) datypes.ResultSubmit {
