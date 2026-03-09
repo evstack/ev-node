@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1773070252149,
+  "lastUpdate": 1773070964909,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -2004,6 +2004,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 170624,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "julien@rbrt.fr",
+            "name": "julienrbrt",
+            "username": "julienrbrt"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "e599cae367b24dc3e290a258cccae8880a8dd5d4",
+          "message": "build(deps): bump ev-node (#3144)",
+          "timestamp": "2026-03-09T16:37:00+01:00",
+          "tree_id": "c2840b2c78f266b5556ecde2fe6cb25e8f5bf57b",
+          "url": "https://github.com/evstack/ev-node/commit/e599cae367b24dc3e290a258cccae8880a8dd5d4"
+        },
+        "date": 1773070962312,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 909878534,
+            "unit": "ns/op\t29263032 B/op\t  150936 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 909878534,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 29263032,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 150936,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
