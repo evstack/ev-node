@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1773038780136,
+  "lastUpdate": 1773038782093,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -4934,6 +4934,102 @@ window.BENCHMARK_DATA = {
             "value": 71,
             "unit": "allocs/op",
             "extra": "32460 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "marko@baricevic.me",
+            "name": "Marko",
+            "username": "tac0turtle"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "3b3d5e71a31c2d9fb9f0ae082a847f43ce2325f8",
+          "message": "chore: minor deduplication (#3139)\n\n* simplify\n\n* add grpc\n\n* lint\n\n* fix: distinguish store not-found from errors, persist before advancing state\n\nAddress PR review feedback:\n- getMetadataUint64 returns (uint64, bool, error) to distinguish missing\n  keys from backend failures\n- processDAInclusionLoop persists DAIncludedHeightKey before advancing\n  in-memory state to prevent cache deletion on persist failure\n- Expose store.ErrNotFound and store.IsNotFound for clean sentinel checks\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\n\n---------\n\nCo-authored-by: Claude Opus 4.6 <noreply@anthropic.com>",
+          "timestamp": "2026-03-09T07:43:02+01:00",
+          "tree_id": "e6def28cea5aa967b065104f0a16daec90bfc4d6",
+          "url": "https://github.com/evstack/ev-node/commit/3b3d5e71a31c2d9fb9f0ae082a847f43ce2325f8"
+        },
+        "date": 1773038781314,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 37476,
+            "unit": "ns/op\t    6986 B/op\t      71 allocs/op",
+            "extra": "33027 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 37476,
+            "unit": "ns/op",
+            "extra": "33027 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 6986,
+            "unit": "B/op",
+            "extra": "33027 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 71,
+            "unit": "allocs/op",
+            "extra": "33027 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 38354,
+            "unit": "ns/op\t    7471 B/op\t      81 allocs/op",
+            "extra": "31165 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 38354,
+            "unit": "ns/op",
+            "extra": "31165 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 7471,
+            "unit": "B/op",
+            "extra": "31165 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 81,
+            "unit": "allocs/op",
+            "extra": "31165 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 47405,
+            "unit": "ns/op\t   26157 B/op\t      81 allocs/op",
+            "extra": "24951 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 47405,
+            "unit": "ns/op",
+            "extra": "24951 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 26157,
+            "unit": "B/op",
+            "extra": "24951 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 81,
+            "unit": "allocs/op",
+            "extra": "24951 times\n4 procs"
           }
         ]
       }
