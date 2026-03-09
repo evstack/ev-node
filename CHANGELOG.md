@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## v1.0.0
+## v1.0.0-rc.5 / v1.0.0
 
 ### Added
 
@@ -32,7 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Store pending blocks separately from executed blocks key. [#3073](https://github.com/evstack/ev-node/pull/3073)
 - Fixes issues with force inclusion verification on sync nodes. [#3057](https://github.com/evstack/ev-node/pull/3057)
 - Add flag to `local-da` to produce empty DA blocks (closer to the real system). [#3057](https://github.com/evstack/ev-node/pull/3057)
-- Validate P2P DA height hints against the latest known DA height to prevent malicious peers from triggering runaway catchup . [#3128](https://github.com/evstack/ev-node/pull/3128)
+- Validate P2P DA height hints against the latest known DA height to prevent malicious peers from triggering runaway catchup. [#3128](https://github.com/evstack/ev-node/pull/3128)
+- Replace syncer DA polling system by DA subscription via websockets. [#3131](https://github.com/evstack/ev-node/pull/3131)
 
 ## v1.0.0-rc.4
 
