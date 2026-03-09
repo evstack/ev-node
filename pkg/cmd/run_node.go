@@ -107,14 +107,8 @@ func StartNode(
 		}()
 	}
 
-	blobClient, err := blobrpc.NewClient(ctx, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
-	if err != nil {
-		return fmt.Errorf("failed to create blob client: %w", err)
-	}
-	defer blobClient.Close()
-	daClient := block.NewDAClient(blobClient, nodeConfig, logger)
-
-	// create a new remote signer
+	// Validate and load signer first (before attempting DA connection, which may fail
+	// eagerly over WebSocket if no DA server is running).
 	var signer signer.Signer
 	if nodeConfig.Signer.SignerType == "file" && (nodeConfig.Node.Aggregator && !nodeConfig.Node.BasedSequencer) {
 		// Get passphrase file path
@@ -151,6 +145,13 @@ func StartNode(
 	} else if nodeConfig.Node.Aggregator && nodeConfig.Signer.SignerType != "file" {
 		return fmt.Errorf("unknown signer type: %s", nodeConfig.Signer.SignerType)
 	}
+
+	blobClient, err := blobrpc.NewWSClient(ctx, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
+	if err != nil {
+		return fmt.Errorf("failed to create blob client: %w", err)
+	}
+	defer blobClient.Close()
+	daClient := block.NewDAClient(blobClient, nodeConfig, logger)
 
 	// sanity check for based sequencer
 	if nodeConfig.Node.BasedSequencer && genesis.DAStartHeight == 0 {
