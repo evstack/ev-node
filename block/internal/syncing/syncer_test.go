@@ -271,13 +271,13 @@ func TestSequentialBlockSync(t *testing.T) {
 	assert.Equal(t, uint64(2), finalState.LastBlockHeight)
 
 	// Verify DA inclusion markers are set
-	_, ok := cm.GetHeaderDAIncluded(hdr1.Hash().String())
+	_, ok := cm.GetHeaderDAIncludedByHash(hdr1.Hash().String())
 	assert.True(t, ok)
-	_, ok = cm.GetHeaderDAIncluded(hdr2.Hash().String())
+	_, ok = cm.GetHeaderDAIncludedByHash(hdr2.Hash().String())
 	assert.True(t, ok)
-	_, ok = cm.GetDataDAIncluded(data1.DACommitment().String())
+	_, ok = cm.GetDataDAIncludedByHash(data1.DACommitment().String())
 	assert.True(t, ok)
-	_, ok = cm.GetDataDAIncluded(data2.DACommitment().String())
+	_, ok = cm.GetDataDAIncludedByHash(data2.DACommitment().String())
 	assert.True(t, ok)
 	requireEmptyChan(t, errChan)
 }
