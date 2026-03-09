@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## v1.0.0
+
 ### Added
 
 - Add disaster recovery for sequencer
@@ -20,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     _Auto Storage Optimization_ (`metadata`): prunes only the state metadatas, keeps all blocks.
     By using one or the other, you are losing the ability to rollback or replay transactions earlier than `HEAD-n`.
     When using _classic pruning_, you aren't able to fetch blocks prior to `HEAD-n`.
+
+### Fixed
+
+- Fix block timer to account for execution time. Previously, the block timer reset to the full `block_time` duration after `ProduceBlock` completed, making the effective interval `block_time + execution_time`. Now the timer subtracts elapsed execution time so blocks are produced at the configured cadence.
 
 ### Changes
 

@@ -544,20 +544,20 @@ func (s *Syncer) processHeightEvent(ctx context.Context, event *common.DAHeightE
 		// empty, nothing to do
 		case event.DaHeightHints[0] == 0:
 			// check only data
-			if _, exists := s.cache.GetDataDAIncluded(event.Data.Hash().String()); !exists {
+			if _, exists := s.cache.GetDataDAIncludedByHeight(height); !exists {
 				daHeightHints = []uint64{event.DaHeightHints[1]}
 			}
 		case event.DaHeightHints[1] == 0:
 			// check only header
-			if _, exists := s.cache.GetHeaderDAIncluded(event.Header.Hash().String()); !exists {
+			if _, exists := s.cache.GetHeaderDAIncludedByHeight(height); !exists {
 				daHeightHints = []uint64{event.DaHeightHints[0]}
 			}
 		default:
 			// check both
-			if _, exists := s.cache.GetHeaderDAIncluded(event.Header.Hash().String()); !exists {
+			if _, exists := s.cache.GetHeaderDAIncludedByHeight(height); !exists {
 				daHeightHints = []uint64{event.DaHeightHints[0]}
 			}
-			if _, exists := s.cache.GetDataDAIncluded(event.Data.Hash().String()); !exists {
+			if _, exists := s.cache.GetDataDAIncludedByHeight(height); !exists {
 				daHeightHints = append(daHeightHints, event.DaHeightHints[1])
 			}
 			if len(daHeightHints) == 2 && daHeightHints[0] == daHeightHints[1] {

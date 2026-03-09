@@ -206,10 +206,10 @@ func (s *FullNodeTestSuite) TestSubmitBlocksToDA() {
 	err = waitForAtLeastNDAIncludedHeight(s.node, n)
 	s.NoError(err, "Failed to get DA inclusion")
 	for height := uint64(1); height <= n; height++ {
-		header, data, err := s.node.Store.GetBlockData(s.ctx, height)
+		_, data, err := s.node.Store.GetBlockData(s.ctx, height)
 		require.NoError(s.T(), err)
 
-		ok, err := castState(s.T(), s.node).bc.Submitter.IsHeightDAIncluded(height, header, data)
+		ok, err := castState(s.T(), s.node).bc.Submitter.IsHeightDAIncluded(height, data)
 		require.NoError(s.T(), err)
 		require.True(s.T(), ok, "Block at height %d is not DA included", height)
 	}
