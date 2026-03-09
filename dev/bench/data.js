@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1773053269677,
+  "lastUpdate": 1773070250023,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -1956,6 +1956,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 179703,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "alpe@users.noreply.github.com",
+            "name": "Alexander Peters",
+            "username": "alpe"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "69d2ba8ca6e22000962e18123887c878fa6ea2f1",
+          "message": "feat(block): Event-Driven DA Follower with WebSocket Subscriptions (#3131)\n\n* feat: Replace the Syncer's polling DA worker with an event-driven DAFollower and introduce DA client subscription.\n\n* feat: add inline blob processing to DAFollower for zero-latency follow mode\n\nWhen the DA subscription delivers blobs at the current local DA height,\nthe followLoop now processes them inline via ProcessBlobs — avoiding\na round-trip re-fetch from the DA layer.\n\nArchitecture:\n- followLoop: processes subscription blobs inline when caught up (fast path),\n  falls through to catchupLoop when behind (slow path).\n- catchupLoop: unchanged — sequential RetrieveFromDA() for bulk sync.\n\nChanges:\n- Add Blobs field to SubscriptionEvent for carrying raw blob data\n- Add extractBlobData() to DA client Subscribe adapter\n- Export ProcessBlobs on DARetriever interface\n- Add handleSubscriptionEvent() to DAFollower with inline fast path\n- Add TestDAFollower_InlineProcessing with 3 sub-tests\n\n* feat: subscribe to both header and data namespaces for inline processing\n\nWhen header and data use different DA namespaces, the DAFollower now\nsubscribes to both and merges events via a fan-in goroutine. This ensures\ninline blob processing works correctly for split-namespace configurations.\n\nChanges:\n- Add DataNamespace to DAFollowerConfig and daFollower\n- Subscribe to both namespaces in runSubscription with mergeSubscriptions fan-in\n- Guard handleSubscriptionEvent to only advance localDAHeight when\n  ProcessBlobs returns at least one complete event (header+data matched)\n- Pass DataNamespace from syncer.go\n- Implement Subscribe on DummyDA test helper with subscriber notification\n\n* feat: add subscription watchdog to detect stalled DA subscriptions\n\nIf no subscription events arrive within 3× the DA block time (default\n30s), the watchdog triggers and returns an error. The followLoop then\nreconnects the subscription with the standard backoff. This prevents\nthe node from silently stopping sync when the DA subscription stalls\n(e.g., network partition, DA node freeze).\n\n* fix: security hardening for DA subscription path\n\n* feat: Implement blob subscription for local DA and update JSON-RPC client to use WebSockets, along with E2E test updates for new `evnode` flags and P2P address retrieval.\n\n* WS client constructor\n\n* Merge\n\n* Linter\n\n* Review feedback\n\n* Review feedback\n\n* Review feedbac\n\n* Linter",
+          "timestamp": "2026-03-09T16:26:47+01:00",
+          "tree_id": "c9bde05e4ef642fca7e08d64a012830d83e06a24",
+          "url": "https://github.com/evstack/ev-node/commit/69d2ba8ca6e22000962e18123887c878fa6ea2f1"
+        },
+        "date": 1773070246713,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 914342866,
+            "unit": "ns/op\t31243380 B/op\t  170624 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 914342866,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 31243380,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 170624,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
