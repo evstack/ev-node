@@ -72,10 +72,10 @@ You can use the same namespace for both headers and data, or separate them for o
 
 ### Set DA Address
 
-Default Celestia light node port is 26658:
+Default Celestia light node port is 26658. **Note:** Connection to a celestia-node DA requires a websocket connection:
 
 ```bash
-DA_ADDRESS=http://localhost:26658
+DA_ADDRESS=ws://localhost:26658
 ```
 
 ## Running Your Chain
