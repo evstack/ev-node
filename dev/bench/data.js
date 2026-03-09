@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1772793242472,
+  "lastUpdate": 1773038780136,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -1812,6 +1812,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 184760,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "marko@baricevic.me",
+            "name": "Marko",
+            "username": "tac0turtle"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "3b3d5e71a31c2d9fb9f0ae082a847f43ce2325f8",
+          "message": "chore: minor deduplication (#3139)\n\n* simplify\n\n* add grpc\n\n* lint\n\n* fix: distinguish store not-found from errors, persist before advancing state\n\nAddress PR review feedback:\n- getMetadataUint64 returns (uint64, bool, error) to distinguish missing\n  keys from backend failures\n- processDAInclusionLoop persists DAIncludedHeightKey before advancing\n  in-memory state to prevent cache deletion on persist failure\n- Expose store.ErrNotFound and store.IsNotFound for clean sentinel checks\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\n\n---------\n\nCo-authored-by: Claude Opus 4.6 <noreply@anthropic.com>",
+          "timestamp": "2026-03-09T07:43:02+01:00",
+          "tree_id": "e6def28cea5aa967b065104f0a16daec90bfc4d6",
+          "url": "https://github.com/evstack/ev-node/commit/3b3d5e71a31c2d9fb9f0ae082a847f43ce2325f8"
+        },
+        "date": 1773038777098,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 903692384,
+            "unit": "ns/op\t32476084 B/op\t  184787 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 903692384,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 32476084,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 184787,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
