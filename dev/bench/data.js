@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1773049907718,
+  "lastUpdate": 1773049909969,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -5078,6 +5078,102 @@ window.BENCHMARK_DATA = {
             "value": 81,
             "unit": "allocs/op",
             "extra": "24951 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "github.qpeyb@simplelogin.fr",
+            "name": "Cian Hatton",
+            "username": "chatton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "3823efd4be1367171fcbf3c614d8c1aebe986e1c",
+          "message": "feat(benchmarking): adding gas burner test (#3115)\n\n* refactor: move spamoor benchmark into testify suite in test/e2e/benchmark\n\n- Create test/e2e/benchmark/ subpackage with SpamoorSuite (testify/suite)\n- Move spamoor smoke test into suite as TestSpamoorSmoke\n- Split helpers into focused files: traces.go, output.go, metrics.go\n- Introduce resultWriter for defer-based benchmark JSON output\n- Export shared symbols from evm_test_common.go for cross-package use\n- Restructure CI to fan-out benchmark jobs and fan-in publishing\n- Run benchmarks on PRs only when benchmark-related files change\n\n* fix: correct BENCH_JSON_OUTPUT path for spamoor benchmark\n\ngo test sets the working directory to the package under test, so the\nenv var should be relative to test/e2e/benchmark/, not test/e2e/.\n\n* fix: place package pattern before test binary flags in benchmark CI\n\ngo test treats all arguments after an unknown flag (--evm-binary) as\ntest binary args, so ./benchmark/ was never recognized as a package\npattern.\n\n* fix: adjust evm-binary path for benchmark subpackage working directory\n\ngo test sets the cwd to the package directory (test/e2e/benchmark/),\nso the binary path needs an extra parent traversal.\n\n* wip: erc20 benchmark test\n\n* fix: exclude benchmark subpackage from make test-e2e\n\nThe benchmark package doesn't define the --binary flag that test-e2e\npasses. It has its own CI workflow so it doesn't need to run here.\n\n* fix: replace FilterLogs with header iteration and optimize spamoor config\n\ncollectBlockMetrics hit reth's 20K FilterLogs limit at high tx volumes.\nReplace with direct header iteration over [startBlock, endBlock] and add\nPhase 1 metrics: non-empty ratio, block interval p50/p99, gas/block and\ntx/block p50/p99.\n\nOptimize spamoor configuration for 100ms block time:\n- --slot-duration 100ms, --startup-delay 0 on daemon\n- throughput=50 per 100ms slot (500 tx/s per spammer)\n- max_pending=50000 to avoid 3s block poll backpressure\n- 5 staggered spammers with 50K txs each\n\nResults: 55 MGas/s, 1414 TPS, 19.8% non-empty blocks (up from 6%).\n\n* fix: improve benchmark measurement window and reliability\n\n- Move startBlock capture after spammer creation to exclude warm-up\n- Replace 20s drain sleep with smart poll (waitForDrain)\n- Add deleteAllSpammers cleanup to handle stale spamoor DB entries\n- Lower trace sample rate to 10% to prevent Jaeger OOM\n\n* fix: address PR review feedback for benchmark suite\n\n- make reth tag configurable via EV_RETH_TAG env var (default pr-140)\n- fix OTLP config: remove duplicate env vars, use http/protobuf protocol\n- use require.Eventually for host readiness polling\n- rename requireHTTP to requireHostUp\n- use non-fatal logging in resultWriter.flush deferred context\n- fix stale doc comment (setupCommonEVMEnv -> SetupCommonEVMEnv)\n- rename loop variable to avoid shadowing testing.TB convention\n- add block/internal/executing/** to CI path trigger\n- remove unused require import from output.go\n\n* chore: specify http\n\n* chore: filter out benchmark tests from test-e2e\n\n* refactor: centralize reth config and lower ERC20 spammer count\n\nmove EV_RETH_TAG resolution and rpc connection limits into setupEnv\nso all benchmark tests share the same reth configuration. lower ERC20\nspammer count from 5 to 2 to reduce resource contention on local\nhardware while keeping the loop for easy scaling on dedicated infra.\n\n* chore: collect all traces at once\n\n* chore: self review\n\n* refactor: extract benchmark helpers to slim down ERC20 test body\n\n- add blockMetricsSummary with summarize(), log(), and entries() methods\n- add evNodeOverhead() for computing ProduceBlock vs ExecuteTxs overhead\n- add collectTraces() suite method to deduplicate trace collection pattern\n- add addEntries() convenience method on resultWriter\n- slim TestERC20Throughput from ~217 to ~119 lines\n- reuse collectTraces in TestSpamoorSmoke\n\n* docs: add detailed documentation to benchmark helper methods\n\n* ci: add ERC20 throughput benchmark job\n\n* chore: remove span assertions\n\n* chore: adding gas burner test",
+          "timestamp": "2026-03-09T09:30:15Z",
+          "tree_id": "e9be3a3536a80303ddcc969e250c656e1d089cba",
+          "url": "https://github.com/evstack/ev-node/commit/3823efd4be1367171fcbf3c614d8c1aebe986e1c"
+        },
+        "date": 1773049909140,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 37444,
+            "unit": "ns/op\t    6991 B/op\t      71 allocs/op",
+            "extra": "32814 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 37444,
+            "unit": "ns/op",
+            "extra": "32814 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 6991,
+            "unit": "B/op",
+            "extra": "32814 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 71,
+            "unit": "allocs/op",
+            "extra": "32814 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 38129,
+            "unit": "ns/op\t    7440 B/op\t      81 allocs/op",
+            "extra": "32418 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 38129,
+            "unit": "ns/op",
+            "extra": "32418 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 7440,
+            "unit": "B/op",
+            "extra": "32418 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 81,
+            "unit": "allocs/op",
+            "extra": "32418 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 47615,
+            "unit": "ns/op\t   26132 B/op\t      81 allocs/op",
+            "extra": "25676 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 47615,
+            "unit": "ns/op",
+            "extra": "25676 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 26132,
+            "unit": "B/op",
+            "extra": "25676 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 81,
+            "unit": "allocs/op",
+            "extra": "25676 times\n4 procs"
           }
         ]
       }
