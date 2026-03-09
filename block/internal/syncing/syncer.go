@@ -165,9 +165,9 @@ func (s *Syncer) Start(ctx context.Context) (err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	s.ctx, s.cancel = ctx, cancel
 
-	defer func() {
+	defer func() { //nolint: contextcheck // use new context as parent can be cancelled already
 		if err != nil {
-			_ = s.Stop()
+			_ = s.Stop(context.Background())
 		}
 	}()
 
@@ -226,7 +226,7 @@ func (s *Syncer) Start(ctx context.Context) (err error) {
 }
 
 // Stop shuts down the syncing component
-func (s *Syncer) Stop() error {
+func (s *Syncer) Stop(ctx context.Context) error {
 	if s.cancel == nil {
 		return nil
 	}
@@ -244,7 +244,7 @@ func (s *Syncer) Stop() error {
 	// Skip draining if we're shutting down due to a critical error (e.g. execution
 	// client unavailable).
 	if !s.hasCriticalError.Load() {
-		drainCtx, drainCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		drainCtx, drainCancel := context.WithTimeout(ctx, 5*time.Second)
 		defer drainCancel()
 
 		drained := 0

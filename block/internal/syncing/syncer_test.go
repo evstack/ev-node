@@ -1156,7 +1156,7 @@ func TestSyncer_Stop_SkipsDrainOnCriticalError(t *testing.T) {
 	// Stop must complete quickly — no drain, no ExecuteTxs calls
 	done := make(chan struct{})
 	go func() {
-		_ = s.Stop()
+		_ = s.Stop(t.Context())
 		close(done)
 	}()
 
@@ -1225,7 +1225,7 @@ func TestSyncer_Stop_DrainWorksWithoutCriticalError(t *testing.T) {
 		// hasCriticalError is false (default) — drain should process events including ExecuteTxs
 		s.wg.Go(func() {})
 
-		_ = s.Stop()
+		_ = s.Stop(t.Context())
 
 		// Verify ExecuteTxs was actually called during drain
 		mockExec.AssertExpectations(t)
