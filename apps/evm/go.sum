@@ -411,6 +411,8 @@ github.com/evstack/ev-node v1.0.0-rc.5 h1:3qd3KWuwiLr5RKt1j8v2h5X3XZvwyYGbMUDskM
 github.com/evstack/ev-node v1.0.0-rc.5/go.mod h1:VAaN0tbN1+SSm7sLzMhHZNUn9sgpf1eok5gu3YVbT38=
 github.com/evstack/ev-node/core v1.0.0 h1:s0Tx0uWHme7SJn/ZNEtee4qNM8UO6PIxXnHhPbbKTz8=
 github.com/evstack/ev-node/core v1.0.0/go.mod h1:n2w/LhYQTPsi48m6lMj16YiIqsaQw6gxwjyJvR+B3sY=
+github.com/evstack/ev-node/execution/evm v1.0.0-rc.4 h1:9IKEVD8QRe6drXJFxnydM5ao6Gw5BPgXXIVCY3516WM=
+github.com/evstack/ev-node/execution/evm v1.0.0-rc.4/go.mod h1:aDwQRKH79c49eBgGAkkTPJKSicRxGtxteSqmj0oqAQ4=
 github.com/fatih/color v1.10.0/go.mod h1:ELkj/draVOlAH/xkhN6mQ50Qd0MPOk5AAr3maGEBuJM=
 github.com/fatih/color v1.13.0/go.mod h1:kLAiJbzzSOZDVNGyDpeOxJ47H46qBXwg5ILebYFFOfk=
 github.com/fatih/color v1.15.0/go.mod h1:0h5ZqXfHYED7Bhv2ZJamyIOUej9KtShiJESRwBDUSsw=
