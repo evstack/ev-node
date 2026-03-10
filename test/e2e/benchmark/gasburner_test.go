@@ -44,8 +44,8 @@ func (s *SpamoorSuite) TestGasBurner() {
 		"rebroadcast":       5,
 		"base_fee":          5000,
 		"tip_fee":           2500,
-		"refill_amount":     "5000000000000000000",
-		"refill_balance":    "2000000000000000000",
+		"refill_amount":     "50000000000000000000",
+		"refill_balance":    "20000000000000000000",
 		"refill_interval":   300,
 	}
 
