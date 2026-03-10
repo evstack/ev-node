@@ -178,19 +178,20 @@ func TestCache_RestoreFromStore_PlaceholderOverwrittenByRealHash(t *testing.T) {
 	assert.Equal(t, uint64(99), daH)
 }
 
-// TestCache_RestoreFromStore_RoundTrip verifies that setDAIncluded persists a
+// TestCache_RestoreFromStore_RoundTrip verifies that SaveToStore persists a
 // snapshot that a freshly-constructed cache can fully recover.
 func TestCache_RestoreFromStore_RoundTrip(t *testing.T) {
 	st := testMemStore(t)
 	ctx := context.Background()
 
-	// First cache instance: write some in-flight entries.
+	// First cache instance: write some in-flight entries, then flush (shutdown).
 	c1 := NewCache[testItem](st, "rt/")
 	c1.setDAIncluded("hashA", 10, 1)
 	c1.setDAIncluded("hashB", 20, 2)
 	c1.setDAIncluded("hashC", 30, 3)
 	// Remove one entry to confirm deletions are also snapshotted.
 	c1.removeDAIncluded("hashB")
+	require.NoError(t, c1.SaveToStore(ctx))
 
 	// Second cache instance on same store: should recover {hashA→10, hashC→30}.
 	c2 := NewCache[testItem](st, "rt/")
@@ -324,6 +325,7 @@ func TestCache_ClearFromStore(t *testing.T) {
 	c := NewCache[testItem](st, "clear-test/")
 	c.setDAIncluded("hash1", 100, 1)
 	c.setDAIncluded("hash2", 200, 2)
+	require.NoError(t, c.SaveToStore(ctx))
 
 	// Verify the snapshot key was written before clearing.
 	_, err := st.GetMetadata(ctx, "clear-test/__snap")
@@ -381,9 +383,10 @@ func TestCache_NoPlaceholderLeakAfterRefire(t *testing.T) {
 	st := testMemStore(t)
 	ctx := context.Background()
 
-	// Step 1: initial run — write a real hash for height 3.
+	// Step 1: initial run — write a real hash for height 3, then flush (shutdown).
 	c1 := NewCache[testItem](st, "pfx/")
 	c1.setDAIncluded("realHash3", 99, 3)
+	require.NoError(t, c1.SaveToStore(ctx))
 	// snapshot now contains [{blockHeight:3, daHeight:99}]
 
 	// Step 2: restart — placeholder installed for height 3.
@@ -424,9 +427,10 @@ func TestCache_RestartIdempotent(t *testing.T) {
 	const blockH = uint64(5)
 	const daH = uint64(42)
 
-	// ── Run 1: normal operation, height 5 in-flight ──────────────────────────
+	// ── Run 1: normal operation, height 5 in-flight; flush at shutdown ───────
 	c1 := NewCache[testItem](st, "pfx/")
 	c1.setDAIncluded(realHash, daH, blockH)
+	require.NoError(t, c1.SaveToStore(ctx))
 	// snapshot: [{5, 42}]
 
 	for restart := 1; restart <= 3; restart++ {
@@ -442,16 +446,16 @@ func TestCache_RestartIdempotent(t *testing.T) {
 		require.True(t, ok, "restart %d: height-based lookup must succeed", restart)
 		assert.Equal(t, daH, gotDAH, "restart %d: height-based DA height correct", restart)
 
-		// ── DA retriever re-fires with the real hash
+		// ── DA retriever re-fires with the real hash, then flushes (shutdown).
 		cR.setDAIncluded(realHash, daH, blockH)
+		require.NoError(t, cR.SaveToStore(ctx), "restart %d: SaveToStore", restart)
 
 		// After re-fire: real hash present, no orphan, snapshot updated.
 		_, realPresent := cR.daIncluded.Get(realHash)
 		assert.True(t, realPresent, "restart %d: real hash present after re-fire", restart)
 		assert.Equal(t, 1, cR.daIncluded.Len(), "restart %d: no orphan after re-fire", restart)
 
-		// The snapshot rewritten by re-fire must still encode the right data
+		// The snapshot written by SaveToStore must still encode the right data
 		// so the next restart can load it correctly.
-		// (persistSnapshot fires inside setDAIncluded, so the store is up to date.)
 	}
 }
