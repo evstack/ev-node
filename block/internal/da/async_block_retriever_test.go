@@ -156,9 +156,7 @@ func TestAsyncBlockRetriever_HeightFromFuture(t *testing.T) {
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 
 	// Subscription delivers height 100 with no blobs.
-	subCh := make(chan datypes.SubscriptionEvent, 1)
-	subCh <- datypes.SubscriptionEvent{Height: 100}
-
+	subCh := make(chan datypes.SubscriptionEvent)
 	client.On("Subscribe", mock.Anything, fiNs, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(subCh), nil).Once()
 	blockCh := make(chan datypes.SubscriptionEvent)
 	client.On("Subscribe", mock.Anything, fiNs, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(blockCh), nil).Maybe()
@@ -169,15 +167,17 @@ func TestAsyncBlockRetriever_HeightFromFuture(t *testing.T) {
 	}).Maybe()
 
 	logger := zerolog.Nop()
-	fetcher := NewAsyncBlockRetriever(client, logger, fiNs, 100*time.Millisecond, 100, 10)
+	fetcher := NewAsyncBlockRetriever(client, logger, fiNs, time.Millisecond, 100, 10)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	fetcher.Start(ctx)
 	defer fetcher.Stop()
 
 	// Wait a bit for catchup to attempt fetches.
-	time.Sleep(250 * time.Millisecond)
+	require.Eventually(t, func() bool {
+		return fetcher.(*asyncBlockRetriever).subscriber.HasReachedHead()
+	}, 1250*time.Millisecond, time.Millisecond)
 
 	// Cache should be empty since all heights are from the future.
 	block, err := fetcher.GetCachedBlock(ctx, 100)

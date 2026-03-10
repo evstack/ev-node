@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	ds "github.com/ipfs/go-datastore"
@@ -44,8 +45,10 @@ type asyncBlockRetriever struct {
 	cache ds.Batching
 
 	// Current DA height tracking (accessed atomically via subscriber).
-	// Updated externally via UpdateCurrentHeight.
 	daStartHeight uint64
+
+	// Tracks DA height consumed by the sequencer to trigger cache cleanups.
+	consumedHeight atomic.Uint64
 
 	// Prefetch window - how many blocks ahead to speculatively fetch.
 	prefetchWindow uint64
@@ -108,17 +111,17 @@ func (f *asyncBlockRetriever) Stop() {
 	f.subscriber.Stop()
 }
 
-// UpdateCurrentHeight updates the current DA height.
+// UpdateCurrentHeight updates the consumed DA height and triggers cache cleanup.
 func (f *asyncBlockRetriever) UpdateCurrentHeight(height uint64) {
 	for {
-		current := f.subscriber.LocalDAHeight()
+		current := f.consumedHeight.Load()
 		if height <= current {
 			return
 		}
-		if f.subscriber.CompareAndSwapLocalHeight(current, height) {
+		if f.consumedHeight.CompareAndSwap(current, height) {
 			f.logger.Debug().
 				Uint64("new_height", height).
-				Msg("updated current DA height")
+				Msg("updated consumed DA height for cleanup")
 			f.cleanupOldBlocks(context.Background(), height)
 			return
 		}
@@ -168,11 +171,10 @@ func (f *asyncBlockRetriever) GetCachedBlock(ctx context.Context, daHeight uint6
 	return block, nil
 }
 
-// HandleEvent caches blobs from the subscription inline.
+// HandleEvent caches blobs from the subscription inline, even empty ones,
+// to record that the DA height was seen and has 0 blobs.
 func (f *asyncBlockRetriever) HandleEvent(ctx context.Context, ev datypes.SubscriptionEvent) {
-	if len(ev.Blobs) > 0 {
-		f.cacheBlock(ctx, ev.Height, ev.Timestamp, ev.Blobs)
-	}
+	f.cacheBlock(ctx, ev.Height, ev.Timestamp, ev.Blobs)
 }
 
 // HandleCatchup fetches a single height via Retrieve and caches it.
@@ -181,8 +183,7 @@ func (f *asyncBlockRetriever) HandleCatchup(ctx context.Context, height uint64) 
 	f.fetchAndCacheBlock(ctx, height)
 
 	// Speculatively prefetch ahead.
-	highest := f.subscriber.HighestSeenDAHeight()
-	target := highest + f.prefetchWindow
+	target := height + f.prefetchWindow
 	for h := height + 1; h <= target; h++ {
 		if err := ctx.Err(); err != nil {
 			return err

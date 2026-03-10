@@ -25,6 +25,7 @@ func TestDAFollower_BackoffOnCatchupError(t *testing.T) {
 		daBlockTime    time.Duration
 		error          error
 		expectsBackoff bool
+		exitsCatchup   bool // ErrCaughtUp → clean exit, no backoff, no advance
 		description    string
 	}{
 		"generic_error_triggers_backoff": {
@@ -33,11 +34,11 @@ func TestDAFollower_BackoffOnCatchupError(t *testing.T) {
 			expectsBackoff: true,
 			description:    "Generic DA errors should trigger backoff",
 		},
-		"height_from_future_triggers_backoff": {
-			daBlockTime:    500 * time.Millisecond,
-			error:          datypes.ErrHeightFromFuture,
-			expectsBackoff: true,
-			description:    "Height from future should trigger backoff",
+		"height_from_future_stops_catchup": {
+			daBlockTime:  500 * time.Millisecond,
+			error:        datypes.ErrHeightFromFuture,
+			exitsCatchup: true,
+			description:  "Height from future should stop catchup (da.ErrCaughtUp), not backoff",
 		},
 		"blob_not_found_no_backoff": {
 			daBlockTime:    1 * time.Second,
@@ -92,7 +93,10 @@ func TestDAFollower_BackoffOnCatchupError(t *testing.T) {
 					}).
 					Return(nil, tc.error).Once()
 
-				if tc.expectsBackoff {
+				if tc.exitsCatchup {
+					// ErrCaughtUp causes runCatchup to exit cleanly after 1 call.
+					// No second mock needed.
+				} else if tc.expectsBackoff {
 					daRetriever.On("RetrieveFromDA", mock.Anything, uint64(100)).
 						Run(func(args mock.Arguments) {
 							callTimes = append(callTimes, time.Now())
@@ -110,10 +114,20 @@ func TestDAFollower_BackoffOnCatchupError(t *testing.T) {
 						Return(nil, datypes.ErrBlobNotFound).Once()
 				}
 
-				go sub.RunCatchupForTest(ctx)
-				<-ctx.Done()
+				done := make(chan struct{})
+				go func() {
+					sub.RunCatchupForTest(ctx)
+					close(done)
+				}()
+				select {
+				case <-ctx.Done():
+				case <-done:
+				}
 
-				if tc.expectsBackoff {
+				if tc.exitsCatchup {
+					assert.Equal(t, 1, callCount, "should exit after single call (ErrCaughtUp)")
+					assert.True(t, follower.HasReachedHead(), "should mark head as reached")
+				} else if tc.expectsBackoff {
 					require.Len(t, callTimes, 2, "should make exactly 2 calls with backoff")
 
 					timeBetweenCalls := callTimes[1].Sub(callTimes[0])
@@ -291,11 +305,15 @@ func TestDAFollower_InlineProcessing(t *testing.T) {
 		daRetriever.On("ProcessBlobs", mock.Anything, blobs, uint64(10)).
 			Return(expectedEvents).Once()
 
-		// Simulate subscription event at the current localDAHeight
+		// Simulate subscription event: update highest seen, then handle event
+		follower.subscriber.UpdateHighestForTest(10)
 		follower.HandleEvent(t.Context(), datypes.SubscriptionEvent{
 			Height: 10,
 			Blobs:  blobs,
 		})
+
+		// Simulate catchup loop waking up to see if local > highest
+		follower.subscriber.RunCatchupForTest(t.Context())
 
 		// Verify: ProcessBlobs was called, events were piped, height advanced
 		require.Len(t, pipedEvents, 1, "should pipe 1 event from inline processing")

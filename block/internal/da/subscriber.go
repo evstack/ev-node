@@ -87,6 +87,9 @@ func NewSubscriber(cfg SubscriberConfig) *Subscriber {
 		daBlockTime:         cfg.DABlockTime,
 		fetchBlockTimestamp: cfg.FetchBlockTimestamp,
 	}
+	if len(s.namespaces) == 0 {
+		s.logger.Warn().Msg("no namespaces configured, subscriber will stay idle")
+	}
 	return s
 }
 
@@ -98,7 +101,7 @@ func (s *Subscriber) SetStartHeight(height uint64) {
 // Start begins the follow and catchup goroutines.
 func (s *Subscriber) Start(ctx context.Context) error {
 	if len(s.namespaces) == 0 {
-		return errors.New("no namespaces configured")
+		return nil
 	}
 
 	ctx, s.cancel = context.WithCancel(ctx)
@@ -129,11 +132,6 @@ func (s *Subscriber) HighestSeenDAHeight() uint64 {
 // HasReachedHead returns whether the subscriber has caught up to DA head.
 func (s *Subscriber) HasReachedHead() bool {
 	return s.headReached.Load()
-}
-
-// SetHeadReached marks the subscriber as having reached DA head.
-func (s *Subscriber) SetHeadReached() {
-	s.headReached.Store(true)
 }
 
 // CompareAndSwapLocalHeight attempts a CAS on localDAHeight.
@@ -343,23 +341,19 @@ func (s *Subscriber) runCatchup(ctx context.Context) {
 		if err := s.handler.HandleCatchup(ctx, local); err != nil {
 			// Roll back so we can retry after backoff.
 			s.localDAHeight.Store(local)
-			if !s.waitOnCatchupError(ctx, err, local) {
+			if errors.Is(err, datypes.ErrHeightFromFuture) {
+				s.headReached.Store(true)
 				return
 			}
-			continue
+			if !s.shouldContinueCatchup(ctx, err, local) {
+				return
+			}
 		}
 	}
 }
 
-// ErrCaughtUp is a sentinel used to signal that the catchup loop has reached DA head.
-var ErrCaughtUp = errors.New("caught up with DA head")
-
-// waitOnCatchupError logs the error and backs off before retrying.
-func (s *Subscriber) waitOnCatchupError(ctx context.Context, err error, daHeight uint64) bool {
-	if errors.Is(err, ErrCaughtUp) {
-		s.logger.Debug().Uint64("da_height", daHeight).Msg("DA catchup reached head, waiting for subscription signal")
-		return false
-	}
+// shouldContinueCatchup logs the error and backs off before retrying.
+func (s *Subscriber) shouldContinueCatchup(ctx context.Context, err error, daHeight uint64) bool {
 	if ctx.Err() != nil {
 		return false
 	}

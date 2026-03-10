@@ -116,7 +116,6 @@ func (f *daFollower) HandleEvent(ctx context.Context, ev datypes.SubscriptionEve
 			}
 		}
 		if len(events) != 0 {
-			f.subscriber.SetHeadReached()
 			f.logger.Debug().Uint64("da_height", ev.Height).Int("events", len(events)).
 				Msg("processed subscription blobs inline (fast path)")
 		} else {
@@ -131,38 +130,63 @@ func (f *daFollower) HandleEvent(ctx context.Context, ev datypes.SubscriptionEve
 
 // HandleCatchup retrieves events at a single DA height and pipes them
 // to the event sink. Checks priority heights first.
+//
+// ErrHeightFromFuture is handled here rather than in fetchAndPipeHeight because
+// the two call sites need different behaviour:
+//   - Normal catchup: mark head reached and return da.ErrCaughtUp to stop the loop.
+//   - Priority hint:  the hint points to a future height — ignore it without
+//     skipping the current daHeight or stopping catchup.
 func (f *daFollower) HandleCatchup(ctx context.Context, daHeight uint64) error {
-	// Check for priority heights from P2P hints first.
-	if priorityHeight := f.popPriorityHeight(); priorityHeight > 0 {
-		if priorityHeight >= daHeight {
-			f.logger.Debug().
-				Uint64("da_height", priorityHeight).
-				Msg("fetching priority DA height from P2P hint")
-			if err := f.fetchAndPipeHeight(ctx, priorityHeight); err != nil {
-				return err
-			}
+	// 1. Drain stale or future priority heights from P2P hints
+	for {
+		priorityHeight := f.popPriorityHeight()
+		if priorityHeight == 0 {
+			break
 		}
-		// Re-queue the current height by rolling back (the subscriber already advanced).
+		if priorityHeight < daHeight {
+			continue // skip stale hints without yielding back to the catchup loop
+		}
+
+		f.logger.Debug().
+			Uint64("da_height", priorityHeight).
+			Msg("fetching priority DA height from P2P hint")
+
+		if err := f.fetchAndPipeHeight(ctx, priorityHeight); err != nil {
+			if errors.Is(err, datypes.ErrHeightFromFuture) {
+				// Priority hint points to a future height — silently ignore.
+				f.logger.Debug().Uint64("priority_da_height", priorityHeight).
+					Msg("priority hint is from future, ignoring")
+				continue
+			}
+			// Roll back so daHeight is attempted again next cycle after backoff.
+			f.subscriber.SetLocalHeight(daHeight)
+			return err
+		}
+
+		// We successfully handled a priority height (we didn't actually process `daHeight`)
+		// Roll back so daHeight is attempted again next cycle.
 		f.subscriber.SetLocalHeight(daHeight)
 		return nil
 	}
 
-	return f.fetchAndPipeHeight(ctx, daHeight)
+	// 2. Normal sequential fetch
+	if err := f.fetchAndPipeHeight(ctx, daHeight); err != nil {
+		return err
+	}
+	return nil
 }
 
 // fetchAndPipeHeight retrieves events at a single DA height and pipes them.
+// It does NOT handle ErrHeightFromFuture — callers must decide how to react
+// because the correct response depends on whether this is a normal sequential
+// catchup or a priority-hint fetch.
 func (f *daFollower) fetchAndPipeHeight(ctx context.Context, daHeight uint64) error {
 	events, err := f.retriever.RetrieveFromDA(ctx, daHeight)
 	if err != nil {
-		switch {
-		case errors.Is(err, datypes.ErrBlobNotFound):
+		if errors.Is(err, datypes.ErrBlobNotFound) {
 			return nil
-		case errors.Is(err, datypes.ErrHeightFromFuture):
-			f.subscriber.SetHeadReached()
-			return err
-		default:
-			return err
 		}
+		return err
 	}
 
 	for _, event := range events {
@@ -200,5 +224,8 @@ func (f *daFollower) popPriorityHeight() uint64 {
 	}
 	height := f.priorityHeights[0]
 	f.priorityHeights = f.priorityHeights[1:]
+	if len(f.priorityHeights) == 0 {
+		f.priorityHeights = nil
+	}
 	return height
 }
