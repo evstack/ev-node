@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1773168525088,
+  "lastUpdate": 1773168526677,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -6662,6 +6662,102 @@ window.BENCHMARK_DATA = {
             "value": 71,
             "unit": "allocs/op",
             "extra": "31390 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "julien@rbrt.fr",
+            "name": "julienrbrt",
+            "username": "julienrbrt"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "7c829caeff4c39f176eeb7177eb4c35682e48aa5",
+          "message": "fix: persist snapshot once for avoiding badger vlog (#3153)\n\n* fix: persist snapshot once for avoiding badger vlog\n\n* cl\n\n* use latest\n\n* Revert \"build(deps): Bump docker/login-action from 3 to 4 (#3149)\"\n\nThis reverts commit f74b456d8be50afc28432b68199359aeabfee201.\n\n* fix lint",
+          "timestamp": "2026-03-10T18:27:42Z",
+          "tree_id": "beeb010b5a1a0ba0250b1640c93103e16b5b3521",
+          "url": "https://github.com/evstack/ev-node/commit/7c829caeff4c39f176eeb7177eb4c35682e48aa5"
+        },
+        "date": 1773168526181,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 37544,
+            "unit": "ns/op\t    6990 B/op\t      71 allocs/op",
+            "extra": "32851 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 37544,
+            "unit": "ns/op",
+            "extra": "32851 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 6990,
+            "unit": "B/op",
+            "extra": "32851 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 71,
+            "unit": "allocs/op",
+            "extra": "32851 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 38268,
+            "unit": "ns/op\t    7452 B/op\t      81 allocs/op",
+            "extra": "31950 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 38268,
+            "unit": "ns/op",
+            "extra": "31950 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 7452,
+            "unit": "B/op",
+            "extra": "31950 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 81,
+            "unit": "allocs/op",
+            "extra": "31950 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 47959,
+            "unit": "ns/op\t   26122 B/op\t      81 allocs/op",
+            "extra": "25850 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 47959,
+            "unit": "ns/op",
+            "extra": "25850 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 26122,
+            "unit": "B/op",
+            "extra": "25850 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 81,
+            "unit": "allocs/op",
+            "extra": "25850 times\n4 procs"
           }
         ]
       }
