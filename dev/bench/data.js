@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1773152249811,
+  "lastUpdate": 1773168525088,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -2388,6 +2388,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 189810,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "julien@rbrt.fr",
+            "name": "julienrbrt",
+            "username": "julienrbrt"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "7c829caeff4c39f176eeb7177eb4c35682e48aa5",
+          "message": "fix: persist snapshot once for avoiding badger vlog (#3153)\n\n* fix: persist snapshot once for avoiding badger vlog\n\n* cl\n\n* use latest\n\n* Revert \"build(deps): Bump docker/login-action from 3 to 4 (#3149)\"\n\nThis reverts commit f74b456d8be50afc28432b68199359aeabfee201.\n\n* fix lint",
+          "timestamp": "2026-03-10T18:27:42Z",
+          "tree_id": "beeb010b5a1a0ba0250b1640c93103e16b5b3521",
+          "url": "https://github.com/evstack/ev-node/commit/7c829caeff4c39f176eeb7177eb4c35682e48aa5"
+        },
+        "date": 1773168522340,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 907953814,
+            "unit": "ns/op\t32207212 B/op\t  180936 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 907953814,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 32207212,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 180936,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
