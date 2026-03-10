@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1773130960168,
+  "lastUpdate": 1773150147093,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -2292,6 +2292,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 179934,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "c588547ec5200e454eb8b0fb59091cd92aa969c5",
+          "message": "build(deps): Bump the all-go group across 5 directories with 8 updates (#3147)\n\n* build(deps): Bump the all-go group across 5 directories with 8 updates\n\nBumps the all-go group with 3 updates in the / directory: [go.opentelemetry.io/otel](https://github.com/open-telemetry/opentelemetry-go), [go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp](https://github.com/open-telemetry/opentelemetry-go) and [golang.org/x/sync](https://github.com/golang/sync).\nBumps the all-go group with 1 update in the /apps/evm directory: [github.com/ethereum/go-ethereum](https://github.com/ethereum/go-ethereum).\nBumps the all-go group with 2 updates in the /execution/evm directory: [go.opentelemetry.io/otel](https://github.com/open-telemetry/opentelemetry-go) and [github.com/ethereum/go-ethereum](https://github.com/ethereum/go-ethereum).\nBumps the all-go group with 2 updates in the /test/docker-e2e directory: [github.com/ethereum/go-ethereum](https://github.com/ethereum/go-ethereum) and [github.com/evstack/ev-node/execution/evm](https://github.com/evstack/ev-node).\nBumps the all-go group with 2 updates in the /test/e2e directory: [github.com/ethereum/go-ethereum](https://github.com/ethereum/go-ethereum) and [go.opentelemetry.io/proto/otlp](https://github.com/open-telemetry/opentelemetry-proto-go).\n\n\nUpdates `go.opentelemetry.io/otel` from 1.41.0 to 1.42.0\n- [Release notes](https://github.com/open-telemetry/opentelemetry-go/releases)\n- [Changelog](https://github.com/open-telemetry/opentelemetry-go/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/open-telemetry/opentelemetry-go/compare/v1.41.0...v1.42.0)\n\nUpdates `go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp` from 1.41.0 to 1.42.0\n- [Release notes](https://github.com/open-telemetry/opentelemetry-go/releases)\n- [Changelog](https://github.com/open-telemetry/opentelemetry-go/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/open-telemetry/opentelemetry-go/compare/v1.41.0...v1.42.0)\n\nUpdates `go.opentelemetry.io/otel/sdk` from 1.41.0 to 1.42.0\n- [Release notes](https://github.com/open-telemetry/opentelemetry-go/releases)\n- [Changelog](https://github.com/open-telemetry/opentelemetry-go/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/open-telemetry/opentelemetry-go/compare/v1.41.0...v1.42.0)\n\nUpdates `go.opentelemetry.io/otel/trace` from 1.41.0 to 1.42.0\n- [Release notes](https://github.com/open-telemetry/opentelemetry-go/releases)\n- [Changelog](https://github.com/open-telemetry/opentelemetry-go/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/open-telemetry/opentelemetry-go/compare/v1.41.0...v1.42.0)\n\nUpdates `golang.org/x/sync` from 0.19.0 to 0.20.0\n- [Commits](https://github.com/golang/sync/compare/v0.19.0...v0.20.0)\n\nUpdates `github.com/ethereum/go-ethereum` from 1.17.0 to 1.17.1\n- [Release notes](https://github.com/ethereum/go-ethereum/releases)\n- [Commits](https://github.com/ethereum/go-ethereum/compare/v1.17.0...v1.17.1)\n\nUpdates `go.opentelemetry.io/otel` from 1.41.0 to 1.42.0\n- [Release notes](https://github.com/open-telemetry/opentelemetry-go/releases)\n- [Changelog](https://github.com/open-telemetry/opentelemetry-go/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/open-telemetry/opentelemetry-go/compare/v1.41.0...v1.42.0)\n\nUpdates `go.opentelemetry.io/otel/sdk` from 1.41.0 to 1.42.0\n- [Release notes](https://github.com/open-telemetry/opentelemetry-go/releases)\n- [Changelog](https://github.com/open-telemetry/opentelemetry-go/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/open-telemetry/opentelemetry-go/compare/v1.41.0...v1.42.0)\n\nUpdates `go.opentelemetry.io/otel/trace` from 1.41.0 to 1.42.0\n- [Release notes](https://github.com/open-telemetry/opentelemetry-go/releases)\n- [Changelog](https://github.com/open-telemetry/opentelemetry-go/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/open-telemetry/opentelemetry-go/compare/v1.41.0...v1.42.0)\n\nUpdates `github.com/ethereum/go-ethereum` from 1.17.0 to 1.17.1\n- [Release notes](https://github.com/ethereum/go-ethereum/releases)\n- [Commits](https://github.com/ethereum/go-ethereum/compare/v1.17.0...v1.17.1)\n\nUpdates `github.com/ethereum/go-ethereum` from 1.17.0 to 1.17.1\n- [Release notes](https://github.com/ethereum/go-ethereum/releases)\n- [Commits](https://github.com/ethereum/go-ethereum/compare/v1.17.0...v1.17.1)\n\nUpdates `github.com/evstack/ev-node/execution/evm` from 1.0.0-rc.3 to 1.0.0-rc.4\n- [Release notes](https://github.com/evstack/ev-node/releases)\n- [Changelog](https://github.com/evstack/ev-node/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/evstack/ev-node/compare/v1.0.0-rc.3...v1.0.0-rc.4)\n\nUpdates `github.com/ethereum/go-ethereum` from 1.17.0 to 1.17.1\n- [Release notes](https://github.com/ethereum/go-ethereum/releases)\n- [Commits](https://github.com/ethereum/go-ethereum/compare/v1.17.0...v1.17.1)\n\nUpdates `go.opentelemetry.io/proto/otlp` from 1.9.0 to 1.10.0\n- [Release notes](https://github.com/open-telemetry/opentelemetry-proto-go/releases)\n- [Commits](https://github.com/open-telemetry/opentelemetry-proto-go/compare/v1.9.0...v1.10.0)\n\n---\nupdated-dependencies:\n- dependency-name: go.opentelemetry.io/otel\n  dependency-version: 1.42.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp\n  dependency-version: 1.42.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: go.opentelemetry.io/otel/sdk\n  dependency-version: 1.42.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: go.opentelemetry.io/otel/trace\n  dependency-version: 1.42.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: golang.org/x/sync\n  dependency-version: 0.20.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: github.com/ethereum/go-ethereum\n  dependency-version: 1.17.1\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: go.opentelemetry.io/otel\n  dependency-version: 1.42.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: go.opentelemetry.io/otel/sdk\n  dependency-version: 1.42.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: go.opentelemetry.io/otel/trace\n  dependency-version: 1.42.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: github.com/ethereum/go-ethereum\n  dependency-version: 1.17.1\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/ethereum/go-ethereum\n  dependency-version: 1.17.1\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/evstack/ev-node/execution/evm\n  dependency-version: 1.0.0-rc.4\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/ethereum/go-ethereum\n  dependency-version: 1.17.1\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: go.opentelemetry.io/proto/otlp\n  dependency-version: 1.10.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\n\n* chore: run just deps after Dependabot update\n\n---------\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\nCo-authored-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>\nCo-authored-by: julienrbrt <julien@rbrt.fr>",
+          "timestamp": "2026-03-10T14:38:12+01:00",
+          "tree_id": "d9ededb810577958f7f4b09f1b8569501957b2de",
+          "url": "https://github.com/evstack/ev-node/commit/c588547ec5200e454eb8b0fb59091cd92aa969c5"
+        },
+        "date": 1773150144248,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 912940182,
+            "unit": "ns/op\t33212672 B/op\t  189852 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 912940182,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 33212672,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 189852,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
