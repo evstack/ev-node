@@ -37,6 +37,8 @@ type traceProvider interface {
 	tryCollectSpans(ctx context.Context, serviceName string) []e2e.TraceSpan
 	// uiURL returns a link to view traces for the given service, or empty string if not available.
 	uiURL(serviceName string) string
+	// resetStartTime sets the trace collection window start to now.
+	resetStartTime()
 }
 
 // richSpanCollector is an optional interface for providers that support
@@ -74,6 +76,10 @@ func (j *jaegerTraceProvider) uiURL(_ string) string {
 	return j.node.External.QueryURL()
 }
 
+func (j *jaegerTraceProvider) resetStartTime() {
+	// jaeger provider doesn't use a start time window
+}
+
 func (j *jaegerTraceProvider) tryCollectSpans(ctx context.Context, serviceName string) []e2e.TraceSpan {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
@@ -101,6 +107,10 @@ type victoriaTraceProvider struct {
 	queryURL  string
 	t         testing.TB
 	startTime time.Time
+}
+
+func (v *victoriaTraceProvider) resetStartTime() {
+	v.startTime = time.Now()
 }
 
 func (v *victoriaTraceProvider) uiURL(serviceName string) string {

@@ -237,8 +237,8 @@ func (s *SpamoorSuite) collectTraces(e *env, serviceName string) *traceResult {
 	if rc, ok := e.traces.(richSpanCollector); ok {
 		richSpans, err := rc.collectRichSpans(ctx, serviceName)
 		if err == nil && len(richSpans) > 0 {
-			printFlowchart(t, richSpans)
-			printAggregateFlowchart(t, richSpans)
+			printFlowcharts(t, richSpans)
+			printAggregateFlowcharts(t, richSpans)
 		}
 	} else {
 		e2e.PrintTraceReport(t, serviceName, tr.evNode)

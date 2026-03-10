@@ -73,6 +73,9 @@ func (s *SpamoorSuite) TestGasBurner() {
 	}
 	waitForMetricTarget(t, "spamoor_transactions_sent_total (warmup)", pollSentTotal, warmupTxs, waitTimeout)
 
+	// reset trace window to exclude warmup spans
+	e.traces.resetStartTime()
+
 	startHeader, err := e.ethClient.HeaderByNumber(ctx, nil)
 	s.Require().NoError(err, "failed to get start block header")
 	startBlock := startHeader.Number.Uint64()

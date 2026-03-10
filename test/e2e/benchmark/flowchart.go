@@ -18,50 +18,90 @@ type spanNode struct {
 	children []*spanNode
 }
 
-// printFlowchart selects the trace with the longest root span and renders an
-// ASCII tree showing the parent-child span hierarchy with proportional duration bars.
-func printFlowchart(t testing.TB, spans []richSpan) {
+// printFlowcharts renders one ASCII tree per distinct root span type,
+// picking the longest trace for each root.
+func printFlowcharts(t testing.TB, spans []richSpan) {
 	t.Helper()
 	if len(spans) == 0 {
 		return
 	}
 
 	byTrace := groupByTrace(spans)
-	root, traceID := longestRootTrace(byTrace)
-	if root == nil {
-		return
-	}
+	byRoot := groupTracesByRoot(byTrace)
 
-	var b strings.Builder
-	host := root.span.hostName
-	if host == "" {
-		host = "unknown"
+	// sort root names for deterministic output
+	rootNames := make([]string, 0, len(byRoot))
+	for name := range byRoot {
+		rootNames = append(rootNames, name)
 	}
-	fmt.Fprintf(&b, "\n--- Block Production Flowchart (trace %s, host %s) ---\n\n", truncateID(traceID), host)
-	renderTree(&b, root, "", true, root.span.duration)
-	t.Log(b.String())
+	sort.Strings(rootNames)
+
+	for _, rootName := range rootNames {
+		traces := byRoot[rootName]
+		root, traceID := longestRootTrace(traces)
+		if root == nil {
+			continue
+		}
+
+		var b strings.Builder
+		host := root.span.hostName
+		if host == "" {
+			host = "unknown"
+		}
+		fmt.Fprintf(&b, "\n--- Flowchart: %s (trace %s, host %s) ---\n\n", rootName, truncateID(traceID), host)
+		renderTree(&b, root, "", true, root.span.duration)
+		t.Log(b.String())
+	}
 }
 
-// printAggregateFlowchart builds a canonical tree from parent-child relationships
-// across all traces and renders average durations.
-func printAggregateFlowchart(t testing.TB, spans []richSpan) {
+// printAggregateFlowcharts builds one aggregate tree per distinct root span type
+// and renders average durations for each.
+func printAggregateFlowcharts(t testing.TB, spans []richSpan) {
 	t.Helper()
 	if len(spans) == 0 {
 		return
 	}
 
 	byTrace := groupByTrace(spans)
-	agg := buildAggregateTree(byTrace)
-	if agg == nil {
-		return
-	}
-
+	byRoot := groupTracesByRoot(byTrace)
 	hosts := uniqueHosts(spans)
 
-	var b strings.Builder
-	fmt.Fprintf(&b, "\n--- Average Block Production Pipeline (%d traces, hosts: %s) ---\n\n", len(byTrace), strings.Join(hosts, ", "))
-	renderAggregateTree(&b, agg, "", true, agg.avgDuration)
-	t.Log(b.String())
+	rootNames := make([]string, 0, len(byRoot))
+	for name := range byRoot {
+		rootNames = append(rootNames, name)
+	}
+	sort.Strings(rootNames)
+
+	for _, rootName := range rootNames {
+		traces := byRoot[rootName]
+		agg := buildAggregateTree(traces)
+		if agg == nil {
+			continue
+		}
+
+		var b strings.Builder
+		fmt.Fprintf(&b, "\n--- Average Pipeline: %s (%d traces, hosts: %s) ---\n\n",
+			rootName, len(traces), strings.Join(hosts, ", "))
+		renderAggregateTree(&b, agg, "", true, agg.avgDuration)
+		t.Log(b.String())
+	}
+}
+
+// groupTracesByRoot groups traces by their root span name.
+func groupTracesByRoot(byTrace map[string][]richSpan) map[string]map[string][]richSpan {
+	result := make(map[string]map[string][]richSpan)
+	for traceID, spans := range byTrace {
+		root := buildTree(spans)
+		if root == nil {
+			continue
+		}
+		rootName := root.span.name
+		if result[rootName] == nil {
+			result[rootName] = make(map[string][]richSpan)
+		}
+		result[rootName][traceID] = spans
+	}
+	return result
 }
 
 func groupByTrace(spans []richSpan) map[string][]richSpan {
