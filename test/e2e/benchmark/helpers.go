@@ -182,6 +182,22 @@ func waitForSpamoorDone(ctx context.Context, log func(string, ...any), api *spam
 	}
 }
 
+// assertSpammersRunning checks that all spammers are still active (status > 0).
+// spamoor uses status=0 for "stopped/failed" and status>0 for running states.
+// This catches immediate failures like "replacement transaction underpriced".
+func assertSpammersRunning(t testing.TB, api *spamoor.API, ids []int) {
+	t.Helper()
+	for _, id := range ids {
+		sp, err := api.GetSpammer(id)
+		if err != nil {
+			t.Fatalf("failed to get spammer %d: %v", id, err)
+		}
+		if sp.Status == 0 {
+			t.Fatalf("spammer %d (%s) failed immediately (status=0); check spamoor container logs for errors", id, sp.Name)
+		}
+	}
+}
+
 // deleteAllSpammers removes any pre-existing spammers from the daemon.
 // This prevents stale spammers (from previous failed runs) being restored
 // from the spamoor SQLite database.

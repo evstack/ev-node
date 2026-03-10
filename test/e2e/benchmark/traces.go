@@ -98,10 +98,9 @@ func (j *jaegerTraceProvider) tryCollectSpans(ctx context.Context, serviceName s
 // victoriaTraceProvider collects spans from a VictoriaTraces instance via its
 // Jaeger-compatible HTTP API.
 type victoriaTraceProvider struct {
-	queryURL   string
-	t          testing.TB
-	startTime  time.Time
-	hostFilter string
+	queryURL  string
+	t         testing.TB
+	startTime time.Time
 }
 
 func (v *victoriaTraceProvider) uiURL(serviceName string) string {
@@ -194,12 +193,7 @@ func (v *victoriaTraceProvider) collectRichSpans(ctx context.Context, serviceNam
 // fetchAllRichSpans is like fetchAllSpans but returns richSpan with full hierarchy info.
 func (v *victoriaTraceProvider) fetchAllRichSpans(ctx context.Context, serviceName string) ([]richSpan, error) {
 	end := time.Now()
-	var query string
-	if v.hostFilter != "" {
-		query = fmt.Sprintf(`_stream:{resource_attr:service.name="%s", resource_attr:host.name="%s"}`, serviceName, v.hostFilter)
-	} else {
-		query = fmt.Sprintf(`_stream:{resource_attr:service.name="%s"}`, serviceName)
-	}
+	query := fmt.Sprintf(`_stream:{resource_attr:service.name="%s"}`, serviceName)
 	baseURL := strings.TrimRight(v.queryURL, "/")
 	url := fmt.Sprintf("%s/select/logsql/query?query=%s&start=%s&end=%s",
 		baseURL,
@@ -259,12 +253,7 @@ func (v *victoriaTraceProvider) fetchAllRichSpans(ctx context.Context, serviceNa
 // streaming all results without the Jaeger API's 1000 trace limit.
 func (v *victoriaTraceProvider) fetchAllSpans(ctx context.Context, serviceName string) ([]e2e.TraceSpan, error) {
 	end := time.Now()
-	var query string
-	if v.hostFilter != "" {
-		query = fmt.Sprintf(`_stream:{resource_attr:service.name="%s", resource_attr:host.name="%s"}`, serviceName, v.hostFilter)
-	} else {
-		query = fmt.Sprintf(`_stream:{resource_attr:service.name="%s"}`, serviceName)
-	}
+	query := fmt.Sprintf(`_stream:{resource_attr:service.name="%s"}`, serviceName)
 	baseURL := strings.TrimRight(v.queryURL, "/")
 	url := fmt.Sprintf("%s/select/logsql/query?query=%s&start=%s&end=%s",
 		baseURL,

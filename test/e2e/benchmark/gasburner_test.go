@@ -41,7 +41,7 @@ func (s *SpamoorSuite) TestGasBurner() {
 		"throughput":        200,
 		"max_pending":       50000,
 		"max_wallets":       500,
-		"rebroadcast":       0,
+		"rebroadcast":       5,
 		"base_fee":          1000,
 		"tip_fee":           500,
 		"refill_amount":     "5000000000000000000",
@@ -49,12 +49,18 @@ func (s *SpamoorSuite) TestGasBurner() {
 		"refill_interval":   300,
 	}
 
+	var spammerIDs []int
 	for i := range numSpammers {
 		name := fmt.Sprintf("bench-gasburner-%d", i)
 		id, err := api.CreateSpammer(name, spamoor.ScenarioGasBurnerTX, gasburnerCfg, true)
 		s.Require().NoError(err, "failed to create spammer %s", name)
+		spammerIDs = append(spammerIDs, id)
 		t.Cleanup(func() { _ = api.DeleteSpammer(id) })
 	}
+
+	// give spammers a moment to start, then verify none failed immediately
+	time.Sleep(3 * time.Second)
+	assertSpammersRunning(t, api, spammerIDs)
 
 	// wait for wallet prep and contract deployment to finish before
 	// recording start block so warmup is excluded from the measurement.
