@@ -19,7 +19,7 @@ import (
 // propagation delay from full nodes.
 func (s *SpamoorSuite) TestGasBurner() {
 	const (
-		numSpammers     = 4
+		numSpammers     = 8
 		countPerSpammer = 10000
 		totalCount      = numSpammers * countPerSpammer
 		warmupTxs       = 500
@@ -42,7 +42,7 @@ func (s *SpamoorSuite) TestGasBurner() {
 	gasburnerCfg := map[string]any{
 		"gas_units_to_burn": 1_000_000,
 		"total_count":       countPerSpammer,
-		"throughput":        1000,
+		"throughput":        2000,
 		"max_pending":       50000,
 		"max_wallets":       500,
 		"rebroadcast":       5,
