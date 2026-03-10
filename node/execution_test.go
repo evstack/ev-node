@@ -96,10 +96,12 @@ func getExecutorFromNode(t *testing.T, node *FullNode) coreexecutor.Executor {
 	state := sle.state()
 	if state == nil {
 		t.Fatal("failoverState is nil")
+		return nil
 	}
 	bc := state.bc
 	if bc == nil {
 		t.Fatal("blockComponents is nil")
+		return nil
 	}
 	if bc.Executor != nil {
 		return bc.Executor.GetCoreExecutor()

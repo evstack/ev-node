@@ -700,10 +700,10 @@ func TestSubmitter_setNodeHeightToDAHeight_AfterRestart(t *testing.T) {
 	require.NoError(t, batch.SetHeight(3))
 	require.NoError(t, batch.Commit())
 
-	// Mark height 3 as DA-included in the pre-restart cache.
-	// persistSnapshot fires here and writes the snapshot key to st1.
+	// Mark height 3 as DA-included in the pre-restart cache, then flush (shutdown).
 	cm1.SetHeaderDAIncluded(h3.Hash().String(), 12, 3)
 	cm1.SetDataDAIncluded(d3.DACommitment().String(), 12, 3)
+	require.NoError(t, cm1.SaveToStore())
 
 	// Persist DAIncludedHeight = 2 (height 3 is in-flight, not yet finalized).
 	daIncBz := make([]byte, 8)
