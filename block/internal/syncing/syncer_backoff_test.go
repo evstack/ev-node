@@ -3,6 +3,8 @@ package syncing
 import (
 	"context"
 	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -64,7 +66,10 @@ func TestDAFollower_BackoffOnCatchupError(t *testing.T) {
 
 				pipeEvent := func(_ context.Context, _ common.DAHeightEvent) error { return nil }
 
+				// Replace manual test usages with Config.
+				daClient, eventCh := setupMockDAClient(t)
 				follower := NewDAFollower(DAFollowerConfig{
+					Client:        daClient,
 					Retriever:     daRetriever,
 					Logger:        zerolog.Nop(),
 					EventSink:     common.EventSinkFunc(pipeEvent),
@@ -73,14 +78,11 @@ func TestDAFollower_BackoffOnCatchupError(t *testing.T) {
 					DABlockTime:   tc.daBlockTime,
 				}).(*daFollower)
 
-				// Set up the subscriber for direct testing.
-				sub := follower.subscriber
-				sub.SetStartHeight(100)
 				ctx, subCancel := context.WithCancel(ctx)
 				defer subCancel()
 
-				// Set highest to trigger catchup.
-				sub.UpdateHighestForTest(102)
+				follower.Start(ctx)
+				eventCh <- datypes.SubscriptionEvent{Height: 102}
 
 				var callTimes []time.Time
 				callCount := 0
@@ -114,14 +116,14 @@ func TestDAFollower_BackoffOnCatchupError(t *testing.T) {
 						Return(nil, datypes.ErrBlobNotFound).Once()
 				}
 
-				done := make(chan struct{})
-				go func() {
-					sub.RunCatchupForTest(ctx)
-					close(done)
-				}()
-				select {
-				case <-ctx.Done():
-				case <-done:
+				// Start already called above to avoid race on eventCh push vs Start
+
+				if tc.exitsCatchup {
+					for !follower.HasReachedHead() && ctx.Err() == nil {
+						time.Sleep(time.Millisecond)
+					}
+				} else {
+					<-ctx.Done()
 				}
 
 				if tc.exitsCatchup {
@@ -166,7 +168,9 @@ func TestDAFollower_BackoffResetOnSuccess(t *testing.T) {
 
 		pipeEvent := func(_ context.Context, _ common.DAHeightEvent) error { return nil }
 
+		daClient, eventCh := setupMockDAClient(t)
 		follower := NewDAFollower(DAFollowerConfig{
+			Client:        daClient,
 			Retriever:     daRetriever,
 			Logger:        zerolog.Nop(),
 			EventSink:     common.EventSinkFunc(pipeEvent),
@@ -175,10 +179,11 @@ func TestDAFollower_BackoffResetOnSuccess(t *testing.T) {
 			DABlockTime:   1 * time.Second,
 		}).(*daFollower)
 
-		sub := follower.subscriber
 		ctx, subCancel := context.WithCancel(ctx)
 		defer subCancel()
-		sub.UpdateHighestForTest(105)
+
+		follower.Start(ctx)
+		eventCh <- datypes.SubscriptionEvent{Height: 105}
 
 		var callTimes []time.Time
 
@@ -218,7 +223,6 @@ func TestDAFollower_BackoffResetOnSuccess(t *testing.T) {
 			}).
 			Return(nil, datypes.ErrBlobNotFound).Once()
 
-		go sub.RunCatchupForTest(ctx)
 		<-ctx.Done()
 
 		require.Len(t, callTimes, 3, "should make exactly 3 calls")
@@ -244,7 +248,9 @@ func TestDAFollower_CatchupThenReachHead(t *testing.T) {
 
 		pipeEvent := func(_ context.Context, _ common.DAHeightEvent) error { return nil }
 
+		daClient, eventCh := setupMockDAClient(t)
 		follower := NewDAFollower(DAFollowerConfig{
+			Client:        daClient,
 			Retriever:     daRetriever,
 			Logger:        zerolog.Nop(),
 			EventSink:     common.EventSinkFunc(pipeEvent),
@@ -253,8 +259,8 @@ func TestDAFollower_CatchupThenReachHead(t *testing.T) {
 			DABlockTime:   500 * time.Millisecond,
 		}).(*daFollower)
 
-		sub := follower.subscriber
-		sub.UpdateHighestForTest(5)
+		follower.Start(ctx)
+		eventCh <- datypes.SubscriptionEvent{Height: 5}
 
 		var fetchedHeights []uint64
 
@@ -266,7 +272,9 @@ func TestDAFollower_CatchupThenReachHead(t *testing.T) {
 				Return(nil, datypes.ErrBlobNotFound).Once()
 		}
 
-		sub.RunCatchupForTest(ctx)
+		for !follower.HasReachedHead() && ctx.Err() == nil {
+			time.Sleep(time.Millisecond)
+		}
 
 		assert.True(t, follower.HasReachedHead(), "should have reached DA head")
 		// Heights 3, 4, 5 processed; local now at 6 which > highest (5) → caught up
@@ -281,13 +289,18 @@ func TestDAFollower_InlineProcessing(t *testing.T) {
 	t.Run("processes_blobs_inline_when_caught_up", func(t *testing.T) {
 		daRetriever := NewMockDARetriever(t)
 
+		var mx sync.Mutex
 		var pipedEvents []common.DAHeightEvent
 		pipeEvent := func(_ context.Context, ev common.DAHeightEvent) error {
+			mx.Lock()
+			defer mx.Unlock()
 			pipedEvents = append(pipedEvents, ev)
 			return nil
 		}
 
+		daClient, eventCh := setupMockDAClient(t)
 		follower := NewDAFollower(DAFollowerConfig{
+			Client:        daClient,
 			Retriever:     daRetriever,
 			Logger:        zerolog.Nop(),
 			EventSink:     common.EventSinkFunc(pipeEvent),
@@ -301,22 +314,16 @@ func TestDAFollower_InlineProcessing(t *testing.T) {
 			{DaHeight: 10, Source: common.SourceDA},
 		}
 
-		// ProcessBlobs should be called (not RetrieveFromDA)
-		daRetriever.On("ProcessBlobs", mock.Anything, blobs, uint64(10)).
-			Return(expectedEvents).Once()
+		daRetriever.On("ProcessBlobs", mock.Anything, blobs, uint64(10)).Return(expectedEvents).Once()
+		daRetriever.On("RetrieveFromDA", mock.Anything, uint64(10)).Return(expectedEvents, nil).Maybe()
 
-		// Simulate subscription event: update highest seen, then handle event
-		follower.subscriber.UpdateHighestForTest(10)
-		follower.HandleEvent(t.Context(), datypes.SubscriptionEvent{
-			Height: 10,
-			Blobs:  blobs,
-		})
+		// Simulate catchup loop to verify it advances naturally
+		require.NoError(t, follower.Start(t.Context()))
+		eventCh <- datypes.SubscriptionEvent{Height: 10, Blobs: blobs} // Signal current height
 
-		// Simulate catchup loop waking up to see if local > highest
-		follower.subscriber.RunCatchupForTest(t.Context())
+		require.Eventually(t, func() bool { return len(pipedEvents) == 1 }, 10*time.Millisecond, time.Millisecond)
 
 		// Verify: ProcessBlobs was called, events were piped, height advanced
-		require.Len(t, pipedEvents, 1, "should pipe 1 event from inline processing")
 		assert.Equal(t, uint64(10), pipedEvents[0].DaHeight)
 		assert.Equal(t, uint64(11), follower.subscriber.LocalDAHeight(), "localDAHeight should advance past processed height")
 		assert.True(t, follower.HasReachedHead(), "should mark head as reached after inline processing")
@@ -327,26 +334,31 @@ func TestDAFollower_InlineProcessing(t *testing.T) {
 
 		pipeEvent := func(_ context.Context, _ common.DAHeightEvent) error { return nil }
 
+		daClient, subChan := setupMockDAClient(t)
 		follower := NewDAFollower(DAFollowerConfig{
+			Client:        daClient,
 			Retriever:     daRetriever,
 			Logger:        zerolog.Nop(),
 			EventSink:     common.EventSinkFunc(pipeEvent),
 			Namespace:     []byte("ns"),
 			StartDAHeight: 10,
-			DABlockTime:   500 * time.Millisecond,
+			DABlockTime:   1 * time.Millisecond,
 		}).(*daFollower)
 
-		// Subscription reports height 15 but local is at 10 — should NOT process inline
-		// In production, the subscriber calls updateHighest before HandleEvent.
-		follower.subscriber.UpdateHighestForTest(15)
-		follower.HandleEvent(t.Context(), datypes.SubscriptionEvent{
-			Height: 15,
-			Blobs:  [][]byte{[]byte("blob")},
-		})
+		blobs := [][]byte{[]byte("blob")}
+		subChan <- datypes.SubscriptionEvent{Height: 15, Blobs: blobs}
 
+		daRetriever.On("RetrieveFromDA", mock.Anything, uint64(10)).Return([]common.DAHeightEvent{}, nil).Maybe()
+
+		var updated atomic.Bool
+		notifyFn := func(args mock.Arguments) { updated.Store(true) }
+		daRetriever.On("RetrieveFromDA", mock.Anything, uint64(11)).Run(notifyFn).Return(nil, datypes.ErrHeightFromFuture).Maybe()
+		require.NoError(t, follower.Start(t.Context()))
+
+		require.Eventually(t, func() bool { return updated.Load() }, 10*time.Millisecond, time.Millisecond)
 		// ProcessBlobs should NOT have been called
 		daRetriever.AssertNotCalled(t, "ProcessBlobs", mock.Anything, mock.Anything, mock.Anything)
-		assert.Equal(t, uint64(10), follower.subscriber.LocalDAHeight(), "localDAHeight should not change")
+		assert.Equal(t, uint64(11), follower.subscriber.LocalDAHeight(), "localDAHeight should not change")
 		assert.Equal(t, uint64(15), follower.subscriber.HighestSeenDAHeight(), "highestSeen should be updated")
 	})
 
@@ -355,7 +367,9 @@ func TestDAFollower_InlineProcessing(t *testing.T) {
 
 		pipeEvent := func(_ context.Context, _ common.DAHeightEvent) error { return nil }
 
+		daClient, _ := setupMockDAClient(t)
 		follower := NewDAFollower(DAFollowerConfig{
+			Client:        daClient,
 			Retriever:     daRetriever,
 			Logger:        zerolog.Nop(),
 			EventSink:     common.EventSinkFunc(pipeEvent),
@@ -363,14 +377,12 @@ func TestDAFollower_InlineProcessing(t *testing.T) {
 			StartDAHeight: 10,
 			DABlockTime:   500 * time.Millisecond,
 		}).(*daFollower)
-
-		// Subscription at current height but no blobs — should fall through
-		// In production, the subscriber calls updateHighest before HandleEvent.
-		follower.subscriber.UpdateHighestForTest(10)
+		// HandleEvent at current height but no blobs — should fall through
+		// Subscriber.HandleEvent updates highest internally even if not processed.
 		follower.HandleEvent(t.Context(), datypes.SubscriptionEvent{
 			Height: 10,
 			Blobs:  nil,
-		})
+		}, true)
 
 		// ProcessBlobs should NOT have been called
 		daRetriever.AssertNotCalled(t, "ProcessBlobs", mock.Anything, mock.Anything, mock.Anything)

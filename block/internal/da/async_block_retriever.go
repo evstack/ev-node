@@ -88,8 +88,8 @@ func NewAsyncBlockRetriever(
 		DABlockTime:         daBlockTime,
 		Handler:             f,
 		FetchBlockTimestamp: true,
+		StartHeight:         daStartHeight,
 	})
-	f.subscriber.SetStartHeight(daStartHeight)
 
 	return f
 }
@@ -173,8 +173,12 @@ func (f *asyncBlockRetriever) GetCachedBlock(ctx context.Context, daHeight uint6
 
 // HandleEvent caches blobs from the subscription inline, even empty ones,
 // to record that the DA height was seen and has 0 blobs.
-func (f *asyncBlockRetriever) HandleEvent(ctx context.Context, ev datypes.SubscriptionEvent) {
+func (f *asyncBlockRetriever) HandleEvent(ctx context.Context, ev datypes.SubscriptionEvent, isInline bool) error {
 	f.cacheBlock(ctx, ev.Height, ev.Timestamp, ev.Blobs)
+	if isInline {
+		return errors.New("async block retriever relies on catchup state machine")
+	}
+	return nil
 }
 
 // HandleCatchup fetches a single height via Retrieve and caches it.

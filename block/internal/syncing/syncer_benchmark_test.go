@@ -16,6 +16,7 @@ import (
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/pkg/config"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/store"
 	testmocks "github.com/evstack/ev-node/test/mocks"
@@ -47,7 +48,9 @@ func BenchmarkSyncerIO(b *testing.B) {
 				go fixt.s.processLoop(ctx)
 
 				// Create a DAFollower to drive DA retrieval.
+				daClient, eventCh := setupMockDAClient(b)
 				follower := NewDAFollower(DAFollowerConfig{
+					Client:        daClient,
 					Retriever:     fixt.s.daRetriever,
 					Logger:        zerolog.Nop(),
 					EventSink:     fixt.s,
@@ -55,9 +58,8 @@ func BenchmarkSyncerIO(b *testing.B) {
 					StartDAHeight: fixt.s.daRetrieverHeight.Load(),
 					DABlockTime:   0,
 				}).(*daFollower)
-				sub := follower.subscriber
-				sub.UpdateHighestForTest(spec.heights + daHeightOffset)
-				go sub.RunCatchupForTest(ctx)
+				follower.Start(ctx)
+				eventCh <- datypes.SubscriptionEvent{Height: spec.heights + daHeightOffset}
 
 				fixt.s.startSyncWorkers(ctx)
 

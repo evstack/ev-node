@@ -68,8 +68,8 @@ func NewDAFollower(cfg DAFollowerConfig) DAFollower {
 		Namespaces:  [][]byte{cfg.Namespace, dataNs},
 		DABlockTime: cfg.DABlockTime,
 		Handler:     f,
+		StartHeight: cfg.StartDAHeight,
 	})
-	f.subscriber.SetStartHeight(cfg.StartDAHeight)
 
 	return f
 }
@@ -97,35 +97,27 @@ func (f *daFollower) HasReachedHead() bool {
 // caught up (ev.Height == localDAHeight) and blobs are available, it processes
 // them inline — avoiding a DA re-fetch round trip. Otherwise, it just lets
 // the catchup loop handle retrieval.
-//
-// Uses CAS on localDAHeight to claim exclusive access to processBlobs,
-// preventing concurrent map access with catchupLoop.
-func (f *daFollower) HandleEvent(ctx context.Context, ev datypes.SubscriptionEvent) {
-	// Fast path: try to claim this height for inline processing.
-	// CAS(N, N+1) ensures only one goroutine (followLoop or catchupLoop)
-	// can enter processBlobs for height N.
-	if len(ev.Blobs) > 0 && f.subscriber.CompareAndSwapLocalHeight(ev.Height, ev.Height+1) {
-		events := f.retriever.ProcessBlobs(ctx, ev.Blobs, ev.Height)
-		for _, event := range events {
-			if err := f.eventSink.PipeEvent(ctx, event); err != nil {
-				// Roll back so catchupLoop can retry this height.
-				f.subscriber.SetLocalHeight(ev.Height)
-				f.logger.Warn().Err(err).Uint64("da_height", ev.Height).
-					Msg("failed to pipe inline event, catchup will retry")
-				return
-			}
-		}
-		if len(events) != 0 {
-			f.logger.Debug().Uint64("da_height", ev.Height).Int("events", len(events)).
-				Msg("processed subscription blobs inline (fast path)")
-		} else {
-			// No complete events (split namespace, waiting for other half).
-			f.subscriber.SetLocalHeight(ev.Height)
-		}
-		return
+func (f *daFollower) HandleEvent(ctx context.Context, ev datypes.SubscriptionEvent, isInline bool) error {
+	if !isInline || len(ev.Blobs) == 0 {
+		return nil // skip
 	}
 
-	// Slow path: behind, no blobs, or catchupLoop claimed this height.
+	events := f.retriever.ProcessBlobs(ctx, ev.Blobs, ev.Height)
+	if len(events) == 0 {
+		return errors.New("skip inline: no complete events") // Split namespace, subscriber rolls back
+	}
+
+	for _, event := range events {
+		if err := f.eventSink.PipeEvent(ctx, event); err != nil {
+			f.logger.Warn().Err(err).Uint64("da_height", ev.Height).
+				Msg("failed to pipe inline event, catchup will retry")
+			return err // Actual pipe failure, subscriber rolls back
+		}
+	}
+
+	f.logger.Debug().Uint64("da_height", ev.Height).Int("events", len(events)).
+		Msg("processed subscription blobs inline (fast path)")
+	return nil
 }
 
 // HandleCatchup retrieves events at a single DA height and pipes them
@@ -138,11 +130,7 @@ func (f *daFollower) HandleEvent(ctx context.Context, ev datypes.SubscriptionEve
 //     skipping the current daHeight or stopping catchup.
 func (f *daFollower) HandleCatchup(ctx context.Context, daHeight uint64) error {
 	// 1. Drain stale or future priority heights from P2P hints
-	for {
-		priorityHeight := f.popPriorityHeight()
-		if priorityHeight == 0 {
-			break
-		}
+	for priorityHeight := f.popPriorityHeight(); priorityHeight != 0; priorityHeight = f.popPriorityHeight() {
 		if priorityHeight < daHeight {
 			continue // skip stale hints without yielding back to the catchup loop
 		}
@@ -159,14 +147,9 @@ func (f *daFollower) HandleCatchup(ctx context.Context, daHeight uint64) error {
 				continue
 			}
 			// Roll back so daHeight is attempted again next cycle after backoff.
-			f.subscriber.SetLocalHeight(daHeight)
 			return err
 		}
-
-		// We successfully handled a priority height (we didn't actually process `daHeight`)
-		// Roll back so daHeight is attempted again next cycle.
-		f.subscriber.SetLocalHeight(daHeight)
-		return nil
+		break // continue with daHeight
 	}
 
 	// 2. Normal sequential fetch

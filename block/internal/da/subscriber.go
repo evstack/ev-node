@@ -17,13 +17,15 @@ import (
 // SubscriberHandler is the callback interface for subscription consumers.
 // Implementations drive the consumer-specific logic (caching, piping events, etc.).
 type SubscriberHandler interface {
-	// HandleEvent processes a subscription event inline (fast path).
-	// Called on the followLoop goroutine for each subscription event.
-	HandleEvent(ctx context.Context, ev datypes.SubscriptionEvent)
+	// HandleEvent processes a subscription event.
+	// isInline is true if the subscriber successfully claimed this height (via CAS).
+	// Returning an error when isInline is true instructs the Subscriber to roll back the localDAHeight.
+	HandleEvent(ctx context.Context, ev datypes.SubscriptionEvent, isInline bool) error
 
 	// HandleCatchup is called for each height during sequential catchup.
-	// The subscriber advances localDAHeight only after this returns nil.
-	// Returning an error triggers a backoff retry.
+	// The subscriber advances localDAHeight only after this returns (true, nil).
+	// Returning (false, nil) rolls back localDAHeight without triggering a backoff.
+	// Returning an error rolls back localDAHeight and triggers a backoff retry.
 	HandleCatchup(ctx context.Context, height uint64) error
 }
 
@@ -36,6 +38,8 @@ type SubscriberConfig struct {
 	Handler     SubscriberHandler
 	// Deprecated: Remove with https://github.com/evstack/ev-node/issues/3142
 	FetchBlockTimestamp bool // the timestamp comes with an extra api call before Celestia v0.29.1-mocha.
+
+	StartHeight uint64 // initial localDAHeight
 }
 
 // Subscriber is a shared DA subscription primitive that encapsulates the
@@ -87,15 +91,13 @@ func NewSubscriber(cfg SubscriberConfig) *Subscriber {
 		daBlockTime:         cfg.DABlockTime,
 		fetchBlockTimestamp: cfg.FetchBlockTimestamp,
 	}
+	s.localDAHeight.Store(cfg.StartHeight)
+	s.catchupSignal <- struct{}{}
+
 	if len(s.namespaces) == 0 {
 		s.logger.Warn().Msg("no namespaces configured, subscriber will stay idle")
 	}
 	return s
-}
-
-// SetStartHeight sets the initial local DA height before Start is called.
-func (s *Subscriber) SetStartHeight(height uint64) {
-	s.localDAHeight.Store(height)
 }
 
 // Start begins the follow and catchup goroutines.
@@ -108,6 +110,7 @@ func (s *Subscriber) Start(ctx context.Context) error {
 	s.wg.Add(2)
 	go s.followLoop(ctx)
 	go s.catchupLoop(ctx)
+
 	return nil
 }
 
@@ -132,29 +135,6 @@ func (s *Subscriber) HighestSeenDAHeight() uint64 {
 // HasReachedHead returns whether the subscriber has caught up to DA head.
 func (s *Subscriber) HasReachedHead() bool {
 	return s.headReached.Load()
-}
-
-// CompareAndSwapLocalHeight attempts a CAS on localDAHeight.
-// Used by handlers that want to claim exclusive processing of a height.
-func (s *Subscriber) CompareAndSwapLocalHeight(old, new uint64) bool {
-	return s.localDAHeight.CompareAndSwap(old, new)
-}
-
-// SetLocalHeight stores a new localDAHeight value.
-func (s *Subscriber) SetLocalHeight(height uint64) {
-	s.localDAHeight.Store(height)
-}
-
-// UpdateHighestForTest directly sets the highest seen DA height and signals catchup.
-// Only for use in tests that bypass the subscription loop.
-func (s *Subscriber) UpdateHighestForTest(height uint64) {
-	s.updateHighest(height)
-}
-
-// RunCatchupForTest runs a single catchup pass. Only for use in tests that
-// bypass the catchup loop's signal-wait mechanism.
-func (s *Subscriber) RunCatchupForTest(ctx context.Context) {
-	s.runCatchup(ctx)
 }
 
 // ---------------------------------------------------------------------------
@@ -215,7 +195,21 @@ func (s *Subscriber) runSubscription(ctx context.Context) error {
 				return errors.New("subscription channel closed")
 			}
 			s.updateHighest(ev.Height)
-			s.handler.HandleEvent(ctx, ev)
+
+			local := s.localDAHeight.Load()
+			isInline := ev.Height == local && s.localDAHeight.CompareAndSwap(local, local+1)
+
+			err = s.handler.HandleEvent(ctx, ev, isInline)
+			if isInline {
+				if err != nil {
+					s.localDAHeight.Store(local)
+					s.logger.Debug().Err(err).Uint64("da_height", ev.Height).
+						Msg("inline processing skipped/failed, rolling back")
+				} else {
+					s.headReached.Store(true)
+				}
+			}
+
 			watchdog.Reset(watchdogTimeout)
 		case <-watchdog.C:
 			return errors.New("subscription watchdog: no events received, reconnecting")
@@ -325,9 +319,7 @@ func (s *Subscriber) runCatchup(ctx context.Context) {
 		}
 
 		local := s.localDAHeight.Load()
-		highest := s.highestSeenDAHeight.Load()
-
-		if local > highest {
+		if local > s.highestSeenDAHeight.Load() {
 			s.headReached.Store(true)
 			return
 		}

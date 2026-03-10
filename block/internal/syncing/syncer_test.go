@@ -21,6 +21,7 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
+	"github.com/evstack/ev-node/block/internal/da"
 	"github.com/evstack/ev-node/core/execution"
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
@@ -84,6 +85,13 @@ func makeSignedHeaderBytes(
 	bin, err := hdr.MarshalBinary()
 	require.NoError(tb, err)
 	return bin, hdr
+}
+
+func setupMockDAClient(tb testing.TB) (da.Client, chan datypes.SubscriptionEvent) {
+	mockClient := testmocks.NewMockClient(tb)
+	eventCh := make(chan datypes.SubscriptionEvent, 1)
+	mockClient.EXPECT().Subscribe(mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(eventCh), nil).Maybe()
+	return mockClient, eventCh
 }
 
 func makeData(chainID string, height uint64, txs int) *types.Data {
@@ -426,7 +434,9 @@ func TestSyncLoopPersistState(t *testing.T) {
 	go syncerInst1.processLoop(ctx)
 
 	// Create and start a DAFollower so DA retrieval actually happens.
+	daClient, eventCh := setupMockDAClient(t)
 	follower1 := NewDAFollower(DAFollowerConfig{
+		Client:        daClient,
 		Retriever:     daRtrMock,
 		Logger:        zerolog.Nop(),
 		EventSink:     common.EventSinkFunc(syncerInst1.PipeEvent),
@@ -434,9 +444,8 @@ func TestSyncLoopPersistState(t *testing.T) {
 		StartDAHeight: syncerInst1.daRetrieverHeight.Load(),
 		DABlockTime:   cfg.DA.BlockTime.Duration,
 	}).(*daFollower)
-	sub1 := follower1.subscriber
-	sub1.UpdateHighestForTest(myFutureDAHeight)
-	go sub1.RunCatchupForTest(ctx)
+	require.NoError(t, follower1.Start(ctx))
+	eventCh <- datypes.SubscriptionEvent{Height: myFutureDAHeight}
 	syncerInst1.startSyncWorkers(ctx)
 	syncerInst1.wg.Wait()
 	requireEmptyChan(t, errorCh)
@@ -509,7 +518,9 @@ func TestSyncLoopPersistState(t *testing.T) {
 	t.Log("sync workers on instance2 started")
 
 	// Create a follower for instance 2.
+	daClient2, eventCh2 := setupMockDAClient(t)
 	follower2 := NewDAFollower(DAFollowerConfig{
+		Client:        daClient2,
 		Retriever:     daRtrMock,
 		Logger:        zerolog.Nop(),
 		EventSink:     common.EventSinkFunc(syncerInst2.PipeEvent),
@@ -517,9 +528,8 @@ func TestSyncLoopPersistState(t *testing.T) {
 		StartDAHeight: syncerInst2.daRetrieverHeight.Load(),
 		DABlockTime:   cfg.DA.BlockTime.Duration,
 	}).(*daFollower)
-	sub2 := follower2.subscriber
-	sub2.UpdateHighestForTest(syncerInst2.daRetrieverHeight.Load() + 1)
-	go sub2.RunCatchupForTest(ctx)
+	follower2.Start(ctx)
+	eventCh2 <- datypes.SubscriptionEvent{Height: syncerInst2.daRetrieverHeight.Load() + 1}
 	syncerInst2.startSyncWorkers(ctx)
 	syncerInst2.wg.Wait()
 
