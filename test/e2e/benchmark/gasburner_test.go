@@ -13,6 +13,10 @@ import (
 // TestGasBurner measures gas throughput using a deterministic gasburner
 // workload. The result is tracked via BENCH_JSON_OUTPUT as seconds_per_gigagas
 // (lower is better) on the benchmark dashboard.
+//
+// TODO: if non-empty block ratio is still low, try pointing spamoor directly
+// at the sequencer node instead of the load balancer to eliminate mempool
+// propagation delay from full nodes.
 func (s *SpamoorSuite) TestGasBurner() {
 	const (
 		numSpammers     = 4
@@ -38,7 +42,7 @@ func (s *SpamoorSuite) TestGasBurner() {
 	gasburnerCfg := map[string]any{
 		"gas_units_to_burn": 1_000_000,
 		"total_count":       countPerSpammer,
-		"throughput":        200,
+		"throughput":        1000,
 		"max_pending":       50000,
 		"max_wallets":       500,
 		"rebroadcast":       5,

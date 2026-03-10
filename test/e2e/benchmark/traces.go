@@ -248,7 +248,7 @@ func (v *victoriaTraceProvider) fetchAllRichSpans(ctx context.Context, serviceNa
 			spanID:       row.SpanID,
 			parentSpanID: row.ParentSpanID,
 			name:         row.Name,
-			hostName:     row.HostName,
+			hostName:     extractHostName(line),
 			startTime:    time.Unix(0, startNs),
 			duration:     time.Duration(ns) * time.Nanosecond,
 		})
@@ -328,7 +328,22 @@ type logsqlRichSpan struct {
 	SpanID            string `json:"span_id"`
 	ParentSpanID      string `json:"parent_span_id"`
 	StartTimeUnixNano string `json:"start_time_unix_nano"`
-	HostName          string `json:"resource_attr:'host.name"`
+}
+
+// extractHostName pulls the host.name value from a raw JSON line.
+// VictoriaTraces encodes it as resource_attr:'host.name which Go's
+// struct tags can't match due to the single quote.
+func extractHostName(line []byte) string {
+	var raw map[string]string
+	if err := json.Unmarshal(line, &raw); err != nil {
+		return ""
+	}
+	for k, v := range raw {
+		if strings.Contains(k, "host.name") {
+			return v
+		}
+	}
+	return ""
 }
 
 func (s logsqlSpan) SpanName() string { return s.Name }

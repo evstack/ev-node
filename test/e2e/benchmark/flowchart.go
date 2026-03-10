@@ -12,6 +12,10 @@ import (
 
 const maxBarWidth = 40
 
+// minTracesForFlowchart filters out root span types with too few traces
+// to produce meaningful charts (orphan spans from sampling).
+const minTracesForFlowchart = 10
+
 // spanNode is a tree node used to build the span hierarchy.
 type spanNode struct {
 	span     richSpan
@@ -38,6 +42,9 @@ func printFlowcharts(t testing.TB, spans []richSpan) {
 
 	for _, rootName := range rootNames {
 		traces := byRoot[rootName]
+		if len(traces) < minTracesForFlowchart {
+			continue
+		}
 		root, traceID := longestRootTrace(traces)
 		if root == nil {
 			continue
@@ -74,6 +81,9 @@ func printAggregateFlowcharts(t testing.TB, spans []richSpan) {
 
 	for _, rootName := range rootNames {
 		traces := byRoot[rootName]
+		if len(traces) < minTracesForFlowchart {
+			continue
+		}
 		agg := buildAggregateTree(traces)
 		if agg == nil {
 			continue
