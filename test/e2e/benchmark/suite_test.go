@@ -49,7 +49,7 @@ type config struct {
 	serviceName string
 }
 
-const defaultRethTag = "main"
+const defaultRethTag = "latest"
 
 func rethTag() string {
 	if tag := os.Getenv("EV_RETH_TAG"); tag != "" {
@@ -193,7 +193,7 @@ func (s *SpamoorSuite) setupExternalEnv(cfg config, rpcURL string) *env {
 	traceURL := os.Getenv("BENCH_TRACE_QUERY_URL")
 	s.Require().NotEmpty(traceURL, "BENCH_TRACE_QUERY_URL must be set in external mode")
 	hostFilter := os.Getenv("BENCH_TRACE_HOST_FILTER")
-	s.Require().NotEmpty(hostFilter, "BENCH_TRACE_HOST_FILTER must be set in external mode")
+	// s.Require().NotEmpty(hostFilter, "BENCH_TRACE_HOST_FILTER must be set in external mode")
 	t.Logf("external mode: using trace query URL %s (host filter: %s)", traceURL, hostFilter)
 
 	return &env{

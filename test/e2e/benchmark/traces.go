@@ -25,6 +25,7 @@ type richSpan struct {
 	spanID       string
 	parentSpanID string
 	name         string
+	hostName     string
 	startTime    time.Time
 	duration     time.Duration
 }
@@ -243,6 +244,7 @@ func (v *victoriaTraceProvider) fetchAllRichSpans(ctx context.Context, serviceNa
 			spanID:       row.SpanID,
 			parentSpanID: row.ParentSpanID,
 			name:         row.Name,
+			hostName:     row.HostName,
 			startTime:    time.Unix(0, startNs),
 			duration:     time.Duration(ns) * time.Nanosecond,
 		})
@@ -327,6 +329,7 @@ type logsqlRichSpan struct {
 	SpanID            string `json:"span_id"`
 	ParentSpanID      string `json:"parent_span_id"`
 	StartTimeUnixNano string `json:"start_time_unix_nano"`
+	HostName          string `json:"resource_attr:'host.name"`
 }
 
 func (s logsqlSpan) SpanName() string { return s.Name }

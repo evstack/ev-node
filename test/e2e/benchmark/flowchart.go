@@ -33,7 +33,11 @@ func printFlowchart(t testing.TB, spans []richSpan) {
 	}
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "\n--- Block Production Flowchart (trace %s) ---\n\n", truncateID(traceID))
+	host := root.span.hostName
+	if host == "" {
+		host = "unknown"
+	}
+	fmt.Fprintf(&b, "\n--- Block Production Flowchart (trace %s, host %s) ---\n\n", truncateID(traceID), host)
 	renderTree(&b, root, "", true, root.span.duration)
 	t.Log(b.String())
 }
@@ -52,8 +56,10 @@ func printAggregateFlowchart(t testing.TB, spans []richSpan) {
 		return
 	}
 
+	hosts := uniqueHosts(spans)
+
 	var b strings.Builder
-	fmt.Fprintf(&b, "\n--- Average Block Production Pipeline (%d traces) ---\n\n", len(byTrace))
+	fmt.Fprintf(&b, "\n--- Average Block Production Pipeline (%d traces, hosts: %s) ---\n\n", len(byTrace), strings.Join(hosts, ", "))
 	renderAggregateTree(&b, agg, "", true, agg.avgDuration)
 	t.Log(b.String())
 }
@@ -171,6 +177,21 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%.1fms", ms)
 	}
 	return fmt.Sprintf("%.1f\u00b5s", float64(d)/float64(time.Microsecond))
+}
+
+func uniqueHosts(spans []richSpan) []string {
+	seen := make(map[string]bool)
+	for _, s := range spans {
+		if s.hostName != "" {
+			seen[s.hostName] = true
+		}
+	}
+	hosts := make([]string, 0, len(seen))
+	for h := range seen {
+		hosts = append(hosts, h)
+	}
+	sort.Strings(hosts)
+	return hosts
 }
 
 func truncateID(id string) string {
