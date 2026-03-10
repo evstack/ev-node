@@ -38,6 +38,7 @@ func TestNamespaceV0Creation(t *testing.T) {
 			}
 			if ns == nil {
 				t.Fatal("expected non-nil namespace but got nil")
+				return
 			}
 
 			if ns.Version != NamespaceVersionZero {
@@ -119,6 +120,7 @@ func TestNamespaceFromBytes(t *testing.T) {
 			}
 			if ns == nil {
 				t.Fatal("expected non-nil namespace but got nil")
+				return
 			}
 			if !bytes.Equal(tt.input, ns.Bytes()) {
 				t.Errorf("Should round-trip correctly, expected %v, got %v", tt.input, ns.Bytes())
