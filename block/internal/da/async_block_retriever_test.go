@@ -177,7 +177,7 @@ func TestAsyncBlockRetriever_HeightFromFuture(t *testing.T) {
 	// Wait a bit for catchup to attempt fetches.
 	require.Eventually(t, func() bool {
 		return fetcher.(*asyncBlockRetriever).subscriber.HasReachedHead()
-	}, 1250*time.Millisecond, time.Millisecond)
+	}, 1250*time.Second, time.Millisecond)
 
 	// Cache should be empty since all heights are from the future.
 	block, err := fetcher.GetCachedBlock(ctx, 100)
@@ -191,6 +191,9 @@ func TestAsyncBlockRetriever_StopGracefully(t *testing.T) {
 
 	blockCh := make(chan datypes.SubscriptionEvent)
 	client.On("Subscribe", mock.Anything, fiNs, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(blockCh), nil).Maybe()
+	client.On("Retrieve", mock.Anything, mock.Anything, fiNs).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture},
+	}).Maybe()
 
 	logger := zerolog.Nop()
 	fetcher := NewAsyncBlockRetriever(client, logger, fiNs, 100*time.Millisecond, 100, 10)

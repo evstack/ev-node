@@ -92,6 +92,7 @@ func NewSubscriber(cfg SubscriberConfig) *Subscriber {
 		fetchBlockTimestamp: cfg.FetchBlockTimestamp,
 	}
 	s.localDAHeight.Store(cfg.StartHeight)
+	s.highestSeenDAHeight.Store(cfg.StartHeight)
 	s.catchupSignal <- struct{}{}
 
 	if len(s.namespaces) == 0 {
@@ -319,11 +320,6 @@ func (s *Subscriber) runCatchup(ctx context.Context) {
 		}
 
 		local := s.localDAHeight.Load()
-		if local > s.highestSeenDAHeight.Load() {
-			s.headReached.Store(true)
-			return
-		}
-
 		// CAS claims this height — prevents followLoop from inline-processing.
 		if !s.localDAHeight.CompareAndSwap(local, local+1) {
 			// followLoop already advanced past this height via inline processing.

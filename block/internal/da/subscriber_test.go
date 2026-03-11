@@ -1,0 +1,98 @@
+package da
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+
+	datypes "github.com/evstack/ev-node/pkg/da/types"
+	testmocks "github.com/evstack/ev-node/test/mocks"
+)
+
+// MockSubscriberHandler mocks SubscriberHandler
+type MockSubscriberHandler struct {
+	mock.Mock
+}
+
+func (m *MockSubscriberHandler) HandleEvent(ctx context.Context, ev datypes.SubscriptionEvent, isInline bool) error {
+	args := m.Called(ctx, ev, isInline)
+	return args.Error(0)
+}
+
+func (m *MockSubscriberHandler) HandleCatchup(ctx context.Context, height uint64) error {
+	args := m.Called(ctx, height)
+	return args.Error(0)
+}
+
+func TestSubscriber_RunCatchup(t *testing.T) {
+	t.Run("success_sequence", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+
+		mockHandler := new(MockSubscriberHandler)
+		mockClient := testmocks.NewMockClient(t)
+
+		sub := NewSubscriber(SubscriberConfig{
+			Client:      mockClient,
+			Logger:      zerolog.Nop(),
+			Handler:     mockHandler,
+			Namespaces:  [][]byte{[]byte("ns")},
+			StartHeight: 100,
+			DABlockTime: time.Millisecond,
+		})
+
+		// It should try 100, 101, then we return ErrHeightFromFuture at 102
+		mockHandler.On("HandleCatchup", mock.Anything, uint64(100)).Return(nil).Once()
+		mockHandler.On("HandleCatchup", mock.Anything, uint64(101)).Return(nil).Once()
+		mockHandler.On("HandleCatchup", mock.Anything, uint64(102)).Return(datypes.ErrHeightFromFuture).Once()
+
+		sub.runCatchup(ctx)
+
+		mockHandler.AssertExpectations(t)
+		assert.Equal(t, uint64(102), sub.LocalDAHeight())
+		assert.True(t, sub.HasReachedHead())
+	})
+
+	t.Run("backoff_on_error", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+
+		mockHandler := new(MockSubscriberHandler)
+		mockClient := testmocks.NewMockClient(t)
+
+		sub := NewSubscriber(SubscriberConfig{
+			Client:      mockClient,
+			Logger:      zerolog.Nop(),
+			Handler:     mockHandler,
+			Namespaces:  [][]byte{[]byte("ns")},
+			StartHeight: 100,
+			DABlockTime: time.Millisecond,
+		})
+
+		var callCount int
+
+		mockHandler.On("HandleCatchup", mock.Anything, uint64(100)).
+			Run(func(args mock.Arguments) {
+				callCount++
+			}).
+			Return(errors.New("network failure")).Once()
+
+		mockHandler.On("HandleCatchup", mock.Anything, uint64(100)).
+			Run(func(args mock.Arguments) {
+				callCount++
+				cancel()
+			}).
+			Return(datypes.ErrHeightFromFuture).Once()
+
+		sub.runCatchup(ctx)
+
+		mockHandler.AssertExpectations(t)
+		assert.Equal(t, 2, callCount)
+		assert.Equal(t, uint64(100), sub.LocalDAHeight(), "should roll back to 100 on future error")
+	})
+}

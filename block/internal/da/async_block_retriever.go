@@ -185,7 +185,9 @@ func (f *asyncBlockRetriever) HandleEvent(ctx context.Context, ev datypes.Subscr
 // Also applies the prefetch window for speculative forward fetching.
 func (f *asyncBlockRetriever) HandleCatchup(ctx context.Context, daHeight uint64) error {
 	if _, err := f.cache.Get(ctx, newBlockDataKey(daHeight)); err != nil {
-		f.fetchAndCacheBlock(ctx, daHeight)
+		if err := f.fetchAndCacheBlock(ctx, daHeight); err != nil {
+			return err
+		}
 	}
 	// Speculatively prefetch ahead.
 	target := daHeight + f.prefetchWindow
@@ -196,14 +198,16 @@ func (f *asyncBlockRetriever) HandleCatchup(ctx context.Context, daHeight uint64
 		if _, err := f.cache.Get(ctx, newBlockDataKey(h)); err == nil {
 			continue // Already cached.
 		}
-		f.fetchAndCacheBlock(ctx, h)
+		if err := f.fetchAndCacheBlock(ctx, h); err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
 // fetchAndCacheBlock fetches a block via Retrieve and caches it.
-func (f *asyncBlockRetriever) fetchAndCacheBlock(ctx context.Context, height uint64) {
+func (f *asyncBlockRetriever) fetchAndCacheBlock(ctx context.Context, height uint64) error {
 	f.logger.Debug().Uint64("height", height).Msg("prefetching block")
 
 	result := f.client.Retrieve(ctx, height, f.namespace)
@@ -211,7 +215,7 @@ func (f *asyncBlockRetriever) fetchAndCacheBlock(ctx context.Context, height uin
 	switch result.Code {
 	case datypes.StatusHeightFromFuture:
 		f.logger.Debug().Uint64("height", height).Msg("block height not yet available - will retry")
-		return
+		return datypes.ErrHeightFromFuture
 	case datypes.StatusNotFound:
 		f.cacheBlock(ctx, height, result.Timestamp, nil)
 	case datypes.StatusSuccess:
@@ -228,6 +232,7 @@ func (f *asyncBlockRetriever) fetchAndCacheBlock(ctx context.Context, height uin
 			Str("status", result.Message).
 			Msg("failed to retrieve block - will retry")
 	}
+	return nil
 }
 
 // cacheBlock serializes and stores a block in the in-memory cache.
