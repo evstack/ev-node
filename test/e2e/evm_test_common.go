@@ -303,7 +303,7 @@ func getNodeP2PAddress(t testing.TB, sut *SystemUnderTest, nodeHome string, rpcP
 	return p2pAddress
 }
 
-// setupSequencerNode initializes and starts the sequencer node with proper configuration.
+// SetupSequencerNode initializes and starts the sequencer node with proper configuration.
 // This function handles:
 // - Node initialization with aggregator mode enabled
 // - Sequencer-specific configuration (block time, DA layer connection)
