@@ -1242,11 +1242,12 @@ func TestSequencer_GetNextBatch_GasFilterError(t *testing.T) {
 	assert.Equal(t, 2, len(resp.Batch.Transactions))
 }
 
-// TestSequencer_GetNextBatch_GasFilteringPreservesUnprocessedTxs tests that when FilterTxs
-// returns RemainingTxs (valid DA txs that didn't fit due to gas limits), the sequencer correctly
-// preserves any transactions that weren't even processed yet due to maxBytes limits.
+// TestSequencer_CatchUp_DetectsOldEpoch tests that when the DA head is significantly ahead
+// of the sequencer's current position (more than 1 epoch), the sequencer correctly enters
+// catch-up mode and processes forced inclusion transactions from old epochs.
 //
-// This test uses maxBytes to limit how many txs are fetched, triggering the unprocessed txs scenario.
+// This test simulates a scenario where the sequencer has missed 5 epochs and verifies
+// that it prioritizes forced inclusion transactions over mempool transactions during catch-up.
 func TestSequencer_CatchUp_DetectsOldEpoch(t *testing.T) {
 	ctx := context.Background()
 	logger := zerolog.New(zerolog.NewTestWriter(t))
