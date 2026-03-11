@@ -141,7 +141,7 @@ func (c *Cache[T]) getDAIncludedByHeight(blockHeight uint64) (uint64, bool) {
 	return c.getDAIncluded(hash)
 }
 
-// setDAIncluded records DA inclusion and persists the snapshot.
+// setDAIncluded records DA inclusion in memory.
 // If a previous entry already exists at blockHeight (e.g. a placeholder from
 // RestoreFromStore), it is evicted from daIncluded to avoid orphan leaks.
 func (c *Cache[T]) setDAIncluded(hash string, daHeight uint64, blockHeight uint64) {
@@ -151,14 +151,11 @@ func (c *Cache[T]) setDAIncluded(hash string, daHeight uint64, blockHeight uint6
 	c.daIncluded.Add(hash, daHeight)
 	c.hashByHeight.Add(blockHeight, hash)
 	c.setMaxDAHeight(daHeight)
-	_ = c.persistSnapshot(context.Background())
 }
 
-// removeDAIncluded removes the DA-included status of the hash from the cache
-// and rewrites the window snapshot.
+// removeDAIncluded removes the DA-included status of the hash from the cache.
 func (c *Cache[T]) removeDAIncluded(hash string) {
 	c.daIncluded.Remove(hash)
-	_ = c.persistSnapshot(context.Background())
 }
 
 // daHeight returns the maximum DA height from all DA-included items.
@@ -185,7 +182,7 @@ func (c *Cache[T]) removeSeen(hash string) {
 }
 
 // deleteAllForHeight removes all items and their associated data from the
-// cache at the given height and rewrites the window snapshot.
+// cache at the given height.
 func (c *Cache[T]) deleteAllForHeight(height uint64) {
 	c.itemsByHeight.Remove(height)
 
@@ -200,13 +197,10 @@ func (c *Cache[T]) deleteAllForHeight(height uint64) {
 		c.hashes.Remove(hash)
 		c.daIncluded.Remove(hash)
 	}
-
-	_ = c.persistSnapshot(context.Background())
 }
 
-// persistSnapshot writes all current in-flight [blockHeight, daHeight] pairs
-// to the store under a single key. Called on every mutation; payload is tiny
-// (typically <10 entries × 16 bytes).
+// persistSnapshot writes all current in-flight [blockHeight, daHeight] pairs to the store under a single key.
+// Only called explicitly via SaveToStore. NEVER CALL IT ON HOT-PATH TO AVOID BAGER WRITE AMPLIFICATION.
 func (c *Cache[T]) persistSnapshot(ctx context.Context) error {
 	if c.store == nil || c.storeKeyPrefix == "" {
 		return nil
