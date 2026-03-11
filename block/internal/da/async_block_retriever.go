@@ -183,17 +183,17 @@ func (f *asyncBlockRetriever) HandleEvent(ctx context.Context, ev datypes.Subscr
 
 // HandleCatchup fetches a single height via Retrieve and caches it.
 // Also applies the prefetch window for speculative forward fetching.
-func (f *asyncBlockRetriever) HandleCatchup(ctx context.Context, height uint64) error {
-	f.fetchAndCacheBlock(ctx, height)
-
+func (f *asyncBlockRetriever) HandleCatchup(ctx context.Context, daHeight uint64) error {
+	if _, err := f.cache.Get(ctx, newBlockDataKey(daHeight)); err != nil {
+		f.fetchAndCacheBlock(ctx, daHeight)
+	}
 	// Speculatively prefetch ahead.
-	target := height + f.prefetchWindow
-	for h := height + 1; h <= target; h++ {
+	target := daHeight + f.prefetchWindow
+	for h := daHeight + 1; h <= target; h++ {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		key := newBlockDataKey(h)
-		if _, err := f.cache.Get(ctx, key); err == nil {
+		if _, err := f.cache.Get(ctx, newBlockDataKey(h)); err == nil {
 			continue // Already cached.
 		}
 		f.fetchAndCacheBlock(ctx, h)
@@ -201,10 +201,6 @@ func (f *asyncBlockRetriever) HandleCatchup(ctx context.Context, height uint64) 
 
 	return nil
 }
-
-// ---------------------------------------------------------------------------
-// Cache helpers
-// ---------------------------------------------------------------------------
 
 // fetchAndCacheBlock fetches a block via Retrieve and caches it.
 func (f *asyncBlockRetriever) fetchAndCacheBlock(ctx context.Context, height uint64) {

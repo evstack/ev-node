@@ -199,7 +199,7 @@ func (s *Subscriber) runSubscription(ctx context.Context) error {
 			local := s.localDAHeight.Load()
 			isInline := ev.Height == local && s.localDAHeight.CompareAndSwap(local, local+1)
 
-			err = s.handler.HandleEvent(ctx, ev, isInline)
+			err = s.handler.HandleEvent(subCtx, ev, isInline)
 			if isInline {
 				if err == nil {
 					s.headReached.Store(true)
