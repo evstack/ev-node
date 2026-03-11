@@ -927,7 +927,7 @@ func (c *raftClusterNodes) killAll() {
 	}
 }
 
-// allNodes returns snapshot of nodes map
+// AllNodes returns snapshot of nodes map
 func (c *raftClusterNodes) AllNodes() map[string]*nodeDetails {
 	c.mx.Lock()
 	defer c.mx.Unlock()
