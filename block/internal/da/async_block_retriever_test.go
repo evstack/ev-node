@@ -177,7 +177,7 @@ func TestAsyncBlockRetriever_HeightFromFuture(t *testing.T) {
 	// Wait a bit for catchup to attempt fetches.
 	require.Eventually(t, func() bool {
 		return fetcher.(*asyncBlockRetriever).subscriber.HasReachedHead()
-	}, 1250*time.Second, time.Millisecond)
+	}, time.Second, time.Millisecond)
 
 	// Cache should be empty since all heights are from the future.
 	block, err := fetcher.GetCachedBlock(ctx, 100)

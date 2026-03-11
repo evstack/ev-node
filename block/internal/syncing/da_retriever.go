@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/rs/zerolog"
 	"google.golang.org/protobuf/proto"
@@ -34,6 +35,7 @@ type daRetriever struct {
 	genesis genesis.Genesis
 	logger  zerolog.Logger
 
+	mu sync.Mutex
 	// transient cache, only full event need to be passed to the syncer
 	// on restart, will be refetch as da height is updated by syncer
 	pendingHeaders map[uint64]*types.SignedHeader
@@ -154,15 +156,15 @@ func (r *daRetriever) validateBlobResponse(res datypes.ResultRetrieve, daHeight 
 
 // ProcessBlobs processes raw blob bytes to extract headers and data and returns height events.
 // This is the public interface used by the DAFollower for inline subscription processing.
-//
-// NOT thread-safe: the caller (DAFollower) must ensure exclusive access via CAS
-// on localDAHeight before calling this method.
 func (r *daRetriever) ProcessBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent {
 	return r.processBlobs(ctx, blobs, daHeight)
 }
 
 // processBlobs processes retrieved blobs to extract headers and data and returns height events
 func (r *daRetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	// Decode all blobs
 	for _, bz := range blobs {
 		if len(bz) == 0 {
