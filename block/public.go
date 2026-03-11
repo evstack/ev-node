@@ -78,6 +78,7 @@ type ForcedInclusionEvent = da.ForcedInclusionEvent
 type ForcedInclusionRetriever interface {
 	RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error)
 	Stop()
+	Start(ctx context.Context)
 }
 
 // NewForcedInclusionRetriever creates a new forced inclusion retriever.

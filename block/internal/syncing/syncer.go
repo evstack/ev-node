@@ -182,6 +182,7 @@ func (s *Syncer) Start(ctx context.Context) (err error) {
 	}
 
 	s.fiRetriever = da.NewForcedInclusionRetriever(ctx, s.daClient, s.logger, s.config.DA.BlockTime.Duration, s.config.Instrumentation.IsTracingEnabled(), s.genesis.DAStartHeight, s.genesis.DAEpochForcedInclusion)
+	s.fiRetriever.Start(ctx)
 	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.cache, s.genesis, s.logger)
 
 	currentHeight, initErr := s.store.Height(ctx)

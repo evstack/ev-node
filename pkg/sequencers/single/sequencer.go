@@ -203,6 +203,7 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 			c.fiRetriever.Stop()
 		}
 		c.fiRetriever = block.NewForcedInclusionRetriever(ctx, c.daClient, c.cfg, c.logger, c.getInitialDAStartHeight(ctx), c.genesis.DAEpochForcedInclusion)
+		c.fiRetriever.Start(ctx)
 	}
 
 	// If we have no cached transactions or we've consumed all from the current epoch,

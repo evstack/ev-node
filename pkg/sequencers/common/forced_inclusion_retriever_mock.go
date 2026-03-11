@@ -106,6 +106,46 @@ func (_c *MockForcedInclusionRetriever_RetrieveForcedIncludedTxs_Call) RunAndRet
 	return _c
 }
 
+// Start provides a mock function for the type MockForcedInclusionRetriever
+func (_mock *MockForcedInclusionRetriever) Start(ctx context.Context) {
+	_mock.Called(ctx)
+	return
+}
+
+// MockForcedInclusionRetriever_Start_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Start'
+type MockForcedInclusionRetriever_Start_Call struct {
+	*mock.Call
+}
+
+// Start is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *MockForcedInclusionRetriever_Expecter) Start(ctx interface{}) *MockForcedInclusionRetriever_Start_Call {
+	return &MockForcedInclusionRetriever_Start_Call{Call: _e.mock.On("Start", ctx)}
+}
+
+func (_c *MockForcedInclusionRetriever_Start_Call) Run(run func(ctx context.Context)) *MockForcedInclusionRetriever_Start_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *MockForcedInclusionRetriever_Start_Call) Return() *MockForcedInclusionRetriever_Start_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *MockForcedInclusionRetriever_Start_Call) RunAndReturn(run func(ctx context.Context)) *MockForcedInclusionRetriever_Start_Call {
+	_c.Run(run)
+	return _c
+}
+
 // Stop provides a mock function for the type MockForcedInclusionRetriever
 func (_mock *MockForcedInclusionRetriever) Stop() {
 	_mock.Called()

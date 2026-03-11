@@ -315,7 +315,8 @@ func TestDAFollower_InlineProcessing(t *testing.T) {
 		}
 
 		daRetriever.On("ProcessBlobs", mock.Anything, blobs, uint64(10)).Return(expectedEvents).Once()
-		daRetriever.On("RetrieveFromDA", mock.Anything, uint64(10)).Return(expectedEvents, nil).Maybe()
+		// Mock RetrieveFromDA for height 10 in case background catch-up fires before HandleEvent.
+		daRetriever.On("RetrieveFromDA", mock.Anything, uint64(10)).Return(nil, datypes.ErrHeightFromFuture).Maybe()
 
 		// Simulate catchup loop to verify it advances naturally
 		require.NoError(t, follower.Start(t.Context()))
@@ -367,7 +368,7 @@ func TestDAFollower_InlineProcessing(t *testing.T) {
 
 		pipeEvent := func(_ context.Context, _ common.DAHeightEvent) error { return nil }
 
-		daClient, _ := setupMockDAClient(t)
+		daClient, eventCh := setupMockDAClient(t)
 		follower := NewDAFollower(DAFollowerConfig{
 			Client:        daClient,
 			Retriever:     daRetriever,
@@ -377,15 +378,23 @@ func TestDAFollower_InlineProcessing(t *testing.T) {
 			StartDAHeight: 10,
 			DABlockTime:   500 * time.Millisecond,
 		}).(*daFollower)
+
+		// Mock RetrieveFromDA because falling through inline processing triggers catchup.
+		daRetriever.On("RetrieveFromDA", mock.Anything, uint64(10)).Return(nil, datypes.ErrHeightFromFuture).Maybe()
+		require.NoError(t, follower.Start(t.Context()))
+
 		// HandleEvent at current height but no blobs — should fall through
 		// Subscriber.HandleEvent updates highest internally even if not processed.
-		follower.HandleEvent(t.Context(), datypes.SubscriptionEvent{
+		eventCh <- datypes.SubscriptionEvent{
 			Height: 10,
 			Blobs:  nil,
-		}, true)
+		}
 
 		// ProcessBlobs should NOT have been called
 		daRetriever.AssertNotCalled(t, "ProcessBlobs", mock.Anything, mock.Anything, mock.Anything)
+		require.Eventually(t, func() bool {
+			return follower.subscriber.LocalDAHeight() == 10 && follower.subscriber.HighestSeenDAHeight() == 10
+		}, 100*time.Millisecond, 2*time.Millisecond)
 		assert.Equal(t, uint64(10), follower.subscriber.LocalDAHeight(), "localDAHeight should not change")
 		assert.Equal(t, uint64(10), follower.subscriber.HighestSeenDAHeight(), "highestSeen should be updated")
 	})

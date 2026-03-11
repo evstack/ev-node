@@ -201,12 +201,12 @@ func (s *Subscriber) runSubscription(ctx context.Context) error {
 
 			err = s.handler.HandleEvent(ctx, ev, isInline)
 			if isInline {
-				if err != nil {
+				if err == nil {
+					s.headReached.Store(true)
+				} else {
 					s.localDAHeight.Store(local)
 					s.logger.Debug().Err(err).Uint64("da_height", ev.Height).
 						Msg("inline processing skipped/failed, rolling back")
-				} else {
-					s.headReached.Store(true)
 				}
 			}
 

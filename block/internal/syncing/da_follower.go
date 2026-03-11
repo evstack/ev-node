@@ -98,8 +98,11 @@ func (f *daFollower) HasReachedHead() bool {
 // them inline — avoiding a DA re-fetch round trip. Otherwise, it just lets
 // the catchup loop handle retrieval.
 func (f *daFollower) HandleEvent(ctx context.Context, ev datypes.SubscriptionEvent, isInline bool) error {
-	if !isInline || len(ev.Blobs) == 0 {
-		return nil // skip
+	if !isInline {
+		return nil // skip: let subscriber just update highestSeenDAHeight
+	}
+	if len(ev.Blobs) == 0 {
+		return errors.New("skip inline: no blobs") // subscriber rolls back, catch-up loop will retry
 	}
 
 	events := f.retriever.ProcessBlobs(ctx, ev.Blobs, ev.Height)
@@ -122,12 +125,6 @@ func (f *daFollower) HandleEvent(ctx context.Context, ev datypes.SubscriptionEve
 
 // HandleCatchup retrieves events at a single DA height and pipes them
 // to the event sink. Checks priority heights first.
-//
-// ErrHeightFromFuture is handled here rather than in fetchAndPipeHeight because
-// the two call sites need different behaviour:
-//   - Normal catchup: mark head reached and return da.ErrCaughtUp to stop the loop.
-//   - Priority hint:  the hint points to a future height — ignore it without
-//     skipping the current daHeight or stopping catchup.
 func (f *daFollower) HandleCatchup(ctx context.Context, daHeight uint64) error {
 	// 1. Drain stale or future priority heights from P2P hints
 	for priorityHeight := f.popPriorityHeight(); priorityHeight != 0; priorityHeight = f.popPriorityHeight() {

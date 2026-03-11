@@ -18,6 +18,7 @@ var ErrForceInclusionNotConfigured = errors.New("forced inclusion namespace not 
 // ForcedInclusionRetriever defines the interface for retrieving forced inclusion transactions from DA.
 type ForcedInclusionRetriever interface {
 	RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error)
+	Start(ctx context.Context)
 	Stop()
 }
 
@@ -59,7 +60,6 @@ func NewForcedInclusionRetriever(
 		daStartHeight,
 		daEpochSize*2, // prefetch window: 2x epoch size
 	)
-	asyncFetcher.Start(ctx)
 
 	base := &forcedInclusionRetriever{
 		client:        client,
@@ -72,6 +72,11 @@ func NewForcedInclusionRetriever(
 		return withTracingForcedInclusionRetriever(base)
 	}
 	return base
+}
+
+// Start begins the background prefetcher.
+func (r *forcedInclusionRetriever) Start(ctx context.Context) {
+	r.asyncFetcher.Start(ctx)
 }
 
 // Stop stops the background prefetcher.
