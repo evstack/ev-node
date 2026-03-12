@@ -45,11 +45,6 @@ type env struct {
 	ethClient  *ethclient.Client
 }
 
-// config parameterizes the per-test environment setup.
-type config struct {
-	serviceName string
-}
-
 // TODO: temporary hardcoded tag, will be replaced with a proper release tag
 const defaultRethTag = "pr-140"
 
@@ -62,7 +57,7 @@ func rethTag() string {
 
 // setupEnv dispatches to either setupExternalEnv or setupLocalEnv based on
 // the BENCH_ETH_RPC_URL environment variable.
-func (s *SpamoorSuite) setupEnv(cfg config) *env {
+func (s *SpamoorSuite) setupEnv(cfg benchConfig) *env {
 	if rpcURL := os.Getenv("BENCH_ETH_RPC_URL"); rpcURL != "" {
 		return s.setupExternalEnv(cfg, rpcURL)
 	}
@@ -72,7 +67,7 @@ func (s *SpamoorSuite) setupEnv(cfg config) *env {
 // setupLocalEnv creates a VictoriaTraces + reth + sequencer + Spamoor environment
 // for a single test. Each call spins up isolated infrastructure so tests
 // can't interfere with each other.
-func (s *SpamoorSuite) setupLocalEnv(cfg config) *env {
+func (s *SpamoorSuite) setupLocalEnv(cfg benchConfig) *env {
 	t := s.T()
 	ctx := t.Context()
 	sut := e2e.NewSystemUnderTest(t)
@@ -83,14 +78,6 @@ func (s *SpamoorSuite) setupLocalEnv(cfg config) *env {
 	s.Require().NoError(err, "failed to create victoriatraces node")
 	t.Cleanup(func() { _ = vt.Remove(t.Context()) })
 	s.Require().NoError(vt.Start(ctx), "failed to start victoriatraces node")
-
-	// tuning knobs via env vars (defaults match previous hardcoded values)
-	blockTime := envOrDefault("BENCH_BLOCK_TIME", "100ms")
-	slotDuration := envOrDefault("BENCH_SLOT_DURATION", "250ms")
-	gasLimitHex := envOrDefault("BENCH_GAS_LIMIT", "")
-	scrapeInterval := envOrDefault("BENCH_SCRAPE_INTERVAL", "1s")
-	t.Logf("tuning: block_time=%s, slot_duration=%s, gas_limit=%s, scrape_interval=%s",
-		blockTime, slotDuration, gasLimitHex, scrapeInterval)
 
 	// reth + local DA with OTLP tracing to VictoriaTraces
 	evmEnv := e2e.SetupCommonEVMEnv(t, sut, s.dockerCli, s.networkID,
@@ -108,9 +95,9 @@ func (s *SpamoorSuite) setupLocalEnv(cfg config) *env {
 					"RUST_LOG=debug",
 					"OTEL_SDK_DISABLED=false",
 				)
-			if gasLimitHex != "" {
+			if cfg.GasLimit != "" {
 				genesis := reth.DefaultEvolveGenesisJSON(func(bz []byte) ([]byte, error) {
-					return maps.SetField(bz, "gasLimit", gasLimitHex)
+					return maps.SetField(bz, "gasLimit", cfg.GasLimit)
 				})
 				b.WithGenesis([]byte(genesis))
 			}
@@ -124,9 +111,9 @@ func (s *SpamoorSuite) setupLocalEnv(cfg config) *env {
 		"--evnode.instrumentation.tracing=true",
 		"--evnode.instrumentation.tracing_endpoint", otlpHTTP,
 		"--evnode.instrumentation.tracing_sample_rate", "1.0",
-		"--evnode.instrumentation.tracing_service_name", cfg.serviceName,
-		"--evnode.node.block_time", blockTime,
-		"--evnode.node.scrape_interval", scrapeInterval,
+		"--evnode.instrumentation.tracing_service_name", cfg.ServiceName,
+		"--evnode.node.block_time", cfg.BlockTime,
+		"--evnode.node.scrape_interval", cfg.ScrapeInterval,
 	)
 	t.Log("sequencer node is up")
 
@@ -146,7 +133,7 @@ func (s *SpamoorSuite) setupLocalEnv(cfg config) *env {
 		WithLogger(evmEnv.RethNode.Logger).
 		WithRPCHosts(internalRPC).
 		WithPrivateKey(e2e.TestPrivateKey).
-		WithAdditionalStartArgs("--slot-duration", slotDuration, "--startup-delay", "0")
+		WithAdditionalStartArgs("--slot-duration", cfg.SlotDuration, "--startup-delay", "0")
 
 	spNode, err := spBuilder.Build(ctx)
 	s.Require().NoError(err, "failed to build spamoor node")
@@ -172,10 +159,9 @@ func (s *SpamoorSuite) setupLocalEnv(cfg config) *env {
 // setupExternalEnv connects to pre-deployed infrastructure identified by
 // rpcURL. Only spamoor is provisioned by the test; reth, DA, and sequencer
 // are assumed to already be running.
-func (s *SpamoorSuite) setupExternalEnv(cfg config, rpcURL string) *env {
+func (s *SpamoorSuite) setupExternalEnv(cfg benchConfig, rpcURL string) *env {
 	t := s.T()
 	ctx := t.Context()
-	_ = cfg // serviceName not needed for external infra setup
 
 	t.Logf("external mode: using RPC %s", rpcURL)
 
@@ -196,7 +182,7 @@ func (s *SpamoorSuite) setupExternalEnv(cfg config, rpcURL string) *env {
 		WithRPCHosts(rpcURL).
 		WithPrivateKey(privateKey).
 		WithHostNetwork().
-		WithAdditionalStartArgs("--slot-duration", "250ms", "--startup-delay", "0")
+		WithAdditionalStartArgs("--slot-duration", cfg.SlotDuration, "--startup-delay", "0")
 
 	spNode, err := spBuilder.Build(ctx)
 	s.Require().NoError(err, "failed to build spamoor node")
@@ -222,17 +208,6 @@ func (s *SpamoorSuite) setupExternalEnv(cfg config, rpcURL string) *env {
 		spamoorAPI: spNode.API(),
 		ethClient:  ethClient,
 	}
-}
-
-// traceResult holds the collected spans from ev-node and (optionally) ev-reth.
-type traceResult struct {
-	evNode []e2e.TraceSpan
-	evReth []e2e.TraceSpan
-}
-
-// allSpans returns ev-node and ev-reth spans concatenated.
-func (tr *traceResult) allSpans() []e2e.TraceSpan {
-	return append(tr.evNode, tr.evReth...)
 }
 
 // collectTraces fetches ev-node traces (required) and ev-reth traces (optional)
@@ -274,9 +249,3 @@ func (s *SpamoorSuite) collectTraces(e *env, serviceName string) *traceResult {
 	return tr
 }
 
-func envOrDefault(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
-}
