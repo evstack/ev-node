@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1773335713580,
+  "lastUpdate": 1773336088802,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -2724,6 +2724,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 186557,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "312f1e6b40feb94b9ffeebc9b5902a81bc512d90",
+          "message": "build(deps): Bump quinn-proto from 0.11.13 to 0.11.14 in the cargo group across 1 directory (#3155)\n\nbuild(deps): Bump quinn-proto in the cargo group across 1 directory\n\nBumps the cargo group with 1 update in the / directory: [quinn-proto](https://github.com/quinn-rs/quinn).\n\n\nUpdates `quinn-proto` from 0.11.13 to 0.11.14\n- [Release notes](https://github.com/quinn-rs/quinn/releases)\n- [Commits](https://github.com/quinn-rs/quinn/compare/quinn-proto-0.11.13...quinn-proto-0.11.14)\n\n---\nupdated-dependencies:\n- dependency-name: quinn-proto\n  dependency-version: 0.11.14\n  dependency-type: indirect\n  dependency-group: cargo\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-03-12T17:41:21+01:00",
+          "tree_id": "ae64b79bfef267410167d6c4d344d56d0db0d90a",
+          "url": "https://github.com/evstack/ev-node/commit/312f1e6b40feb94b9ffeebc9b5902a81bc512d90"
+        },
+        "date": 1773336085927,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 897291826,
+            "unit": "ns/op\t32261060 B/op\t  180543 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 897291826,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 32261060,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 180543,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
