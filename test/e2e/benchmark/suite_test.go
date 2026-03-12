@@ -11,7 +11,8 @@ import (
 	tastoradocker "github.com/celestiaorg/tastora/framework/docker"
 	"github.com/celestiaorg/tastora/framework/docker/evstack/reth"
 	"github.com/celestiaorg/tastora/framework/docker/evstack/spamoor"
-	"github.com/celestiaorg/tastora/framework/docker/jaeger"
+	"github.com/celestiaorg/tastora/framework/docker/victoriatraces"
+	"github.com/celestiaorg/tastora/framework/testutil/maps"
 	tastoratypes "github.com/celestiaorg/tastora/framework/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/stretchr/testify/suite"
@@ -21,7 +22,7 @@ import (
 )
 
 // SpamoorSuite groups benchmarks that use Spamoor for load generation
-// and Jaeger for distributed tracing. Docker client and network are shared
+// and VictoriaTraces for distributed tracing. Docker client and network are shared
 // across all tests in the suite.
 type SpamoorSuite struct {
 	suite.Suite
@@ -68,51 +69,64 @@ func (s *SpamoorSuite) setupEnv(cfg config) *env {
 	return s.setupLocalEnv(cfg)
 }
 
-// setupLocalEnv creates a Jaeger + reth + sequencer + Spamoor environment for
-// a single test. Each call spins up isolated infrastructure so tests
+// setupLocalEnv creates a VictoriaTraces + reth + sequencer + Spamoor environment
+// for a single test. Each call spins up isolated infrastructure so tests
 // can't interfere with each other.
 func (s *SpamoorSuite) setupLocalEnv(cfg config) *env {
 	t := s.T()
 	ctx := t.Context()
 	sut := e2e.NewSystemUnderTest(t)
 
-	// jaeger
-	jcfg := jaeger.Config{Logger: zaptest.NewLogger(t), DockerClient: s.dockerCli, DockerNetworkID: s.networkID}
-	jg, err := jaeger.New(ctx, jcfg, t.Name(), 0)
-	s.Require().NoError(err, "failed to create jaeger node")
-	t.Cleanup(func() { _ = jg.Remove(t.Context()) })
-	s.Require().NoError(jg.Start(ctx), "failed to start jaeger node")
+	// victoriatraces
+	vtCfg := victoriatraces.Config{Logger: zaptest.NewLogger(t), DockerClient: s.dockerCli, DockerNetworkID: s.networkID}
+	vt, err := victoriatraces.New(ctx, vtCfg, t.Name(), 0)
+	s.Require().NoError(err, "failed to create victoriatraces node")
+	t.Cleanup(func() { _ = vt.Remove(t.Context()) })
+	s.Require().NoError(vt.Start(ctx), "failed to start victoriatraces node")
 
-	// reth + local DA with OTLP tracing to Jaeger
+	// tuning knobs via env vars (defaults match previous hardcoded values)
+	blockTime := envOrDefault("BENCH_BLOCK_TIME", "100ms")
+	slotDuration := envOrDefault("BENCH_SLOT_DURATION", "250ms")
+	gasLimitHex := envOrDefault("BENCH_GAS_LIMIT", "")
+	scrapeInterval := envOrDefault("BENCH_SCRAPE_INTERVAL", "1s")
+	t.Logf("tuning: block_time=%s, slot_duration=%s, gas_limit=%s, scrape_interval=%s",
+		blockTime, slotDuration, gasLimitHex, scrapeInterval)
+
+	// reth + local DA with OTLP tracing to VictoriaTraces
 	evmEnv := e2e.SetupCommonEVMEnv(t, sut, s.dockerCli, s.networkID,
 		e2e.WithRethOpts(func(b *reth.NodeBuilder) {
 			b.WithTag(rethTag()).
-				// increase values to facilitate spamoor.
 				WithAdditionalStartArgs(
 					"--rpc.max-connections", "5000",
 					"--rpc.max-tracing-requests", "1000",
 				).
 				WithEnv(
-					// ev-reth reads OTEL_EXPORTER_OTLP_ENDPOINT and passes it directly
-					// to with_endpoint(). opentelemetry-otlp v0.31 HTTP exporter does
-					// not auto-append /v1/traces, so the full path is required.
-					"OTEL_EXPORTER_OTLP_ENDPOINT="+jg.Internal.IngestHTTPEndpoint()+"/v1/traces",
+					// ev-reth's Rust OTLP exporter auto-appends /v1/traces, so give it
+					// only the base path (/insert/opentelemetry).
+					"OTEL_EXPORTER_OTLP_ENDPOINT="+vt.Internal.OTLPBaseEndpoint(),
 					"OTEL_EXPORTER_OTLP_PROTOCOL=http",
 					"RUST_LOG=debug",
 					"OTEL_SDK_DISABLED=false",
 				)
+			if gasLimitHex != "" {
+				genesis := reth.DefaultEvolveGenesisJSON(func(bz []byte) ([]byte, error) {
+					return maps.SetField(bz, "gasLimit", gasLimitHex)
+				})
+				b.WithGenesis([]byte(genesis))
+			}
 		}),
 	)
 
 	// sequencer with tracing
 	sequencerHome := filepath.Join(t.TempDir(), "sequencer")
-	otlpHTTP := jg.External.IngestHTTPEndpoint()
+	otlpHTTP := vt.External.IngestHTTPEndpoint()
 	e2e.SetupSequencerNode(t, sut, sequencerHome, evmEnv.SequencerJWT, evmEnv.GenesisHash, evmEnv.Endpoints,
 		"--evnode.instrumentation.tracing=true",
 		"--evnode.instrumentation.tracing_endpoint", otlpHTTP,
-		// TODO: setting this to 1 produced too many spans for the local Jaeger deployment alongside everything else.
-		"--evnode.instrumentation.tracing_sample_rate", "0.1",
+		"--evnode.instrumentation.tracing_sample_rate", "1.0",
 		"--evnode.instrumentation.tracing_service_name", cfg.serviceName,
+		"--evnode.node.block_time", blockTime,
+		"--evnode.node.scrape_interval", scrapeInterval,
 	)
 	t.Log("sequencer node is up")
 
@@ -132,7 +146,7 @@ func (s *SpamoorSuite) setupLocalEnv(cfg config) *env {
 		WithLogger(evmEnv.RethNode.Logger).
 		WithRPCHosts(internalRPC).
 		WithPrivateKey(e2e.TestPrivateKey).
-		WithAdditionalStartArgs("--slot-duration", "250ms", "--startup-delay", "0")
+		WithAdditionalStartArgs("--slot-duration", slotDuration, "--startup-delay", "0")
 
 	spNode, err := spBuilder.Build(ctx)
 	s.Require().NoError(err, "failed to build spamoor node")
@@ -145,7 +159,11 @@ func (s *SpamoorSuite) setupLocalEnv(cfg config) *env {
 	requireHostUp(t, apiAddr+"/api/spammers", 30*time.Second)
 
 	return &env{
-		traces:     &jaegerTraceProvider{node: jg, t: t},
+		traces: &victoriaTraceProvider{
+			queryURL:  vt.External.QueryURL(),
+			t:         t,
+			startTime: time.Now(),
+		},
 		spamoorAPI: spNode.API(),
 		ethClient:  ethClient,
 	}
@@ -241,6 +259,11 @@ func (s *SpamoorSuite) collectTraces(e *env, serviceName string) *traceResult {
 			printFlowcharts(t, richSpans)
 			printAggregateFlowcharts(t, richSpans)
 		}
+		rethSpans, err := rc.collectRichSpans(ctx, "ev-reth")
+		if err == nil && len(rethSpans) > 0 {
+			t.Logf("ev-reth: collected %d rich spans", len(rethSpans))
+			printAggregateFlowcharts(t, rethSpans)
+		}
 	} else {
 		e2e.PrintTraceReport(t, serviceName, tr.evNode)
 		if len(tr.evReth) > 0 {
@@ -249,4 +272,11 @@ func (s *SpamoorSuite) collectTraces(e *env, serviceName string) *traceResult {
 	}
 
 	return tr
+}
+
+func envOrDefault(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }

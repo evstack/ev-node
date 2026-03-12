@@ -5,6 +5,8 @@ package benchmark
 import (
 	"context"
 	"fmt"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/celestiaorg/tastora/framework/docker/evstack/spamoor"
@@ -15,13 +17,15 @@ import (
 // (lower is better) on the benchmark dashboard.
 func (s *SpamoorSuite) TestGasBurner() {
 	const (
-		numSpammers     = 4
-		countPerSpammer = 10000
-		totalCount      = numSpammers * countPerSpammer
-		warmupTxs       = 500
-		serviceName     = "ev-node-gasburner"
-		waitTimeout     = 10 * time.Minute
+		serviceName = "ev-node-gasburner"
+		waitTimeout = 10 * time.Minute
 	)
+
+	numSpammers := envInt("BENCH_NUM_SPAMMERS", 2)
+	countPerSpammer := envInt("BENCH_COUNT_PER_SPAMMER", 2000)
+	throughput := envInt("BENCH_THROUGHPUT", 200)
+	totalCount := numSpammers * countPerSpammer
+	warmupTxs := envInt("BENCH_WARMUP_TXS", 200)
 
 	t := s.T()
 	ctx := t.Context()
@@ -35,15 +39,21 @@ func (s *SpamoorSuite) TestGasBurner() {
 
 	s.Require().NoError(deleteAllSpammers(api), "failed to delete stale spammers")
 
+	t.Logf("load config: spammers=%d, count_per=%d, throughput=%d, warmup=%d",
+		numSpammers, countPerSpammer, throughput, warmupTxs)
+
+	gasUnitsToBurn := envInt("BENCH_GAS_UNITS_TO_BURN", 1_000_000)
+	maxWallets := envInt("BENCH_MAX_WALLETS", 500)
+
 	gasburnerCfg := map[string]any{
-		"gas_units_to_burn": 5_000_000,
+		"gas_units_to_burn": gasUnitsToBurn,
 		"total_count":       countPerSpammer,
-		"throughput":        1000,
+		"throughput":        throughput,
 		"max_pending":       50000,
-		"max_wallets":       500,
+		"max_wallets":       maxWallets,
 		"rebroadcast":       5,
-		"base_fee":          5000,
-		"tip_fee":           2500,
+		"base_fee":          100,
+		"tip_fee":           50,
 		"refill_amount":     "500000000000000000000",
 		"refill_balance":    "200000000000000000000",
 		"refill_interval":   300,
@@ -72,7 +82,7 @@ func (s *SpamoorSuite) TestGasBurner() {
 		}
 		return sumCounter(metrics["spamoor_transactions_sent_total"]), nil
 	}
-	waitForMetricTarget(t, "spamoor_transactions_sent_total (warmup)", pollSentTotal, warmupTxs, waitTimeout)
+	waitForMetricTarget(t, "spamoor_transactions_sent_total (warmup)", pollSentTotal, float64(warmupTxs), waitTimeout)
 
 	// reset trace window to exclude warmup spans
 	e.traces.resetStartTime()
@@ -124,11 +134,36 @@ func (s *SpamoorSuite) TestGasBurner() {
 		w.addEntry(entry{Name: "GasBurner - ev-node overhead", Unit: "%", Value: overhead})
 	}
 
+	if ggas, ok := rethExecutionRate(traces.evNode, bm.TotalGasUsed); ok {
+		t.Logf("ev-reth execution rate: %.3f GGas/s", ggas)
+		w.addEntry(entry{Name: "GasBurner - ev-reth GGas/s", Unit: "GGas/s", Value: ggas})
+	}
+
+	spanEntries := engineSpanEntries("GasBurner", traces.evNode)
+	for _, e := range spanEntries {
+		if e.Name == "GasBurner - ProduceBlock avg" {
+			t.Logf("ProduceBlock avg: %.0fms", e.Value)
+		}
+	}
+
 	w.addEntries(summary.entries("GasBurner"))
+	w.addEntries(spanEntries)
 	w.addSpans(traces.allSpans())
 	w.addEntry(entry{
 		Name:  fmt.Sprintf("%s - seconds_per_gigagas", w.label),
 		Unit:  "s/Ggas",
 		Value: secsPerGigagas,
 	})
+}
+
+func envInt(key string, fallback int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return fallback
+	}
+	return n
 }
