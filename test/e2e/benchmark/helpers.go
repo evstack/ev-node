@@ -16,6 +16,14 @@ import (
 	e2e "github.com/evstack/ev-node/test/e2e"
 )
 
+// span name constants used for trace-based metrics extraction.
+const (
+	spanProduceBlock = "BlockExecutor.ProduceBlock"
+	spanExecuteTxs   = "Executor.ExecuteTxs"
+	spanGetPayload   = "Engine.GetPayload"
+	spanNewPayload   = "Engine.NewPayload"
+)
+
 // blockMetrics holds aggregated gas and transaction data across a range of blocks.
 // Only blocks containing at least one transaction are counted in BlockCount,
 // GasPerBlock, and TxPerBlock. All blocks (including empty) are counted in
@@ -197,7 +205,6 @@ func assertSpammersRunning(t testing.TB, api *spamoor.API, ids []int) {
 		}
 	}
 }
-
 
 // deleteAllSpammers removes any pre-existing spammers from the daemon.
 // This prevents stale spammers (from previous failed runs) being restored
@@ -382,11 +389,11 @@ func (s *blockMetricsSummary) entries(prefix string) []entry {
 // and other ev-node orchestration work. Returns false if either span is missing.
 func evNodeOverhead(spans []e2e.TraceSpan) (float64, bool) {
 	stats := e2e.AggregateSpanStats(spans)
-	produce, ok := stats["BlockExecutor.ProduceBlock"]
+	produce, ok := stats[spanProduceBlock]
 	if !ok {
 		return 0, false
 	}
-	execute, ok := stats["Executor.ExecuteTxs"]
+	execute, ok := stats[spanExecuteTxs]
 	if !ok {
 		return 0, false
 	}
@@ -404,7 +411,7 @@ func evNodeOverhead(spans []e2e.TraceSpan) (float64, bool) {
 // transitions for a block (EVM execution + state root + disk commit).
 func rethExecutionRate(spans []e2e.TraceSpan, totalGasUsed uint64) (float64, bool) {
 	stats := e2e.AggregateSpanStats(spans)
-	np, ok := stats["Engine.NewPayload"]
+	np, ok := stats[spanNewPayload]
 	if !ok || np.Total <= 0 || totalGasUsed == 0 {
 		return 0, false
 	}
@@ -422,9 +429,9 @@ func engineSpanEntries(prefix string, spans []e2e.TraceSpan) []entry {
 		span  string
 		label string
 	}{
-		{"BlockExecutor.ProduceBlock", "ProduceBlock"},
-		{"Engine.GetPayload", "GetPayload"},
-		{"Engine.NewPayload", "NewPayload"},
+		{spanProduceBlock, "ProduceBlock"},
+		{spanGetPayload, "GetPayload"},
+		{spanNewPayload, "NewPayload"},
 	}
 	var entries []entry
 	for _, k := range keys {

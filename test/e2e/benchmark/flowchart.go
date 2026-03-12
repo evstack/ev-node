@@ -22,8 +22,9 @@ type spanNode struct {
 	children []*spanNode
 }
 
-// printFlowcharts renders one ASCII tree per distinct root span type,
-// picking the longest trace for each root.
+// printFlowcharts renders a single combined ASCII tree showing the longest
+// trace for each distinct root span type. Bars are scaled relative to the
+// longest root so durations are visually comparable.
 func printFlowcharts(t testing.TB, spans []richSpan) {
 	t.Helper()
 	if len(spans) == 0 {
@@ -33,36 +34,51 @@ func printFlowcharts(t testing.TB, spans []richSpan) {
 	byTrace := groupByTrace(spans)
 	byRoot := groupTracesByRoot(byTrace)
 
-	// sort root names for deterministic output
 	rootNames := make([]string, 0, len(byRoot))
 	for name := range byRoot {
 		rootNames = append(rootNames, name)
 	}
 	sort.Strings(rootNames)
 
+	type rootEntry struct {
+		node *spanNode
+		name string
+	}
+
+	var roots []rootEntry
+	var maxDur time.Duration
 	for _, rootName := range rootNames {
 		traces := byRoot[rootName]
 		if len(traces) < minTracesForFlowchart {
 			continue
 		}
-		root, traceID := longestRootTrace(traces)
+		root, _ := longestRootTrace(traces)
 		if root == nil {
 			continue
 		}
-
-		var b strings.Builder
-		host := root.span.hostName
-		if host == "" {
-			host = "unknown"
+		roots = append(roots, rootEntry{node: root, name: rootName})
+		if root.span.duration > maxDur {
+			maxDur = root.span.duration
 		}
-		fmt.Fprintf(&b, "\n--- Flowchart: %s (trace %s, host %s) ---\n\n", rootName, truncateID(traceID), host)
-		renderTree(&b, root, "", true, root.span.duration)
-		t.Log(b.String())
 	}
+	if len(roots) == 0 {
+		return
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n--- Flowchart (longest trace per operation) ---\n")
+	for i, r := range roots {
+		b.WriteString("\n")
+		renderTree(&b, r.node, "", true, maxDur)
+		if i < len(roots)-1 {
+			b.WriteString("\n")
+		}
+	}
+	t.Log(b.String())
 }
 
-// printAggregateFlowcharts builds one aggregate tree per distinct root span type
-// and renders average durations for each.
+// printAggregateFlowcharts builds a single combined ASCII tree showing
+// average durations for each distinct root span type.
 func printAggregateFlowcharts(t testing.TB, spans []richSpan) {
 	t.Helper()
 	if len(spans) == 0 {
@@ -79,6 +95,13 @@ func printAggregateFlowcharts(t testing.TB, spans []richSpan) {
 	}
 	sort.Strings(rootNames)
 
+	type aggEntry struct {
+		node   *aggregateNode
+		traces int
+	}
+
+	var aggs []aggEntry
+	var maxAvg time.Duration
 	for _, rootName := range rootNames {
 		traces := byRoot[rootName]
 		if len(traces) < minTracesForFlowchart {
@@ -88,13 +111,29 @@ func printAggregateFlowcharts(t testing.TB, spans []richSpan) {
 		if agg == nil {
 			continue
 		}
-
-		var b strings.Builder
-		fmt.Fprintf(&b, "\n--- Average Pipeline: %s (%d traces, hosts: %s) ---\n\n",
-			rootName, len(traces), strings.Join(hosts, ", "))
-		renderAggregateTree(&b, agg, "", true, agg.avgDuration)
-		t.Log(b.String())
+		aggs = append(aggs, aggEntry{node: agg, traces: len(traces)})
+		if agg.avgDuration > maxAvg {
+			maxAvg = agg.avgDuration
+		}
 	}
+	if len(aggs) == 0 {
+		return
+	}
+
+	var b strings.Builder
+	hostStr := strings.Join(hosts, ", ")
+	if hostStr == "" {
+		hostStr = "local"
+	}
+	fmt.Fprintf(&b, "\n--- Average Pipeline (hosts: %s) ---\n", hostStr)
+	for i, a := range aggs {
+		b.WriteString("\n")
+		renderAggregateTree(&b, a.node, "", true, maxAvg)
+		if i < len(aggs)-1 {
+			b.WriteString("\n")
+		}
+	}
+	t.Log(b.String())
 }
 
 // groupTracesByRoot groups traces by their root span name.
@@ -184,16 +223,19 @@ func sortChildren(node *spanNode) {
 	}
 }
 
+// connectorLen is the byte length of tree connector strings used in prefix slicing.
+const connectorLen = 3
+
 func renderTree(b *strings.Builder, node *spanNode, prefix string, isLast bool, rootDur time.Duration) {
 	bar := durationBar(node.span.duration, rootDur)
 	fmt.Fprintf(b, "%-48s %s %s\n", prefix+node.span.name, bar, formatDuration(node.span.duration))
 
 	childPrefix := prefix
-	if len(prefix) > 0 {
+	if len(prefix) >= connectorLen {
 		if isLast {
-			childPrefix = prefix[:len(prefix)-3] + "   "
+			childPrefix = prefix[:len(prefix)-connectorLen] + "   "
 		} else {
-			childPrefix = prefix[:len(prefix)-3] + "\u2502  "
+			childPrefix = prefix[:len(prefix)-connectorLen] + "|  "
 		}
 	}
 
@@ -201,9 +243,9 @@ func renderTree(b *strings.Builder, node *spanNode, prefix string, isLast bool, 
 		last := i == len(node.children)-1
 		var connector string
 		if last {
-			connector = "\u2514\u2500 "
+			connector = "'- "
 		} else {
-			connector = "\u251c\u2500 "
+			connector = "|- "
 		}
 		renderTree(b, child, childPrefix+connector, last, rootDur)
 	}
@@ -218,7 +260,7 @@ func durationBar(d, rootDur time.Duration) string {
 	if width < 1 && d > 0 {
 		width = 1
 	}
-	return strings.Repeat("\u2588", width)
+	return strings.Repeat("#", width)
 }
 
 func formatDuration(d time.Duration) string {
@@ -226,7 +268,7 @@ func formatDuration(d time.Duration) string {
 	if ms >= 1 {
 		return fmt.Sprintf("%.1fms", ms)
 	}
-	return fmt.Sprintf("%.1f\u00b5s", float64(d)/float64(time.Microsecond))
+	return fmt.Sprintf("%.1fus", float64(d)/float64(time.Microsecond))
 }
 
 func uniqueHosts(spans []richSpan) []string {
@@ -255,7 +297,6 @@ func truncateID(id string) string {
 type aggregateNode struct {
 	name        string
 	count       int
-	totalDur    time.Duration
 	avgDuration time.Duration
 	children    []*aggregateNode
 }
@@ -299,7 +340,6 @@ func buildAggNode(node *spanNode, dursByName map[string][]time.Duration, countsB
 	agg := &aggregateNode{
 		name:        node.span.name,
 		count:       countsByName[node.span.name],
-		totalDur:    total,
 		avgDuration: avg,
 	}
 
@@ -318,11 +358,11 @@ func renderAggregateTree(b *strings.Builder, node *aggregateNode, prefix string,
 	fmt.Fprintf(b, "%-48s %s %s avg%s\n", prefix+node.name, bar, formatDuration(node.avgDuration), countStr)
 
 	childPrefix := prefix
-	if len(prefix) > 0 {
+	if len(prefix) >= connectorLen {
 		if isLast {
-			childPrefix = prefix[:len(prefix)-3] + "   "
+			childPrefix = prefix[:len(prefix)-connectorLen] + "   "
 		} else {
-			childPrefix = prefix[:len(prefix)-3] + "\u2502  "
+			childPrefix = prefix[:len(prefix)-connectorLen] + "|  "
 		}
 	}
 
@@ -330,9 +370,9 @@ func renderAggregateTree(b *strings.Builder, node *aggregateNode, prefix string,
 		last := i == len(node.children)-1
 		var connector string
 		if last {
-			connector = "\u2514\u2500 "
+			connector = "'- "
 		} else {
-			connector = "\u251c\u2500 "
+			connector = "|- "
 		}
 		renderAggregateTree(b, child, childPrefix+connector, last, rootAvg)
 	}

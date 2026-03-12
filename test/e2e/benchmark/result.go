@@ -15,11 +15,37 @@ import (
 type traceResult struct {
 	evNode []e2e.TraceSpan
 	evReth []e2e.TraceSpan
+
+	// rich spans include parent-child hierarchy for flowchart rendering.
+	// empty when the trace provider doesn't support rich span collection.
+	evNodeRich []richSpan
+	evRethRich []richSpan
 }
 
-// allSpans returns ev-node and ev-reth spans concatenated.
+// displayFlowcharts renders ASCII flowcharts from rich spans. Falls back to
+// flat trace reports when rich spans are not available.
+func (tr *traceResult) displayFlowcharts(t testing.TB, serviceName string) {
+	if len(tr.evNodeRich) > 0 {
+		printFlowcharts(t, tr.evNodeRich)
+		printAggregateFlowcharts(t, tr.evNodeRich)
+	} else {
+		e2e.PrintTraceReport(t, serviceName, tr.evNode)
+	}
+
+	if len(tr.evRethRich) > 0 {
+		t.Logf("ev-reth: collected %d rich spans", len(tr.evRethRich))
+		printAggregateFlowcharts(t, tr.evRethRich)
+	} else if len(tr.evReth) > 0 {
+		e2e.PrintTraceReport(t, "ev-reth", tr.evReth)
+	}
+}
+
+// allSpans returns ev-node and ev-reth spans concatenated into a new slice.
 func (tr *traceResult) allSpans() []e2e.TraceSpan {
-	return append(tr.evNode, tr.evReth...)
+	out := make([]e2e.TraceSpan, 0, len(tr.evNode)+len(tr.evReth))
+	out = append(out, tr.evNode...)
+	out = append(out, tr.evReth...)
+	return out
 }
 
 // benchmarkResult collects all metrics from a single benchmark run and

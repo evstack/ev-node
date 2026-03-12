@@ -14,8 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/celestiaorg/tastora/framework/docker/jaeger"
-
 	e2e "github.com/evstack/ev-node/test/e2e"
 )
 
@@ -30,8 +28,8 @@ type richSpan struct {
 	duration     time.Duration
 }
 
-// traceProvider abstracts trace collection so tests work against a local Jaeger
-// instance or a remote VictoriaTraces deployment.
+// traceProvider abstracts trace collection so tests work against different
+// tracing backends (e.g. VictoriaTraces).
 type traceProvider interface {
 	collectSpans(ctx context.Context, serviceName string) ([]e2e.TraceSpan, error)
 	tryCollectSpans(ctx context.Context, serviceName string) []e2e.TraceSpan
@@ -47,62 +45,8 @@ type richSpanCollector interface {
 	collectRichSpans(ctx context.Context, serviceName string) ([]richSpan, error)
 }
 
-// jaegerTraceProvider collects spans from a locally-provisioned Jaeger node.
-type jaegerTraceProvider struct {
-	node *jaeger.Node
-	t    testing.TB
-}
-
-func (j *jaegerTraceProvider) collectSpans(ctx context.Context, serviceName string) ([]e2e.TraceSpan, error) {
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
-	defer cancel()
-
-	ok, err := j.node.External.WaitForTraces(ctx, serviceName, 1, 2*time.Second)
-	if err != nil {
-		return nil, fmt.Errorf("error waiting for %s traces; UI: %s: %w", serviceName, j.node.External.QueryURL(), err)
-	}
-	if !ok {
-		return nil, fmt.Errorf("expected at least one trace from %s; UI: %s", serviceName, j.node.External.QueryURL())
-	}
-
-	traces, err := j.node.External.Traces(ctx, serviceName, 10000)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch %s traces: %w", serviceName, err)
-	}
-	return toTraceSpans(extractSpansFromTraces(traces)), nil
-}
-
-func (j *jaegerTraceProvider) uiURL(_ string) string {
-	return j.node.External.QueryURL()
-}
-
-func (j *jaegerTraceProvider) resetStartTime() {
-	// jaeger provider doesn't use a start time window
-}
-
-func (j *jaegerTraceProvider) tryCollectSpans(ctx context.Context, serviceName string) []e2e.TraceSpan {
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
-	defer cancel()
-
-	ok, err := j.node.External.WaitForTraces(ctx, serviceName, 1, 2*time.Second)
-	if err != nil || !ok {
-		j.t.Logf("warning: could not collect %s traces (err=%v, ok=%v)", serviceName, err, ok)
-		return nil
-	}
-
-	traces, err := j.node.External.Traces(ctx, serviceName, 10000)
-	if err != nil {
-		j.t.Logf("warning: failed to fetch %s traces: %v", serviceName, err)
-		return nil
-	}
-
-	spans := toTraceSpans(extractSpansFromTraces(traces))
-	j.t.Logf("collected %d %s spans", len(spans), serviceName)
-	return spans
-}
-
 // victoriaTraceProvider collects spans from a VictoriaTraces instance via its
-// Jaeger-compatible HTTP API.
+// LogsQL streaming API.
 type victoriaTraceProvider struct {
 	queryURL  string
 	t         testing.TB
@@ -114,9 +58,12 @@ func (v *victoriaTraceProvider) resetStartTime() {
 }
 
 func (v *victoriaTraceProvider) uiURL(serviceName string) string {
-	return fmt.Sprintf("%s/select/jaeger?service=%s&start=%d&end=%d",
-		strings.TrimRight(v.queryURL, "/"), serviceName,
-		v.startTime.UnixMicro(), time.Now().UnixMicro())
+	query := fmt.Sprintf(`_stream:{resource_attr:service.name="%s"}`, serviceName)
+	return fmt.Sprintf("%s/select/vmui/#/query?query=%s&start=%s&end=%s",
+		strings.TrimRight(v.queryURL, "/"),
+		neturl.QueryEscape(query),
+		v.startTime.Format(time.RFC3339),
+		time.Now().Format(time.RFC3339))
 }
 
 func (v *victoriaTraceProvider) collectSpans(ctx context.Context, serviceName string) ([]e2e.TraceSpan, error) {
@@ -322,8 +269,7 @@ type logsqlSpan struct {
 
 // logsqlRichSpan extends logsqlSpan with hierarchy fields for flowchart rendering.
 type logsqlRichSpan struct {
-	Name              string `json:"name"`
-	Duration          string `json:"duration"`
+	logsqlSpan
 	TraceID           string `json:"trace_id"`
 	SpanID            string `json:"span_id"`
 	ParentSpanID      string `json:"parent_span_id"`
@@ -355,49 +301,4 @@ func (s logsqlSpan) SpanDuration() time.Duration {
 	}
 	return time.Duration(ns) * time.Nanosecond
 }
-
-// jaegerSpan holds the fields we extract from Jaeger's untyped JSON response.
-type jaegerSpan struct {
-	operationName string
-	duration      float64 // microseconds
-}
-
-func (j jaegerSpan) SpanName() string            { return j.operationName }
-func (j jaegerSpan) SpanDuration() time.Duration { return time.Duration(j.duration) * time.Microsecond }
-
-// extractSpansFromTraces walks Jaeger's []any response and pulls out span operation names and durations.
-func extractSpansFromTraces(traces []any) []jaegerSpan {
-	var out []jaegerSpan
-	for _, traceEntry := range traces {
-		traceMap, ok := traceEntry.(map[string]any)
-		if !ok {
-			continue
-		}
-		spans, ok := traceMap["spans"].([]any)
-		if !ok {
-			continue
-		}
-		for _, s := range spans {
-			spanMap, ok := s.(map[string]any)
-			if !ok {
-				continue
-			}
-			name, _ := spanMap["operationName"].(string)
-			dur, _ := spanMap["duration"].(float64)
-			if name != "" {
-				out = append(out, jaegerSpan{operationName: name, duration: dur})
-			}
-		}
-	}
-	return out
-}
-
-func toTraceSpans(spans []jaegerSpan) []e2e.TraceSpan {
-	out := make([]e2e.TraceSpan, len(spans))
-	for i, s := range spans {
-		out[i] = s
-	}
-	return out
-}
-
 

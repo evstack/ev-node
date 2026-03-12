@@ -46,7 +46,7 @@ type env struct {
 }
 
 // TODO: temporary hardcoded tag, will be replaced with a proper release tag
-const defaultRethTag = "pr-140"
+const defaultRethTag = "latest"
 
 func rethTag() string {
 	if tag := os.Getenv("EV_RETH_TAG"); tag != "" {
@@ -211,7 +211,7 @@ func (s *SpamoorSuite) setupExternalEnv(cfg benchConfig, rpcURL string) *env {
 }
 
 // collectTraces fetches ev-node traces (required) and ev-reth traces (optional)
-// from the configured trace provider, then prints reports for both.
+// from the configured trace provider, then displays flowcharts.
 func (s *SpamoorSuite) collectTraces(e *env, serviceName string) *traceResult {
 	t := s.T()
 	ctx := t.Context()
@@ -229,23 +229,15 @@ func (s *SpamoorSuite) collectTraces(e *env, serviceName string) *traceResult {
 	}
 
 	if rc, ok := e.traces.(richSpanCollector); ok {
-		richSpans, err := rc.collectRichSpans(ctx, serviceName)
-		if err == nil && len(richSpans) > 0 {
-			printFlowcharts(t, richSpans)
-			printAggregateFlowcharts(t, richSpans)
+		if spans, err := rc.collectRichSpans(ctx, serviceName); err == nil {
+			tr.evNodeRich = spans
 		}
-		rethSpans, err := rc.collectRichSpans(ctx, "ev-reth")
-		if err == nil && len(rethSpans) > 0 {
-			t.Logf("ev-reth: collected %d rich spans", len(rethSpans))
-			printAggregateFlowcharts(t, rethSpans)
-		}
-	} else {
-		e2e.PrintTraceReport(t, serviceName, tr.evNode)
-		if len(tr.evReth) > 0 {
-			e2e.PrintTraceReport(t, "ev-reth", tr.evReth)
+		if spans, err := rc.collectRichSpans(ctx, "ev-reth"); err == nil {
+			tr.evRethRich = spans
 		}
 	}
 
+	tr.displayFlowcharts(t, serviceName)
 	return tr
 }
 
