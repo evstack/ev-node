@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1773224196492,
+  "lastUpdate": 1773332934242,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -2484,6 +2484,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 181722,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "julien@rbrt.fr",
+            "name": "julienrbrt",
+            "username": "julienrbrt"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "2c9ca1bcbebdbf72cef47f5e5d061a98e430c5d0",
+          "message": "chore: remove replaces from ev-node (#3158)",
+          "timestamp": "2026-03-12T17:25:20+01:00",
+          "tree_id": "482b436507b028799096a7c57e29ea30b63520ee",
+          "url": "https://github.com/evstack/ev-node/commit/2c9ca1bcbebdbf72cef47f5e5d061a98e430c5d0"
+        },
+        "date": 1773332928100,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 896654097,
+            "unit": "ns/op\t32309360 B/op\t  180938 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 896654097,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 32309360,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 180938,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
