@@ -29,7 +29,7 @@ require (
 	github.com/deckarep/golang-set/v2 v2.6.0 // indirect
 	github.com/dgraph-io/ristretto/v2 v2.1.0 // indirect
 	github.com/ethereum/c-kzg-4844/v2 v2.1.6 // indirect
-	github.com/evstack/ev-node v1.0.0-rc.5 // indirect
+	github.com/evstack/ev-node v1.0.0 // indirect
 	github.com/evstack/ev-node/core v1.0.0 // indirect
 	github.com/ferranbt/fastssz v0.1.4 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
