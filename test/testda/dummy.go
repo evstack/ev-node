@@ -28,6 +28,12 @@ func (h *Header) Time() time.Time {
 	return h.Timestamp
 }
 
+// subscriber holds a channel and the context for a single Subscribe caller.
+type subscriber struct {
+	ch  chan datypes.SubscriptionEvent
+	ctx context.Context
+}
+
 // DummyDA is a test implementation of the DA client interface.
 // It supports blob storage, height simulation, failure injection, and header retrieval.
 type DummyDA struct {
@@ -38,8 +44,50 @@ type DummyDA struct {
 	headers    map[uint64]*Header             // height -> header (with timestamp)
 	failSubmit atomic.Bool
 
+	// subscribers tracks active Subscribe callers.
+	subscribers []*subscriber
+
 	tickerMu   sync.Mutex
 	tickerStop chan struct{}
+}
+
+// Subscribe returns a channel that emits a SubscriptionEvent for every new DA
+// height produced by Submit or StartHeightTicker. The channel is closed when
+// ctx is cancelled or Reset is called.
+func (d *DummyDA) Subscribe(ctx context.Context, _ []byte) (<-chan datypes.SubscriptionEvent, error) {
+	ch := make(chan datypes.SubscriptionEvent, 64)
+	sub := &subscriber{ch: ch, ctx: ctx}
+
+	d.mu.Lock()
+	d.subscribers = append(d.subscribers, sub)
+	d.mu.Unlock()
+
+	// Remove subscriber and close channel when ctx is cancelled.
+	go func() {
+		<-ctx.Done()
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		for i, s := range d.subscribers {
+			if s == sub {
+				d.subscribers = append(d.subscribers[:i], d.subscribers[i+1:]...)
+				close(ch)
+				break
+			}
+		}
+	}()
+
+	return ch, nil
+}
+
+// notifySubscribers sends an event to all active subscribers. Must be called
+// with d.mu held.
+func (d *DummyDA) notifySubscribers(ev datypes.SubscriptionEvent) {
+	for _, sub := range d.subscribers {
+		select {
+		case sub.ch <- ev:
+		case <-sub.ctx.Done():
+		}
+	}
 }
 
 // Option configures a DummyDA instance.
@@ -111,6 +159,10 @@ func (d *DummyDA) Submit(_ context.Context, data [][]byte, _ float64, namespace 
 			Timestamp: now,
 		}
 	}
+	d.notifySubscribers(datypes.SubscriptionEvent{
+		Height: height,
+		Blobs:  data,
+	})
 	d.mu.Unlock()
 
 	return datypes.ResultSubmit{
@@ -184,6 +236,11 @@ func (d *DummyDA) GetForcedInclusionNamespace() []byte { return nil }
 // HasForcedInclusionNamespace reports whether forced inclusion is configured.
 func (d *DummyDA) HasForcedInclusionNamespace() bool { return false }
 
+// GetLatestDAHeight returns the current DA height (the latest height available).
+func (d *DummyDA) GetLatestDAHeight(_ context.Context) (uint64, error) {
+	return d.height.Load(), nil
+}
+
 // Get retrieves blobs by ID (stub implementation).
 func (d *DummyDA) Get(_ context.Context, _ []datypes.ID, _ []byte) ([]datypes.Blob, error) {
 	return nil, nil
@@ -248,6 +305,9 @@ func (d *DummyDA) StartHeightTicker(interval time.Duration) func() {
 						Timestamp: now,
 					}
 				}
+				d.notifySubscribers(datypes.SubscriptionEvent{
+					Height: height,
+				})
 				d.mu.Unlock()
 			case <-stopCh:
 				return
@@ -272,6 +332,11 @@ func (d *DummyDA) Reset() {
 	d.blobs = make(map[uint64]map[string][][]byte)
 	d.headers = make(map[uint64]*Header)
 	d.failSubmit.Store(false)
+	// Close all subscriber channels.
+	for _, sub := range d.subscribers {
+		close(sub.ch)
+	}
+	d.subscribers = nil
 	d.mu.Unlock()
 
 	d.tickerMu.Lock()

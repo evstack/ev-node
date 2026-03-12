@@ -21,7 +21,6 @@ import (
 	"github.com/evstack/ev-node/block/internal/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	"github.com/evstack/ev-node/pkg/config"
-	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/raft"
 	"github.com/evstack/ev-node/pkg/store"
@@ -30,46 +29,18 @@ import (
 
 var _ BlockSyncer = (*Syncer)(nil)
 
-// forcedInclusionGracePeriodConfig contains internal configuration for forced inclusion grace periods.
-type forcedInclusionGracePeriodConfig struct {
-	// basePeriod is the base number of additional epochs allowed for including forced inclusion transactions
-	// before marking the sequencer as malicious. This provides tolerance for temporary chain congestion.
-	// A value of 0 means strict enforcement (no grace period).
-	// A value of 1 means transactions from epoch N can be included in epoch N+1 without being marked malicious.
-	// Recommended: 1 epoch.
-	basePeriod uint64
+const (
+	// baseGracePeriodEpochs is the minimum grace window after an epoch ends.
+	// A tx from epoch N must appear by the end of epoch N+1 under normal conditions.
+	baseGracePeriodEpochs uint64 = 1
 
-	// dynamicMinMultiplier is the minimum multiplier for the base grace period.
-	// The actual grace period will be at least: basePeriod * dynamicMinMultiplier.
-	// Example: base=2, min=0.5 → minimum grace period is 1 epoch.
-	dynamicMinMultiplier float64
+	// maxGracePeriodEpochs caps the grace window even under sustained congestion.
+	maxGracePeriodEpochs uint64 = 4
 
-	// dynamicMaxMultiplier is the maximum multiplier for the base grace period.
-	// The actual grace period will be at most: basePeriod * dynamicMaxMultiplier.
-	// Example: base=2, max=3.0 → maximum grace period is 6 epochs.
-	dynamicMaxMultiplier float64
-
-	// dynamicFullnessThreshold defines what percentage of block capacity is considered "full".
-	// When EMA of block fullness is above this threshold, grace period increases.
-	// When below, grace period decreases. Value should be between 0.0 and 1.0.
-	dynamicFullnessThreshold float64
-
-	// dynamicAdjustmentRate controls how quickly the grace period multiplier adapts.
-	// Higher values make it adapt faster to congestion changes. Value should be between 0.0 and 1.0.
-	// Recommended: 0.05 for gradual adjustment, 0.1 for faster response.
-	dynamicAdjustmentRate float64
-}
-
-// newForcedInclusionGracePeriodConfig returns the internal grace period configuration.
-func newForcedInclusionGracePeriodConfig() forcedInclusionGracePeriodConfig {
-	return forcedInclusionGracePeriodConfig{
-		basePeriod:               1,    // 1 epoch grace period
-		dynamicMinMultiplier:     0.5,  // Minimum 0.5x base grace period
-		dynamicMaxMultiplier:     3.0,  // Maximum 3x base grace period
-		dynamicFullnessThreshold: 0.8,  // 80% capacity considered full
-		dynamicAdjustmentRate:    0.05, // 5% adjustment per block
-	}
-}
+	// fullnessThreshold is the fraction of DefaultMaxBlobSize above which a block
+	// is considered full. Exceeding it extends the grace period for that epoch.
+	fullnessThreshold = 0.8
+)
 
 // Syncer handles block synchronization from DA and P2P sources.
 type Syncer struct {
@@ -108,11 +79,14 @@ type Syncer struct {
 	p2pHandler    p2pHandler
 	raftRetriever *raftRetriever
 
+	daFollower DAFollower
+
 	// Forced inclusion tracking
-	pendingForcedInclusionTxs sync.Map // map[string]pendingForcedInclusionTx
-	gracePeriodMultiplier     *atomic.Pointer[float64]
-	blockFullnessEMA          *atomic.Pointer[float64]
-	gracePeriodConfig         forcedInclusionGracePeriodConfig
+	forcedInclusionMu    sync.RWMutex
+	seenBlockTxs         map[string]struct{} // SHA-256 hex of every tx seen in a DA-sourced block
+	seenBlockTxsByHeight map[uint64][]string // DA height → hashes at that height (for pruning)
+	daBlockBytes         map[uint64]uint64   // DA height → total tx bytes (for congestion tracking)
+	lastCheckedEpochEnd  uint64              // highest epochEnd fully verified so far
 
 	// Lifecycle
 	ctx              context.Context
@@ -123,20 +97,9 @@ type Syncer struct {
 	// P2P wait coordination
 	p2pWaitState atomic.Value // stores p2pWaitState
 
-	// DA head-reached signal for recovery mode (stays true once DA head is seen)
-	daHeadReached atomic.Bool
-
 	// blockSyncer is the interface used for block sync operations.
 	// defaults to self, but can be wrapped with tracing.
 	blockSyncer BlockSyncer
-}
-
-// pendingForcedInclusionTx represents a forced inclusion transaction that hasn't been included yet
-type pendingForcedInclusionTx struct {
-	Data       []byte
-	EpochStart uint64
-	EpochEnd   uint64
-	TxHash     string
 }
 
 // NewSyncer creates a new block syncer
@@ -158,34 +121,25 @@ func NewSyncer(
 	daRetrieverHeight := &atomic.Uint64{}
 	daRetrieverHeight.Store(genesis.DAStartHeight)
 
-	// Initialize dynamic grace period state
-	initialMultiplier := 1.0
-	gracePeriodMultiplier := &atomic.Pointer[float64]{}
-	gracePeriodMultiplier.Store(&initialMultiplier)
-
-	initialFullness := 0.0
-	blockFullnessEMA := &atomic.Pointer[float64]{}
-	blockFullnessEMA.Store(&initialFullness)
-
 	s := &Syncer{
-		store:                 store,
-		exec:                  exec,
-		cache:                 cache,
-		metrics:               metrics,
-		config:                config,
-		genesis:               genesis,
-		options:               options,
-		lastState:             &atomic.Pointer[types.State]{},
-		daClient:              daClient,
-		daRetrieverHeight:     daRetrieverHeight,
-		headerStore:           headerStore,
-		dataStore:             dataStore,
-		heightInCh:            make(chan common.DAHeightEvent, 100),
-		errorCh:               errorCh,
-		logger:                logger.With().Str("component", "syncer").Logger(),
-		gracePeriodMultiplier: gracePeriodMultiplier,
-		blockFullnessEMA:      blockFullnessEMA,
-		gracePeriodConfig:     newForcedInclusionGracePeriodConfig(),
+		store:                store,
+		exec:                 exec,
+		cache:                cache,
+		metrics:              metrics,
+		config:               config,
+		genesis:              genesis,
+		options:              options,
+		lastState:            &atomic.Pointer[types.State]{},
+		daClient:             daClient,
+		daRetrieverHeight:    daRetrieverHeight,
+		headerStore:          headerStore,
+		dataStore:            dataStore,
+		heightInCh:           make(chan common.DAHeightEvent, 100),
+		errorCh:              errorCh,
+		logger:               logger.With().Str("component", "syncer").Logger(),
+		seenBlockTxs:         make(map[string]struct{}),
+		seenBlockTxsByHeight: make(map[uint64][]string),
+		daBlockBytes:         make(map[uint64]uint64),
 	}
 	s.blockSyncer = s
 	if raftNode != nil && !reflect.ValueOf(raftNode).IsNil() {
@@ -207,10 +161,17 @@ func (s *Syncer) SetBlockSyncer(bs BlockSyncer) {
 }
 
 // Start begins the syncing component
-func (s *Syncer) Start(ctx context.Context) error {
-	s.ctx, s.cancel = context.WithCancel(ctx)
+func (s *Syncer) Start(ctx context.Context) (err error) {
+	ctx, cancel := context.WithCancel(ctx)
+	s.ctx, s.cancel = ctx, cancel
 
-	if err := s.initializeState(); err != nil {
+	defer func() { //nolint: contextcheck // use new context as parent can be cancelled already
+		if err != nil {
+			_ = s.Stop(context.Background())
+		}
+	}()
+
+	if err = s.initializeState(); err != nil {
 		return fmt.Errorf("failed to initialize syncer state: %w", err)
 	}
 
@@ -222,14 +183,16 @@ func (s *Syncer) Start(ctx context.Context) error {
 
 	s.fiRetriever = da.NewForcedInclusionRetriever(s.daClient, s.logger, s.config, s.genesis.DAStartHeight, s.genesis.DAEpochForcedInclusion)
 	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.cache, s.genesis, s.logger)
-	if currentHeight, err := s.store.Height(s.ctx); err != nil {
-		s.logger.Error().Err(err).Msg("failed to set initial processed height for p2p handler")
+
+	currentHeight, initErr := s.store.Height(ctx)
+	if initErr != nil {
+		s.logger.Error().Err(initErr).Msg("failed to set initial processed height for p2p handler")
 	} else {
 		s.p2pHandler.SetProcessedHeight(currentHeight)
 	}
 
 	if s.raftRetriever != nil {
-		if err := s.raftRetriever.Start(s.ctx); err != nil {
+		if err = s.raftRetriever.Start(ctx); err != nil {
 			return fmt.Errorf("start raft retriever: %w", err)
 		}
 	}
@@ -239,29 +202,49 @@ func (s *Syncer) Start(ctx context.Context) error {
 	}
 
 	// Start main processing loop
-	s.wg.Go(s.processLoop)
+	s.wg.Go(func() { s.processLoop(ctx) })
 
-	// Start dedicated workers for DA, and pending processing
-	s.startSyncWorkers()
+	// Start the DA follower (subscribe + catchup) and other workers
+	s.daFollower = NewDAFollower(DAFollowerConfig{
+		Client:        s.daClient,
+		Retriever:     s.daRetriever,
+		Logger:        s.logger,
+		PipeEvent:     s.pipeEvent,
+		Namespace:     s.daClient.GetHeaderNamespace(),
+		DataNamespace: s.daClient.GetDataNamespace(),
+		StartDAHeight: s.daRetrieverHeight.Load(),
+		DABlockTime:   s.config.DA.BlockTime.Duration,
+	})
+	if err = s.daFollower.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start DA follower: %w", err)
+	}
+
+	s.startSyncWorkers(ctx)
 
 	s.logger.Info().Msg("syncer started")
 	return nil
 }
 
 // Stop shuts down the syncing component
-func (s *Syncer) Stop() error {
+func (s *Syncer) Stop(ctx context.Context) error {
 	if s.cancel == nil {
 		return nil
 	}
 
 	s.cancel()
 	s.cancelP2PWait(0)
+
+	// Stop the DA follower first (it owns its own goroutines).
+	if s.daFollower != nil {
+		s.daFollower.Stop()
+	}
+
 	s.wg.Wait()
 
 	// Skip draining if we're shutting down due to a critical error (e.g. execution
 	// client unavailable).
 	if !s.hasCriticalError.Load() {
-		drainCtx, drainCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		drainCtx, drainCancel := context.WithTimeout(ctx, 5*time.Second)
 		defer drainCancel()
 
 		drained := 0
@@ -353,6 +336,19 @@ func (s *Syncer) initializeState() error {
 	}
 	s.SetLastState(state)
 
+	// Initialize lastCheckedEpochEnd based on the restored state's DA height so that
+	// VerifyForcedInclusionTxs resumes from where we left off instead of re-scanning
+	// all epochs from genesis on every startup.
+	if epochSize := s.genesis.DAEpochForcedInclusion; epochSize > 0 && state.DAHeight >= s.genesis.DAStartHeight {
+		firstEpochEnd := s.genesis.DAStartHeight + epochSize - 1
+		if state.DAHeight >= firstEpochEnd {
+			// The last completed epoch end that is fully behind state.DAHeight.
+			elapsed := state.DAHeight - firstEpochEnd
+			completedEpochs := elapsed / epochSize
+			s.lastCheckedEpochEnd = firstEpochEnd + completedEpochs*epochSize
+		}
+	}
+
 	// Set DA height to the maximum of the genesis start height, the state's DA height, and the cached DA height.
 	// The cache's DaHeight() is initialized from store metadata, so it's always correct even after cache clear.
 	s.daRetrieverHeight.Store(max(s.genesis.DAStartHeight, s.cache.DaHeight(), state.DAHeight))
@@ -373,131 +369,44 @@ func (s *Syncer) initializeState() error {
 }
 
 // processLoop is the main coordination loop for processing events
-func (s *Syncer) processLoop() {
+func (s *Syncer) processLoop(ctx context.Context) {
 	s.logger.Info().Msg("starting process loop")
 	defer s.logger.Info().Msg("process loop stopped")
 
 	for {
 		select {
-		case <-s.ctx.Done():
+		case <-ctx.Done():
 			return
 		case heightEvent, ok := <-s.heightInCh:
 			if ok {
-				s.processHeightEvent(s.ctx, &heightEvent)
+				s.processHeightEvent(ctx, &heightEvent)
 			}
 		}
 	}
 }
 
-func (s *Syncer) startSyncWorkers() {
-	s.wg.Add(3)
-	go s.daWorkerLoop()
-	go s.pendingWorkerLoop()
-	go s.p2pWorkerLoop()
+func (s *Syncer) startSyncWorkers(ctx context.Context) {
+	// DA follower is already started in Start().
+	s.wg.Add(2)
+	go s.pendingWorkerLoop(ctx)
+	go s.p2pWorkerLoop(ctx)
 }
 
-func (s *Syncer) daWorkerLoop() {
-	defer s.wg.Done()
-
-	s.logger.Info().Msg("starting DA worker")
-	defer s.logger.Info().Msg("DA worker stopped")
-
-	for {
-		err := s.fetchDAUntilCaughtUp()
-
-		var backoff time.Duration
-		if err == nil {
-			// No error, means we are caught up.
-			s.daHeadReached.Store(true)
-			backoff = s.config.DA.BlockTime.Duration
-		} else {
-			// Error, back off for a shorter duration.
-			backoff = s.config.DA.BlockTime.Duration
-			if backoff <= 0 {
-				backoff = 2 * time.Second
-			}
-		}
-
-		select {
-		case <-s.ctx.Done():
-			return
-		case <-time.After(backoff):
-		}
-	}
-}
-
-// HasReachedDAHead returns true once the DA worker has reached the DA head.
+// HasReachedDAHead returns true once the DA follower has caught up to the DA head.
 // Once set, it stays true.
 func (s *Syncer) HasReachedDAHead() bool {
-	return s.daHeadReached.Load()
-}
-
-func (s *Syncer) fetchDAUntilCaughtUp() error {
-	for {
-		select {
-		case <-s.ctx.Done():
-			return s.ctx.Err()
-		default:
-		}
-
-		// Check for priority heights from P2P hints first
-		var daHeight uint64
-		if priorityHeight := s.daRetriever.PopPriorityHeight(); priorityHeight > 0 {
-			// Skip if we've already fetched past this height
-			currentHeight := s.daRetrieverHeight.Load()
-			if priorityHeight < currentHeight {
-				continue
-			}
-			daHeight = priorityHeight
-			s.logger.Debug().Uint64("da_height", daHeight).Msg("fetching priority DA height from P2P hint")
-		} else {
-			daHeight = max(s.daRetrieverHeight.Load(), s.cache.DaHeight())
-		}
-
-		events, err := s.daRetriever.RetrieveFromDA(s.ctx, daHeight)
-		if err != nil {
-			switch {
-			case errors.Is(err, datypes.ErrBlobNotFound):
-				s.daRetrieverHeight.Store(daHeight + 1)
-				continue // Fetch next height immediately
-			case errors.Is(err, datypes.ErrHeightFromFuture):
-				s.logger.Debug().Err(err).Uint64("da_height", daHeight).Msg("DA is ahead of local target; backing off future height requests")
-				return nil // Caught up
-			default:
-				s.logger.Error().Err(err).Uint64("da_height", daHeight).Msg("failed to retrieve from DA; backing off DA requests")
-				return err // Other errors
-			}
-		}
-
-		if len(events) == 0 {
-			// This can happen if RetrieveFromDA returns no events and no error.
-			s.logger.Debug().Uint64("da_height", daHeight).Msg("no events returned from DA, but no error either.")
-		}
-
-		// Process DA events
-		for _, event := range events {
-			if err := s.pipeEvent(s.ctx, event); err != nil {
-				return err
-			}
-		}
-
-		// Update DA retrieval height on successful retrieval
-		// For priority fetches, only update if the priority height is ahead of current
-		// For sequential fetches, always increment
-		newHeight := daHeight + 1
-		for {
-			current := s.daRetrieverHeight.Load()
-			if newHeight <= current {
-				break // Already at or past this height
-			}
-			if s.daRetrieverHeight.CompareAndSwap(current, newHeight) {
-				break
-			}
-		}
+	if s.daFollower != nil {
+		return s.daFollower.HasReachedHead()
 	}
+	return false
 }
 
-func (s *Syncer) pendingWorkerLoop() {
+// PendingCount returns the number of unprocessed height events in the pipeline.
+func (s *Syncer) PendingCount() int {
+	return len(s.heightInCh)
+}
+
+func (s *Syncer) pendingWorkerLoop(ctx context.Context) {
 	defer s.wg.Done()
 
 	s.logger.Info().Msg("starting pending worker")
@@ -508,15 +417,15 @@ func (s *Syncer) pendingWorkerLoop() {
 
 	for {
 		select {
-		case <-s.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.processPendingEvents()
+			s.processPendingEvents(ctx)
 		}
 	}
 }
 
-func (s *Syncer) p2pWorkerLoop() {
+func (s *Syncer) p2pWorkerLoop(ctx context.Context) {
 	defer s.wg.Done()
 
 	logger := s.logger.With().Str("worker", "p2p").Logger()
@@ -525,22 +434,22 @@ func (s *Syncer) p2pWorkerLoop() {
 
 	for {
 		select {
-		case <-s.ctx.Done():
+		case <-ctx.Done():
 			return
 		default:
 		}
 
-		currentHeight, err := s.store.Height(s.ctx)
+		currentHeight, err := s.store.Height(ctx)
 		if err != nil {
 			logger.Error().Err(err).Msg("failed to get current height for P2P worker")
-			if !s.sleepOrDone(50 * time.Millisecond) {
+			if !s.sleepOrDone(ctx, 50*time.Millisecond) {
 				return
 			}
 			continue
 		}
 
 		targetHeight := currentHeight + 1
-		waitCtx, cancel := context.WithCancel(s.ctx)
+		waitCtx, cancel := context.WithCancel(ctx)
 		s.setP2PWaitState(targetHeight, cancel)
 
 		err = s.p2pHandler.ProcessHeight(waitCtx, targetHeight, s.heightInCh)
@@ -555,13 +464,13 @@ func (s *Syncer) p2pWorkerLoop() {
 				logger.Warn().Err(err).Uint64("height", targetHeight).Msg("P2P handler failed to process height")
 			}
 
-			if !s.sleepOrDone(50 * time.Millisecond) {
+			if !s.sleepOrDone(ctx, 50*time.Millisecond) {
 				return
 			}
 			continue
 		}
 
-		if err := s.waitForStoreHeight(targetHeight); err != nil {
+		if err := s.waitForStoreHeight(ctx, targetHeight); err != nil {
 			if errors.Is(err, context.Canceled) {
 				return
 			}
@@ -635,20 +544,20 @@ func (s *Syncer) processHeightEvent(ctx context.Context, event *common.DAHeightE
 		// empty, nothing to do
 		case event.DaHeightHints[0] == 0:
 			// check only data
-			if _, exists := s.cache.GetDataDAIncluded(event.Data.Hash().String()); !exists {
+			if _, exists := s.cache.GetDataDAIncludedByHeight(height); !exists {
 				daHeightHints = []uint64{event.DaHeightHints[1]}
 			}
 		case event.DaHeightHints[1] == 0:
 			// check only header
-			if _, exists := s.cache.GetHeaderDAIncluded(event.Header.Hash().String()); !exists {
+			if _, exists := s.cache.GetHeaderDAIncludedByHeight(height); !exists {
 				daHeightHints = []uint64{event.DaHeightHints[0]}
 			}
 		default:
 			// check both
-			if _, exists := s.cache.GetHeaderDAIncluded(event.Header.Hash().String()); !exists {
+			if _, exists := s.cache.GetHeaderDAIncludedByHeight(height); !exists {
 				daHeightHints = []uint64{event.DaHeightHints[0]}
 			}
-			if _, exists := s.cache.GetDataDAIncluded(event.Data.Hash().String()); !exists {
+			if _, exists := s.cache.GetDataDAIncludedByHeight(height); !exists {
 				daHeightHints = append(daHeightHints, event.DaHeightHints[1])
 			}
 			if len(daHeightHints) == 2 && daHeightHints[0] == daHeightHints[1] {
@@ -656,9 +565,40 @@ func (s *Syncer) processHeightEvent(ctx context.Context, event *common.DAHeightE
 			}
 		}
 		if len(daHeightHints) > 0 {
+			currentDAHeight := s.daRetrieverHeight.Load()
+
+			// Only fetch the latest DA height if any hint is suspiciously far ahead.
+			const daHintMaxDrift = uint64(200)
+			needsValidation := false
+			for _, h := range daHeightHints {
+				if h > currentDAHeight+daHintMaxDrift {
+					needsValidation = true
+					break
+				}
+			}
+
+			var latestDAHeight uint64
+			if needsValidation {
+				var err error
+				xCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+				latestDAHeight, err = s.daClient.GetLatestDAHeight(xCtx)
+				cancel()
+				if err != nil {
+					s.logger.Warn().Err(err).Msg("failed to fetch latest DA height")
+					needsValidation = false // ignore error as height is checked in the daRetriever
+				}
+			}
+
 			for _, daHeightHint := range daHeightHints {
 				// Skip if we've already fetched past this height
-				if daHeightHint < s.daRetrieverHeight.Load() {
+				if daHeightHint < currentDAHeight {
+					continue
+				}
+
+				if needsValidation && daHeightHint > latestDAHeight {
+					s.logger.Warn().Uint64("da_height_hint", daHeightHint).
+						Uint64("latest_da_height", latestDAHeight).
+						Msg("ignoring unreasonable DA height hint from P2P")
 					continue
 				}
 
@@ -748,9 +688,13 @@ func (s *Syncer) TrySyncNextBlock(ctx context.Context, event *common.DAHeightEve
 		return err
 	}
 
-	// Verify forced inclusion transactions if configured
+	// Verify forced inclusion transactions if configured.
+	// The check is actually only performed on DA-sourced blocks.
+	// P2P nodes aren't actually able to verify forced inclusion txs as DA inclusion happens later
+	// (so DA hints are not available) and DA hints cannot be trusted. This is a known limitation
+	// described in the ADR.
 	if event.Source == common.SourceDA {
-		if err := s.VerifyForcedInclusionTxs(ctx, currentState, data); err != nil {
+		if err := s.VerifyForcedInclusionTxs(ctx, event.DaHeight, data); err != nil {
 			s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("forced inclusion verification failed")
 			if errors.Is(err, errMaliciousProposer) {
 				// remove header as da included from cache
@@ -768,9 +712,8 @@ func (s *Syncer) TrySyncNextBlock(ctx context.Context, event *common.DAHeightEve
 		return fmt.Errorf("failed to apply block: %w", err)
 	}
 
-	// Update DA height if needed
-	// This height is only updated when a height is processed from DA as P2P
-	// events do not contain DA height information
+	// Update DA height if needed.
+	// state.DAHeight is used for state persistence and restart recovery.
 	if event.DaHeight > newState.DAHeight {
 		newState.DAHeight = event.DaHeight
 	}
@@ -876,7 +819,7 @@ func (s *Syncer) ValidateBlock(_ context.Context, currState types.State, data *t
 	// Set custom verifier for aggregator node signature
 	header.SetCustomVerifierForSyncNode(s.options.SyncNodeSignatureBytesProvider)
 
-	if err := header.ValidateBasicWithData(data); err != nil {
+	if err := header.ValidateBasicWithData(data); err != nil { //nolint:contextcheck // validation API does not accept context
 		return fmt.Errorf("invalid header: %w", err)
 	}
 
@@ -894,101 +837,66 @@ func hashTx(tx []byte) string {
 	return hex.EncodeToString(hash[:])
 }
 
-// calculateBlockFullness returns a value between 0.0 and 1.0 indicating how full the block is.
-// It estimates fullness based on total data size.
-// This is a heuristic - actual limits may vary by execution layer.
-func (s *Syncer) calculateBlockFullness(data *types.Data) float64 {
-	const maxDataSize = common.DefaultMaxBlobSize
-
-	var fullness float64
-	count := 0
-
-	// Check data size fullness
-	dataSize := uint64(0)
-	for _, tx := range data.Txs {
-		dataSize += uint64(len(tx))
-	}
-	sizeFullness := float64(dataSize) / float64(maxDataSize)
-	fullness += min(sizeFullness, 1.0)
-	count++
-
-	// Return average fullness
-	return fullness / float64(count)
-}
-
-// updateDynamicGracePeriod updates the grace period multiplier based on block fullness.
-// When blocks are consistently full, the multiplier increases (more lenient).
-// When blocks have capacity, the multiplier decreases (stricter).
-func (s *Syncer) updateDynamicGracePeriod(blockFullness float64) {
-	// Update exponential moving average of block fullness
-	currentEMA := *s.blockFullnessEMA.Load()
-	alpha := s.gracePeriodConfig.dynamicAdjustmentRate
-	newEMA := alpha*blockFullness + (1-alpha)*currentEMA
-	s.blockFullnessEMA.Store(&newEMA)
-
-	// Adjust grace period multiplier based on EMA
-	currentMultiplier := *s.gracePeriodMultiplier.Load()
-	threshold := s.gracePeriodConfig.dynamicFullnessThreshold
-
-	var newMultiplier float64
-	if newEMA > threshold {
-		// Blocks are full - increase grace period (more lenient)
-		adjustment := alpha * (newEMA - threshold) / (1.0 - threshold)
-		newMultiplier = currentMultiplier + adjustment
-	} else {
-		// Blocks have capacity - decrease grace period (stricter)
-		adjustment := alpha * (threshold - newEMA) / threshold
-		newMultiplier = currentMultiplier - adjustment
+// gracePeriodForEpoch returns the grace window for an epoch based on average
+// block fullness. For each fullnessThreshold-sized band above the threshold one
+// extra epoch is granted, up to maxGracePeriodEpochs.
+func (s *Syncer) gracePeriodForEpoch(epochStart, epochEnd uint64) uint64 {
+	if epochEnd < epochStart {
+		return baseGracePeriodEpochs
 	}
 
-	// Clamp to min/max bounds
-	newMultiplier = max(newMultiplier, s.gracePeriodConfig.dynamicMinMultiplier)
-	newMultiplier = min(newMultiplier, s.gracePeriodConfig.dynamicMaxMultiplier)
+	// Empty DA heights contribute 0 bytes and still count toward the average,
+	// so spare capacity reduces the grace extension.
+	heightCount := epochEnd - epochStart + 1
 
-	s.gracePeriodMultiplier.Store(&newMultiplier)
-
-	// Log significant changes (more than 10% change)
-	if math.Abs(newMultiplier-currentMultiplier) > 0.1 {
-		s.logger.Debug().
-			Float64("block_fullness", blockFullness).
-			Float64("fullness_ema", newEMA).
-			Float64("old_multiplier", currentMultiplier).
-			Float64("new_multiplier", newMultiplier).
-			Msg("dynamic grace period multiplier adjusted")
+	s.forcedInclusionMu.RLock()
+	var totalBytes uint64
+	for h := epochStart; h <= epochEnd; h++ {
+		totalBytes += s.daBlockBytes[h]
 	}
+	s.forcedInclusionMu.RUnlock()
+
+	avgBytes := totalBytes / heightCount
+	threshold := uint64(math.Round(fullnessThreshold * float64(common.DefaultMaxBlobSize)))
+
+	var extra uint64
+	if avgBytes > threshold {
+		extra = (avgBytes - threshold) / threshold
+	}
+
+	return min(baseGracePeriodEpochs+extra, maxGracePeriodEpochs)
 }
 
-// getEffectiveGracePeriod returns the current effective grace period considering dynamic adjustment.
-func (s *Syncer) getEffectiveGracePeriod() uint64 {
-	multiplier := *s.gracePeriodMultiplier.Load()
-	effectivePeriod := math.Round(float64(s.gracePeriodConfig.basePeriod) * multiplier)
-	minPeriod := float64(s.gracePeriodConfig.basePeriod) * s.gracePeriodConfig.dynamicMinMultiplier
-
-	return uint64(max(effectivePeriod, minPeriod))
-}
-
-// VerifyForcedInclusionTxs verifies that forced inclusion transactions from DA are properly handled.
-// Note: Due to block size constraints (MaxBytes), sequencers may defer forced inclusion transactions
-// to future blocks (smoothing). This is legitimate behavior within an epoch.
-// However, ALL forced inclusion txs from an epoch MUST be included before the next epoch begins or grace boundary (whichever comes later).
-func (s *Syncer) VerifyForcedInclusionTxs(ctx context.Context, currentState types.State, data *types.Data) error {
-	if s.fiRetriever == nil {
+// VerifyForcedInclusionTxs checks that every forced-inclusion tx submitted
+// during epochs whose grace window has elapsed appears in seenBlockTxs.
+// Txs may be spread across multiple blocks; what matters is that each one
+// landed somewhere before its epoch's grace deadline.
+func (s *Syncer) VerifyForcedInclusionTxs(ctx context.Context, daHeight uint64, data *types.Data) error {
+	if s.fiRetriever == nil || s.genesis.DAEpochForcedInclusion == 0 {
 		return nil
 	}
 
-	// Update dynamic grace period based on block fullness
-	blockFullness := s.calculateBlockFullness(data)
-	s.updateDynamicGracePeriod(blockFullness)
+	epochSize := s.genesis.DAEpochForcedInclusion
+	daStart := s.genesis.DAStartHeight
 
-	// Retrieve forced inclusion transactions from DA for current epoch
-	forcedIncludedTxsEvent, err := s.fiRetriever.RetrieveForcedIncludedTxs(ctx, currentState.DAHeight)
-	if err != nil {
-		if errors.Is(err, da.ErrForceInclusionNotConfigured) {
-			s.logger.Debug().Msg("forced inclusion namespace not configured, skipping verification")
-			return nil
-		}
+	// Record txs and byte count for this DA height.
+	var blockBytes uint64
+	for _, tx := range data.Txs {
+		blockBytes += uint64(len(tx))
+	}
+	s.forcedInclusionMu.Lock()
+	hashes := make([]string, 0, len(data.Txs))
+	for _, tx := range data.Txs {
+		h := hashTx(tx)
+		s.seenBlockTxs[h] = struct{}{}
+		hashes = append(hashes, h)
+	}
+	s.seenBlockTxsByHeight[daHeight] = hashes
+	s.daBlockBytes[daHeight] = blockBytes
+	s.forcedInclusionMu.Unlock()
 
-		return fmt.Errorf("failed to retrieve forced included txs from DA: %w", err)
+	if daHeight < daStart || daHeight < s.getLastState().DAHeight {
+		return nil
 	}
 
 	executionInfo, err := s.exec.GetExecutionInfo(ctx)
@@ -996,153 +904,103 @@ func (s *Syncer) VerifyForcedInclusionTxs(ctx context.Context, currentState type
 		return fmt.Errorf("failed to get execution info: %w", err)
 	}
 
-	// Filter out invalid forced inclusion transactions using the executor's FilterTxs.
-	// This ensures we don't mark the sequencer as malicious for not including txs that
-	// were legitimately filtered (e.g., malformed, unparseable, or otherwise invalid).
-	validForcedTxs := forcedIncludedTxsEvent.Txs
-	if len(forcedIncludedTxsEvent.Txs) > 0 {
-		filterStatuses, filterErr := s.exec.FilterTxs(ctx, forcedIncludedTxsEvent.Txs, common.DefaultMaxBlobSize, executionInfo.MaxGas, true)
+	var maliciousCount int
+
+	// Resume from the last checked epoch rather than re-scanning from genesis.
+	// If no epoch has been checked yet, start from the first epoch end.
+	firstEpochEnd := daStart + epochSize - 1
+	var startEpochEnd uint64
+	if s.lastCheckedEpochEnd == 0 || s.lastCheckedEpochEnd < firstEpochEnd {
+		startEpochEnd = firstEpochEnd
+	} else {
+		startEpochEnd = s.lastCheckedEpochEnd + epochSize
+	}
+
+	for epochEnd := startEpochEnd; ; epochEnd += epochSize {
+		epochStart := epochEnd - (epochSize - 1)
+		gracePeriod := s.gracePeriodForEpoch(epochStart, epochEnd)
+		graceBoundary := epochEnd + gracePeriod*epochSize
+
+		if graceBoundary >= daHeight {
+			break
+		}
+
+		event, retrieveErr := s.fiRetriever.RetrieveForcedIncludedTxs(ctx, epochEnd)
+		if retrieveErr != nil {
+			if errors.Is(retrieveErr, da.ErrForceInclusionNotConfigured) {
+				return nil
+			}
+			return fmt.Errorf("failed to retrieve forced inclusion txs for epoch ending at %d: %w", epochEnd, retrieveErr)
+		}
+
+		if len(event.Txs) == 0 {
+			if epochEnd > s.lastCheckedEpochEnd {
+				s.pruneUpTo(epochEnd)
+			}
+			continue
+		}
+
+		// Skip intrinsically invalid txs so the sequencer isn't blamed for dropping them.
+		filterStatuses, filterErr := s.exec.FilterTxs(ctx, event.Txs, common.DefaultMaxBlobSize, executionInfo.MaxGas, true)
 		if filterErr != nil {
 			return fmt.Errorf("failed to filter forced inclusion txs: %w", filterErr)
-		} else {
-			validForcedTxs = make([][]byte, 0, len(forcedIncludedTxsEvent.Txs))
-			for i, status := range filterStatuses {
-				if status != coreexecutor.FilterOK {
-					continue
-				}
-				validForcedTxs = append(validForcedTxs, forcedIncludedTxsEvent.Txs[i])
+		}
+
+		for i, tx := range event.Txs {
+			if filterStatuses[i] != coreexecutor.FilterOK {
+				continue
+			}
+			txHash := hashTx(tx)
+			s.forcedInclusionMu.RLock()
+			_, seen := s.seenBlockTxs[txHash]
+			s.forcedInclusionMu.RUnlock()
+			if !seen {
+				maliciousCount++
+				s.logger.Warn().
+					Uint64("current_da_height", daHeight).
+					Uint64("epoch_end", epochEnd).
+					Uint64("grace_boundary", graceBoundary).
+					Str("tx_hash", txHash[:16]).
+					Msg("forced inclusion transaction past grace boundary not included - marking as malicious")
 			}
 		}
-	}
 
-	// Build map of transactions in current block
-	blockTxMap := make(map[string]struct{})
-	for _, tx := range data.Txs {
-		blockTxMap[hashTx(tx)] = struct{}{}
-	}
-
-	// Check if any pending forced inclusion txs from previous epochs are included
-	var stillPending []pendingForcedInclusionTx
-	s.pendingForcedInclusionTxs.Range(func(key, value any) bool {
-		pending := value.(pendingForcedInclusionTx)
-		if _, ok := blockTxMap[pending.TxHash]; ok {
-			s.logger.Debug().
-				Uint64("height", data.Height()).
-				Uint64("epoch_start", pending.EpochStart).
-				Uint64("epoch_end", pending.EpochEnd).
-				Str("tx_hash", pending.TxHash[:16]).
-				Msg("pending forced inclusion transaction included in block")
-			s.pendingForcedInclusionTxs.Delete(key)
-		} else {
-			stillPending = append(stillPending, pending)
-		}
-		return true
-	})
-
-	// Add new forced inclusion transactions from current epoch (only valid ones)
-	var newPendingCount, includedCount int
-	for _, forcedTx := range validForcedTxs {
-		txHash := hashTx(forcedTx)
-		if _, ok := blockTxMap[txHash]; ok {
-			// Transaction is included in this block
-			includedCount++
-		} else {
-			// Transaction not included, add to pending
-			stillPending = append(stillPending, pendingForcedInclusionTx{
-				Data:       forcedTx,
-				EpochStart: forcedIncludedTxsEvent.StartDaHeight,
-				EpochEnd:   forcedIncludedTxsEvent.EndDaHeight,
-				TxHash:     txHash,
-			})
-			newPendingCount++
+		if epochEnd > s.lastCheckedEpochEnd {
+			s.pruneUpTo(epochEnd)
 		}
 	}
 
-	// Check if we've moved past any epoch boundaries with pending txs
-	// Grace period: Allow forced inclusion txs from epoch N to be included in epoch N+1, N+2, etc.
-	// Only flag as malicious if past grace boundary to prevent false positives during chain congestion.
-	var maliciousTxs, remainingPending []pendingForcedInclusionTx
-	var txsInGracePeriod int
-	for _, pending := range stillPending {
-		// Calculate grace boundary: epoch end + (effective grace periods × epoch size)
-		effectiveGracePeriod := s.getEffectiveGracePeriod()
-		graceBoundary := pending.EpochEnd + (effectiveGracePeriod * s.genesis.DAEpochForcedInclusion)
-
-		if currentState.DAHeight > graceBoundary {
-			maliciousTxs = append(maliciousTxs, pending)
-			s.logger.Warn().
-				Uint64("current_da_height", currentState.DAHeight).
-				Uint64("epoch_end", pending.EpochEnd).
-				Uint64("grace_boundary", graceBoundary).
-				Uint64("base_grace_periods", s.gracePeriodConfig.basePeriod).
-				Uint64("effective_grace_periods", effectiveGracePeriod).
-				Float64("grace_multiplier", *s.gracePeriodMultiplier.Load()).
-				Str("tx_hash", pending.TxHash[:16]).
-				Msg("forced inclusion transaction past grace boundary - marking as malicious")
-		} else {
-			remainingPending = append(remainingPending, pending)
-			if currentState.DAHeight > pending.EpochEnd {
-				txsInGracePeriod++
-			}
-		}
-	}
-
-	s.metrics.ForcedInclusionTxsInGracePeriod.Set(float64(txsInGracePeriod))
-
-	// Update pending map - clear old entries and store only remaining pending
-	s.pendingForcedInclusionTxs.Range(func(key, value any) bool {
-		s.pendingForcedInclusionTxs.Delete(key)
-		return true
-	})
-	for _, pending := range remainingPending {
-		s.pendingForcedInclusionTxs.Store(pending.TxHash, pending)
-	}
-
-	// If there are transactions past grace boundary that weren't included, sequencer is malicious
-	if len(maliciousTxs) > 0 {
-		s.metrics.ForcedInclusionTxsMalicious.Add(float64(len(maliciousTxs)))
-
-		effectiveGracePeriod := s.getEffectiveGracePeriod()
+	if maliciousCount > 0 {
+		s.metrics.ForcedInclusionTxsMalicious.Add(float64(maliciousCount))
 		s.logger.Error().
-			Uint64("height", data.Height()).
-			Uint64("current_da_height", currentState.DAHeight).
-			Int("malicious_count", len(maliciousTxs)).
-			Uint64("base_grace_periods", s.gracePeriodConfig.basePeriod).
-			Uint64("effective_grace_periods", effectiveGracePeriod).
-			Float64("grace_multiplier", *s.gracePeriodMultiplier.Load()).
+			Uint64("current_da_height", daHeight).
+			Int("malicious_count", maliciousCount).
+			Uint64("base_grace_period_epochs", baseGracePeriodEpochs).
+			Uint64("max_grace_period_epochs", maxGracePeriodEpochs).
 			Msg("SEQUENCER IS MALICIOUS: forced inclusion transactions past grace boundary not included")
-		return errors.Join(errMaliciousProposer, fmt.Errorf("sequencer is malicious: %d forced inclusion transactions past grace boundary (base_grace_periods=%d, effective_grace_periods=%d) not included", len(maliciousTxs), s.gracePeriodConfig.basePeriod, effectiveGracePeriod))
-	}
-
-	// Log current state
-	if len(validForcedTxs) > 0 {
-		if newPendingCount > 0 {
-			totalPending := 0
-			s.pendingForcedInclusionTxs.Range(func(key, value any) bool {
-				totalPending++
-				return true
-			})
-
-			s.logger.Info().
-				Uint64("height", data.Height()).
-				Uint64("da_height", currentState.DAHeight).
-				Uint64("epoch_start", forcedIncludedTxsEvent.StartDaHeight).
-				Uint64("epoch_end", forcedIncludedTxsEvent.EndDaHeight).
-				Int("included_count", includedCount).
-				Int("deferred_count", newPendingCount).
-				Int("total_pending", totalPending).
-				Int("filtered_invalid", len(forcedIncludedTxsEvent.Txs)-len(validForcedTxs)).
-				Msg("forced inclusion transactions processed - some deferred due to block size constraints")
-		} else {
-			s.logger.Debug().
-				Uint64("height", data.Height()).
-				Int("forced_txs", len(validForcedTxs)).
-				Int("filtered_invalid", len(forcedIncludedTxsEvent.Txs)-len(validForcedTxs)).
-				Msg("all forced inclusion transactions included in block")
-		}
+		return errors.Join(errMaliciousProposer,
+			fmt.Errorf("sequencer is malicious: %d forced inclusion transaction(s) past grace boundary not included",
+				maliciousCount))
 	}
 
 	return nil
+}
+
+// pruneUpTo deletes seenBlockTxs, seenBlockTxsByHeight, and daBlockBytes entries
+// for all DA heights ≤ upTo and advances lastCheckedEpochEnd. Safe to call once
+// an epoch is fully checked: no future epoch check can reference those heights.
+func (s *Syncer) pruneUpTo(upTo uint64) {
+	s.forcedInclusionMu.Lock()
+	defer s.forcedInclusionMu.Unlock()
+
+	for h := s.lastCheckedEpochEnd; h <= upTo; h++ {
+		for _, txHash := range s.seenBlockTxsByHeight[h] {
+			delete(s.seenBlockTxs, txHash)
+		}
+		delete(s.seenBlockTxsByHeight, h)
+		delete(s.daBlockBytes, h)
+	}
+	s.lastCheckedEpochEnd = upTo
 }
 
 // sendCriticalError sends a critical error to the error channel without blocking
@@ -1159,8 +1017,8 @@ func (s *Syncer) sendCriticalError(err error) {
 
 // processPendingEvents fetches and processes pending events from cache
 // optimistically fetches the next events from cache until no matching heights are found
-func (s *Syncer) processPendingEvents() {
-	currentHeight, err := s.store.Height(s.ctx)
+func (s *Syncer) processPendingEvents(ctx context.Context) {
+	currentHeight, err := s.store.Height(ctx)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("failed to get current height for pending events")
 		return
@@ -1185,7 +1043,7 @@ func (s *Syncer) processPendingEvents() {
 		case s.heightInCh <- heightEvent:
 			// Event was successfully sent and already removed by GetNextPendingEvent
 			s.logger.Debug().Uint64("height", nextHeight).Msg("sent pending event to processing")
-		case <-s.ctx.Done():
+		case <-ctx.Done():
 			s.cache.SetPendingEvent(nextHeight, event)
 			return
 		default:
@@ -1197,9 +1055,9 @@ func (s *Syncer) processPendingEvents() {
 	}
 }
 
-func (s *Syncer) waitForStoreHeight(target uint64) error {
+func (s *Syncer) waitForStoreHeight(ctx context.Context, target uint64) error {
 	for {
-		currentHeight, err := s.store.Height(s.ctx)
+		currentHeight, err := s.store.Height(ctx)
 		if err != nil {
 			return err
 		}
@@ -1208,20 +1066,20 @@ func (s *Syncer) waitForStoreHeight(target uint64) error {
 			return nil
 		}
 
-		if !s.sleepOrDone(10 * time.Millisecond) {
-			if s.ctx.Err() != nil {
-				return s.ctx.Err()
+		if !s.sleepOrDone(ctx, 10*time.Millisecond) {
+			if ctx.Err() != nil {
+				return ctx.Err()
 			}
 		}
 	}
 }
 
-func (s *Syncer) sleepOrDone(duration time.Duration) bool {
+func (s *Syncer) sleepOrDone(ctx context.Context, duration time.Duration) bool {
 	timer := time.NewTimer(duration)
 	defer timer.Stop()
 
 	select {
-	case <-s.ctx.Done():
+	case <-ctx.Done():
 		return false
 	case <-timer.C:
 		return true
@@ -1308,10 +1166,7 @@ func (s *Syncer) RecoverFromRaft(ctx context.Context, raftState *raft.RaftBlockS
 			s.logger.Debug().Err(err).Msg("no state in store, using genesis defaults for recovery")
 			currentState = types.State{
 				ChainID:         s.genesis.ChainID,
-				InitialHeight:   s.genesis.InitialHeight,
 				LastBlockHeight: s.genesis.InitialHeight - 1,
-				LastBlockTime:   s.genesis.StartTime,
-				DAHeight:        s.genesis.DAStartHeight,
 			}
 		}
 	}

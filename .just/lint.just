@@ -2,7 +2,7 @@
 [group('lint')]
 lint: vet
     @echo "--> Running golangci-lint"
-    @golangci-lint run
+    @golangci-lint run ./...
     @echo "--> Running markdownlint"
     @markdownlint --config .markdownlint.yaml '**/*.md'
     @echo "--> Running hadolint"
@@ -18,7 +18,7 @@ lint: vet
 [group('lint')]
 lint-fix:
     @echo "--> Formatting go"
-    @golangci-lint run --fix
+    @golangci-lint run --fix ./...
     @echo "--> Formatting markdownlint"
     @markdownlint --config .markdownlint.yaml --ignore './changelog.md' '**/*.md' -f
 

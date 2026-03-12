@@ -33,7 +33,7 @@ func TestNonAggregatorHandleDASubmissions(t *testing.T) {
 	server := NewDAVisualizationServer(da, logger, false)
 
 	// Create test request
-	req, err := http.NewRequest("GET", "/da/submissions", nil)
+	req, err := http.NewRequest(http.MethodGet, "/da/submissions", nil)
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -63,7 +63,7 @@ func TestNonAggregatorHandleDAStats(t *testing.T) {
 	server := NewDAVisualizationServer(da, logger, false)
 
 	// Create test request
-	req, err := http.NewRequest("GET", "/da/stats", nil)
+	req, err := http.NewRequest(http.MethodGet, "/da/stats", nil)
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -89,7 +89,7 @@ func TestNonAggregatorHandleDAHealth(t *testing.T) {
 	server := NewDAVisualizationServer(da, logger, false)
 
 	// Create test request
-	req, err := http.NewRequest("GET", "/da/health", nil)
+	req, err := http.NewRequest(http.MethodGet, "/da/health", nil)
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -115,7 +115,7 @@ func TestNonAggregatorHandleDAVisualizationHTML(t *testing.T) {
 	// Create a non-aggregator server
 	server := NewDAVisualizationServer(da, logger, false)
 
-	req, err := http.NewRequest("GET", "/da", nil)
+	req, err := http.NewRequest(http.MethodGet, "/da", nil)
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -144,7 +144,7 @@ func TestAggregatorWithNoSubmissionsHTML(t *testing.T) {
 	// Create an aggregator server but don't add any submissions
 	server := NewDAVisualizationServer(da, logger, true)
 
-	req, err := http.NewRequest("GET", "/da", nil)
+	req, err := http.NewRequest(http.MethodGet, "/da", nil)
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()

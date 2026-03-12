@@ -17,16 +17,16 @@ import (
 )
 
 type tracingMockStore struct {
-	heightFn              func(ctx context.Context) (uint64, error)
-	getBlockDataFn        func(ctx context.Context, height uint64) (*types.SignedHeader, *types.Data, error)
-	getBlockByHashFn      func(ctx context.Context, hash []byte) (*types.SignedHeader, *types.Data, error)
-	getSignatureFn        func(ctx context.Context, height uint64) (*types.Signature, error)
-	getSignatureByHash    func(ctx context.Context, hash []byte) (*types.Signature, error)
-	getHeaderFn           func(ctx context.Context, height uint64) (*types.SignedHeader, error)
-	getStateFn            func(ctx context.Context) (types.State, error)
-	getStateAtHeightFn    func(ctx context.Context, height uint64) (types.State, error)
-	getMetadataFn         func(ctx context.Context, key string) ([]byte, error)
-	getMetadataByPrefixFn func(ctx context.Context, prefix string) ([]MetadataEntry, error)
+	heightFn           func(ctx context.Context) (uint64, error)
+	getBlockDataFn     func(ctx context.Context, height uint64) (*types.SignedHeader, *types.Data, error)
+	getBlockByHashFn   func(ctx context.Context, hash []byte) (*types.SignedHeader, *types.Data, error)
+	getSignatureFn     func(ctx context.Context, height uint64) (*types.Signature, error)
+	getSignatureByHash func(ctx context.Context, hash []byte) (*types.Signature, error)
+	getHeaderFn        func(ctx context.Context, height uint64) (*types.SignedHeader, error)
+	getStateFn         func(ctx context.Context) (types.State, error)
+	getStateAtHeightFn func(ctx context.Context, height uint64) (types.State, error)
+	getMetadataFn      func(ctx context.Context, key string) ([]byte, error)
+
 	setMetadataFn         func(ctx context.Context, key string, value []byte) error
 	deleteMetadataFn      func(ctx context.Context, key string) error
 	rollbackFn            func(ctx context.Context, height uint64, aggregator bool) error
@@ -94,13 +94,6 @@ func (m *tracingMockStore) GetStateAtHeight(ctx context.Context, height uint64) 
 func (m *tracingMockStore) GetMetadata(ctx context.Context, key string) ([]byte, error) {
 	if m.getMetadataFn != nil {
 		return m.getMetadataFn(ctx, key)
-	}
-	return nil, nil
-}
-
-func (m *tracingMockStore) GetMetadataByPrefix(ctx context.Context, prefix string) ([]MetadataEntry, error) {
-	if m.getMetadataByPrefixFn != nil {
-		return m.getMetadataByPrefixFn(ctx, prefix)
 	}
 	return nil, nil
 }

@@ -50,6 +50,13 @@ func (m *mockDA) Get(ctx context.Context, ids []da.ID, namespace []byte) ([]da.B
 	return nil, nil
 }
 
+func (m *mockDA) Subscribe(_ context.Context, _ []byte) (<-chan da.SubscriptionEvent, error) {
+	// Not needed in these tests; return a closed channel.
+	ch := make(chan da.SubscriptionEvent)
+	close(ch)
+	return ch, nil
+}
+
 func (m *mockDA) Validate(ctx context.Context, ids []da.ID, proofs []da.Proof, namespace []byte) ([]bool, error) {
 	return nil, nil
 }
@@ -72,6 +79,10 @@ func (m *mockDA) GetForcedInclusionNamespace() []byte {
 
 func (m *mockDA) HasForcedInclusionNamespace() bool {
 	return true
+}
+
+func (m *mockDA) GetLatestDAHeight(_ context.Context) (uint64, error) {
+	return 0, nil
 }
 
 func TestForceInclusionServer_handleSendRawTransaction_Success(t *testing.T) {

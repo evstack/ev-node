@@ -303,7 +303,7 @@ func getNodeP2PAddress(t testing.TB, sut *SystemUnderTest, nodeHome string, rpcP
 	return p2pAddress
 }
 
-// setupSequencerNode initializes and starts the sequencer node with proper configuration.
+// SetupSequencerNode initializes and starts the sequencer node with proper configuration.
 // This function handles:
 // - Node initialization with aggregator mode enabled
 // - Sequencer-specific configuration (block time, DA layer connection)
@@ -449,15 +449,15 @@ func setupFullNode(t testing.TB, sut *SystemUnderTest, fullNodeHome, sequencerHo
 		"--home", fullNodeHome,
 		"--evm.jwt-secret-file", fullNodeJwtSecretFile,
 		"--evm.genesis-hash", genesisHash,
-		"--rollkit.p2p.peers", sequencerP2PAddress,
+		"--evnode.p2p.peers", sequencerP2PAddress,
 		"--evm.engine-url", endpoints.GetFullNodeEngineURL(),
 		"--evm.eth-url", endpoints.GetFullNodeEthURL(),
-		"--rollkit.da.block_time", DefaultDABlockTime,
-		"--rollkit.da.address", endpoints.GetDAAddress(),
-		"--rollkit.da.namespace", DefaultDANamespace,
-		"--rollkit.da.batching_strategy", "immediate",
-		"--rollkit.rpc.address", endpoints.GetFullNodeRPCListen(),
-		"--rollkit.p2p.listen_address", endpoints.GetFullNodeP2PAddress(),
+		"--evnode.da.block_time", DefaultDABlockTime,
+		"--evnode.da.address", endpoints.GetDAAddress(),
+		"--evnode.da.namespace", DefaultDANamespace,
+		"--evnode.da.batching_strategy", "immediate",
+		"--evnode.rpc.address", endpoints.GetFullNodeRPCListen(),
+		"--evnode.p2p.listen_address", endpoints.GetFullNodeP2PAddress(),
 	}
 	sut.ExecCmd(evmSingleBinaryPath, args...)
 	// Use AwaitNodeLive instead of AwaitNodeUp because in lazy mode scenarios,
@@ -554,7 +554,7 @@ func SetupCommonEVMEnv(t testing.TB, sut *SystemUnderTest, client tastoratypes.T
 	if evmSingleBinaryPath != "evm" {
 		localDABinary = filepath.Join(filepath.Dir(evmSingleBinaryPath), "local-da")
 	}
-	sut.ExecCmd(localDABinary, "-port", dynEndpoints.DAPort)
+	sut.ExecCmd(localDABinary, "-port", dynEndpoints.DAPort, "-block-time", "1s")
 	t.Logf("Started local DA on port %s", dynEndpoints.DAPort)
 
 	require.NotNil(t, client, "docker client is required")
@@ -932,4 +932,3 @@ func PrintTraceReport(t testing.TB, label string, spans []TraceSpan) {
 		t.Logf("%-40s %5.1f%% %s", name, pct, bar)
 	}
 }
-

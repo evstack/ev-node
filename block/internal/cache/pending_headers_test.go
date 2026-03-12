@@ -15,7 +15,7 @@ import (
 func TestPendingHeaders_BasicFlow(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	store := memStore(t)
+	store := testMemStore(t)
 
 	// create and persist three blocks
 	chainID := "ph-basic"
@@ -67,7 +67,7 @@ func TestPendingHeaders_BasicFlow(t *testing.T) {
 func TestPendingHeaders_EmptyWhenUpToDate(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	store := memStore(t)
+	store := testMemStore(t)
 
 	h, d := types.GetRandomBlock(1, 1, "ph-up")
 	batch, err := store.NewBatch(ctx)

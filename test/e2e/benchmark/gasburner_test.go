@@ -13,17 +13,13 @@ import (
 // TestGasBurner measures gas throughput using a deterministic gasburner
 // workload. The result is tracked via BENCH_JSON_OUTPUT as seconds_per_gigagas
 // (lower is better) on the benchmark dashboard.
-//
-// TODO: if non-empty block ratio is still low, try pointing spamoor directly
-// at the sequencer node instead of the load balancer to eliminate mempool
-// propagation delay from full nodes.
 func (s *SpamoorSuite) TestGasBurner() {
 	const (
 		numSpammers     = 4
 		countPerSpammer = 10000
 		totalCount      = numSpammers * countPerSpammer
 		warmupTxs       = 500
-		serviceName     = "ev-node" // TODO: temp change
+		serviceName     = "ev-node-gasburner"
 		waitTimeout     = 10 * time.Minute
 	)
 
@@ -66,6 +62,7 @@ func (s *SpamoorSuite) TestGasBurner() {
 	time.Sleep(3 * time.Second)
 	assertSpammersRunning(t, api, spammerIDs)
 
+
 	// wait for wallet prep and contract deployment to finish before
 	// recording start block so warmup is excluded from the measurement.
 	pollSentTotal := func() (float64, error) {
@@ -80,6 +77,7 @@ func (s *SpamoorSuite) TestGasBurner() {
 	// reset trace window to exclude warmup spans
 	e.traces.resetStartTime()
 
+
 	startHeader, err := e.ethClient.HeaderByNumber(ctx, nil)
 	s.Require().NoError(err, "failed to get start block header")
 	startBlock := startHeader.Number.Uint64()
@@ -92,7 +90,9 @@ func (s *SpamoorSuite) TestGasBurner() {
 	// wait for pending txs to drain
 	drainCtx, drainCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer drainCancel()
-	waitForDrain(drainCtx, t.Logf, e.ethClient, 10)
+	if err := waitForDrain(drainCtx, t.Logf, e.ethClient, 10); err != nil {
+		t.Logf("warning: %v", err)
+	}
 	wallClock := time.Since(loadStart)
 
 	endHeader, err := e.ethClient.HeaderByNumber(ctx, nil)

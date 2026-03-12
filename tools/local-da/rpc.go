@@ -31,6 +31,7 @@ func (s *blobServer) Submit(_ context.Context, blobs []*jsonrpc.Blob, _ *jsonrpc
 
 	if len(blobs) == 0 {
 		s.da.timestamps[height] = time.Now()
+		s.da.notifySubscribers(height)
 		return height, nil
 	}
 
@@ -48,6 +49,7 @@ func (s *blobServer) Submit(_ context.Context, blobs []*jsonrpc.Blob, _ *jsonrpc
 		s.da.blobData[height] = append(s.da.blobData[height], b)
 	}
 	s.da.timestamps[height] = time.Now()
+	s.da.notifySubscribers(height)
 
 	return height, nil
 }
@@ -111,8 +113,8 @@ func (s *blobServer) GetProof(_ context.Context, _ uint64, _ libshare.Namespace,
 }
 
 // Included reports whether a commitment is present at a given height/namespace.
-func (s *blobServer) Included(_ context.Context, height uint64, namespace libshare.Namespace, _ *jsonrpc.Proof, commitment jsonrpc.Commitment) (bool, error) {
-	_, err := s.Get(context.Background(), height, namespace, commitment)
+func (s *blobServer) Included(ctx context.Context, height uint64, namespace libshare.Namespace, _ *jsonrpc.Proof, commitment jsonrpc.Commitment) (bool, error) {
+	_, err := s.Get(ctx, height, namespace, commitment)
 	if err != nil {
 		if errors.Is(err, datypes.ErrBlobNotFound) {
 			return false, nil
@@ -127,11 +129,39 @@ func (s *blobServer) GetCommitmentProof(_ context.Context, _ uint64, _ libshare.
 	return &jsonrpc.CommitmentProof{}, nil
 }
 
-// Subscribe returns a closed channel; LocalDA does not push live updates.
-func (s *blobServer) Subscribe(_ context.Context, _ libshare.Namespace) (<-chan *jsonrpc.SubscriptionResponse, error) {
-	ch := make(chan *jsonrpc.SubscriptionResponse)
-	close(ch)
-	return ch, nil
+// Subscribe streams blobs as they are included for the given namespace.
+// The returned channel emits a SubscriptionResponse for every new DA block.
+// The channel is closed when ctx is cancelled.
+func (s *blobServer) Subscribe(ctx context.Context, namespace libshare.Namespace) (<-chan *jsonrpc.SubscriptionResponse, error) {
+	eventCh, subID := s.da.subscribe(namespace)
+
+	out := make(chan *jsonrpc.SubscriptionResponse, 64)
+	go func() {
+		defer close(out)
+		defer s.da.unsubscribe(subID)
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case evt, ok := <-eventCh:
+				if !ok {
+					return
+				}
+				resp := &jsonrpc.SubscriptionResponse{
+					Height: evt.height,
+					Blobs:  evt.blobs,
+				}
+				select {
+				case out <- resp:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
+	}()
+
+	return out, nil
 }
 
 // startBlobServer starts an HTTP JSON-RPC server on addr serving the blob namespace.

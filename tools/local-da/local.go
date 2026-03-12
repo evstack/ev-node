@@ -13,14 +13,32 @@ import (
 	"sync"
 	"time"
 
+	libshare "github.com/celestiaorg/go-square/v3/share"
 	"github.com/rs/zerolog"
 
 	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
-// DefaultMaxBlobSize is the default max blob size
-const DefaultMaxBlobSize uint64 = 7 * 1024 * 1024 // 7MB
+const (
+	// DefaultMaxBlobSize is the default max blob size
+	DefaultMaxBlobSize uint64 = 7 * 1024 * 1024 // 7MB
+
+	// DefaultBlockTime is the default time between empty blocks
+	DefaultBlockTime = 1 * time.Second
+)
+
+// subscriber holds a registered subscription's channel and namespace filter.
+type subscriber struct {
+	ch chan subscriptionEvent
+	ns libshare.Namespace
+}
+
+// subscriptionEvent is sent to subscribers when a new DA block is produced.
+type subscriptionEvent struct {
+	height uint64
+	blobs  []*blobrpc.Blob
+}
 
 // LocalDA is a simple implementation of in-memory DA. Not production ready! Intended only for testing!
 //
@@ -35,6 +53,12 @@ type LocalDA struct {
 	height      uint64
 	privKey     ed25519.PrivateKey
 	pubKey      ed25519.PublicKey
+	blockTime   time.Duration
+	lastTime    time.Time // tracks last timestamp to ensure monotonicity
+
+	// Subscriber registry (protected by mu)
+	subscribers map[int]*subscriber
+	nextSubID   int
 
 	logger zerolog.Logger
 }
@@ -50,7 +74,10 @@ func NewLocalDA(logger zerolog.Logger, opts ...func(*LocalDA) *LocalDA) *LocalDA
 		data:        make(map[uint64][]kvp),
 		timestamps:  make(map[uint64]time.Time),
 		blobData:    make(map[uint64][]*blobrpc.Blob),
+		subscribers: make(map[int]*subscriber),
 		maxBlobSize: DefaultMaxBlobSize,
+		blockTime:   DefaultBlockTime,
+		lastTime:    time.Now(),
 		logger:      logger,
 	}
 	for _, f := range opts {
@@ -194,12 +221,23 @@ func (d *LocalDA) SubmitWithOptions(ctx context.Context, blobs []datypes.Blob, g
 	defer d.mu.Unlock()
 	ids := make([]datypes.ID, len(blobs))
 	d.height += 1
-	d.timestamps[d.height] = time.Now()
+	d.timestamps[d.height] = d.monotonicTime()
+
+	nspace, _ := libshare.NewNamespaceFromBytes(ns)
+	rpcBlobs := make([]*blobrpc.Blob, len(blobs))
+
 	for i, blob := range blobs {
 		ids[i] = append(d.nextID(), d.getHash(blob)...)
 
 		d.data[d.height] = append(d.data[d.height], kvp{ids[i], blob})
+
+		if b, err := blobrpc.NewBlobV0(nspace, blob); err == nil {
+			rpcBlobs[i] = b
+		}
 	}
+	d.blobData[d.height] = rpcBlobs
+
+	d.notifySubscribers(d.height)
 	d.logger.Info().Uint64("newHeight", d.height).Int("count", len(ids)).Msg("SubmitWithOptions successful")
 	return ids, nil
 }
@@ -224,12 +262,23 @@ func (d *LocalDA) Submit(ctx context.Context, blobs []datypes.Blob, gasPrice flo
 	defer d.mu.Unlock()
 	ids := make([]datypes.ID, len(blobs))
 	d.height += 1
-	d.timestamps[d.height] = time.Now()
+	d.timestamps[d.height] = d.monotonicTime()
+
+	nspace, _ := libshare.NewNamespaceFromBytes(ns)
+	rpcBlobs := make([]*blobrpc.Blob, len(blobs))
+
 	for i, blob := range blobs {
 		ids[i] = append(d.nextID(), d.getHash(blob)...)
 
 		d.data[d.height] = append(d.data[d.height], kvp{ids[i], blob})
+
+		if b, err := blobrpc.NewBlobV0(nspace, blob); err == nil {
+			rpcBlobs[i] = b
+		}
 	}
+	d.blobData[d.height] = rpcBlobs
+
+	d.notifySubscribers(d.height)
 	d.logger.Info().Uint64("newHeight", d.height).Int("count", len(ids)).Msg("Submit successful")
 	return ids, nil
 }
@@ -274,10 +323,120 @@ func (d *LocalDA) getProof(id, blob []byte) []byte {
 	return sign
 }
 
+// monotonicTime returns a timestamp that is guaranteed to be after the last recorded timestamp.
+func (d *LocalDA) monotonicTime() time.Time {
+	now := time.Now()
+	if now.After(d.lastTime) {
+		d.lastTime = now
+		return now
+	}
+	d.lastTime = d.lastTime.Add(1)
+	return d.lastTime
+}
+
 // WithMaxBlobSize returns a function that sets the max blob size of LocalDA
 func WithMaxBlobSize(maxBlobSize uint64) func(*LocalDA) *LocalDA {
 	return func(da *LocalDA) *LocalDA {
 		da.maxBlobSize = maxBlobSize
 		return da
+	}
+}
+
+// WithBlockTime returns a function that sets the block time for empty block production
+func WithBlockTime(blockTime time.Duration) func(*LocalDA) *LocalDA {
+	return func(da *LocalDA) *LocalDA {
+		da.blockTime = blockTime
+		return da
+	}
+}
+
+// Start begins producing empty blocks at the configured block time interval.
+func (d *LocalDA) Start(ctx context.Context) {
+	go func() {
+		ticker := time.NewTicker(d.blockTime)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				d.logger.Info().Msg("LocalDA: stopping empty block production")
+				return
+			case <-ticker.C:
+				d.produceEmptyBlock()
+			}
+		}
+	}()
+	d.logger.Info().Dur("blockTime", d.blockTime).Msg("LocalDA: started empty block production")
+}
+
+// produceEmptyBlock creates a new empty block at the next height.
+func (d *LocalDA) produceEmptyBlock() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.height++
+	d.timestamps[d.height] = d.monotonicTime()
+	d.notifySubscribers(d.height)
+	d.logger.Debug().Uint64("height", d.height).Msg("produced empty block")
+}
+
+// subscribe registers a new subscriber for blobs matching the given namespace.
+// Returns a read-only channel and a subscription ID for later unsubscription.
+// Must NOT be called with d.mu held.
+func (d *LocalDA) subscribe(ns libshare.Namespace) (<-chan subscriptionEvent, int) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	id := d.nextSubID
+	d.nextSubID++
+	ch := make(chan subscriptionEvent, 64)
+	d.subscribers[id] = &subscriber{ch: ch, ns: ns}
+	d.logger.Info().Int("subID", id).Str("namespace", hex.EncodeToString(ns.Bytes())).Msg("subscriber registered")
+	return ch, id
+}
+
+// unsubscribe removes a subscriber and closes its channel.
+// Must NOT be called with d.mu held.
+func (d *LocalDA) unsubscribe(id int) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if sub, ok := d.subscribers[id]; ok {
+		close(sub.ch)
+		delete(d.subscribers, id)
+		d.logger.Info().Int("subID", id).Msg("subscriber unregistered")
+	}
+}
+
+// notifySubscribers sends a subscriptionEvent to all registered subscribers.
+// For each subscriber, only blobs matching the subscriber's namespace are included.
+// Slow consumers (full channel) are dropped to avoid blocking block production.
+// MUST be called with d.mu held.
+func (d *LocalDA) notifySubscribers(height uint64) {
+	if len(d.subscribers) == 0 {
+		return
+	}
+
+	allBlobs := d.blobData[height] // may be nil for empty blocks
+
+	for id, sub := range d.subscribers {
+		// Filter blobs matching subscriber namespace
+		var matched []*blobrpc.Blob
+		for _, b := range allBlobs {
+			if b != nil && b.Namespace().Equals(sub.ns) {
+				matched = append(matched, b)
+			}
+		}
+
+		evt := subscriptionEvent{
+			height: height,
+			blobs:  matched,
+		}
+
+		select {
+		case sub.ch <- evt:
+		default:
+			// Slow consumer — drop to avoid blocking block production
+			d.logger.Warn().Int("subID", id).Uint64("height", height).Msg("dropping event for slow subscriber")
+		}
 	}
 }

@@ -22,6 +22,14 @@ type mockFullClient struct {
 	getFn       func(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error)
 	getProofsFn func(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error)
 	validateFn  func(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error)
+	subscribeFn func(ctx context.Context, namespace []byte) (<-chan datypes.SubscriptionEvent, error)
+}
+
+func (m *mockFullClient) Subscribe(ctx context.Context, namespace []byte) (<-chan datypes.SubscriptionEvent, error) {
+	if m.subscribeFn == nil {
+		panic("not expected to be called")
+	}
+	return m.subscribeFn(ctx, namespace)
 }
 
 func (m *mockFullClient) Submit(ctx context.Context, data [][]byte, gasPrice float64, namespace []byte, options []byte) datypes.ResultSubmit {
@@ -54,10 +62,11 @@ func (m *mockFullClient) Validate(ctx context.Context, ids []datypes.ID, proofs 
 	}
 	return nil, nil
 }
-func (m *mockFullClient) GetHeaderNamespace() []byte          { return []byte{0x01} }
-func (m *mockFullClient) GetDataNamespace() []byte            { return []byte{0x02} }
-func (m *mockFullClient) GetForcedInclusionNamespace() []byte { return []byte{0x03} }
-func (m *mockFullClient) HasForcedInclusionNamespace() bool   { return true }
+func (m *mockFullClient) GetLatestDAHeight(_ context.Context) (uint64, error) { return 0, nil }
+func (m *mockFullClient) GetHeaderNamespace() []byte                          { return []byte{0x01} }
+func (m *mockFullClient) GetDataNamespace() []byte                            { return []byte{0x02} }
+func (m *mockFullClient) GetForcedInclusionNamespace() []byte                 { return []byte{0x03} }
+func (m *mockFullClient) HasForcedInclusionNamespace() bool                   { return true }
 
 // setup a tracer provider + span recorder
 func setupDATrace(t *testing.T, inner FullClient) (FullClient, *tracetest.SpanRecorder) {

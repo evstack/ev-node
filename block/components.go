@@ -114,7 +114,7 @@ func (bc *Components) Stop() error {
 		}
 	}
 	if bc.Syncer != nil {
-		if err := bc.Syncer.Stop(); err != nil {
+		if err := bc.Syncer.Stop(context.Background()); err != nil {
 			errs = errors.Join(errs, fmt.Errorf("failed to stop syncer: %w", err))
 		}
 	}

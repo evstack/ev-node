@@ -90,15 +90,15 @@ func (rs *retryState) Next(reason retryReason, pol retryPolicy) {
 }
 
 // clamp constrains a duration between min and max bounds
-func clamp(v, min, max time.Duration) time.Duration {
-	if min > max {
-		min, max = max, min
+func clamp(v, minTime, maxTime time.Duration) time.Duration {
+	if minTime > maxTime {
+		minTime, maxTime = maxTime, minTime
 	}
-	if v < min {
-		return min
+	if v < minTime {
+		return minTime
 	}
-	if v > max {
-		return max
+	if v > maxTime {
+		return maxTime
 	}
 	return v
 }

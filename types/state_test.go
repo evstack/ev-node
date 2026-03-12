@@ -111,26 +111,7 @@ func TestAssertValidForNextState(t *testing.T) {
 			data:          &Data{},
 			expectedError: "dataHash from the header does not match with hash",
 		},
-		"last header hash mismatch": {
-			state: State{
-				ChainID:         "test-chain",
-				LastHeaderHash:  []byte("hash"),
-				LastBlockHeight: 1,
-				LastBlockTime:   now,
-			},
-			header: &SignedHeader{
-				Header: Header{
-					BaseHeader: BaseHeader{
-						ChainID: "test-chain", Height: 2,
-						Time: nowUnixNano,
-					},
-					DataHash:       dataHashForEmptyTxs,
-					LastHeaderHash: []byte("other-hash"),
-				},
-			},
-			data:          &Data{},
-			expectedError: "invalid last header hash",
-		},
+
 		"app hash mismatch": {
 			state: State{
 				ChainID:         "test-chain",
@@ -164,4 +145,37 @@ func TestAssertValidForNextState(t *testing.T) {
 			assert.ErrorContains(t, err, tc.expectedError)
 		})
 	}
+
+	// The last-header-hash grace period is stateful: the first mismatch is
+	// tolerated (based-sequencer transition), the second is an error.
+	// These two calls must run in order on the same global state, so they
+	// cannot be independent map entries.
+	t.Run("last header hash mismatch grace period", func(t *testing.T) {
+		state := State{
+			ChainID:         "test-chain",
+			LastHeaderHash:  []byte("hash"),
+			LastBlockHeight: 1,
+			LastBlockTime:   now,
+		}
+		header := &SignedHeader{
+			Header: Header{
+				BaseHeader: BaseHeader{
+					ChainID: "test-chain", Height: 2,
+					Time: nowUnixNano,
+				},
+				DataHash:       dataHashForEmptyTxs,
+				LastHeaderHash: []byte("other-hash"),
+			},
+		}
+		data := &Data{}
+
+		// First mismatch: tolerated (based-sequencer grace period).
+		err := state.AssertValidForNextState(header, data)
+		assert.NoError(t, err, "first last-header-hash mismatch should be tolerated")
+
+		// Second mismatch on the same state: must be an error.
+		err = state.AssertValidForNextState(header, data)
+		assert.ErrorContains(t, err, "invalid last header hash",
+			"second last-header-hash mismatch should be rejected")
+	})
 }

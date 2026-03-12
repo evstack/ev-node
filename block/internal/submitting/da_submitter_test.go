@@ -145,7 +145,6 @@ func TestDASubmitter_SubmitHeaders_Success(t *testing.T) {
 
 	// Create test signer
 	addr, pub, signer := createTestSigner(t)
-	gen.ProposerAddress = addr
 
 	// Create test headers
 	header1 := &types.SignedHeader{
@@ -223,11 +222,9 @@ func TestDASubmitter_SubmitHeaders_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify headers are marked as DA included
-	hash1 := header1.Hash().String()
-	hash2 := header2.Hash().String()
-	_, ok1 := cm.GetHeaderDAIncluded(hash1)
+	_, ok1 := cm.GetHeaderDAIncludedByHeight(1)
 	assert.True(t, ok1)
-	_, ok2 := cm.GetHeaderDAIncluded(hash2)
+	_, ok2 := cm.GetHeaderDAIncludedByHeight(2)
 	assert.True(t, ok2)
 }
 
@@ -340,9 +337,9 @@ func TestDASubmitter_SubmitData_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify data is marked as DA included
-	_, ok := cm.GetDataDAIncluded(data1.DACommitment().String())
+	_, ok := cm.GetDataDAIncludedByHeight(1)
 	assert.True(t, ok)
-	_, ok = cm.GetDataDAIncluded(data2.DACommitment().String())
+	_, ok = cm.GetDataDAIncludedByHeight(2)
 	assert.True(t, ok)
 }
 
@@ -395,7 +392,7 @@ func TestDASubmitter_SubmitData_SkipsEmptyData(t *testing.T) {
 	mockDA.AssertNotCalled(t, "Submit", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 
 	// Empty data should not be marked as DA included (it's implicitly included)
-	_, ok := cm.GetDataDAIncluded(emptyData.DACommitment().String())
+	_, ok := cm.GetDataDAIncludedByHash(emptyData.DACommitment().String())
 	assert.False(t, ok)
 }
 

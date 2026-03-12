@@ -286,7 +286,6 @@ func TestClientInfoMethods(t *testing.T) {
 	tempDir := t.TempDir()
 	ClientInitFiles(t, tempDir)
 	conf := config.DefaultConfig()
-	conf.RootDir = tempDir
 
 	mn := mocknet.New()
 	defer mn.Close()

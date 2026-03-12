@@ -49,7 +49,8 @@ type config struct {
 	serviceName string
 }
 
-const defaultRethTag = "latest"
+// TODO: temporary hardcoded tag, will be replaced with a proper release tag
+const defaultRethTag = "pr-140"
 
 func rethTag() string {
 	if tag := os.Getenv("EV_RETH_TAG"); tag != "" {

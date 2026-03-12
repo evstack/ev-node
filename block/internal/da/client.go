@@ -299,6 +299,23 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 	}
 }
 
+// GetLatestDAHeight returns the latest height available on the DA layer by
+// querying the network head.
+func (c *client) GetLatestDAHeight(ctx context.Context) (uint64, error) {
+	headCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
+	defer cancel()
+
+	header, err := c.headerAPI.NetworkHead(headCtx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get DA network head: %w", err)
+	}
+	if header == nil {
+		return 0, fmt.Errorf("DA network head returned nil header")
+	}
+
+	return header.Height, nil
+}
+
 // RetrieveForcedInclusion retrieves blobs from the forced inclusion namespace at the specified height.
 func (c *client) RetrieveForcedInclusion(ctx context.Context, height uint64) datypes.ResultRetrieve {
 	if !c.hasForcedNamespace {
@@ -331,6 +348,71 @@ func (c *client) GetForcedInclusionNamespace() []byte {
 // HasForcedInclusionNamespace reports whether forced inclusion namespace is configured.
 func (c *client) HasForcedInclusionNamespace() bool {
 	return c.hasForcedNamespace
+}
+
+// Subscribe subscribes to blobs in the given namespace via the celestia-node
+// Subscribe API. It returns a channel that emits a SubscriptionEvent for every
+// DA block containing a matching blob. The channel is closed when ctx is
+// cancelled. The caller must drain the channel after cancellation to avoid
+// goroutine leaks.
+func (c *client) Subscribe(ctx context.Context, namespace []byte) (<-chan datypes.SubscriptionEvent, error) {
+	ns, err := share.NewNamespaceFromBytes(namespace)
+	if err != nil {
+		return nil, fmt.Errorf("invalid namespace: %w", err)
+	}
+
+	rawCh, err := c.blobAPI.Subscribe(ctx, ns)
+	if err != nil {
+		return nil, fmt.Errorf("blob subscribe: %w", err)
+	}
+
+	out := make(chan datypes.SubscriptionEvent, 16)
+	go func() {
+		defer close(out)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case resp, ok := <-rawCh:
+				if !ok {
+					return
+				}
+				if resp == nil {
+					continue
+				}
+				select {
+				case out <- datypes.SubscriptionEvent{
+					Height: resp.Height,
+					Blobs:  extractBlobData(resp),
+				}:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
+	}()
+
+	return out, nil
+}
+
+// extractBlobData extracts raw byte slices from a subscription response,
+// filtering out nil blobs, empty data, and blobs exceeding DefaultMaxBlobSize.
+func extractBlobData(resp *blobrpc.SubscriptionResponse) [][]byte {
+	if resp == nil || len(resp.Blobs) == 0 {
+		return nil
+	}
+	blobs := make([][]byte, 0, len(resp.Blobs))
+	for _, blob := range resp.Blobs {
+		if blob == nil {
+			continue
+		}
+		data := blob.Data()
+		if len(data) == 0 || len(data) > common.DefaultMaxBlobSize {
+			continue
+		}
+		blobs = append(blobs, data)
+	}
+	return blobs
 }
 
 // Get fetches blobs by their IDs. Used for visualization and fetching specific blobs.

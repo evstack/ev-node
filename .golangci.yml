@@ -1,27 +1,67 @@
 version: "2"
 run:
   modules-download-mode: readonly
+  timeout: 10m
+  tests: true
   build-tags:
     - evm
     - e2e
     - docker
 linters:
   enable:
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - contextcheck
+    - copyloopvar
+    - durationcheck
+    - errname
     - errorlint
+    - govet
+    - ineffassign
+    - makezero
     - gosec
     - misspell
+    - nilerr
+    - noctx
+    - prealloc
+    - predeclared
+    - reassign
     - revive
+    - rowserrcheck
+    - sqlclosecheck
+    - staticcheck
     - unconvert
+    - unused
+    - usestdlibvars
+    - wastedassign
   settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+        - shadow
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+      disabled-checks:
+        - hugeParam
+        - rangeValCopy
     gosec:
       excludes:
         - G115
+        - G118
     revive:
       rules:
         - name: package-comments
           disabled: true
         - name: duplicated-imports
-          severity: warning
+          severity: error
         - name: exported
           arguments:
             - disableStutteringCheck
@@ -32,10 +72,28 @@ linters:
       - common-false-positives
       - legacy
       - std-error-handling
+    rules:
+      - path: _test\.go
+        linters:
+          - prealloc
+          - noctx
     paths:
       - third_party$
       - builtin$
       - examples$
+  disable:
+    - containedctx
+    - errcheck
+    - gocritic
+    - nolintlint
+    - testifylint
+    - thelper
+    - tparallel
+    - unparam
+    - wrapcheck
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
 formatters:
   enable:
     - gci

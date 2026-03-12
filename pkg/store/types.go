@@ -2,11 +2,18 @@ package store
 
 import (
 	"context"
+	"errors"
 
 	ds "github.com/ipfs/go-datastore"
 
 	"github.com/evstack/ev-node/types"
 )
+
+// ErrNotFound is returned when a key is not present in the store.
+var ErrNotFound = ds.ErrNotFound
+
+// IsNotFound reports whether err (or any error in its chain) is a not-found error.
+func IsNotFound(err error) bool { return errors.Is(err, ds.ErrNotFound) }
 
 // Batch provides atomic operations for the store
 type Batch interface {
@@ -47,21 +54,11 @@ type Store interface {
 	NewBatch(ctx context.Context) (Batch, error)
 }
 
-// MetadataEntry represents a key-value pair from metadata storage.
-type MetadataEntry struct {
-	Key   string
-	Value []byte
-}
-
 type Metadata interface {
 	// SetMetadata saves arbitrary value in the store.
 	//
 	// This method enables evolve to safely persist any information.
 	SetMetadata(ctx context.Context, key string, value []byte) error
-
-	// GetMetadataByPrefix returns all metadata entries whose keys have the given prefix.
-	// This is more efficient than iterating through known keys when the set of keys is unknown.
-	GetMetadataByPrefix(ctx context.Context, prefix string) ([]MetadataEntry, error)
 
 	// DeleteMetadata removes a metadata key from the store.
 	DeleteMetadata(ctx context.Context, key string) error
