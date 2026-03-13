@@ -72,6 +72,7 @@ type Syncer struct {
 	// Channels for coordination
 	heightInCh chan common.DAHeightEvent
 	errorCh    chan<- error // Channel to report critical execution client failures
+	inFlight   atomic.Int64
 
 	// Handlers
 	daRetriever   DARetriever
@@ -379,7 +380,9 @@ func (s *Syncer) processLoop(ctx context.Context) {
 			return
 		case heightEvent, ok := <-s.heightInCh:
 			if ok {
+				s.inFlight.Add(1)
 				s.processHeightEvent(ctx, &heightEvent)
+				s.inFlight.Add(-1)
 			}
 		}
 	}
@@ -403,7 +406,7 @@ func (s *Syncer) HasReachedDAHead() bool {
 
 // PendingCount returns the number of unprocessed height events in the pipeline.
 func (s *Syncer) PendingCount() int {
-	return len(s.heightInCh)
+	return len(s.heightInCh) + int(s.inFlight.Load()) + s.cache.PendingEventsCount()
 }
 
 func (s *Syncer) pendingWorkerLoop(ctx context.Context) {
