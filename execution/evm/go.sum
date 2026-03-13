@@ -74,8 +74,8 @@ github.com/ethereum/go-bigmodexpfix v0.0.0-20250911101455-f9e208c548ab h1:rvv6MJ
 github.com/ethereum/go-bigmodexpfix v0.0.0-20250911101455-f9e208c548ab/go.mod h1:IuLm4IsPipXKF7CW5Lzf68PIbZ5yl7FFd74l/E0o9A8=
 github.com/ethereum/go-ethereum v1.17.1 h1:IjlQDjgxg2uL+GzPRkygGULPMLzcYWncEI7wbaizvho=
 github.com/ethereum/go-ethereum v1.17.1/go.mod h1:7UWOVHL7K3b8RfVRea022btnzLCaanwHtBuH1jUCH/I=
-github.com/evstack/ev-node v1.0.0-rc.5 h1:3qd3KWuwiLr5RKt1j8v2h5X3XZvwyYGbMUDskM+cAeI=
-github.com/evstack/ev-node v1.0.0-rc.5/go.mod h1:VAaN0tbN1+SSm7sLzMhHZNUn9sgpf1eok5gu3YVbT38=
+github.com/evstack/ev-node v1.0.0 h1:m3e51fo4Dk9Z32XRV56GJKEeAiqvjiJ9n3SRjG7C5n8=
+github.com/evstack/ev-node v1.0.0/go.mod h1:85H7BPvvRoA+uPfCiIcyWMBN728Wv1uLNhOsjLifJgw=
 github.com/evstack/ev-node/core v1.0.0 h1:s0Tx0uWHme7SJn/ZNEtee4qNM8UO6PIxXnHhPbbKTz8=
 github.com/evstack/ev-node/core v1.0.0/go.mod h1:n2w/LhYQTPsi48m6lMj16YiIqsaQw6gxwjyJvR+B3sY=
 github.com/ferranbt/fastssz v0.1.4 h1:OCDB+dYDEQDvAgtAGnTSidK1Pe2tW3nFV40XyMkTeDY=
