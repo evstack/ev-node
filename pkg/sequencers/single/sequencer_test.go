@@ -1731,7 +1731,7 @@ func TestSequencer_CatchUp_MultiEpochReplay(t *testing.T) {
 		mockDA.MockClient.On("Retrieve", mock.Anything, h, forcedInclusionNS).Return(datypes.ResultRetrieve{
 			BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: ts},
 			Data:       [][]byte{txData},
-		}).Once()
+		}).Maybe()
 	}
 
 	// Epoch 103: returns HeightFromFuture — DA head reached, exits catch-up
