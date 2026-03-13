@@ -46,10 +46,11 @@ func TestSubscriber_RunCatchup(t *testing.T) {
 			DABlockTime: time.Millisecond,
 		})
 
-		// It should try 100, 101, then we return ErrHeightFromFuture at 102
+		// It should process observed heights [100..101] then stop when local passes highestSeen.
+		sub.updateHighest(101)
+		sub.seenSubscriptionEvent.Store(true)
 		mockHandler.On("HandleCatchup", mock.Anything, uint64(100)).Return(nil).Once()
 		mockHandler.On("HandleCatchup", mock.Anything, uint64(101)).Return(nil).Once()
-		mockHandler.On("HandleCatchup", mock.Anything, uint64(102)).Return(datypes.ErrHeightFromFuture).Once()
 
 		sub.runCatchup(ctx)
 
@@ -76,6 +77,9 @@ func TestSubscriber_RunCatchup(t *testing.T) {
 
 		var callCount int
 
+		sub.updateHighest(100)
+		sub.seenSubscriptionEvent.Store(true)
+
 		mockHandler.On("HandleCatchup", mock.Anything, uint64(100)).
 			Run(func(args mock.Arguments) {
 				callCount++
@@ -85,14 +89,14 @@ func TestSubscriber_RunCatchup(t *testing.T) {
 		mockHandler.On("HandleCatchup", mock.Anything, uint64(100)).
 			Run(func(args mock.Arguments) {
 				callCount++
-				cancel()
 			}).
-			Return(datypes.ErrHeightFromFuture).Once()
+			Return(nil).Once()
 
 		sub.runCatchup(ctx)
 
 		mockHandler.AssertExpectations(t)
 		assert.Equal(t, 2, callCount)
-		assert.Equal(t, uint64(100), sub.LocalDAHeight(), "should roll back to 100 on future error")
+		assert.Equal(t, uint64(101), sub.LocalDAHeight())
+		assert.True(t, sub.HasReachedHead())
 	})
 }

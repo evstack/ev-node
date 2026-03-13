@@ -65,6 +65,11 @@ type Subscriber struct {
 	// headReached tracks whether the subscriber has caught up to DA head.
 	headReached atomic.Bool
 
+	// seenSubscriptionEvent tracks whether followLoop has observed at least one
+	// subscription event in this run. Without this, startup catchup can stop
+	// too early when highestSeen is still just the initial start height.
+	seenSubscriptionEvent atomic.Bool
+
 	// catchupSignal wakes catchupLoop when a new height is seen above localDAHeight.
 	catchupSignal chan struct{}
 
@@ -192,6 +197,7 @@ func (s *Subscriber) runSubscription(ctx context.Context) error {
 			if !ok {
 				return errors.New("subscription channel closed")
 			}
+			s.seenSubscriptionEvent.Store(true)
 			s.updateHighest(ev.Height)
 
 			local := s.localDAHeight.Load()
@@ -317,6 +323,13 @@ func (s *Subscriber) runCatchup(ctx context.Context) {
 		}
 
 		local := s.localDAHeight.Load()
+		highest := s.highestSeenDAHeight.Load()
+
+		if s.seenSubscriptionEvent.Load() && local > highest {
+			s.headReached.Store(true)
+			return
+		}
+
 		// CAS claims this height — prevents followLoop from inline-processing.
 		if !s.localDAHeight.CompareAndSwap(local, local+1) {
 			// followLoop already advanced past this height via inline processing.
@@ -326,7 +339,7 @@ func (s *Subscriber) runCatchup(ctx context.Context) {
 		if err := s.handler.HandleCatchup(ctx, local); err != nil {
 			// Roll back so we can retry after backoff.
 			s.localDAHeight.Store(local)
-			if errors.Is(err, datypes.ErrHeightFromFuture) {
+			if errors.Is(err, datypes.ErrHeightFromFuture) && local >= highest {
 				s.headReached.Store(true)
 				return
 			}
