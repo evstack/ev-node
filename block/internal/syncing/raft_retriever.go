@@ -14,20 +14,6 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-// eventProcessor handles DA height events. Used for syncing.
-type eventProcessor interface {
-	// handle processes a single DA height event.
-	handle(ctx context.Context, event common.DAHeightEvent) error
-}
-
-// eventProcessorFn adapts a function to an eventProcessor.
-type eventProcessorFn func(ctx context.Context, event common.DAHeightEvent) error
-
-// handle calls the wrapped function.
-func (e eventProcessorFn) handle(ctx context.Context, event common.DAHeightEvent) error {
-	return e(ctx, event)
-}
-
 // raftStatePreProcessor is called before processing a raft block state
 type raftStatePreProcessor func(ctx context.Context, state *raft.RaftBlockState) error
 
@@ -37,7 +23,7 @@ type raftRetriever struct {
 	wg                    sync.WaitGroup
 	logger                zerolog.Logger
 	genesis               genesis.Genesis
-	eventProcessor        eventProcessor
+	eventSink             common.EventSink
 	raftBlockPreProcessor raftStatePreProcessor
 
 	mtx    sync.Mutex
@@ -49,14 +35,14 @@ func newRaftRetriever(
 	raftNode common.RaftNode,
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
-	eventProcessor eventProcessor,
+	eventSink common.EventSink,
 	raftBlockPreProcessor raftStatePreProcessor,
 ) *raftRetriever {
 	return &raftRetriever{
 		raftNode:              raftNode,
 		genesis:               genesis,
 		logger:                logger,
-		eventProcessor:        eventProcessor,
+		eventSink:             eventSink,
 		raftBlockPreProcessor: raftBlockPreProcessor,
 	}
 }
@@ -153,7 +139,7 @@ func (r *raftRetriever) consumeRaftBlock(ctx context.Context, state *raft.RaftBl
 		Data:     &data,
 		DaHeight: 0, // raft events don't have DA height context, yet as DA submission is asynchronous
 	}
-	return r.eventProcessor.handle(ctx, event)
+	return r.eventSink.PipeEvent(ctx, event)
 }
 
 // Height returns the current height of the raft node's state.

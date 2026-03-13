@@ -27,10 +27,6 @@ func (m *mockDARetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) (
 	return nil, nil
 }
 
-func (m *mockDARetriever) QueuePriorityHeight(daHeight uint64) {}
-
-func (m *mockDARetriever) PopPriorityHeight() uint64 { return 0 }
-
 func (m *mockDARetriever) ProcessBlobs(_ context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent {
 	return nil
 }

@@ -20,7 +20,8 @@ type Client interface {
 	// Subscribe returns a channel that emits one SubscriptionEvent per DA block
 	// that contains a blob in the given namespace. The channel is closed when ctx
 	// is cancelled. Callers MUST drain the channel after cancellation.
-	Subscribe(ctx context.Context, namespace []byte) (<-chan datypes.SubscriptionEvent, error)
+	// The fetchTimestamp param is going to be removed with https://github.com/evstack/ev-node/issues/3142 as the timestamp is going to be included by default
+	Subscribe(ctx context.Context, namespace []byte, fetchTimestamp bool) (<-chan datypes.SubscriptionEvent, error)
 
 	// GetLatestDAHeight returns the latest height available on the DA layer.
 	GetLatestDAHeight(ctx context.Context) (uint64, error)
