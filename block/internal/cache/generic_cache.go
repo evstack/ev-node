@@ -113,6 +113,11 @@ func (c *Cache[T]) getNextItem(height uint64) *T {
 	return item
 }
 
+// itemCount returns the number of items currently stored by height.
+func (c *Cache[T]) itemCount() int {
+	return c.itemsByHeight.Len()
+}
+
 // isSeen returns true if the hash has been seen.
 func (c *Cache[T]) isSeen(hash string) bool {
 	seen, ok := c.hashes.Get(hash)
