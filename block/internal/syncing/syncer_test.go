@@ -899,7 +899,100 @@ func TestProcessHeightEvent_AcceptsValidDAHint(t *testing.T) {
 	assert.Equal(t, uint64(50), priorityHeight, "valid DA hint should be queued")
 }
 
-func TestProcessHeightEvent_SkipsDAHintWhenAlreadyFetched(t *testing.T) {
+// TestProcessHeightEvent_SkipsDAHintWhenAlreadyDAIncluded verifies that when the
+// DA-inclusion cache already has an entry for the block height carried by a P2P
+// event, the DA height hint is NOT queued for priority retrieval.
+func TestProcessHeightEvent_SkipsDAHintWhenAlreadyDAIncluded(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	require.NoError(t, err)
+
+	addr, _, _ := buildSyncTestSigner(t)
+	cfg := config.DefaultConfig()
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+
+	mockExec := testmocks.NewMockExecutor(t)
+	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), nil).Once()
+
+	mockDAClient := testmocks.NewMockClient(t)
+
+	s := NewSyncer(
+		st,
+		mockExec,
+		mockDAClient,
+		cm,
+		common.NopMetrics(),
+		cfg,
+		gen,
+		extmocks.NewMockStore[*types.P2PSignedHeader](t),
+		extmocks.NewMockStore[*types.P2PData](t),
+		zerolog.Nop(),
+		common.DefaultBlockOptions(),
+		make(chan error, 1),
+		nil,
+	)
+	require.NoError(t, s.initializeState())
+	s.ctx = context.Background()
+	s.daRetriever = NewDARetriever(nil, cm, gen, zerolog.Nop())
+	s.daFollower = NewDAFollower(DAFollowerConfig{
+		Retriever:     s.daRetriever,
+		Logger:        zerolog.Nop(),
+		EventSink:     common.EventSinkFunc(func(_ context.Context, _ common.DAHeightEvent) error { return nil }),
+		Namespace:     []byte("ns"),
+		StartDAHeight: 0,
+	})
+
+	// Set the store height to 1 so the event at height 2 is "next".
+	batch, err := st.NewBatch(context.Background())
+	require.NoError(t, err)
+	require.NoError(t, batch.SetHeight(1))
+	require.NoError(t, batch.Commit())
+
+	// Simulate already DA-included header and data at height 2.
+	cm.SetHeaderDAIncluded("somehash-hdr2", 42, 2)
+	cm.SetDataDAIncluded("somehash-data2", 42, 2)
+
+	// Both hints point to DA height 100. They should be skipped due to cache hits.
+	evt := common.DAHeightEvent{
+		Header:        &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: gen.ChainID, Height: 2}}},
+		Data:          &types.Data{Metadata: &types.Metadata{ChainID: gen.ChainID, Height: 2}},
+		Source:        common.SourceP2P,
+		DaHeightHints: [2]uint64{100, 100},
+	}
+	s.processHeightEvent(t.Context(), &evt)
+
+	priorityHeight := s.daFollower.(*daFollower).popPriorityHeight()
+	assert.Equal(t, uint64(0), priorityHeight,
+		"DA hint must not be queued when header and data are already DA-included in cache")
+
+	// Partial case: only header is DA-included at height 3, data is not.
+	cm2, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	require.NoError(t, err)
+	s.cache = cm2
+	cm2.SetHeaderDAIncluded("somehash-hdr3", 55, 3)
+
+	batch, err = st.NewBatch(context.Background())
+	require.NoError(t, err)
+	require.NoError(t, batch.SetHeight(2))
+	require.NoError(t, batch.Commit())
+
+	evt3 := common.DAHeightEvent{
+		Header:        &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: gen.ChainID, Height: 3}}},
+		Data:          &types.Data{Metadata: &types.Metadata{ChainID: gen.ChainID, Height: 3}, Txs: types.Txs{types.Tx("tx2")}},
+		Source:        common.SourceP2P,
+		DaHeightHints: [2]uint64{150, 151},
+	}
+	s.processHeightEvent(t.Context(), &evt3)
+
+	priorityHeight = s.daFollower.(*daFollower).popPriorityHeight()
+	assert.Equal(t, uint64(151), priorityHeight,
+		"data hint must be queued when only the header is already DA-included")
+	assert.Equal(t, uint64(0), s.daFollower.(*daFollower).popPriorityHeight(),
+		"no further hints should be queued")
+}
+
+func TestProcessHeightEvent_SkipsDAHintWhenBelowRetrieverCursor(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())

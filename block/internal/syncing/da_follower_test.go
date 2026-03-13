@@ -96,92 +96,113 @@ func TestDAFollower_HandleEvent(t *testing.T) {
 }
 
 func TestDAFollower_HandleCatchup(t *testing.T) {
-	t.Run("normal_sequential_fetch_success", func(t *testing.T) {
-		daRetriever := NewMockDARetriever(t)
-		ctx := t.Context()
+	type spec struct {
+		daHeight               uint64
+		initialPriorityHeights []uint64
+		pipeErr                error
+		setupMock              func(m *MockDARetriever)
+		wantErrIs              error
+		wantPipedHeights       []uint64
+		wantRemainingPriority  []uint64
+	}
+
+	newFollower := func(t *testing.T, s spec, m *MockDARetriever) (*daFollower, func() []common.DAHeightEvent) {
+		t.Helper()
 
 		var pipedEvents []common.DAHeightEvent
 		pipeEvent := func(_ context.Context, ev common.DAHeightEvent) error {
 			pipedEvents = append(pipedEvents, ev)
-			return nil
+			return s.pipeErr
 		}
 
 		follower := &daFollower{
-			retriever:       daRetriever,
+			retriever:       m,
 			eventSink:       common.EventSinkFunc(pipeEvent),
 			logger:          zerolog.Nop(),
-			priorityHeights: make([]uint64, 0),
+			priorityHeights: append([]uint64(nil), s.initialPriorityHeights...),
 		}
+		return follower, func() []common.DAHeightEvent { return pipedEvents }
+	}
 
-		events := []common.DAHeightEvent{{DaHeight: 100}}
-		daRetriever.On("RetrieveFromDA", mock.Anything, uint64(100)).Return(events, nil)
+	specs := map[string]spec{
+		"seq_ok": {
+			daHeight:         100,
+			wantPipedHeights: []uint64{100},
+			setupMock: func(m *MockDARetriever) {
+				m.On("RetrieveFromDA", mock.Anything, uint64(100)).
+					Return([]common.DAHeightEvent{{DaHeight: 100}}, nil).Once()
+			},
+		},
+		"seq_blob_missing": {
+			daHeight: 100,
+			setupMock: func(m *MockDARetriever) {
+				m.On("RetrieveFromDA", mock.Anything, uint64(100)).
+					Return(nil, datypes.ErrBlobNotFound).Once()
+			},
+		},
+		"seq_err": {
+			daHeight:  100,
+			wantErrIs: datypes.ErrHeightFromFuture,
+			setupMock: func(m *MockDARetriever) {
+				m.On("RetrieveFromDA", mock.Anything, uint64(100)).
+					Return(nil, datypes.ErrHeightFromFuture).Once()
+			},
+		},
+		"prio_first": {
+			daHeight:               100,
+			initialPriorityHeights: []uint64{105},
+			wantPipedHeights:       []uint64{105, 100},
+			setupMock: func(m *MockDARetriever) {
+				m.On("RetrieveFromDA", mock.Anything, uint64(105)).
+					Return([]common.DAHeightEvent{{DaHeight: 105}}, nil).Once()
+				m.On("RetrieveFromDA", mock.Anything, uint64(100)).
+					Return([]common.DAHeightEvent{{DaHeight: 100}}, nil).Once()
+			},
+		},
+		"skip_stale_prio_already_included": {
+			daHeight:               100,
+			initialPriorityHeights: []uint64{99},
+			wantPipedHeights:       []uint64{100},
+			setupMock: func(m *MockDARetriever) {
+				// stale priority hint (< daHeight) is discarded; only sequential height is fetched
+				m.On("RetrieveFromDA", mock.Anything, uint64(100)).
+					Return([]common.DAHeightEvent{{DaHeight: 100}}, nil).Once()
+			},
+		},
+	}
 
-		err := follower.HandleCatchup(ctx, 100)
-		require.NoError(t, err)
-		assert.Len(t, pipedEvents, 1)
-	})
+	for name, s := range specs {
+		t.Run(name, func(t *testing.T) {
+			daRetriever := NewMockDARetriever(t)
+			if s.setupMock != nil {
+				s.setupMock(daRetriever)
+			}
 
-	t.Run("normal_sequential_fetch_blob_not_found_ignored", func(t *testing.T) {
-		daRetriever := NewMockDARetriever(t)
-		ctx := t.Context()
+			follower, getPipedEvents := newFollower(t, s, daRetriever)
+			err := follower.HandleCatchup(t.Context(), s.daHeight)
 
-		follower := &daFollower{
-			retriever:       daRetriever,
-			eventSink:       common.EventSinkFunc(func(_ context.Context, _ common.DAHeightEvent) error { return nil }),
-			logger:          zerolog.Nop(),
-			priorityHeights: make([]uint64, 0),
-		}
+			if s.wantErrIs != nil {
+				require.ErrorIs(t, err, s.wantErrIs)
+			} else {
+				require.NoError(t, err)
+			}
 
-		daRetriever.On("RetrieveFromDA", mock.Anything, uint64(100)).Return(nil, datypes.ErrBlobNotFound)
+			pipedEvents := getPipedEvents()
+			gotHeights := make([]uint64, 0, len(pipedEvents))
+			for _, ev := range pipedEvents {
+				gotHeights = append(gotHeights, ev.DaHeight)
+			}
+			wantHeights := s.wantPipedHeights
+			if wantHeights == nil {
+				wantHeights = []uint64{}
+			}
+			assert.Equal(t, wantHeights, gotHeights)
 
-		err := follower.HandleCatchup(ctx, 100)
-		require.NoError(t, err)
-	})
-
-	t.Run("normal_sequential_fetch_error_propagated", func(t *testing.T) {
-		daRetriever := NewMockDARetriever(t)
-		ctx := t.Context()
-
-		follower := &daFollower{
-			retriever:       daRetriever,
-			eventSink:       common.EventSinkFunc(func(_ context.Context, _ common.DAHeightEvent) error { return nil }),
-			logger:          zerolog.Nop(),
-			priorityHeights: make([]uint64, 0),
-		}
-
-		daRetriever.On("RetrieveFromDA", mock.Anything, uint64(100)).Return(nil, datypes.ErrHeightFromFuture)
-
-		err := follower.HandleCatchup(ctx, 100)
-		require.ErrorIs(t, err, datypes.ErrHeightFromFuture)
-	})
-
-	t.Run("priority_queue_handled_first", func(t *testing.T) {
-		daRetriever := NewMockDARetriever(t)
-		ctx := t.Context()
-
-		var pipedEvents []common.DAHeightEvent
-		pipeEvent := func(_ context.Context, ev common.DAHeightEvent) error {
-			pipedEvents = append(pipedEvents, ev)
-			return nil
-		}
-
-		follower := &daFollower{
-			retriever:       daRetriever,
-			eventSink:       common.EventSinkFunc(pipeEvent),
-			logger:          zerolog.Nop(),
-			priorityHeights: []uint64{105}, // Priority height to fetch
-		}
-
-		daRetriever.On("RetrieveFromDA", mock.Anything, uint64(105)).Return([]common.DAHeightEvent{{DaHeight: 105}}, nil).Once()
-		daRetriever.On("RetrieveFromDA", mock.Anything, uint64(100)).Return([]common.DAHeightEvent{{DaHeight: 100}}, nil).Once()
-
-		err := follower.HandleCatchup(ctx, 100)
-		require.NoError(t, err)
-
-		// It should pipe 105 then 100
-		assert.Len(t, pipedEvents, 2)
-		assert.Equal(t, uint64(105), pipedEvents[0].DaHeight)
-		assert.Equal(t, uint64(100), pipedEvents[1].DaHeight)
-		assert.Empty(t, follower.priorityHeights)
-	})
+			if s.wantRemainingPriority != nil {
+				assert.Equal(t, s.wantRemainingPriority, follower.priorityHeights)
+			} else {
+				assert.Empty(t, follower.priorityHeights)
+			}
+		})
+	}
 }
