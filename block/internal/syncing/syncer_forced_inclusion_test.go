@@ -88,6 +88,9 @@ func newForcedInclusionSyncer(t *testing.T, daStart, epochSize uint64) (*Syncer,
 		zerolog.Nop(), common.DefaultBlockOptions(), make(chan error, 1), nil,
 	)
 	s.daRetriever = daRetriever
+	if s.fiRetriever != nil {
+		s.fiRetriever.Stop()
+	}
 	s.fiRetriever = fiRetriever
 
 	require.NoError(t, s.initializeState())
@@ -159,6 +162,9 @@ func TestVerifyForcedInclusionTxs_NamespaceNotConfigured(t *testing.T) {
 		extmocks.NewMockStore[*types.P2PData](t),
 		zerolog.Nop(), common.DefaultBlockOptions(), make(chan error, 1), nil,
 	)
+	if s.fiRetriever != nil {
+		s.fiRetriever.Stop()
+	}
 	s.fiRetriever = fiRetriever
 	require.NoError(t, s.initializeState())
 	s.ctx = t.Context()

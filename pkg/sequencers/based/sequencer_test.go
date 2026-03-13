@@ -74,8 +74,8 @@ func createTestSequencer(t *testing.T, mockRetriever *common.MockForcedInclusion
 		MockVerifier: mocks.NewMockVerifier(t),
 	}
 	// Mock the forced inclusion namespace call
-	mockDAClient.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
-	mockDAClient.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	mockDAClient.MockClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
+	mockDAClient.MockClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
 	mockDAClient.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 	mockDAClient.MockClient.On("Retrieve", mock.Anything, mock.Anything, mock.Anything).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound},
@@ -89,7 +89,7 @@ func createTestSequencer(t *testing.T, mockRetriever *common.MockForcedInclusion
 	require.NoError(t, err)
 
 	// Replace the fiRetriever with our mock so tests work as before
-	seq.fiRetriever = mockRetriever
+	replaceWithMockRetriever(seq, mockRetriever)
 
 	return seq, testData{cancel: done, mockDAClient: mockDAClient}
 }
@@ -471,8 +471,8 @@ func TestBasedSequencer_CheckpointPersistence(t *testing.T) {
 		MockClient:   mocks.NewMockClient(t),
 		MockVerifier: mocks.NewMockVerifier(t),
 	}
-	mockDAClient.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
-	mockDAClient.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	mockDAClient.MockClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
+	mockDAClient.MockClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
 	mockDAClient.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 	mockDAClient.MockClient.On("Retrieve", mock.Anything, mock.Anything, mock.Anything).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture},
@@ -484,7 +484,7 @@ func TestBasedSequencer_CheckpointPersistence(t *testing.T) {
 	require.NoError(t, err)
 
 	// Replace the fiRetriever with our mock so tests work as before
-	seq1.fiRetriever = mockRetriever
+	replaceWithMockRetriever(seq1, mockRetriever)
 
 	req := coresequencer.GetNextBatchRequest{
 		MaxBytes:      1000000,
@@ -502,15 +502,15 @@ func TestBasedSequencer_CheckpointPersistence(t *testing.T) {
 		MockClient:   mocks.NewMockClient(t),
 		MockVerifier: mocks.NewMockVerifier(t),
 	}
-	mockDAClient2.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
-	mockDAClient2.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	mockDAClient2.MockClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
+	mockDAClient2.MockClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
 	mockDAClient2.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 	mockExec2 := createDefaultMockExecutor(t)
 	seq2, err := NewBasedSequencer(t.Context(), mockDAClient2, config.DefaultConfig(), db, gen, zerolog.Nop(), mockExec2)
 	require.NoError(t, err)
 
 	// Replace the fiRetriever with our mock so tests work as before
-	seq2.fiRetriever = mockRetriever
+	replaceWithMockRetriever(seq2, mockRetriever)
 
 	// Checkpoint should be loaded from DB
 	assert.Equal(t, uint64(101), seq2.checkpoint.DAHeight)
@@ -548,8 +548,8 @@ func TestBasedSequencer_CrashRecoveryMidEpoch(t *testing.T) {
 		MockVerifier: mocks.NewMockVerifier(t),
 	} // On restart, the epoch is re-fetched but we must NOT reset TxIndex
 
-	mockDAClient.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
-	mockDAClient.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	mockDAClient.MockClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
+	mockDAClient.MockClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
 	mockDAClient.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 	mockDAClient.MockClient.On("Retrieve", mock.Anything, mock.Anything, mock.Anything).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture},
@@ -587,7 +587,7 @@ func TestBasedSequencer_CrashRecoveryMidEpoch(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	seq1, err := NewBasedSequencer(ctx, mockDAClient, config.DefaultConfig(), db, gen, zerolog.Nop(), mockExec)
 	require.NoError(t, err)
-	seq1.fiRetriever = mockRetriever
+	replaceWithMockRetriever(seq1, mockRetriever)
 
 	req := coresequencer.GetNextBatchRequest{
 		MaxBytes:      1000000,
@@ -613,8 +613,8 @@ func TestBasedSequencer_CrashRecoveryMidEpoch(t *testing.T) {
 		MockClient:   mocks.NewMockClient(t),
 		MockVerifier: mocks.NewMockVerifier(t),
 	}
-	mockDAClient2.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
-	mockDAClient2.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	mockDAClient2.MockClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
+	mockDAClient2.MockClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
 	mockDAClient2.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 	mockDAClient2.MockClient.On("Retrieve", mock.Anything, mock.Anything, mock.Anything).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture},
@@ -622,7 +622,7 @@ func TestBasedSequencer_CrashRecoveryMidEpoch(t *testing.T) {
 
 	seq2, err := NewBasedSequencer(ctx, mockDAClient2, config.DefaultConfig(), db, gen, zerolog.Nop(), mockExec)
 	require.NoError(t, err)
-	seq2.fiRetriever = mockRetriever
+	replaceWithMockRetriever(seq2, mockRetriever)
 
 	// Verify checkpoint was loaded correctly
 	assert.Equal(t, uint64(100), seq2.checkpoint.DAHeight, "DA height should be loaded from checkpoint")
@@ -938,8 +938,8 @@ func TestBasedSequencer_GetNextBatch_GasFilteringPreservesUnprocessedTxs(t *test
 		MockClient:   mocks.NewMockClient(t),
 		MockVerifier: mocks.NewMockVerifier(t),
 	}
-	mockDAClient.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
-	mockDAClient.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	mockDAClient.MockClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
+	mockDAClient.MockClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
 	mockDAClient.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 	mockDAClient.MockClient.On("Retrieve", mock.Anything, mock.Anything, mock.Anything).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture},
@@ -947,7 +947,7 @@ func TestBasedSequencer_GetNextBatch_GasFilteringPreservesUnprocessedTxs(t *test
 
 	seq, err := NewBasedSequencer(t.Context(), mockDAClient, config.DefaultConfig(), db, gen, zerolog.Nop(), mockExec)
 	require.NoError(t, err)
-	seq.fiRetriever = mockRetriever
+	replaceWithMockRetriever(seq, mockRetriever)
 
 	// First batch: maxBytes=250 means we can fetch ~2 txs (each 100 bytes)
 	// getTxsFromCheckpoint will return tx0, tx1 (or tx0, tx1, tx2 depending on exact math)
@@ -986,4 +986,11 @@ func TestBasedSequencer_GetNextBatch_GasFilteringPreservesUnprocessedTxs(t *test
 	// We should have processed at least 3 transactions (tx0, tx2, and at least one of tx3/tx4)
 	// If bug exists, we might only get 2 (tx0 and tx2) because tx3, tx4 are lost
 	assert.GreaterOrEqual(t, totalTxsProcessed, 3, "should process at least 3 valid transactions from the cache")
+}
+
+func replaceWithMockRetriever(seq *BasedSequencer, mockRetriever *common.MockForcedInclusionRetriever) {
+	if seq.fiRetriever != nil {
+		seq.fiRetriever.Stop()
+	}
+	seq.fiRetriever = mockRetriever
 }
