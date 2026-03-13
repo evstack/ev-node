@@ -945,7 +945,7 @@ func TestBasedSequencer_GetNextBatch_GasFilteringPreservesUnprocessedTxs(t *test
 		BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture},
 	}).Maybe()
 
-	seq, err := NewBasedSequencer(t.Context(), mockDAClient, config.DefaultConfig(), db, gen, zerolog.New(zerolog.NewTestWriter(t)), mockExec)
+	seq, err := NewBasedSequencer(t.Context(), mockDAClient, config.DefaultConfig(), db, gen, zerolog.Nop(), mockExec)
 	require.NoError(t, err)
 	seq.fiRetriever = mockRetriever
 
