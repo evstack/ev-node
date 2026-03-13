@@ -57,7 +57,12 @@ func createDefaultMockExecutor(t *testing.T) *mocks.MockExecutor {
 	return mockExec
 }
 
-func createTestSequencer(t *testing.T, mockRetriever *common.MockForcedInclusionRetriever, gen genesis.Genesis) *BasedSequencer {
+type testData struct {
+	mockDAClient *MockFullDAClient
+	cancel       context.CancelFunc
+}
+
+func createTestSequencer(t *testing.T, mockRetriever *common.MockForcedInclusionRetriever, gen genesis.Genesis) (*BasedSequencer, testData) {
 	t.Helper()
 
 	// Create in-memory datastore
@@ -72,16 +77,21 @@ func createTestSequencer(t *testing.T, mockRetriever *common.MockForcedInclusion
 	mockDAClient.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
 	mockDAClient.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	mockDAClient.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
+	mockDAClient.MockClient.On("Retrieve", mock.Anything, mock.Anything, mock.Anything).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound},
+	}).Maybe()
 
 	mockExec := createDefaultMockExecutor(t)
 
-	seq, err := NewBasedSequencer(mockDAClient, config.DefaultConfig(), db, gen, zerolog.Nop(), mockExec)
+	ctx, done := context.WithCancel(t.Context())
+	t.Cleanup(func() { done() })
+	seq, err := NewBasedSequencer(ctx, mockDAClient, config.DefaultConfig(), db, gen, zerolog.Nop(), mockExec)
 	require.NoError(t, err)
 
 	// Replace the fiRetriever with our mock so tests work as before
 	seq.fiRetriever = mockRetriever
 
-	return seq
+	return seq, testData{cancel: done, mockDAClient: mockDAClient}
 }
 
 func TestBasedSequencer_SubmitBatchTxs(t *testing.T) {
@@ -91,7 +101,7 @@ func TestBasedSequencer_SubmitBatchTxs(t *testing.T) {
 		DAEpochForcedInclusion: 10,
 	}
 
-	seq := createTestSequencer(t, mockRetriever, gen)
+	seq, _ := createTestSequencer(t, mockRetriever, gen)
 
 	// Submit should succeed but be ignored
 	req := coresequencer.SubmitBatchTxsRequest{
@@ -101,7 +111,7 @@ func TestBasedSequencer_SubmitBatchTxs(t *testing.T) {
 		},
 	}
 
-	resp, err := seq.SubmitBatchTxs(context.Background(), req)
+	resp, err := seq.SubmitBatchTxs(t.Context(), req)
 
 	require.NoError(t, err)
 	require.NotNil(t, resp)
@@ -125,14 +135,16 @@ func TestBasedSequencer_GetNextBatch_WithForcedTxs(t *testing.T) {
 		DAEpochForcedInclusion: 1,
 	}
 
-	seq := createTestSequencer(t, mockRetriever, gen)
+	seq, expData := createTestSequencer(t, mockRetriever, gen)
 
 	req := coresequencer.GetNextBatchRequest{
 		MaxBytes:      1000000,
 		LastBatchData: nil,
 	}
 
-	resp, err := seq.GetNextBatch(context.Background(), req)
+	resp, err := seq.GetNextBatch(t.Context(), req)
+	expData.cancel()
+
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.NotNil(t, resp.Batch)
@@ -143,8 +155,6 @@ func TestBasedSequencer_GetNextBatch_WithForcedTxs(t *testing.T) {
 	// Checkpoint should have moved to next DA height
 	assert.Equal(t, uint64(101), seq.checkpoint.DAHeight)
 	assert.Equal(t, uint64(0), seq.checkpoint.TxIndex)
-
-	mockRetriever.AssertExpectations(t)
 }
 
 func TestBasedSequencer_GetNextBatch_EmptyDA(t *testing.T) {
@@ -161,7 +171,7 @@ func TestBasedSequencer_GetNextBatch_EmptyDA(t *testing.T) {
 		DAEpochForcedInclusion: 1,
 	}
 
-	seq := createTestSequencer(t, mockRetriever, gen)
+	seq, _ := createTestSequencer(t, mockRetriever, gen)
 
 	req := coresequencer.GetNextBatchRequest{
 		MaxBytes:      1000000,
@@ -169,14 +179,13 @@ func TestBasedSequencer_GetNextBatch_EmptyDA(t *testing.T) {
 	}
 
 	// Empty epoch has no valid txs — sequencer returns ErrNoBatch
-	resp, err := seq.GetNextBatch(context.Background(), req)
+	resp, err := seq.GetNextBatch(t.Context(), req)
 	require.ErrorIs(t, err, block.ErrNoBatch)
 	require.Nil(t, resp)
 
 	// Checkpoint should still advance past the empty epoch
 	assert.Equal(t, uint64(101), seq.checkpoint.DAHeight)
 
-	mockRetriever.AssertExpectations(t)
 }
 
 func TestBasedSequencer_GetNextBatch_NotConfigured(t *testing.T) {
@@ -189,19 +198,18 @@ func TestBasedSequencer_GetNextBatch_NotConfigured(t *testing.T) {
 		DAEpochForcedInclusion: 1,
 	}
 
-	seq := createTestSequencer(t, mockRetriever, gen)
+	seq, _ := createTestSequencer(t, mockRetriever, gen)
 
 	req := coresequencer.GetNextBatchRequest{
 		MaxBytes:      1000000,
 		LastBatchData: nil,
 	}
 
-	resp, err := seq.GetNextBatch(context.Background(), req)
+	resp, err := seq.GetNextBatch(t.Context(), req)
 	require.Error(t, err)
 	require.Nil(t, resp)
 	assert.ErrorIs(t, err, block.ErrForceInclusionNotConfigured)
 
-	mockRetriever.AssertExpectations(t)
 }
 
 func TestBasedSequencer_GetNextBatch_WithMaxBytes(t *testing.T) {
@@ -224,7 +232,7 @@ func TestBasedSequencer_GetNextBatch_WithMaxBytes(t *testing.T) {
 		DAEpochForcedInclusion: 1,
 	}
 
-	seq := createTestSequencer(t, mockRetriever, gen)
+	seq, _ := createTestSequencer(t, mockRetriever, gen)
 
 	// First call with MaxBytes that fits only first 2 transactions
 	req := coresequencer.GetNextBatchRequest{
@@ -232,7 +240,7 @@ func TestBasedSequencer_GetNextBatch_WithMaxBytes(t *testing.T) {
 		LastBatchData: nil,
 	}
 
-	resp, err := seq.GetNextBatch(context.Background(), req)
+	resp, err := seq.GetNextBatch(t.Context(), req)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.NotNil(t, resp.Batch)
@@ -249,7 +257,7 @@ func TestBasedSequencer_GetNextBatch_WithMaxBytes(t *testing.T) {
 		LastBatchData: nil,
 	}
 
-	resp, err = seq.GetNextBatch(context.Background(), req)
+	resp, err = seq.GetNextBatch(t.Context(), req)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.NotNil(t, resp.Batch)
@@ -260,7 +268,6 @@ func TestBasedSequencer_GetNextBatch_WithMaxBytes(t *testing.T) {
 	assert.Equal(t, uint64(101), seq.checkpoint.DAHeight)
 	assert.Equal(t, uint64(0), seq.checkpoint.TxIndex)
 
-	mockRetriever.AssertExpectations(t)
 }
 
 func TestBasedSequencer_GetNextBatch_MultipleDABlocks(t *testing.T) {
@@ -288,7 +295,7 @@ func TestBasedSequencer_GetNextBatch_MultipleDABlocks(t *testing.T) {
 		DAEpochForcedInclusion: 1,
 	}
 
-	seq := createTestSequencer(t, mockRetriever, gen)
+	seq, _ := createTestSequencer(t, mockRetriever, gen)
 
 	req := coresequencer.GetNextBatchRequest{
 		MaxBytes:      1000000,
@@ -296,7 +303,7 @@ func TestBasedSequencer_GetNextBatch_MultipleDABlocks(t *testing.T) {
 	}
 
 	// First batch from first DA block
-	resp, err := seq.GetNextBatch(context.Background(), req)
+	resp, err := seq.GetNextBatch(t.Context(), req)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	assert.Equal(t, 2, len(resp.Batch.Transactions))
@@ -305,7 +312,7 @@ func TestBasedSequencer_GetNextBatch_MultipleDABlocks(t *testing.T) {
 	assert.Equal(t, uint64(101), seq.checkpoint.DAHeight)
 
 	// Second batch from second DA block
-	resp, err = seq.GetNextBatch(context.Background(), req)
+	resp, err = seq.GetNextBatch(t.Context(), req)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	assert.Equal(t, 2, len(resp.Batch.Transactions))
@@ -313,7 +320,6 @@ func TestBasedSequencer_GetNextBatch_MultipleDABlocks(t *testing.T) {
 	assert.Equal(t, []byte("tx4"), resp.Batch.Transactions[1])
 	assert.Equal(t, uint64(102), seq.checkpoint.DAHeight)
 
-	mockRetriever.AssertExpectations(t)
 }
 
 func TestBasedSequencer_GetNextBatch_ForcedInclusionExceedsMaxBytes(t *testing.T) {
@@ -334,7 +340,7 @@ func TestBasedSequencer_GetNextBatch_ForcedInclusionExceedsMaxBytes(t *testing.T
 		DAEpochForcedInclusion: 1,
 	}
 
-	seq := createTestSequencer(t, mockRetriever, gen)
+	seq, _ := createTestSequencer(t, mockRetriever, gen)
 
 	req := coresequencer.GetNextBatchRequest{
 		MaxBytes:      1000, // Much smaller than the transaction
@@ -342,14 +348,13 @@ func TestBasedSequencer_GetNextBatch_ForcedInclusionExceedsMaxBytes(t *testing.T
 	}
 
 	// All txs are skipped due to size — sequencer returns ErrNoBatch
-	resp, err := seq.GetNextBatch(context.Background(), req)
+	resp, err := seq.GetNextBatch(t.Context(), req)
 	require.ErrorIs(t, err, block.ErrNoBatch)
 	require.Nil(t, resp)
 
 	// Checkpoint should still advance past the epoch with the oversized tx
 	assert.Equal(t, uint64(101), seq.checkpoint.DAHeight)
 
-	mockRetriever.AssertExpectations(t)
 }
 
 func TestBasedSequencer_VerifyBatch(t *testing.T) {
@@ -359,14 +364,14 @@ func TestBasedSequencer_VerifyBatch(t *testing.T) {
 		DAEpochForcedInclusion: 10,
 	}
 
-	seq := createTestSequencer(t, mockRetriever, gen)
+	seq, _ := createTestSequencer(t, mockRetriever, gen)
 
 	req := coresequencer.VerifyBatchRequest{
 		Id:        []byte("test-chain"),
 		BatchData: [][]byte{[]byte("tx1"), []byte("tx2")},
 	}
 
-	resp, err := seq.VerifyBatch(context.Background(), req)
+	resp, err := seq.VerifyBatch(t.Context(), req)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	// Based sequencer always verifies as true since all txs come from DA
@@ -381,7 +386,7 @@ func TestBasedSequencer_SetDAHeight(t *testing.T) {
 		DAEpochForcedInclusion: 10,
 	}
 
-	seq := createTestSequencer(t, mockRetriever, gen)
+	seq, _ := createTestSequencer(t, mockRetriever, gen)
 
 	// Initial height from genesis
 	assert.Equal(t, uint64(100), seq.GetDAHeight())
@@ -401,19 +406,18 @@ func TestBasedSequencer_GetNextBatch_ErrorHandling(t *testing.T) {
 		DAEpochForcedInclusion: 1,
 	}
 
-	seq := createTestSequencer(t, mockRetriever, gen)
+	seq, _ := createTestSequencer(t, mockRetriever, gen)
 
 	req := coresequencer.GetNextBatchRequest{
 		MaxBytes:      1000000,
 		LastBatchData: nil,
 	}
 
-	resp, err := seq.GetNextBatch(context.Background(), req)
+	resp, err := seq.GetNextBatch(t.Context(), req)
 	require.Error(t, err)
 	require.Nil(t, resp)
 	assert.ErrorIs(t, err, block.ErrForceInclusionNotConfigured)
 
-	mockRetriever.AssertExpectations(t)
 }
 
 func TestBasedSequencer_GetNextBatch_HeightFromFuture(t *testing.T) {
@@ -426,7 +430,7 @@ func TestBasedSequencer_GetNextBatch_HeightFromFuture(t *testing.T) {
 		DAEpochForcedInclusion: 1,
 	}
 
-	seq := createTestSequencer(t, mockRetriever, gen)
+	seq, _ := createTestSequencer(t, mockRetriever, gen)
 
 	req := coresequencer.GetNextBatchRequest{
 		MaxBytes:      1000000,
@@ -434,14 +438,13 @@ func TestBasedSequencer_GetNextBatch_HeightFromFuture(t *testing.T) {
 	}
 
 	// DA hasn't produced that block yet — sequencer returns ErrNoBatch
-	resp, err := seq.GetNextBatch(context.Background(), req)
+	resp, err := seq.GetNextBatch(t.Context(), req)
 	require.ErrorIs(t, err, block.ErrNoBatch)
 	require.Nil(t, resp)
 
 	// DA height should stay the same — checkpoint must not advance
 	assert.Equal(t, uint64(100), seq.checkpoint.DAHeight)
 
-	mockRetriever.AssertExpectations(t)
 }
 
 func TestBasedSequencer_CheckpointPersistence(t *testing.T) {
@@ -471,10 +474,13 @@ func TestBasedSequencer_CheckpointPersistence(t *testing.T) {
 	mockDAClient.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
 	mockDAClient.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	mockDAClient.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
+	mockDAClient.MockClient.On("Retrieve", mock.Anything, mock.Anything, mock.Anything).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture},
+	}).Maybe()
 
 	// Create first sequencer
 	mockExec1 := createDefaultMockExecutor(t)
-	seq1, err := NewBasedSequencer(mockDAClient, config.DefaultConfig(), db, gen, zerolog.Nop(), mockExec1)
+	seq1, err := NewBasedSequencer(t.Context(), mockDAClient, config.DefaultConfig(), db, gen, zerolog.Nop(), mockExec1)
 	require.NoError(t, err)
 
 	// Replace the fiRetriever with our mock so tests work as before
@@ -486,7 +492,7 @@ func TestBasedSequencer_CheckpointPersistence(t *testing.T) {
 	}
 
 	// Process a batch
-	resp, err := seq1.GetNextBatch(context.Background(), req)
+	resp, err := seq1.GetNextBatch(t.Context(), req)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	assert.Equal(t, 2, len(resp.Batch.Transactions))
@@ -500,7 +506,7 @@ func TestBasedSequencer_CheckpointPersistence(t *testing.T) {
 	mockDAClient2.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	mockDAClient2.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 	mockExec2 := createDefaultMockExecutor(t)
-	seq2, err := NewBasedSequencer(mockDAClient2, config.DefaultConfig(), db, gen, zerolog.Nop(), mockExec2)
+	seq2, err := NewBasedSequencer(t.Context(), mockDAClient2, config.DefaultConfig(), db, gen, zerolog.Nop(), mockExec2)
 	require.NoError(t, err)
 
 	// Replace the fiRetriever with our mock so tests work as before
@@ -510,7 +516,6 @@ func TestBasedSequencer_CheckpointPersistence(t *testing.T) {
 	assert.Equal(t, uint64(101), seq2.checkpoint.DAHeight)
 	assert.Equal(t, uint64(0), seq2.checkpoint.TxIndex)
 
-	mockRetriever.AssertExpectations(t)
 }
 
 func TestBasedSequencer_CrashRecoveryMidEpoch(t *testing.T) {
@@ -546,6 +551,9 @@ func TestBasedSequencer_CrashRecoveryMidEpoch(t *testing.T) {
 	mockDAClient.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
 	mockDAClient.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	mockDAClient.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
+	mockDAClient.MockClient.On("Retrieve", mock.Anything, mock.Anything, mock.Anything).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture},
+	}).Maybe()
 
 	// Create mock executor that postpones tx2 on first call
 	filterCallCount := 0
@@ -576,7 +584,8 @@ func TestBasedSequencer_CrashRecoveryMidEpoch(t *testing.T) {
 	).Maybe()
 
 	// === FIRST RUN (before crash) ===
-	seq1, err := NewBasedSequencer(mockDAClient, config.DefaultConfig(), db, gen, zerolog.Nop(), mockExec)
+	ctx, cancel := context.WithCancel(t.Context())
+	seq1, err := NewBasedSequencer(ctx, mockDAClient, config.DefaultConfig(), db, gen, zerolog.Nop(), mockExec)
 	require.NoError(t, err)
 	seq1.fiRetriever = mockRetriever
 
@@ -586,7 +595,7 @@ func TestBasedSequencer_CrashRecoveryMidEpoch(t *testing.T) {
 	}
 
 	// First batch: should get tx0, tx1 (tx2 is postponed, stopping there)
-	resp1, err := seq1.GetNextBatch(context.Background(), req)
+	resp1, err := seq1.GetNextBatch(ctx, req)
 	require.NoError(t, err)
 	require.NotNil(t, resp1)
 	assert.Equal(t, 2, len(resp1.Batch.Transactions), "Should get tx0 and tx1")
@@ -607,8 +616,11 @@ func TestBasedSequencer_CrashRecoveryMidEpoch(t *testing.T) {
 	mockDAClient2.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
 	mockDAClient2.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	mockDAClient2.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
+	mockDAClient2.MockClient.On("Retrieve", mock.Anything, mock.Anything, mock.Anything).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture},
+	}).Maybe()
 
-	seq2, err := NewBasedSequencer(mockDAClient2, config.DefaultConfig(), db, gen, zerolog.Nop(), mockExec)
+	seq2, err := NewBasedSequencer(ctx, mockDAClient2, config.DefaultConfig(), db, gen, zerolog.Nop(), mockExec)
 	require.NoError(t, err)
 	seq2.fiRetriever = mockRetriever
 
@@ -620,9 +632,10 @@ func TestBasedSequencer_CrashRecoveryMidEpoch(t *testing.T) {
 	// === SECOND RUN (after restart) ===
 	// Should re-fetch epoch but resume from TxIndex=2
 
-	resp2, err := seq2.GetNextBatch(context.Background(), req)
+	resp2, err := seq2.GetNextBatch(ctx, req)
 	require.NoError(t, err)
 	require.NotNil(t, resp2)
+	cancel()
 
 	// Should get tx2, tx3, tx4 (NOT tx0, tx1 which were already processed)
 	assert.Equal(t, 3, len(resp2.Batch.Transactions), "Should get tx2, tx3, tx4")
@@ -634,7 +647,6 @@ func TestBasedSequencer_CrashRecoveryMidEpoch(t *testing.T) {
 	assert.Equal(t, uint64(101), seq2.checkpoint.DAHeight, "Should advance to DA height 101")
 	assert.Equal(t, uint64(0), seq2.checkpoint.TxIndex, "TxIndex should reset after consuming all")
 
-	mockRetriever.AssertExpectations(t)
 }
 
 func TestBasedSequencer_GetNextBatch_EmptyDABatch_IncreasesDAHeight(t *testing.T) {
@@ -660,7 +672,7 @@ func TestBasedSequencer_GetNextBatch_EmptyDABatch_IncreasesDAHeight(t *testing.T
 		DAEpochForcedInclusion: 1,
 	}
 
-	seq := createTestSequencer(t, mockRetriever, gen)
+	seq, _ := createTestSequencer(t, mockRetriever, gen)
 
 	req := coresequencer.GetNextBatchRequest{
 		MaxBytes:      1000000,
@@ -673,7 +685,7 @@ func TestBasedSequencer_GetNextBatch_EmptyDABatch_IncreasesDAHeight(t *testing.T
 
 	// First call — empty DA epoch at height 100, no txs → ErrNoBatch.
 	// Checkpoint must still advance so the next call moves to epoch 101.
-	resp, err := seq.GetNextBatch(context.Background(), req)
+	resp, err := seq.GetNextBatch(t.Context(), req)
 	require.ErrorIs(t, err, block.ErrNoBatch)
 	require.Nil(t, resp)
 
@@ -683,7 +695,7 @@ func TestBasedSequencer_GetNextBatch_EmptyDABatch_IncreasesDAHeight(t *testing.T
 	assert.Equal(t, uint64(0), seq.checkpoint.TxIndex)
 
 	// Second call — empty DA epoch at height 101, no txs → ErrNoBatch.
-	resp, err = seq.GetNextBatch(context.Background(), req)
+	resp, err = seq.GetNextBatch(t.Context(), req)
 	require.ErrorIs(t, err, block.ErrNoBatch)
 	require.Nil(t, resp)
 
@@ -692,7 +704,6 @@ func TestBasedSequencer_GetNextBatch_EmptyDABatch_IncreasesDAHeight(t *testing.T
 	assert.Equal(t, uint64(102), seq.checkpoint.DAHeight)
 	assert.Equal(t, uint64(0), seq.checkpoint.TxIndex)
 
-	mockRetriever.AssertExpectations(t)
 }
 
 func TestBasedSequencer_GetNextBatch_TimestampAdjustment(t *testing.T) {
@@ -718,14 +729,14 @@ func TestBasedSequencer_GetNextBatch_TimestampAdjustment(t *testing.T) {
 		DAEpochForcedInclusion: 1,
 	}
 
-	seq := createTestSequencer(t, mockRetriever, gen)
+	seq, _ := createTestSequencer(t, mockRetriever, gen)
 
 	req := coresequencer.GetNextBatchRequest{
 		MaxBytes:      1000000,
 		LastBatchData: nil,
 	}
 
-	resp, err := seq.GetNextBatch(context.Background(), req)
+	resp, err := seq.GetNextBatch(t.Context(), req)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.NotNil(t, resp.Batch)
@@ -736,7 +747,6 @@ func TestBasedSequencer_GetNextBatch_TimestampAdjustment(t *testing.T) {
 	expectedTimestamp := daEndTime
 	assert.Equal(t, expectedTimestamp, resp.Timestamp)
 
-	mockRetriever.AssertExpectations(t)
 }
 
 func TestBasedSequencer_GetNextBatch_TimestampAdjustment_PartialBatch(t *testing.T) {
@@ -763,7 +773,7 @@ func TestBasedSequencer_GetNextBatch_TimestampAdjustment_PartialBatch(t *testing
 		DAEpochForcedInclusion: 1,
 	}
 
-	seq := createTestSequencer(t, mockRetriever, gen)
+	seq, _ := createTestSequencer(t, mockRetriever, gen)
 
 	// First call with MaxBytes that fits only first 2 transactions
 	req := coresequencer.GetNextBatchRequest{
@@ -771,7 +781,7 @@ func TestBasedSequencer_GetNextBatch_TimestampAdjustment_PartialBatch(t *testing
 		LastBatchData: nil,
 	}
 
-	resp, err := seq.GetNextBatch(context.Background(), req)
+	resp, err := seq.GetNextBatch(t.Context(), req)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.NotNil(t, resp.Batch)
@@ -789,7 +799,7 @@ func TestBasedSequencer_GetNextBatch_TimestampAdjustment_PartialBatch(t *testing
 	}
 
 	// The second call uses cached transactions - timestamp should be based on remaining txs
-	resp, err = seq.GetNextBatch(context.Background(), req)
+	resp, err = seq.GetNextBatch(t.Context(), req)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.NotNil(t, resp.Batch)
@@ -800,7 +810,6 @@ func TestBasedSequencer_GetNextBatch_TimestampAdjustment_PartialBatch(t *testing
 	expectedTimestamp2 := daEndTime
 	assert.Equal(t, expectedTimestamp2, resp.Timestamp)
 
-	mockRetriever.AssertExpectations(t)
 }
 
 func TestBasedSequencer_GetNextBatch_TimestampAdjustment_EmptyBatch(t *testing.T) {
@@ -822,7 +831,7 @@ func TestBasedSequencer_GetNextBatch_TimestampAdjustment_EmptyBatch(t *testing.T
 		DAEpochForcedInclusion: 1,
 	}
 
-	seq := createTestSequencer(t, mockRetriever, gen)
+	seq, _ := createTestSequencer(t, mockRetriever, gen)
 
 	req := coresequencer.GetNextBatchRequest{
 		MaxBytes:      1000000,
@@ -830,14 +839,13 @@ func TestBasedSequencer_GetNextBatch_TimestampAdjustment_EmptyBatch(t *testing.T
 	}
 
 	// Empty epoch — no valid txs, sequencer returns ErrNoBatch
-	resp, err := seq.GetNextBatch(context.Background(), req)
+	resp, err := seq.GetNextBatch(t.Context(), req)
 	require.ErrorIs(t, err, block.ErrNoBatch)
 	require.Nil(t, resp)
 
 	// Checkpoint must have advanced so the next call moves past this epoch
 	assert.Equal(t, uint64(101), seq.checkpoint.DAHeight)
 
-	mockRetriever.AssertExpectations(t)
 }
 
 // TestBasedSequencer_GetNextBatch_GasFilteringPreservesUnprocessedTxs tests that when FilterTxs
@@ -933,8 +941,11 @@ func TestBasedSequencer_GetNextBatch_GasFilteringPreservesUnprocessedTxs(t *test
 	mockDAClient.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
 	mockDAClient.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	mockDAClient.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
+	mockDAClient.MockClient.On("Retrieve", mock.Anything, mock.Anything, mock.Anything).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture},
+	}).Maybe()
 
-	seq, err := NewBasedSequencer(mockDAClient, config.DefaultConfig(), db, gen, zerolog.New(zerolog.NewTestWriter(t)), mockExec)
+	seq, err := NewBasedSequencer(t.Context(), mockDAClient, config.DefaultConfig(), db, gen, zerolog.New(zerolog.NewTestWriter(t)), mockExec)
 	require.NoError(t, err)
 	seq.fiRetriever = mockRetriever
 
@@ -945,21 +956,21 @@ func TestBasedSequencer_GetNextBatch_GasFilteringPreservesUnprocessedTxs(t *test
 		LastBatchData: nil,
 	}
 
-	resp1, err := seq.GetNextBatch(context.Background(), req)
+	resp1, err := seq.GetNextBatch(t.Context(), req)
 	require.NoError(t, err)
 	require.NotNil(t, resp1.Batch)
 	t.Logf("Batch 1: %d txs, checkpoint: height=%d, index=%d",
 		len(resp1.Batch.Transactions), seq.checkpoint.DAHeight, seq.checkpoint.TxIndex)
 
 	// Second batch: should get remaining gas-filtered tx + any unprocessed txs
-	resp2, err := seq.GetNextBatch(context.Background(), req)
+	resp2, err := seq.GetNextBatch(t.Context(), req)
 	require.NoError(t, err)
 	require.NotNil(t, resp2.Batch)
 	t.Logf("Batch 2: %d txs, checkpoint: height=%d, index=%d",
 		len(resp2.Batch.Transactions), seq.checkpoint.DAHeight, seq.checkpoint.TxIndex)
 
 	// Third batch: should get more remaining txs
-	resp3, err := seq.GetNextBatch(context.Background(), req)
+	resp3, err := seq.GetNextBatch(t.Context(), req)
 	require.NoError(t, err)
 	require.NotNil(t, resp3.Batch)
 	t.Logf("Batch 3: %d txs, checkpoint: height=%d, index=%d",

@@ -24,7 +24,7 @@ func TestNewForcedInclusionRetriever(t *testing.T) {
 		DAEpochForcedInclusion: 10,
 	}
 
-	retriever := NewForcedInclusionRetriever(context.Background(), client, zerolog.Nop(), 100*time.Millisecond, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), 100*time.Millisecond, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
 	assert.Assert(t, retriever != nil)
 	retriever.Stop()
 }
@@ -39,7 +39,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NoNamespace(t *testi
 		DAEpochForcedInclusion: 10,
 	}
 
-	retriever := NewForcedInclusionRetriever(context.Background(), client, zerolog.Nop(), 100*time.Millisecond, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), 100*time.Millisecond, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
 	defer retriever.Stop()
 	ctx := context.Background()
 
@@ -60,7 +60,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NotAtEpochStart(t *t
 		DAEpochForcedInclusion: 10,
 	}
 
-	retriever := NewForcedInclusionRetriever(context.Background(), client, zerolog.Nop(), 100*time.Millisecond, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), 100*time.Millisecond, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
 	defer retriever.Stop()
 	ctx := context.Background()
 
@@ -95,7 +95,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartSuccess(t 
 		DAEpochForcedInclusion: 1, // Single height epoch
 	}
 
-	retriever := NewForcedInclusionRetriever(context.Background(), client, zerolog.Nop(), 100*time.Millisecond, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), 100*time.Millisecond, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
 	defer retriever.Stop()
 	ctx := context.Background()
 
@@ -126,7 +126,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartNotAvailab
 		DAEpochForcedInclusion: 10,
 	}
 
-	retriever := NewForcedInclusionRetriever(context.Background(), client, zerolog.Nop(), 100*time.Millisecond, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), 100*time.Millisecond, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
 	defer retriever.Stop()
 	ctx := context.Background()
 
@@ -151,7 +151,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NoBlobsAtHeight(t *t
 		DAEpochForcedInclusion: 1, // Single height epoch
 	}
 
-	retriever := NewForcedInclusionRetriever(context.Background(), client, zerolog.Nop(), 100*time.Millisecond, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), 100*time.Millisecond, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
 	defer retriever.Stop()
 	ctx := context.Background()
 
@@ -191,7 +191,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_MultiHeightEpoch(t *
 		DAEpochForcedInclusion: 3, // Epoch: 100-102
 	}
 
-	retriever := NewForcedInclusionRetriever(context.Background(), client, zerolog.Nop(), 100*time.Millisecond, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), 100*time.Millisecond, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
 	defer retriever.Stop()
 	ctx := context.Background()
 
@@ -226,7 +226,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_ErrorHandling(t *tes
 		DAEpochForcedInclusion: 1, // Single height epoch
 	}
 
-	retriever := NewForcedInclusionRetriever(context.Background(), client, zerolog.Nop(), 100*time.Millisecond, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), 100*time.Millisecond, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
 	defer retriever.Stop()
 	ctx := context.Background()
 
@@ -253,7 +253,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EmptyBlobsSkipped(t 
 		DAEpochForcedInclusion: 1, // Single height epoch
 	}
 
-	retriever := NewForcedInclusionRetriever(context.Background(), client, zerolog.Nop(), 100*time.Millisecond, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), 100*time.Millisecond, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
 	defer retriever.Stop()
 	ctx := context.Background()
 
@@ -299,7 +299,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_OrderPreserved(t *te
 		DAEpochForcedInclusion: 3, // Epoch: 100-102
 	}
 
-	retriever := NewForcedInclusionRetriever(context.Background(), client, zerolog.Nop(), 100*time.Millisecond, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), 100*time.Millisecond, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
 	defer retriever.Stop()
 	ctx := context.Background()
 

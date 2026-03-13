@@ -174,6 +174,9 @@ func (f *asyncBlockRetriever) GetCachedBlock(ctx context.Context, daHeight uint6
 // HandleEvent caches blobs from the subscription inline, even empty ones,
 // to record that the DA height was seen and has 0 blobs.
 func (f *asyncBlockRetriever) HandleEvent(ctx context.Context, ev datypes.SubscriptionEvent, isInline bool) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	f.cacheBlock(ctx, ev.Height, ev.Timestamp, ev.Blobs)
 	if isInline {
 		return errors.New("async block retriever relies on catchup state machine")
@@ -184,6 +187,10 @@ func (f *asyncBlockRetriever) HandleEvent(ctx context.Context, ev datypes.Subscr
 // HandleCatchup fetches a single height via Retrieve and caches it.
 // Also applies the prefetch window for speculative forward fetching.
 func (f *asyncBlockRetriever) HandleCatchup(ctx context.Context, daHeight uint64) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	if _, err := f.cache.Get(ctx, newBlockDataKey(daHeight)); err != nil {
 		if err := f.fetchAndCacheBlock(ctx, daHeight); err != nil {
 			return err
@@ -208,8 +215,10 @@ func (f *asyncBlockRetriever) HandleCatchup(ctx context.Context, daHeight uint64
 
 // fetchAndCacheBlock fetches a block via Retrieve and caches it.
 func (f *asyncBlockRetriever) fetchAndCacheBlock(ctx context.Context, height uint64) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	f.logger.Debug().Uint64("height", height).Msg("prefetching block")
-
 	result := f.client.Retrieve(ctx, height, f.namespace)
 
 	switch result.Code {

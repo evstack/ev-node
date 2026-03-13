@@ -42,7 +42,6 @@ type ForcedInclusionEvent struct {
 // NewForcedInclusionRetriever creates a new forced inclusion retriever.
 // It internally creates and manages an AsyncBlockRetriever for background prefetching.
 func NewForcedInclusionRetriever(
-	ctx context.Context,
 	client Client,
 	logger zerolog.Logger,
 	daBlockTime time.Duration,

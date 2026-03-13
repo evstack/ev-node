@@ -292,25 +292,20 @@ func (r *daRetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedH
 		r.logger.Warn().Msg("strict mode: rejecting block that is not a fully valid envelope")
 		return nil
 	}
-	// Mode Switch Logic
-	if isValidEnvelope && !r.strictMode {
-		r.logger.Info().Uint64("height", header.Height()).Msg("valid DA envelope detected, switching to STRICT MODE")
-		r.strictMode = true
-	}
 
-	// Legacy blob support implies: strictMode == false AND (!isValidEnvelope).
-	// We fall through here.
-
-	// Basic validation
 	if err := header.Header.ValidateBasic(); err != nil {
 		r.logger.Debug().Err(err).Msg("invalid header structure")
 		return nil
 	}
 
-	// Check proposer
 	if err := r.assertExpectedProposer(header.ProposerAddress); err != nil {
 		r.logger.Debug().Err(err).Msg("unexpected proposer")
 		return nil
+	}
+
+	if isValidEnvelope && !r.strictMode {
+		r.logger.Info().Uint64("height", header.Height()).Msg("valid DA envelope detected, switching to STRICT MODE")
+		r.strictMode = true
 	}
 
 	// Optimistically mark as DA included

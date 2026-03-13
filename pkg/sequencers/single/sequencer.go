@@ -130,8 +130,8 @@ func NewSequencer(
 	// Determine initial DA height for forced inclusion
 	initialDAHeight := s.getInitialDAStartHeight(context.Background())
 
-	s.fiRetriever = block.NewForcedInclusionRetriever(context.Background(), daClient, cfg, logger, initialDAHeight, genesis.DAEpochForcedInclusion)
-
+	s.fiRetriever = block.NewForcedInclusionRetriever(daClient, cfg, logger, initialDAHeight, genesis.DAEpochForcedInclusion)
+	s.fiRetriever.Start(context.Background())
 	return s, nil
 }
 
@@ -202,7 +202,7 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 		if c.fiRetriever != nil {
 			c.fiRetriever.Stop()
 		}
-		c.fiRetriever = block.NewForcedInclusionRetriever(ctx, c.daClient, c.cfg, c.logger, c.getInitialDAStartHeight(ctx), c.genesis.DAEpochForcedInclusion)
+		c.fiRetriever = block.NewForcedInclusionRetriever(c.daClient, c.cfg, c.logger, c.getInitialDAStartHeight(ctx), c.genesis.DAEpochForcedInclusion)
 		c.fiRetriever.Start(ctx)
 	}
 

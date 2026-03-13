@@ -24,7 +24,6 @@ type SubscriberHandler interface {
 
 	// HandleCatchup is called for each height during sequential catchup.
 	// The subscriber advances localDAHeight only after this returns (true, nil).
-	// Returning (false, nil) rolls back localDAHeight without triggering a backoff.
 	// Returning an error rolls back localDAHeight and triggers a backoff retry.
 	HandleCatchup(ctx context.Context, height uint64) error
 }
@@ -93,7 +92,9 @@ func NewSubscriber(cfg SubscriberConfig) *Subscriber {
 	}
 	s.localDAHeight.Store(cfg.StartHeight)
 	s.highestSeenDAHeight.Store(cfg.StartHeight)
-	s.catchupSignal <- struct{}{}
+	if cfg.StartHeight != 0 {
+		s.catchupSignal <- struct{}{}
+	}
 
 	if len(s.namespaces) == 0 {
 		s.logger.Warn().Msg("no namespaces configured, subscriber will stay idle")
@@ -137,10 +138,6 @@ func (s *Subscriber) HighestSeenDAHeight() uint64 {
 func (s *Subscriber) HasReachedHead() bool {
 	return s.headReached.Load()
 }
-
-// ---------------------------------------------------------------------------
-// Follow loop
-// ---------------------------------------------------------------------------
 
 // signalCatchup sends a non-blocking signal to wake catchupLoop.
 func (s *Subscriber) signalCatchup() {

@@ -78,7 +78,7 @@ func newForcedInclusionSyncer(t *testing.T, daStart, epochSize uint64) (*Syncer,
 	client.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(subCh), nil).Maybe()
 
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(t.Context(), client, zerolog.Nop(), cfg.DA.BlockTime.Duration, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), cfg.DA.BlockTime.Duration, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
 	t.Cleanup(fiRetriever.Stop)
 
 	s := NewSyncer(
@@ -150,7 +150,7 @@ func TestVerifyForcedInclusionTxs_NamespaceNotConfigured(t *testing.T) {
 	subCh := make(chan datypes.SubscriptionEvent)
 	client.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(subCh), nil).Maybe()
 
-	fiRetriever := da.NewForcedInclusionRetriever(t.Context(), client, zerolog.Nop(), cfg.DA.BlockTime.Duration, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), cfg.DA.BlockTime.Duration, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
 	t.Cleanup(fiRetriever.Stop)
 
 	s := NewSyncer(

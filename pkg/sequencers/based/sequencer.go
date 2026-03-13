@@ -44,6 +44,7 @@ type BasedSequencer struct {
 
 // NewBasedSequencer creates a new based sequencer instance
 func NewBasedSequencer(
+	ctx context.Context,
 	daClient block.FullDAClient,
 	cfg config.Config,
 	db ds.Batching,
@@ -59,7 +60,7 @@ func NewBasedSequencer(
 	}
 
 	// Read state from the store to allow nodes to restart as based sequencers on a chain that had ran previously with a different sequencer type, and to initialize the timestamp floor for monotonicity guarantees after restart.
-	initCtx, initCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	initCtx, initCancel := context.WithTimeout(ctx, 10*time.Second)
 	defer initCancel()
 	s := store.New(store.NewEvNodeKVStore(db))
 	daStartHeight := genesis.DAStartHeight
@@ -71,7 +72,7 @@ func NewBasedSequencer(
 	bs.SetDAHeight(daStartHeight)
 
 	// Load checkpoint from DB, or initialize if none exists
-	loadCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	loadCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	checkpoint, err := bs.checkpointStore.Load(loadCtx)
@@ -97,7 +98,8 @@ func NewBasedSequencer(
 		}
 	}
 
-	bs.fiRetriever = block.NewForcedInclusionRetriever(context.Background(), daClient, cfg, logger, genesis.DAStartHeight, genesis.DAEpochForcedInclusion)
+	bs.fiRetriever = block.NewForcedInclusionRetriever(daClient, cfg, logger, genesis.DAStartHeight, genesis.DAEpochForcedInclusion)
+	bs.fiRetriever.Start(ctx)
 
 	return bs, nil
 }
@@ -112,6 +114,9 @@ func (s *BasedSequencer) SubmitBatchTxs(ctx context.Context, req coresequencer.S
 // GetNextBatch retrieves the next batch of transactions from the DA layer using the checkpoint
 // It treats DA as a queue and only persists where it is in processing
 func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextBatchRequest) (*coresequencer.GetNextBatchResponse, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	daHeight := s.GetDAHeight()
 
 	// If we have no cached transactions or we've consumed all from the current DA epoch,

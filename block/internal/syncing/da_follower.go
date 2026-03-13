@@ -89,10 +89,6 @@ func (f *daFollower) HasReachedHead() bool {
 	return f.subscriber.HasReachedHead()
 }
 
-// ---------------------------------------------------------------------------
-// SubscriberHandler implementation
-// ---------------------------------------------------------------------------
-
 // HandleEvent processes a subscription event. When the follower is
 // caught up (ev.Height == localDAHeight) and blobs are available, it processes
 // them inline — avoiding a DA re-fetch round trip. Otherwise, it just lets
@@ -177,10 +173,6 @@ func (f *daFollower) fetchAndPipeHeight(ctx context.Context, daHeight uint64) er
 
 	return nil
 }
-
-// ---------------------------------------------------------------------------
-// Priority queue (absorbed from DARetriever — refactoring #2)
-// ---------------------------------------------------------------------------
 
 // QueuePriorityHeight queues a DA height for priority retrieval.
 func (f *daFollower) QueuePriorityHeight(daHeight uint64) {
