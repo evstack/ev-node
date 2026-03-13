@@ -16,9 +16,7 @@ func (s *SpamoorSuite) TestSpamoorSmoke() {
 	w := newResultWriter(t, "SpamoorSmoke")
 	defer w.flush()
 
-	e := s.setupEnv(config{
-		serviceName: "ev-node-smoke",
-	})
+	e := s.setupEnv(newBenchConfig("ev-node-smoke"))
 	api := e.spamoorAPI
 
 	s.Require().NoError(deleteAllSpammers(api), "failed to delete stale spammers")

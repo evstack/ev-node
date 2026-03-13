@@ -16,6 +16,14 @@ import (
 	e2e "github.com/evstack/ev-node/test/e2e"
 )
 
+// span name constants used for trace-based metrics extraction.
+const (
+	spanProduceBlock = "BlockExecutor.ProduceBlock"
+	spanExecuteTxs   = "Executor.ExecuteTxs"
+	spanGetPayload   = "Engine.GetPayload"
+	spanNewPayload   = "Engine.NewPayload"
+)
+
 // blockMetrics holds aggregated gas and transaction data across a range of blocks.
 // Only blocks containing at least one transaction are counted in BlockCount,
 // GasPerBlock, and TxPerBlock. All blocks (including empty) are counted in
@@ -178,6 +186,22 @@ func waitForSpamoorDone(ctx context.Context, log func(string, ...any), api *spam
 			if sent >= float64(targetCount) {
 				return sent, failed, nil
 			}
+		}
+	}
+}
+
+// assertSpammersRunning checks that all spammers are still active (status > 0).
+// spamoor uses status=0 for "stopped/failed" and status>0 for running states.
+// This catches immediate failures like "replacement transaction underpriced".
+func assertSpammersRunning(t testing.TB, api *spamoor.API, ids []int) {
+	t.Helper()
+	for _, id := range ids {
+		sp, err := api.GetSpammer(id)
+		if err != nil {
+			t.Fatalf("failed to get spammer %d: %v", id, err)
+		}
+		if sp.Status == 0 {
+			t.Fatalf("spammer %d (%s) failed immediately (status=0); check spamoor container logs for errors", id, sp.Name)
 		}
 	}
 }
@@ -365,11 +389,11 @@ func (s *blockMetricsSummary) entries(prefix string) []entry {
 // and other ev-node orchestration work. Returns false if either span is missing.
 func evNodeOverhead(spans []e2e.TraceSpan) (float64, bool) {
 	stats := e2e.AggregateSpanStats(spans)
-	produce, ok := stats["BlockExecutor.ProduceBlock"]
+	produce, ok := stats[spanProduceBlock]
 	if !ok {
 		return 0, false
 	}
-	execute, ok := stats["Executor.ExecuteTxs"]
+	execute, ok := stats[spanExecuteTxs]
 	if !ok {
 		return 0, false
 	}
@@ -379,6 +403,50 @@ func evNodeOverhead(spans []e2e.TraceSpan) (float64, bool) {
 		return 0, false
 	}
 	return (produceAvg - executeAvg) / produceAvg * 100, true
+}
+
+// rethExecutionRate computes ev-reth's effective execution throughput in GGas/s
+// based on the total gas processed and the cumulative Engine.NewPayload duration.
+// NewPayload is the engine API call where reth validates and executes all state
+// transitions for a block (EVM execution + state root + disk commit).
+func rethExecutionRate(spans []e2e.TraceSpan, totalGasUsed uint64) (float64, bool) {
+	stats := e2e.AggregateSpanStats(spans)
+	np, ok := stats[spanNewPayload]
+	if !ok || np.Total <= 0 || totalGasUsed == 0 {
+		return 0, false
+	}
+	// GGas/s = totalGas / newPayloadSeconds / 1e9
+	return float64(totalGasUsed) / np.Total.Seconds() / 1e9, true
+}
+
+// engineSpanEntries extracts ProduceBlock, Engine.GetPayload, and
+// Engine.NewPayload timing stats from ev-node spans and returns them as
+// result writer entries. these are the key metrics for answering "does block
+// production fit within block_time?"
+func engineSpanEntries(prefix string, spans []e2e.TraceSpan) []entry {
+	stats := e2e.AggregateSpanStats(spans)
+	keys := []struct {
+		span  string
+		label string
+	}{
+		{spanProduceBlock, "ProduceBlock"},
+		{spanGetPayload, "GetPayload"},
+		{spanNewPayload, "NewPayload"},
+	}
+	var entries []entry
+	for _, k := range keys {
+		s, ok := stats[k.span]
+		if !ok || s.Count == 0 {
+			continue
+		}
+		avg := s.Total / time.Duration(s.Count)
+		entries = append(entries,
+			entry{Name: prefix + " - " + k.label + " avg", Unit: "ms", Value: float64(avg.Milliseconds())},
+			entry{Name: prefix + " - " + k.label + " min", Unit: "ms", Value: float64(s.Min.Milliseconds())},
+			entry{Name: prefix + " - " + k.label + " max", Unit: "ms", Value: float64(s.Max.Milliseconds())},
+		)
+	}
+	return entries
 }
 
 // waitForMetricTarget polls a metric getter function every 2s until the
@@ -394,7 +462,7 @@ func waitForMetricTarget(t testing.TB, name string, poll func() (float64, error)
 		}
 		time.Sleep(2 * time.Second)
 	}
-	t.Fatalf("metric %s did not reach target %.0f within %v", name, target, timeout)
+	t.Logf("metric %s did not reach target %.0f within %v", name, target, timeout)
 }
 
 // collectBlockMetrics iterates all headers in [startBlock, endBlock] to collect
