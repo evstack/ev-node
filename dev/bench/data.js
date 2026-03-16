@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1773661625945,
+  "lastUpdate": 1773680667954,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -2916,6 +2916,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 165710,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "alpe@users.noreply.github.com",
+            "name": "Alexander Peters",
+            "username": "alpe"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "9dfa0d5e50718366210bc65795bec6008d119b7b",
+          "message": "fix: Strict raft state (#3167)\n\n* Strict raft state\n\n* Changelog",
+          "timestamp": "2026-03-16T16:44:25Z",
+          "tree_id": "0431f2bf8d9f9c306a6666c91f31fc3fe8ac8321",
+          "url": "https://github.com/evstack/ev-node/commit/9dfa0d5e50718366210bc65795bec6008d119b7b"
+        },
+        "date": 1773680657616,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 917253224,
+            "unit": "ns/op\t33407376 B/op\t  190939 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 917253224,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 33407376,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 190939,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
