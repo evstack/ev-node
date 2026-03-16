@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1773680670089,
+  "lastUpdate": 1773701159030,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -2964,6 +2964,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 190939,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "6f1d5395c520722806abfec8c35d23f756014450",
+          "message": "build(deps): Bump actions/download-artifact from 8.0.0 to 8.0.1 in the patch-updates group (#3169)\n\nbuild(deps): Bump actions/download-artifact in the patch-updates group\n\nBumps the patch-updates group with 1 update: [actions/download-artifact](https://github.com/actions/download-artifact).\n\n\nUpdates `actions/download-artifact` from 8.0.0 to 8.0.1\n- [Release notes](https://github.com/actions/download-artifact/releases)\n- [Commits](https://github.com/actions/download-artifact/compare/v8...v8.0.1)\n\n---\nupdated-dependencies:\n- dependency-name: actions/download-artifact\n  dependency-version: 8.0.1\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: patch-updates\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-03-16T23:41:58+01:00",
+          "tree_id": "8797000d9e9d67c5392696420e9b48d52b6a4d7a",
+          "url": "https://github.com/evstack/ev-node/commit/6f1d5395c520722806abfec8c35d23f756014450"
+        },
+        "date": 1773701156231,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 894873834,
+            "unit": "ns/op\t31573956 B/op\t  175288 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 894873834,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 31573956,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 175288,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
