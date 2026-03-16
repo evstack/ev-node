@@ -262,6 +262,53 @@ func TestAsyncBlockRetriever_ReconnectOnSubscriptionError(t *testing.T) {
 	assert.Equal(t, []byte("reconnect-tx"), block.Blobs[0])
 }
 
+func TestAsyncBlockRetriever_FetchAndCacheBlock_ErrorResponse(t *testing.T) {
+	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
+	specs := map[string]struct {
+		code    datypes.StatusCode
+		message string
+		wantErr string
+	}{
+		"status_error": {
+			code:    datypes.StatusError,
+			message: "rpc failure",
+			wantErr: "retrieve block at height 123: rpc failure",
+		},
+		"status_context_deadline": {
+			code:    datypes.StatusContextDeadline,
+			message: "timeout",
+			wantErr: "retrieve block at height 123: timeout",
+		},
+	}
+
+	for name, spec := range specs {
+		t.Run(name, func(t *testing.T) {
+			client := &mocks.MockClient{}
+			client.
+				On("Retrieve", mock.Anything, uint64(123), fiNs).
+				Return(datypes.ResultRetrieve{
+					BaseResult: datypes.BaseResult{
+						Code:    spec.code,
+						Message: spec.message,
+					},
+				}).
+				Once()
+
+			logger := zerolog.Nop()
+			fetcher := NewAsyncBlockRetriever(client, logger, fiNs, 100*time.Millisecond, 100, 10).(*asyncBlockRetriever)
+
+			err := fetcher.fetchAndCacheBlock(t.Context(), 123)
+			require.EqualError(t, err, spec.wantErr)
+
+			block, getErr := fetcher.GetCachedBlock(t.Context(), 123)
+			require.NoError(t, getErr)
+			assert.Nil(t, block)
+
+			client.AssertExpectations(t)
+		})
+	}
+}
+
 func TestBlockData_Serialization(t *testing.T) {
 	block := &BlockData{
 		Height:    100,

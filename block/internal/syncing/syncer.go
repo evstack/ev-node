@@ -236,11 +236,13 @@ func (s *Syncer) Stop(ctx context.Context) error {
 	s.cancel()
 	s.cancelP2PWait(0)
 
-	// Stop the DA follower first (it owns its own goroutines).
+	if s.fiRetriever != nil {
+		s.fiRetriever.Stop()
+	}
+
 	if s.daFollower != nil {
 		s.daFollower.Stop()
 	}
-
 	s.wg.Wait()
 
 	// Skip draining if we're shutting down due to a critical error (e.g. execution

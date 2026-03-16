@@ -240,6 +240,7 @@ func (f *asyncBlockRetriever) fetchAndCacheBlock(ctx context.Context, height uin
 			Uint64("height", height).
 			Str("status", result.Message).
 			Msg("failed to retrieve block - will retry")
+		return fmt.Errorf("retrieve block at height %d: %s", height, result.Message)
 	}
 	return nil
 }
