@@ -55,6 +55,7 @@ linters:
     gosec:
       excludes:
         - G115
+        - G118
     revive:
       rules:
         - name: package-comments

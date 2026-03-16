@@ -161,11 +161,11 @@ func TestDARetriever_ProcessBlobs_HeaderAndData_Success(t *testing.T) {
 	assert.Equal(t, uint64(2), events[0].Data.Height())
 	assert.Equal(t, uint64(77), events[0].DaHeight)
 
-	hHeight, ok := r.cache.GetHeaderDAIncluded(events[0].Header.Hash().String())
+	hHeight, ok := r.cache.GetHeaderDAIncludedByHash(events[0].Header.Hash().String())
 	assert.True(t, ok)
 	assert.Equal(t, uint64(77), hHeight)
 
-	dHeight, ok := r.cache.GetDataDAIncluded(events[0].Data.DACommitment().String())
+	dHeight, ok := r.cache.GetDataDAIncludedByHash(events[0].Data.DACommitment().String())
 	assert.True(t, ok)
 	assert.Equal(t, uint64(77), dHeight)
 }
@@ -185,12 +185,12 @@ func TestDARetriever_ProcessBlobs_HeaderOnly_EmptyDataExpected(t *testing.T) {
 	assert.NotNil(t, events[0].Data)
 	assert.Equal(t, uint64(88), events[0].DaHeight)
 
-	hHeight, ok := r.cache.GetHeaderDAIncluded(events[0].Header.Hash().String())
+	hHeight, ok := r.cache.GetHeaderDAIncludedByHash(events[0].Header.Hash().String())
 	assert.True(t, ok)
 	assert.Equal(t, uint64(88), hHeight)
 
 	// empty data is not marked as data included (the submitter component does handle the empty data case)
-	_, ok = r.cache.GetDataDAIncluded(events[0].Data.DACommitment().String())
+	_, ok = r.cache.GetDataDAIncludedByHash(events[0].Data.DACommitment().String())
 	assert.False(t, ok)
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	libshare "github.com/celestiaorg/go-square/v3/share"
 	"github.com/filecoin-project/go-jsonrpc"
@@ -23,7 +24,17 @@ func (c *Client) Close() {
 	}
 }
 
-// NewClient connects to the celestia-node RPC endpoint
+// httpToWS converts an HTTP(S) URL to a WebSocket URL.
+func httpToWS(addr string) string {
+	addr = strings.Replace(addr, "https://", "wss://", 1)
+	addr = strings.Replace(addr, "http://", "ws://", 1)
+	return addr
+}
+
+// NewClient connects to the DA RPC endpoint using the address as-is.
+// Uses HTTP by default (lazy connection — only connects on first RPC call).
+// Does NOT support channel-based subscriptions (e.g. Subscribe).
+// For subscription support, use NewWSClient instead.
 func NewClient(ctx context.Context, addr, token string, authHeaderName string) (*Client, error) {
 	var httpHeader http.Header
 	if token != "" {
@@ -55,6 +66,15 @@ func NewClient(ctx context.Context, addr, token string, authHeaderName string) (
 	}
 
 	return &cl, nil
+}
+
+// NewWSClient connects to the DA RPC endpoint over WebSocket.
+// Automatically converts http:// to ws:// (and https:// to wss://).
+// Supports channel-based subscriptions (e.g. Subscribe).
+// Note: WebSocket connections are eager — they connect at creation time
+// and will fail immediately if the server is unavailable.
+func NewWSClient(ctx context.Context, addr, token string, authHeaderName string) (*Client, error) {
+	return NewClient(ctx, httpToWS(addr), token, authHeaderName)
 }
 
 // BlobAPI mirrors celestia-node's blob module (nodebuilder/blob/blob.go).

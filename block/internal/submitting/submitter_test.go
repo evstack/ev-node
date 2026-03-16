@@ -124,7 +124,7 @@ func TestSubmitter_IsHeightDAIncluded(t *testing.T) {
 
 	h1, d1 := newHeaderAndData("chain", 3, true)
 	h2, d2 := newHeaderAndData("chain", 4, true)
-	h3, d3 := newHeaderAndData("chain", 2, true) // already DA included, cache was cleared
+	_, d3 := newHeaderAndData("chain", 2, true) // already DA included, cache was cleared
 
 	cm.SetHeaderDAIncluded(h1.Hash().String(), 100, 3)
 	cm.SetDataDAIncluded(d1.DACommitment().String(), 100, 3)
@@ -134,21 +134,20 @@ func TestSubmitter_IsHeightDAIncluded(t *testing.T) {
 
 	specs := map[string]struct {
 		height uint64
-		header *types.SignedHeader
 		data   *types.Data
 		exp    bool
 		expErr bool
 	}{
-		"below store height and cached":          {height: 3, header: h1, data: d1, exp: true},
-		"above store height":                     {height: 6, header: h2, data: d2, exp: false},
-		"data missing":                           {height: 4, header: h2, data: d2, exp: false},
-		"at daIncludedHeight - cache cleared":    {height: 2, header: h3, data: d3, exp: true},
-		"below daIncludedHeight - cache cleared": {height: 1, header: h3, data: d3, exp: true},
+		"below store height and cached":          {height: 3, data: d1, exp: true},
+		"above store height":                     {height: 6, data: d2, exp: false},
+		"data missing":                           {height: 4, data: d2, exp: false},
+		"at daIncludedHeight - cache cleared":    {height: 2, data: d3, exp: true},
+		"below daIncludedHeight - cache cleared": {height: 1, data: d3, exp: true},
 	}
 
 	for name, spec := range specs {
 		t.Run(name, func(t *testing.T) {
-			included, err := s.IsHeightDAIncluded(spec.height, spec.header, spec.data)
+			included, err := s.IsHeightDAIncluded(spec.height, spec.data)
 			if spec.expErr {
 				require.Error(t, err)
 				return
@@ -200,7 +199,7 @@ func TestSubmitter_setSequencerHeightToDAHeight(t *testing.T) {
 	mockStore.On("SetMetadata", mock.Anything, dataKey, dBz).Return(nil).Once()
 	mockStore.On("SetMetadata", mock.Anything, store.GenesisDAHeightKey, gBz).Return(nil).Once()
 
-	require.NoError(t, s.setNodeHeightToDAHeight(ctx, 1, h, d, true))
+	require.NoError(t, s.setNodeHeightToDAHeight(ctx, 1, d, true))
 }
 
 func TestSubmitter_setNodeHeightToDAHeight_Errors(t *testing.T) {
@@ -212,13 +211,13 @@ func TestSubmitter_setNodeHeightToDAHeight_Errors(t *testing.T) {
 	h, d := newHeaderAndData("chain", 1, true)
 
 	// No cache entries -> expect error on missing header
-	_, ok := cm.GetHeaderDAIncluded(h.Hash().String())
+	_, ok := cm.GetHeaderDAIncludedByHash(h.Hash().String())
 	assert.False(t, ok)
-	assert.Error(t, s.setNodeHeightToDAHeight(ctx, 1, h, d, false))
+	assert.Error(t, s.setNodeHeightToDAHeight(ctx, 1, d, false))
 
 	// Add header, missing data
 	cm.SetHeaderDAIncluded(h.Hash().String(), 10, 1)
-	assert.Error(t, s.setNodeHeightToDAHeight(ctx, 1, h, d, false))
+	assert.Error(t, s.setNodeHeightToDAHeight(ctx, 1, d, false))
 }
 
 func TestSubmitter_initializeDAIncludedHeight(t *testing.T) {
@@ -538,10 +537,10 @@ func TestSubmitter_CacheClearedOnHeightInclusion(t *testing.T) {
 	assert.False(t, cm.IsDataSeen(d2.DACommitment().String()), "height 2 data should be cleared from cache")
 
 	// Verify DA inclusion status is removed for processed heights (cleaned up after finalization)
-	_, h1DAIncluded := cm.GetHeaderDAIncluded(h1.Hash().String())
-	_, d1DAIncluded := cm.GetDataDAIncluded(d1.DACommitment().String())
-	_, h2DAIncluded := cm.GetHeaderDAIncluded(h2.Hash().String())
-	_, d2DAIncluded := cm.GetDataDAIncluded(d2.DACommitment().String())
+	_, h1DAIncluded := cm.GetHeaderDAIncludedByHash(h1.Hash().String())
+	_, d1DAIncluded := cm.GetDataDAIncludedByHash(d1.DACommitment().String())
+	_, h2DAIncluded := cm.GetHeaderDAIncludedByHash(h2.Hash().String())
+	_, d2DAIncluded := cm.GetDataDAIncludedByHash(d2.DACommitment().String())
 	assert.False(t, h1DAIncluded, "height 1 header DA inclusion status should be removed after finalization")
 	assert.False(t, d1DAIncluded, "height 1 data DA inclusion status should be removed after finalization")
 	assert.False(t, h2DAIncluded, "height 2 header DA inclusion status should be removed after finalization")
@@ -552,8 +551,210 @@ func TestSubmitter_CacheClearedOnHeightInclusion(t *testing.T) {
 	assert.True(t, cm.IsDataSeen(d3.DACommitment().String()), "height 3 data should remain in cache")
 
 	// Verify height 3 has no DA inclusion status since it wasn't processed
-	_, h3DAIncluded := cm.GetHeaderDAIncluded(h3.Hash().String())
-	_, d3DAIncluded := cm.GetDataDAIncluded(d3.DACommitment().String())
+	_, h3DAIncluded := cm.GetHeaderDAIncludedByHash(h3.Hash().String())
+	_, d3DAIncluded := cm.GetDataDAIncludedByHash(d3.DACommitment().String())
 	assert.False(t, h3DAIncluded, "height 3 header should not have DA inclusion status")
 	assert.False(t, d3DAIncluded, "height 3 data should not have DA inclusion status")
+}
+
+// TestSubmitter_IsHeightDAIncluded_AfterRestart proves that IsHeightDAIncluded
+// returns true for in-flight blocks immediately after a restart, before the DA
+// retriever has had a chance to re-fire SetHeaderDAIncluded with the real
+// content hash.
+//
+// Scenario:
+//  1. Node runs normally: heights 1–3 are DA-included, height 3 is in-flight
+//     (submitted to DA but not yet finalized).  SetHeaderDAIncluded writes both
+//     the real-hash entry AND the snapshot key.
+//  2. Node restarts: a fresh Manager is constructed on the same store.
+//     RestoreFromStore reads the snapshot and installs placeholder entries
+//     keyed by height (not by content hash).
+//  3. processDAInclusionLoop calls IsHeightDAIncluded(3, h3, d3) BEFORE the
+//     DA retriever has re-fired SetHeaderDAIncluded("realHash3", …).
+//     Without the height-based fallback this would return false and stall.
+//  4. With the fallback it finds the placeholder, returns true, and the loop
+//     can advance.
+func TestSubmitter_IsHeightDAIncluded_AfterRestart(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+
+	// ── Step 1: pre-restart state ─────────────────────────────────────────────
+	// Build a store with three blocks and a cache that has height 3 in-flight.
+	ds1 := dssync.MutexWrap(datastore.NewMapDatastore())
+	st1 := store.New(ds1)
+	cm1, err := cache.NewManager(config.DefaultConfig(), st1, zerolog.Nop())
+	require.NoError(t, err)
+
+	h1, d1 := newHeaderAndData("chain", 1, true)
+	h2, d2 := newHeaderAndData("chain", 2, true)
+	h3, d3 := newHeaderAndData("chain", 3, true)
+
+	sig := types.Signature([]byte("sig"))
+	for _, blk := range []struct {
+		h   *types.SignedHeader
+		d   *types.Data
+		hgt uint64
+	}{
+		{h1, d1, 1},
+		{h2, d2, 2},
+		{h3, d3, 3},
+	} {
+		batch, err := st1.NewBatch(ctx)
+		require.NoError(t, err)
+		require.NoError(t, batch.SaveBlockData(blk.h, blk.d, &sig))
+		require.NoError(t, batch.SetHeight(blk.hgt))
+		require.NoError(t, batch.Commit())
+	}
+
+	// Heights 1 and 2 are fully finalized; height 3 is in-flight.
+	cm1.SetHeaderDAIncluded(h1.Hash().String(), 10, 1)
+	cm1.SetDataDAIncluded(d1.DACommitment().String(), 10, 1)
+	cm1.SetHeaderDAIncluded(h2.Hash().String(), 11, 2)
+	cm1.SetDataDAIncluded(d2.DACommitment().String(), 11, 2)
+	cm1.SetHeaderDAIncluded(h3.Hash().String(), 12, 3) // in-flight
+	cm1.SetDataDAIncluded(d3.DACommitment().String(), 12, 3)
+
+	// Persist the snapshot (already done by setDAIncluded on every mutation,
+	// but call SaveToStore explicitly to be clear about what survives restart).
+	require.NoError(t, cm1.SaveToStore())
+
+	// Persist DAIncludedHeight = 2 (heights 1 & 2 finalized, 3 is in-flight).
+	daIncBz := make([]byte, 8)
+	binary.LittleEndian.PutUint64(daIncBz, 2)
+	require.NoError(t, st1.SetMetadata(ctx, store.DAIncludedHeightKey, daIncBz))
+
+	// ── Step 2: simulate restart ──────────────────────────────────────────────
+	// Build a fresh Manager on the SAME underlying datastore.  This exercises
+	// the RestoreFromStore → snapshot-decode path.  The DA retriever has NOT
+	// yet re-fired SetHeaderDAIncluded with the real hashes.
+	cm2, err := cache.NewManager(config.DefaultConfig(), st1, zerolog.Nop())
+	require.NoError(t, err)
+
+	daIncludedHeight := &atomic.Uint64{}
+	daIncludedHeight.Store(2) // matches what was persisted above
+
+	s := &Submitter{
+		store:            st1,
+		cache:            cm2,
+		logger:           zerolog.Nop(),
+		daIncludedHeight: daIncludedHeight,
+		ctx:              ctx,
+	}
+
+	// ── Step 3: check IsHeightDAIncluded BEFORE DA retriever re-fires ─────────
+	// Height 3 is in-flight: above daIncludedHeight (2) so we can't short-circuit.
+	// The real hashes are NOT in cm2 yet — only the snapshot placeholders are.
+	_, realHeaderFound := cm2.GetHeaderDAIncludedByHash(h3.Hash().String())
+	assert.False(t, realHeaderFound, "real hash must not be present before DA retriever re-fires")
+
+	included, err := s.IsHeightDAIncluded(3, d3)
+	require.NoError(t, err)
+	assert.True(t, included,
+		"IsHeightDAIncluded must return true for in-flight height using snapshot placeholder, "+
+			"before DA retriever re-fires SetHeaderDAIncluded")
+
+	// ── Step 4: after DA retriever re-fires, real hash lookup also works ──────
+	cm2.SetHeaderDAIncluded(h3.Hash().String(), 12, 3)
+	cm2.SetDataDAIncluded(d3.DACommitment().String(), 12, 3)
+
+	_, realHeaderFound = cm2.GetHeaderDAIncludedByHash(h3.Hash().String())
+	assert.True(t, realHeaderFound, "real hash must be present after DA retriever re-fires")
+
+	included, err = s.IsHeightDAIncluded(3, d3)
+	require.NoError(t, err)
+	assert.True(t, included, "IsHeightDAIncluded must still return true after real hash is written")
+}
+
+// TestSubmitter_setNodeHeightToDAHeight_AfterRestart proves that
+// setNodeHeightToDAHeight succeeds for an in-flight block immediately after a
+// restart, before the DA retriever has re-fired SetHeaderDAIncluded with the
+// real content hash.
+//
+// The bug this guards against:
+//   - Snapshot encodes [blockHeight → daHeight] pairs, not real content hashes.
+//   - On restart, RestoreFromStore installs placeholder keys (indexed by height).
+//   - setNodeHeightToDAHeight uses GetHeaderDAIncludedByHeight which resolves
+//     the placeholder entry directly, so it succeeds before the DA retriever
+//     re-fires SetHeaderDAIncluded with the real content hash.
+//     metadata and DAIncludedHeight never advances.
+//   - With GetHeaderDAIncludedByHeight / GetDataDAIncludedByHeight the lookup
+//     succeeds via the placeholder and the metadata is written correctly.
+func TestSubmitter_setNodeHeightToDAHeight_AfterRestart(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+
+	// ── Step 1: pre-restart — write snapshot with height 3 in-flight ─────────
+	ds1 := dssync.MutexWrap(datastore.NewMapDatastore())
+	st1 := store.New(ds1)
+	cm1, err := cache.NewManager(config.DefaultConfig(), st1, zerolog.Nop())
+	require.NoError(t, err)
+
+	h3, d3 := newHeaderAndData("chain", 3, true)
+
+	sig := types.Signature([]byte("sig"))
+	batch, err := st1.NewBatch(ctx)
+	require.NoError(t, err)
+	require.NoError(t, batch.SaveBlockData(h3, d3, &sig))
+	require.NoError(t, batch.SetHeight(3))
+	require.NoError(t, batch.Commit())
+
+	// Mark height 3 as DA-included in the pre-restart cache, then flush (shutdown).
+	cm1.SetHeaderDAIncluded(h3.Hash().String(), 12, 3)
+	cm1.SetDataDAIncluded(d3.DACommitment().String(), 12, 3)
+	require.NoError(t, cm1.SaveToStore())
+
+	// Persist DAIncludedHeight = 2 (height 3 is in-flight, not yet finalized).
+	daIncBz := make([]byte, 8)
+	binary.LittleEndian.PutUint64(daIncBz, 2)
+	require.NoError(t, st1.SetMetadata(ctx, store.DAIncludedHeightKey, daIncBz))
+
+	// ── Step 2: simulate restart — fresh Manager, no DA retriever re-fire ─────
+	cm2, err := cache.NewManager(config.DefaultConfig(), st1, zerolog.Nop())
+	require.NoError(t, err)
+
+	// Confirm the real content hashes are NOT present after restore.
+	_, realHdrFound := cm2.GetHeaderDAIncludedByHash(h3.Hash().String())
+	_, realDataFound := cm2.GetDataDAIncludedByHash(d3.DACommitment().String())
+	require.False(t, realHdrFound, "real header hash must not be in cache before DA retriever re-fires")
+	require.False(t, realDataFound, "real data hash must not be in cache before DA retriever re-fires")
+
+	daIncludedHeight := &atomic.Uint64{}
+	daIncludedHeight.Store(2)
+
+	s := &Submitter{
+		store:            st1,
+		cache:            cm2,
+		logger:           zerolog.Nop(),
+		daIncludedHeight: daIncludedHeight,
+		ctx:              ctx,
+	}
+
+	// ── Step 3: call setNodeHeightToDAHeight — must succeed via fallback ──────
+	// Before this fix, GetHeaderDAIncludedByHash(realHash) would miss and the function
+	// would return an error, stalling processDAInclusionLoop.
+	err = s.setNodeHeightToDAHeight(ctx, 3, d3, false)
+	require.NoError(t, err,
+		"setNodeHeightToDAHeight must succeed via height-based lookup before DA retriever re-fires")
+
+	// ── Step 4: verify the HeightToDAHeight metadata was written correctly ─────
+	headerDABz, err := st1.GetMetadata(ctx, store.GetHeightToDAHeightHeaderKey(3))
+	require.NoError(t, err)
+	require.Len(t, headerDABz, 8)
+	assert.Equal(t, uint64(12), binary.LittleEndian.Uint64(headerDABz),
+		"header HeightToDAHeight metadata must reflect the DA height from the snapshot")
+
+	dataDABz, err := st1.GetMetadata(ctx, store.GetHeightToDAHeightDataKey(3))
+	require.NoError(t, err)
+	require.Len(t, dataDABz, 8)
+	assert.Equal(t, uint64(12), binary.LittleEndian.Uint64(dataDABz),
+		"data HeightToDAHeight metadata must reflect the DA height from the snapshot")
+
+	// ── Step 5: after DA retriever re-fires, the real-hash path still works ───
+	cm2.SetHeaderDAIncluded(h3.Hash().String(), 12, 3)
+	cm2.SetDataDAIncluded(d3.DACommitment().String(), 12, 3)
+
+	err = s.setNodeHeightToDAHeight(ctx, 3, d3, false)
+	require.NoError(t, err, "setNodeHeightToDAHeight must still work once real hashes are populated")
 }

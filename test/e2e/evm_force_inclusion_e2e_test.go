@@ -238,8 +238,10 @@ func TestEvmFullNodeForceInclusionE2E(t *testing.T) {
 	// --- End Sequencer Setup ---
 
 	// --- Start Full Node Setup ---
+	// Get sequencer's full P2P address (including peer ID) for the full node to connect to
+	sequencerP2PAddress := getNodeP2PAddress(t, sut, sequencerHome, env.Endpoints.RollkitRPCPort)
 	// Reuse setupFullNode helper which handles genesis copying and node startup
-	setupFullNode(t, sut, fullNodeHome, sequencerHome, env.FullNodeJWT, env.GenesisHash, env.Endpoints.GetRollkitP2PAddress(), env.Endpoints)
+	setupFullNode(t, sut, fullNodeHome, sequencerHome, env.FullNodeJWT, env.GenesisHash, sequencerP2PAddress, env.Endpoints)
 	t.Log("Full node is up")
 	// --- End Full Node Setup ---
 

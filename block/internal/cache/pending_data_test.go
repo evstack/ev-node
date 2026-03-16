@@ -15,7 +15,7 @@ import (
 func TestPendingData_BasicFlow(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	store := memStore(t)
+	store := testMemStore(t)
 
 	// three blocks with transactions
 	chainID := "pd-basic"
@@ -62,7 +62,7 @@ func TestPendingData_BasicFlow(t *testing.T) {
 func TestPendingData_AdvancesPastEmptyData(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	store := memStore(t)
+	store := testMemStore(t)
 
 	// Create blocks: non-empty, empty, empty, non-empty
 	chainID := "pd-empty"
@@ -108,7 +108,7 @@ func TestPendingData_AdvancesPastEmptyData(t *testing.T) {
 func TestPendingData_AdvancesPastAllEmptyToEnd(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	store := memStore(t)
+	store := testMemStore(t)
 
 	// Create blocks: non-empty, empty, empty (all remaining are empty)
 	chainID := "pd-all-empty"
@@ -144,7 +144,7 @@ func TestPendingData_AdvancesPastAllEmptyToEnd(t *testing.T) {
 func TestPendingData_AdvancesPastEmptyAtStart(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	store := memStore(t)
+	store := testMemStore(t)
 
 	// Create blocks: empty, empty, non-empty
 	chainID := "pd-empty-start"
@@ -206,7 +206,7 @@ func TestPendingData_InitFromMetadata(t *testing.T) {
 func TestPendingData_GetPending_PropagatesFetchError(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	store := memStore(t)
+	store := testMemStore(t)
 
 	// Set height to 1 but do not save any block data
 	batch, err := store.NewBatch(ctx)

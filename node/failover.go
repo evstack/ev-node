@@ -255,7 +255,7 @@ func (f *failoverState) runCatchupPhase(ctx context.Context) error {
 	if err := f.bc.Syncer.Start(ctx); err != nil {
 		return fmt.Errorf("catchup syncer start: %w", err)
 	}
-	defer f.bc.Syncer.Stop() // nolint:errcheck // not critical
+	defer f.bc.Syncer.Stop(context.Background()) // nolint:errcheck,contextcheck // not critical
 
 	caughtUp, err := f.waitForCatchup(ctx)
 	if err != nil {

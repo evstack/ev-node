@@ -267,6 +267,8 @@ type blockMetricsSummary struct {
 	AvgTx float64
 	// BlocksPerSec is non-empty blocks / steady-state seconds.
 	BlocksPerSec float64
+	// AvgBlockInterval is the mean time between all consecutive blocks.
+	AvgBlockInterval time.Duration
 	// NonEmptyRatio is (non-empty blocks / total blocks) * 100.
 	NonEmptyRatio float64
 }
@@ -287,6 +289,15 @@ func (m *blockMetrics) summarize() *blockMetricsSummary {
 		achievedTPS = float64(m.TotalTxCount) / ss.Seconds()
 	}
 
+	var avgBlockInterval time.Duration
+	if len(m.BlockIntervals) > 0 {
+		var total time.Duration
+		for _, d := range m.BlockIntervals {
+			total += d
+		}
+		avgBlockInterval = total / time.Duration(len(m.BlockIntervals))
+	}
+
 	return &blockMetricsSummary{
 		SteadyState:   ss,
 		AchievedMGas:  mgasPerSec(m.TotalGasUsed, ss),
@@ -300,8 +311,9 @@ func (m *blockMetrics) summarize() *blockMetricsSummary {
 		TxP99:         txP99,
 		AvgGas:        m.avgGasPerBlock(),
 		AvgTx:         m.avgTxPerBlock(),
-		BlocksPerSec:  blocksPerSec,
-		NonEmptyRatio: m.nonEmptyRatio(),
+		BlocksPerSec:     blocksPerSec,
+		AvgBlockInterval: avgBlockInterval,
+		NonEmptyRatio:    m.nonEmptyRatio(),
 	}
 }
 
@@ -312,8 +324,8 @@ func (m *blockMetrics) summarize() *blockMetricsSummary {
 func (s *blockMetricsSummary) log(t testing.TB, startBlock, endBlock uint64, totalBlocks, nonEmptyBlocks int, wallClock time.Duration) {
 	t.Logf("block range: %d-%d (%d total, %d non-empty, %.1f%% non-empty)",
 		startBlock, endBlock, totalBlocks, nonEmptyBlocks, s.NonEmptyRatio)
-	t.Logf("block intervals: p50=%s, p99=%s, max=%s",
-		s.IntervalP50.Round(time.Millisecond), s.IntervalP99.Round(time.Millisecond), s.IntervalMax.Round(time.Millisecond))
+	t.Logf("block intervals: avg=%s, p50=%s, p99=%s, max=%s",
+		s.AvgBlockInterval.Round(time.Millisecond), s.IntervalP50.Round(time.Millisecond), s.IntervalP99.Round(time.Millisecond), s.IntervalMax.Round(time.Millisecond))
 	t.Logf("gas/block (non-empty): avg=%.0f, p50=%.0f, p99=%.0f", s.AvgGas, s.GasP50, s.GasP99)
 	t.Logf("tx/block (non-empty): avg=%.1f, p50=%.0f, p99=%.0f", s.AvgTx, s.TxP50, s.TxP99)
 	t.Logf("throughput: %.2f MGas/s, %.1f TPS over %s steady-state (%s wall clock)",
@@ -332,6 +344,7 @@ func (s *blockMetricsSummary) entries(prefix string) []entry {
 		{Name: prefix + " - avg tx/block", Unit: "count", Value: s.AvgTx},
 		{Name: prefix + " - blocks/s", Unit: "blocks/s", Value: s.BlocksPerSec},
 		{Name: prefix + " - non-empty block ratio", Unit: "%", Value: s.NonEmptyRatio},
+		{Name: prefix + " - avg block interval", Unit: "ms", Value: float64(s.AvgBlockInterval.Milliseconds())},
 		{Name: prefix + " - block interval p50", Unit: "ms", Value: float64(s.IntervalP50.Milliseconds())},
 		{Name: prefix + " - block interval p99", Unit: "ms", Value: float64(s.IntervalP99.Milliseconds())},
 		{Name: prefix + " - gas/block p50", Unit: "gas", Value: s.GasP50},
@@ -366,6 +379,22 @@ func evNodeOverhead(spans []e2e.TraceSpan) (float64, bool) {
 		return 0, false
 	}
 	return (produceAvg - executeAvg) / produceAvg * 100, true
+}
+
+// waitForMetricTarget polls a metric getter function every 2s until the
+// returned value >= target, or fails the test on timeout.
+func waitForMetricTarget(t testing.TB, name string, poll func() (float64, error), target float64, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		v, err := poll()
+		if err == nil && v >= target {
+			t.Logf("metric %s reached %.0f (target %.0f)", name, v, target)
+			return
+		}
+		time.Sleep(2 * time.Second)
+	}
+	t.Fatalf("metric %s did not reach target %.0f within %v", name, target, timeout)
 }
 
 // collectBlockMetrics iterates all headers in [startBlock, endBlock] to collect

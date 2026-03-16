@@ -145,6 +145,9 @@ func (t *tracedClient) GetForcedInclusionNamespace() []byte {
 func (t *tracedClient) HasForcedInclusionNamespace() bool {
 	return t.inner.HasForcedInclusionNamespace()
 }
+func (t *tracedClient) Subscribe(ctx context.Context, namespace []byte) (<-chan datypes.SubscriptionEvent, error) {
+	return t.inner.Subscribe(ctx, namespace)
+}
 
 type submitError struct{ msg string }
 
