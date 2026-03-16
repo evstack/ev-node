@@ -19,14 +19,13 @@ FROM busybox:1.36.1-musl AS busybox
 
 FROM scratch
 
-ENV HOME=/home/ev-node
 
-COPY --from=build-env /out/evm /usr/bin/evm
 COPY --from=build-env /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-COPY --from=build-env --chown=10001:10001 /out/home-ev-node /home/ev-node
-COPY --from=busybox /bin/busybox /bin/busybox
+COPY --from=build-env /out/evm /usr/bin/evm
 COPY --from=build-env /src/apps/evm/entrypoint.sh /usr/bin/entrypoint.sh
+COPY --from=busybox /bin/busybox /bin/busybox
 
+ENV HOME=/home/ev-node
 WORKDIR /home/ev-node
 USER 10001:10001
 
