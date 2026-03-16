@@ -156,6 +156,78 @@ func TestClient_Retrieve_Success(t *testing.T) {
 	require.Equal(t, expectedTime, res.Timestamp)
 }
 
+func TestClient_Retrieve_TimestampFetchRetry(t *testing.T) {
+	ns := share.MustNewV0Namespace([]byte("ns"))
+	nsBz := ns.Bytes()
+	fixedTime := time.Date(2024, 1, 2, 12, 0, 0, 0, time.UTC)
+
+	specs := map[string]struct {
+		getAllErr         error
+		headerFailures    int
+		wantStatus        datypes.StatusCode
+		wantTimestamp     time.Time
+		wantMessageSubstr string
+		wantHeaderCalls   int
+	}{
+		"success_retries_timestamp_fetch": {
+			getAllErr:       nil,
+			headerFailures:  2,
+			wantStatus:      datypes.StatusSuccess,
+			wantTimestamp:   fixedTime,
+			wantHeaderCalls: 3,
+		},
+		"not_found_fails_hard_when_timestamp_unavailable": {
+			getAllErr:         datypes.ErrBlobNotFound,
+			headerFailures:    blockTimestampFetchMaxAttempts,
+			wantStatus:        datypes.StatusError,
+			wantMessageSubstr: "failed to get block timestamp",
+			wantHeaderCalls:   blockTimestampFetchMaxAttempts,
+		},
+	}
+
+	for name, spec := range specs {
+		t.Run(name, func(t *testing.T) {
+			blobModule := mocks.NewMockBlobModule(t)
+			headerModule := mocks.NewMockHeaderModule(t)
+
+			if spec.getAllErr != nil {
+				blobModule.On("GetAll", mock.Anything, uint64(7), mock.Anything).Return([]*blobrpc.Blob(nil), spec.getAllErr).Once()
+			} else {
+				b, err := blobrpc.NewBlobV0(ns, []byte("payload"))
+				require.NoError(t, err)
+				blobModule.On("GetAll", mock.Anything, uint64(7), mock.Anything).Return([]*blobrpc.Blob{b}, nil).Once()
+			}
+
+			headerCalls := 0
+			headerModule.EXPECT().GetByHeight(mock.Anything, uint64(7)).RunAndReturn(func(context.Context, uint64) (*blobrpc.Header, error) {
+				headerCalls++
+				if headerCalls <= spec.headerFailures {
+					return nil, errors.New("header unavailable")
+				}
+				return &blobrpc.Header{Header: blobrpc.RawHeader{Time: fixedTime}}, nil
+			})
+
+			cl := NewClient(Config{
+				DA:            makeBlobRPCClient(blobModule, headerModule),
+				Logger:        zerolog.Nop(),
+				Namespace:     "ns",
+				DataNamespace: "ns",
+			})
+
+			res := cl.Retrieve(context.Background(), 7, nsBz)
+			require.Equal(t, spec.wantStatus, res.Code)
+			require.Equal(t, spec.wantHeaderCalls, headerCalls)
+
+			if !spec.wantTimestamp.IsZero() {
+				require.Equal(t, spec.wantTimestamp, res.Timestamp)
+			}
+			if spec.wantMessageSubstr != "" {
+				require.Contains(t, res.Message, spec.wantMessageSubstr)
+			}
+		})
+	}
+}
+
 func TestClient_SubmitOptionsMerge(t *testing.T) {
 	ns := share.MustNewV0Namespace([]byte("ns")).Bytes()
 	blobModule := mocks.NewMockBlobModule(t)

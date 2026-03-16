@@ -42,6 +42,11 @@ type client struct {
 // Ensure client implements the FullClient interface (Client + BlobGetter + Verifier).
 var _ FullClient = (*client)(nil)
 
+const (
+	blockTimestampFetchMaxAttempts = 3
+	blockTimestampFetchBackoff     = 100 * time.Millisecond
+)
+
 // NewClient creates a new blob client wrapper with pre-calculated namespace bytes.
 func NewClient(cfg Config) FullClient {
 	if cfg.DA == nil {
@@ -184,15 +189,40 @@ func (c *client) Submit(ctx context.Context, data [][]byte, _ float64, namespace
 
 // getBlockTimestamp fetches the block timestamp from the DA layer header.
 func (c *client) getBlockTimestamp(ctx context.Context, height uint64) (time.Time, error) {
-	headerCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
-	defer cancel()
+	var lastErr error
+	backoff := blockTimestampFetchBackoff
 
-	header, err := c.headerAPI.GetByHeight(headerCtx, height)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("failed to get header timestamp for block %d: %w", height, err)
+	for attempt := 1; attempt <= blockTimestampFetchMaxAttempts; attempt++ {
+		headerCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
+		header, err := c.headerAPI.GetByHeight(headerCtx, height)
+		cancel()
+		if err == nil {
+			return header.Time(), nil
+		}
+		lastErr = err
+
+		if attempt == blockTimestampFetchMaxAttempts {
+			break
+		}
+
+		c.logger.Info().
+			Uint64("height", height).
+			Int("attempt", attempt).
+			Int("max_attempts", blockTimestampFetchMaxAttempts).
+			Dur("retry_in", backoff).
+			Err(err).
+			Msg("failed to get block timestamp, retrying")
+
+		select {
+		case <-ctx.Done():
+			return time.Time{}, fmt.Errorf("fetching header timestamp for block %d: %w", height, ctx.Err())
+		case <-time.After(backoff):
+		}
+
+		backoff *= 2
 	}
 
-	return header.Time(), nil
+	return time.Time{}, fmt.Errorf("get header timestamp for block %d after %d attempts: %w", height, blockTimestampFetchMaxAttempts, lastErr)
 }
 
 // Retrieve retrieves blobs from the DA layer at the specified height and namespace.
@@ -224,8 +254,13 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 			blockTime, err := c.getBlockTimestamp(ctx, height)
 			if err != nil {
 				c.logger.Error().Uint64("height", height).Err(err).Msg("failed to get block timestamp")
-				blockTime = time.Now()
-				// TODO: we should retry fetching the timestamp. Current time may mess block time consistency for based sequencers.
+				return datypes.ResultRetrieve{
+					BaseResult: datypes.BaseResult{
+						Code:    datypes.StatusError,
+						Message: fmt.Sprintf("failed to get block timestamp: %s", err.Error()),
+						Height:  height,
+					},
+				}
 			}
 
 			return datypes.ResultRetrieve{
@@ -262,8 +297,13 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 	blockTime, err := c.getBlockTimestamp(ctx, height)
 	if err != nil {
 		c.logger.Error().Uint64("height", height).Err(err).Msg("failed to get block timestamp")
-		blockTime = time.Now()
-		// TODO: we should retry fetching the timestamp. Current time may mess block time consistency for based sequencers.
+		return datypes.ResultRetrieve{
+			BaseResult: datypes.BaseResult{
+				Code:    datypes.StatusError,
+				Message: fmt.Sprintf("failed to get block timestamp: %s", err.Error()),
+				Height:  height,
+			},
+		}
 	}
 
 	if len(blobs) == 0 {
