@@ -372,7 +372,7 @@ func nextHeader(t *testing.T, previousHeader *types.SignedHeader, chainID string
 	}
 	b, err := newSignedHeader.Header.MarshalBinary()
 	require.NoError(t, err)
-	signature, err := noopSigner.Sign(b)
+	signature, err := noopSigner.Sign(context.Background(), b)
 	require.NoError(t, err)
 	newSignedHeader.Signature = signature
 	require.NoError(t, newSignedHeader.Validate())

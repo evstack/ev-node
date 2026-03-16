@@ -1,6 +1,7 @@
 package file
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -382,7 +383,7 @@ func (s *FileSystemSigner) loadKeys(passphrase []byte) error {
 }
 
 // Sign signs a message using the private key
-func (s *FileSystemSigner) Sign(message []byte) ([]byte, error) {
+func (s *FileSystemSigner) Sign(_ context.Context, message []byte) ([]byte, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 

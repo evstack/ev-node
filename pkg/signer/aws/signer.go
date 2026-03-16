@@ -27,20 +27,54 @@ type KMSClient interface {
 	GetPublicKey(ctx context.Context, params *kms.GetPublicKeyInput, optFns ...func(*kms.Options)) (*kms.GetPublicKeyOutput, error)
 }
 
+// Options configures optional KmsSigner behaviour.
+type Options struct {
+	// Timeout for individual KMS Sign API calls. Default: 10s.
+	Timeout time.Duration
+	// MaxRetries for transient KMS failures during Sign. Default: 3.
+	MaxRetries int
+	// CacheTTL controls how long the public key is cached before being
+	// re-fetched from KMS. 0 (default) means cache forever.
+	CacheTTL time.Duration
+}
+
+func (o *Options) timeout() time.Duration {
+	if o != nil && o.Timeout > 0 {
+		return o.Timeout
+	}
+	return 10 * time.Second
+}
+
+func (o *Options) maxRetries() int {
+	if o != nil && o.MaxRetries > 0 {
+		return o.MaxRetries
+	}
+	return 3
+}
+
+func (o *Options) cacheTTL() time.Duration {
+	if o != nil {
+		return o.CacheTTL
+	}
+	return 0
+}
+
 // KmsSigner implements the signer.Signer interface using AWS KMS.
 type KmsSigner struct {
-	client    KMSClient
-	keyID     string
-	mu        sync.RWMutex
-	publicKey crypto.PubKey
-	address   []byte
+	client  KMSClient
+	keyID   string
+	opts    Options
+	mu      sync.RWMutex
+	pubKey  crypto.PubKey
+	address []byte
+	cacheAt time.Time
 }
 
 var _ signer.Signer = (*KmsSigner)(nil)
 
 // NewKmsSigner creates a new Signer backed by an AWS KMS Ed25519 key.
 // It uses the standard AWS credential chain (env vars, ~/.aws/credentials, IAM roles, etc.).
-func NewKmsSigner(ctx context.Context, region string, keyID string) (*KmsSigner, error) {
+func NewKmsSigner(ctx context.Context, region string, profile string, keyID string, opts *Options) (*KmsSigner, error) {
 	if keyID == "" {
 		return nil, fmt.Errorf("aws kms key ID is required")
 	}
@@ -49,6 +83,9 @@ func NewKmsSigner(ctx context.Context, region string, keyID string) (*KmsSigner,
 	if region != "" {
 		cfgOpts = append(cfgOpts, awsconfig.WithRegion(region))
 	}
+	if profile != "" {
+		cfgOpts = append(cfgOpts, awsconfig.WithSharedConfigProfile(profile))
+	}
 
 	cfg, err := awsconfig.LoadDefaultConfig(ctx, cfgOpts...)
 	if err != nil {
@@ -56,19 +93,25 @@ func NewKmsSigner(ctx context.Context, region string, keyID string) (*KmsSigner,
 	}
 
 	client := kms.NewFromConfig(cfg)
-	return NewKmsSignerFromClient(ctx, client, keyID)
+	return NewKmsSignerFromClient(ctx, client, keyID, opts)
 }
 
 // NewKmsSignerFromClient creates a KmsSigner from an existing KMS client.
 // Useful for testing with a mock client.
-func NewKmsSignerFromClient(ctx context.Context, client KMSClient, keyID string) (*KmsSigner, error) {
+func NewKmsSignerFromClient(ctx context.Context, client KMSClient, keyID string, opts *Options) (*KmsSigner, error) {
 	if keyID == "" {
 		return nil, fmt.Errorf("aws kms key ID is required")
+	}
+
+	o := Options{}
+	if opts != nil {
+		o = *opts
 	}
 
 	s := &KmsSigner{
 		client: client,
 		keyID:  keyID,
+		opts:   o,
 	}
 
 	// Fetch and cache the public key eagerly so we fail fast on misconfiguration.
@@ -114,40 +157,79 @@ func (s *KmsSigner) fetchPublicKey(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.publicKey = cryptoPubKey
+	s.pubKey = cryptoPubKey
 	s.address = address[:]
+	s.cacheAt = time.Now()
 
 	return nil
 }
 
-// Sign signs a message using the remote KMS key.
-func (s *KmsSigner) Sign(message []byte) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+// Sign signs a message using the remote KMS key with configurable timeout
+// and retry with exponential backoff.
+func (s *KmsSigner) Sign(ctx context.Context, message []byte) ([]byte, error) {
+	var lastErr error
+	maxRetries := s.opts.maxRetries()
+	timeout := s.opts.timeout()
 
-	out, err := s.client.Sign(ctx, &kms.SignInput{
-		KeyId:            aws.String(s.keyID),
-		Message:          message,
-		MessageType:      types.MessageTypeRaw,
-		SigningAlgorithm: types.SigningAlgorithmSpecEd25519Sha512,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("KMS Sign failed: %w", err)
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			// Exponential backoff: 100ms, 200ms, 400ms, ...
+			backoff := time.Duration(100<<uint(attempt-1)) * time.Millisecond
+			select {
+			case <-ctx.Done():
+				return nil, fmt.Errorf("KMS Sign canceled: %w", ctx.Err())
+			case <-time.After(backoff):
+			}
+		}
+
+		callCtx, cancel := context.WithTimeout(ctx, timeout)
+		out, err := s.client.Sign(callCtx, &kms.SignInput{
+			KeyId:            aws.String(s.keyID),
+			Message:          message,
+			MessageType:      types.MessageTypeRaw,
+			SigningAlgorithm: types.SigningAlgorithmSpecEd25519Sha512,
+		})
+		cancel()
+
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		return out.Signature, nil
 	}
 
-	return out.Signature, nil
+	return nil, fmt.Errorf("KMS Sign failed after %d attempts: %w", maxRetries, lastErr)
 }
 
-// GetPublic returns the cached public key.
+// GetPublic returns the cached public key, optionally refreshing if cache TTL
+// has expired.
 func (s *KmsSigner) GetPublic() (crypto.PubKey, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	ttl := s.opts.cacheTTL()
 
-	if s.publicKey == nil {
+	s.mu.RLock()
+	pubKey := s.pubKey
+	expired := ttl > 0 && time.Since(s.cacheAt) > ttl
+	s.mu.RUnlock()
+
+	if expired {
+		if err := s.fetchPublicKey(context.Background()); err != nil {
+			// If refresh fails, return the stale cached key
+			if pubKey != nil {
+				return pubKey, nil
+			}
+			return nil, fmt.Errorf("failed to refresh public key: %w", err)
+		}
+		s.mu.RLock()
+		pubKey = s.pubKey
+		s.mu.RUnlock()
+	}
+
+	if pubKey == nil {
 		return nil, fmt.Errorf("public key not loaded")
 	}
 
-	return s.publicKey, nil
+	return pubKey, nil
 }
 
 // GetAddress returns the cached address derived from the public key.

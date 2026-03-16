@@ -26,8 +26,7 @@ import (
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/signer"
-	awssigner "github.com/evstack/ev-node/pkg/signer/aws"
-	"github.com/evstack/ev-node/pkg/signer/file"
+	"github.com/evstack/ev-node/pkg/signer/factory"
 	"github.com/evstack/ev-node/pkg/telemetry"
 )
 
@@ -112,9 +111,8 @@ func StartNode(
 	// eagerly over WebSocket if no DA server is running).
 	var signer signer.Signer
 	if nodeConfig.Node.Aggregator && !nodeConfig.Node.BasedSequencer {
-		switch nodeConfig.Signer.SignerType {
-		case "file":
-			// Get passphrase file path
+		passphrase := ""
+		if nodeConfig.Signer.SignerType == "file" {
 			passphraseFile, err := cmd.Flags().GetString(rollconf.FlagSignerPassphraseFile)
 			if err != nil {
 				return fmt.Errorf("failed to get '%s' flag: %w", rollconf.FlagSignerPassphraseFile, err)
@@ -124,36 +122,25 @@ func StartNode(
 				return fmt.Errorf("passphrase file must be provided via --evnode.signer.passphrase_file")
 			}
 
-			// Read passphrase from file
 			passphraseBytes, err := os.ReadFile(passphraseFile)
 			if err != nil {
 				return fmt.Errorf("failed to read passphrase from file '%s': %w", passphraseFile, err)
 			}
-			passphrase := strings.TrimSpace(string(passphraseBytes))
+			passphrase = strings.TrimSpace(string(passphraseBytes))
 
 			if passphrase == "" {
 				return fmt.Errorf("passphrase file '%s' is empty", passphraseFile)
 			}
+		}
 
-			// Resolve signer path; allow absolute, relative to node root, or relative to CWD if resolution fails
-			signerPath, err := filepath.Abs(strings.TrimSuffix(nodeConfig.Signer.SignerPath, "signer.json"))
-			if err != nil {
-				return err
-			}
-
-			signer, err = file.LoadFileSystemSigner(signerPath, []byte(passphrase))
-			if err != nil {
-				return err
-			}
-		case "awskms":
-			logger.Info().Msg("initializing AWS KMS signer")
-			var err error
-			signer, err = awssigner.NewKmsSigner(ctx, nodeConfig.Signer.KmsRegion, nodeConfig.Signer.KmsKeyID)
-			if err != nil {
-				return fmt.Errorf("failed to initialize AWS KMS signer: %w", err)
-			}
-		default:
-			return fmt.Errorf("unknown signer type: %s", nodeConfig.Signer.SignerType)
+		var err error
+		signer, err = factory.NewSigner(ctx, &nodeConfig, passphrase)
+		if err != nil {
+			return fmt.Errorf("failed to initialize signer via factory: %w", err)
+		}
+		
+		if nodeConfig.Signer.SignerType == "awskms" {
+			logger.Info().Msg("initialized AWS KMS signer via factory")
 		}
 	}
 

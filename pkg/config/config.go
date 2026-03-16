@@ -144,6 +144,14 @@ const (
 	FlagSignerKmsKeyID = FlagPrefixEvnode + "signer.kms_key_id"
 	// FlagSignerKmsRegion is a flag for specifying the KMS region
 	FlagSignerKmsRegion = FlagPrefixEvnode + "signer.kms_region"
+	// FlagSignerKmsProfile is a flag for specifying the AWS profile
+	FlagSignerKmsProfile = FlagPrefixEvnode + "signer.kms_profile"
+	// FlagSignerKmsTimeout is a flag for specifying the KMS sign timeout
+	FlagSignerKmsTimeout = FlagPrefixEvnode + "signer.kms_timeout"
+	// FlagSignerKmsMaxRetries is a flag for specifying the KMS sign max retries
+	FlagSignerKmsMaxRetries = FlagPrefixEvnode + "signer.kms_max_retries"
+	// FlagSignerKmsCacheTTL is a flag for specifying the KMS public key cache TTL
+	FlagSignerKmsCacheTTL = FlagPrefixEvnode + "signer.kms_cache_ttl"
 
 	// FlagSignerPassphraseFile is a flag for specifying the file containing the signer passphrase
 	FlagSignerPassphraseFile = FlagPrefixEvnode + "signer.passphrase_file"
@@ -298,8 +306,12 @@ type P2PConfig struct {
 type SignerConfig struct {
 	SignerType string `mapstructure:"signer_type" yaml:"signer_type" comment:"Type of remote signer to use (file, grpc, awskms)"`
 	SignerPath string `mapstructure:"signer_path" yaml:"signer_path" comment:"Path to the signer file or address"`
-	KmsKeyID   string `mapstructure:"kms_key_id" yaml:"kms_key_id" comment:"AWS KMS Key ID or ARN for awskms signer"`
-	KmsRegion  string `mapstructure:"kms_region" yaml:"kms_region" comment:"AWS Region for awskms signer"`
+	KmsKeyID      string          `mapstructure:"kms_key_id" yaml:"kms_key_id" comment:"AWS KMS Key ID or ARN for awskms signer"`
+	KmsRegion     string          `mapstructure:"kms_region" yaml:"kms_region" comment:"AWS Region for awskms signer"`
+	KmsProfile    string          `mapstructure:"kms_profile" yaml:"kms_profile" comment:"AWS Profile for awskms signer"`
+	KmsTimeout    DurationWrapper `mapstructure:"kms_timeout" yaml:"kms_timeout" comment:"Timeout for individual AWS KMS Sign requests"`
+	KmsMaxRetries int             `mapstructure:"kms_max_retries" yaml:"kms_max_retries" comment:"Maximum number of retries for transient AWS KMS failures"`
+	KmsCacheTTL   DurationWrapper `mapstructure:"kms_cache_ttl" yaml:"kms_cache_ttl" comment:"Time-to-live for caching the AWS KMS public key (0 means cache forever)"`
 }
 
 // RPCConfig contains all RPC server configuration parameters
@@ -398,6 +410,17 @@ func (c RaftConfig) Validate() error {
 // Validate validates the config and ensures that the root directory exists.
 // It creates the directory if it does not exist.
 func (c *Config) Validate() error {
+	if c.Signer.SignerType == "awskms" {
+		if c.Signer.KmsKeyID == "" {
+			return errors.New("evnode.signer.kms_key_id is required when signer_type is awskms")
+		}
+		if c.Signer.KmsTimeout.Duration <= 0 {
+			return errors.New("evnode.signer.kms_timeout must be positive")
+		}
+		if c.Signer.KmsMaxRetries < 0 {
+			return errors.New("evnode.signer.kms_max_retries must be non-negative")
+		}
+	}
 	if c.RootDir == "" {
 		return fmt.Errorf("root directory cannot be empty")
 	}
@@ -558,6 +581,10 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().String(FlagSignerPath, def.Signer.SignerPath, "path to the signer file or address")
 	cmd.Flags().String(FlagSignerKmsKeyID, def.Signer.KmsKeyID, "AWS KMS Key ID or ARN for awskms signer")
 	cmd.Flags().String(FlagSignerKmsRegion, def.Signer.KmsRegion, "AWS Region for awskms signer")
+	cmd.Flags().String(FlagSignerKmsProfile, def.Signer.KmsProfile, "AWS Profile for awskms signer")
+	cmd.Flags().Duration(FlagSignerKmsTimeout, def.Signer.KmsTimeout.Duration, "Timeout for individual AWS KMS Sign requests")
+	cmd.Flags().Int(FlagSignerKmsMaxRetries, def.Signer.KmsMaxRetries, "Maximum number of retries for transient AWS KMS failures")
+	cmd.Flags().Duration(FlagSignerKmsCacheTTL, def.Signer.KmsCacheTTL.Duration, "Time-to-live for caching the AWS KMS public key (0 means cache forever)")
 	cmd.Flags().String(FlagSignerPassphraseFile, "", "path to file containing the signer passphrase (required for file signer and if aggregator is enabled)")
 
 	cmd.MarkFlagsMutuallyExclusive(FlagLight, FlagAggregator)

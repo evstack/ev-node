@@ -95,6 +95,10 @@ func DefaultConfig() Config {
 			SignerPath: "config",
 			KmsKeyID:   "",
 			KmsRegion:  "",
+			KmsProfile: "",
+			KmsTimeout:        DurationWrapper{10 * time.Second},
+			KmsMaxRetries:     3,
+			KmsCacheTTL:       DurationWrapper{0},
 		},
 		RPC: RPCConfig{
 			Address:               "127.0.0.1:7331",

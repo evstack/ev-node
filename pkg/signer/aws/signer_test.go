@@ -52,7 +52,7 @@ func TestNewKmsSignerFromClient_Success(t *testing.T) {
 	_, der := generateTestEd25519DER(t)
 
 	mock := &mockKMSClient{pubKeyDER: der}
-	s, err := NewKmsSignerFromClient(context.Background(), mock, "arn:aws:kms:us-east-1:123456789012:key/test-key-id")
+	s, err := NewKmsSignerFromClient(context.Background(), mock, "arn:aws:kms:us-east-1:123456789012:key/test-key-id", nil)
 	require.NoError(t, err)
 	require.NotNil(t, s)
 
@@ -68,7 +68,7 @@ func TestNewKmsSignerFromClient_Success(t *testing.T) {
 }
 
 func TestNewKmsSignerFromClient_EmptyKeyID(t *testing.T) {
-	_, err := NewKmsSignerFromClient(context.Background(), &mockKMSClient{}, "")
+	_, err := NewKmsSignerFromClient(context.Background(), &mockKMSClient{}, "", nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "key ID is required")
 }
@@ -80,7 +80,7 @@ func TestNewKmsSignerFromClient_GetPublicKeyFails(t *testing.T) {
 		},
 	}
 
-	_, err := NewKmsSignerFromClient(context.Background(), mock, "test-key")
+	_, err := NewKmsSignerFromClient(context.Background(), mock, "test-key", nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "access denied")
 }
@@ -98,10 +98,10 @@ func TestSign_Success(t *testing.T) {
 		},
 	}
 
-	s, err := NewKmsSignerFromClient(context.Background(), mock, "test-key")
+	s, err := NewKmsSignerFromClient(context.Background(), mock, "test-key", nil)
 	require.NoError(t, err)
 
-	sig, err := s.Sign([]byte("hello world"))
+	sig, err := s.Sign(context.Background(), []byte("hello world"))
 	require.NoError(t, err)
 	assert.Equal(t, expectedSig, sig)
 }
@@ -116,10 +116,10 @@ func TestSign_KMSFailure(t *testing.T) {
 		},
 	}
 
-	s, err := NewKmsSignerFromClient(context.Background(), mock, "test-key")
+	s, err := NewKmsSignerFromClient(context.Background(), mock, "test-key", nil)
 	require.NoError(t, err)
 
-	_, err = s.Sign([]byte("hello world"))
+	_, err = s.Sign(context.Background(), []byte("hello world"))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "KMS Sign failed")
 }
@@ -128,7 +128,7 @@ func TestGetPublic_Cached(t *testing.T) {
 	pub, der := generateTestEd25519DER(t)
 
 	mock := &mockKMSClient{pubKeyDER: der}
-	s, err := NewKmsSignerFromClient(context.Background(), mock, "test-key")
+	s, err := NewKmsSignerFromClient(context.Background(), mock, "test-key", nil)
 	require.NoError(t, err)
 
 	cryptoPub, err := s.GetPublic()
@@ -143,7 +143,7 @@ func TestGetAddress_Deterministic(t *testing.T) {
 	_, der := generateTestEd25519DER(t)
 
 	mock := &mockKMSClient{pubKeyDER: der}
-	s, err := NewKmsSignerFromClient(context.Background(), mock, "test-key")
+	s, err := NewKmsSignerFromClient(context.Background(), mock, "test-key", nil)
 	require.NoError(t, err)
 
 	addr1, err := s.GetAddress()

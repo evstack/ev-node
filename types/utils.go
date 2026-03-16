@@ -1,6 +1,7 @@
 package types
 
 import (
+	"context"
 	cryptoRand "crypto/rand"
 	"math/rand"
 	"time"
@@ -178,7 +179,7 @@ func GetRandomSignedHeaderCustom(config *HeaderConfig, chainID string) (*SignedH
 	if err != nil {
 		return nil, err
 	}
-	signature, err := config.Signer.Sign(b)
+	signature, err := config.Signer.Sign(context.Background(), b)
 	if err != nil {
 		return nil, err
 	}
@@ -288,7 +289,7 @@ func GetSignature(header Header, signer signer.Signer) (Signature, error) {
 	if err != nil {
 		return nil, err
 	}
-	return signer.Sign(b)
+	return signer.Sign(context.Background(), b)
 }
 
 func getBlockDataWith(nTxs int) *Data {

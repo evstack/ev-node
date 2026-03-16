@@ -1,6 +1,7 @@
 package file
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -31,7 +32,7 @@ func TestFileSystemSigner(t *testing.T) {
 
 	// Sign a message
 	message := []byte("Hello, world!")
-	signature, err := signer.Sign(message)
+	signature, err := signer.Sign(context.Background(), message)
 	require.NoError(t, err)
 	require.NotNil(t, signature)
 
@@ -78,7 +79,7 @@ func Example() {
 
 	// Sign a message
 	message := []byte("Message to sign")
-	signature, err := signer.Sign(message)
+	signature, err := signer.Sign(context.Background(), message)
 	if err != nil {
 		panic(err)
 	}

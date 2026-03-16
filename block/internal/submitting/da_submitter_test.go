@@ -175,7 +175,7 @@ func TestDASubmitter_SubmitHeaders_Success(t *testing.T) {
 	for _, header := range []*types.SignedHeader{header1, header2} {
 		bz, err := types.DefaultAggregatorNodeSignatureBytesProvider(&header.Header)
 		require.NoError(t, err)
-		sig, err := signer.Sign(bz)
+		sig, err := signer.Sign(context.Background(), bz)
 		require.NoError(t, err)
 		header.Signature = sig
 	}
