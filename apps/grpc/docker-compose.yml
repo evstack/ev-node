@@ -4,7 +4,7 @@ services:
   # Local DA service for development
   local-da:
     build:
-      context: ../../../
+      context: ../../
       dockerfile: tools/local-da/Dockerfile
     ports:
       - "7980:7980"
@@ -34,7 +34,7 @@ services:
   # Evolve node with gRPC execution client
   evolve-grpc:
     build:
-      context: ../../../
+      context: ../../
       dockerfile: apps/grpc/Dockerfile
     depends_on:
       local-da:

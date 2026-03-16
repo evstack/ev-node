@@ -11,7 +11,8 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 COPY . .
 RUN mkdir -p /home/ev-node
 RUN --mount=type=cache,target=/go/pkg/mod \
-   cd apps/testapp && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags "-s -w" -o /out/testapp .
+   cd ./apps/testapp &&  \
+   CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags "-s -w" -o /out/testapp .
 
 FROM scratch
 

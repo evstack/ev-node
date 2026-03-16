@@ -14,7 +14,8 @@ COPY . .
 
 RUN mkdir -p /home/ev-node
 RUN --mount=type=cache,target=/go/pkg/mod \
-    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags "-s -w" -o /out/evgrpc ./apps/grpc
+    cd ./apps/grpc && \
+    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags "-s -w" -o /out/evgrpc .
 
 FROM scratch
 
