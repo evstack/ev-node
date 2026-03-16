@@ -206,3 +206,48 @@ func TestDAFollower_HandleCatchup(t *testing.T) {
 		})
 	}
 }
+
+func TestDAFollower_QueuePriorityHeight(t *testing.T) {
+	specs := map[string]struct {
+		initial []uint64
+		queue   []uint64
+		want    []uint64
+	}{
+		"sorts_and_deduplicates": {
+			initial: []uint64{5, 10},
+			queue:   []uint64{7, 10, 3},
+			want:    []uint64{3, 5, 7, 10},
+		},
+		"bounded_drops_largest_when_smaller_arrives": {
+			initial: makeRange(1, maxPriorityHeights),
+			queue:   []uint64{maxPriorityHeights + 1, 0},
+			want:    append([]uint64{0}, makeRange(1, maxPriorityHeights-1)...),
+		},
+	}
+
+	for name, spec := range specs {
+		t.Run(name, func(t *testing.T) {
+			follower := &daFollower{
+				logger:          zerolog.Nop(),
+				priorityHeights: append([]uint64(nil), spec.initial...),
+			}
+
+			for _, daHeight := range spec.queue {
+				follower.QueuePriorityHeight(daHeight)
+			}
+
+			assert.Equal(t, spec.want, follower.priorityHeights)
+		})
+	}
+}
+
+func makeRange(start, end uint64) []uint64 {
+	if end < start {
+		return nil
+	}
+	out := make([]uint64, 0, end-start+1)
+	for v := start; v <= end; v++ {
+		out = append(out, v)
+	}
+	return out
+}

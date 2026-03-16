@@ -80,6 +80,7 @@ type Subscriber struct {
 	fetchBlockTimestamp bool
 
 	// lifecycle
+	lifecycleMu sync.Mutex
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 }
@@ -113,8 +114,17 @@ func (s *Subscriber) Start(ctx context.Context) error {
 		return nil
 	}
 
-	ctx, s.cancel = context.WithCancel(ctx)
+	s.lifecycleMu.Lock()
+	if s.cancel != nil {
+		s.lifecycleMu.Unlock()
+		return nil
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	s.cancel = cancel
 	s.wg.Add(2)
+	s.lifecycleMu.Unlock()
+
 	go s.followLoop(ctx)
 	go s.catchupLoop(ctx)
 
@@ -123,8 +133,13 @@ func (s *Subscriber) Start(ctx context.Context) error {
 
 // Stop gracefully stops the background goroutines.
 func (s *Subscriber) Stop() {
-	if s.cancel != nil {
-		s.cancel()
+	s.lifecycleMu.Lock()
+	cancel := s.cancel
+	s.cancel = nil
+	s.lifecycleMu.Unlock()
+
+	if cancel != nil {
+		cancel()
 	}
 	s.wg.Wait()
 }
@@ -206,7 +221,12 @@ func (s *Subscriber) runSubscription(ctx context.Context) error {
 			err = s.handler.HandleEvent(subCtx, ev, isInline)
 			if isInline {
 				if err == nil {
-					s.headReached.Store(true)
+					highest := s.highestSeenDAHeight.Load()
+					// Mark head reached only if this inline event is at or beyond
+					// the currently observed head; otherwise catchup is still pending.
+					if ev.Height >= highest {
+						s.headReached.Store(true)
+					}
 				} else {
 					s.localDAHeight.Store(local)
 					s.logger.Debug().Err(err).Uint64("da_height", ev.Height).

@@ -100,3 +100,48 @@ func TestSubscriber_RunCatchup(t *testing.T) {
 		assert.True(t, sub.HasReachedHead())
 	})
 }
+
+func TestSubscriber_RunSubscription_InlineDoesNotPrematurelyReachHead(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	mockHandler := new(MockSubscriberHandler)
+	mockClient := testmocks.NewMockClient(t)
+
+	sub := NewSubscriber(SubscriberConfig{
+		Client:      mockClient,
+		Logger:      zerolog.Nop(),
+		Handler:     mockHandler,
+		Namespaces:  [][]byte{[]byte("ns")},
+		StartHeight: 100,
+		DABlockTime: time.Hour,
+	})
+
+	subCh := make(chan datypes.SubscriptionEvent, 2)
+	mockClient.EXPECT().
+		Subscribe(mock.Anything, []byte("ns"), false).
+		Return((<-chan datypes.SubscriptionEvent)(subCh), nil).
+		Once()
+
+	mockHandler.On("HandleEvent", mock.Anything, datypes.SubscriptionEvent{
+		Height: 101,
+		Blobs:  [][]byte{[]byte("h101")},
+	}, false).Return(nil).Once()
+	mockHandler.On("HandleEvent", mock.Anything, datypes.SubscriptionEvent{
+		Height: 100,
+		Blobs:  [][]byte{[]byte("h100")},
+	}, true).Return(nil).Once()
+
+	subCh <- datypes.SubscriptionEvent{Height: 101, Blobs: [][]byte{[]byte("h101")}}
+	subCh <- datypes.SubscriptionEvent{Height: 100, Blobs: [][]byte{[]byte("h100")}}
+	close(subCh)
+
+	err := sub.runSubscription(ctx)
+	assert.Error(t, err)
+	if err != nil {
+		assert.Contains(t, err.Error(), "subscription channel closed")
+	}
+	assert.False(t, sub.HasReachedHead())
+	assert.Equal(t, uint64(101), sub.LocalDAHeight())
+	assert.Equal(t, uint64(101), sub.HighestSeenDAHeight())
+}

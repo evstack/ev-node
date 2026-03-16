@@ -36,6 +36,8 @@ type daFollower struct {
 	priorityHeights []uint64
 }
 
+const maxPriorityHeights = 1024
+
 // DAFollowerConfig holds configuration for creating a DAFollower.
 type DAFollowerConfig struct {
 	Client        da.Client
@@ -183,6 +185,16 @@ func (f *daFollower) QueuePriorityHeight(daHeight uint64) {
 	if found {
 		return
 	}
+
+	// Keep the queue bounded. When full, prefer lower (sooner) heights.
+	if len(f.priorityHeights) >= maxPriorityHeights {
+		last := f.priorityHeights[len(f.priorityHeights)-1]
+		if daHeight >= last {
+			return
+		}
+		f.priorityHeights = f.priorityHeights[:len(f.priorityHeights)-1]
+	}
+
 	f.priorityHeights = slices.Insert(f.priorityHeights, idx, daHeight)
 }
 
