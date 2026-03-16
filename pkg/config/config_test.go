@@ -107,6 +107,8 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagSignerPassphraseFile, "")
 	assertFlagValue(t, flags, FlagSignerType, "file")
 	assertFlagValue(t, flags, FlagSignerPath, DefaultConfig().Signer.SignerPath)
+	assertFlagValue(t, flags, FlagSignerKmsKeyID, DefaultConfig().Signer.KmsKeyID)
+	assertFlagValue(t, flags, FlagSignerKmsRegion, DefaultConfig().Signer.KmsRegion)
 
 	// RPC flags
 	assertFlagValue(t, flags, FlagRPCAddress, DefaultConfig().RPC.Address)
@@ -118,7 +120,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagPruningInterval, DefaultConfig().Pruning.Interval.Duration)
 
 	// Count the number of flags we're explicitly checking
-	expectedFlagCount := 67 // Update this number if you add more flag checks above
+	expectedFlagCount := 69 // Update this number if you add more flag checks above
 
 	// Get the actual number of flags (both regular and persistent)
 	actualFlagCount := 0

@@ -140,6 +140,10 @@ const (
 	FlagSignerType = FlagPrefixEvnode + "signer.signer_type"
 	// FlagSignerPath is a flag for specifying the signer path
 	FlagSignerPath = FlagPrefixEvnode + "signer.signer_path"
+	// FlagSignerKmsKeyID is a flag for specifying the KMS key ID
+	FlagSignerKmsKeyID = FlagPrefixEvnode + "signer.kms_key_id"
+	// FlagSignerKmsRegion is a flag for specifying the KMS region
+	FlagSignerKmsRegion = FlagPrefixEvnode + "signer.kms_region"
 
 	// FlagSignerPassphraseFile is a flag for specifying the file containing the signer passphrase
 	FlagSignerPassphraseFile = FlagPrefixEvnode + "signer.passphrase_file"
@@ -292,8 +296,10 @@ type P2PConfig struct {
 
 // SignerConfig contains all signer configuration parameters
 type SignerConfig struct {
-	SignerType string `mapstructure:"signer_type" yaml:"signer_type" comment:"Type of remote signer to use (file, grpc)"`
+	SignerType string `mapstructure:"signer_type" yaml:"signer_type" comment:"Type of remote signer to use (file, grpc, awskms)"`
 	SignerPath string `mapstructure:"signer_path" yaml:"signer_path" comment:"Path to the signer file or address"`
+	KmsKeyID   string `mapstructure:"kms_key_id" yaml:"kms_key_id" comment:"AWS KMS Key ID or ARN for awskms signer"`
+	KmsRegion  string `mapstructure:"kms_region" yaml:"kms_region" comment:"AWS Region for awskms signer"`
 }
 
 // RPCConfig contains all RPC server configuration parameters
@@ -548,8 +554,10 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().Float64(FlagTracingSampleRate, instrDef.TracingSampleRate, "trace sampling rate (0.0-1.0)")
 
 	// Signer configuration flags
-	cmd.Flags().String(FlagSignerType, def.Signer.SignerType, "type of signer to use (file, grpc)")
+	cmd.Flags().String(FlagSignerType, def.Signer.SignerType, "type of signer to use (file, grpc, awskms)")
 	cmd.Flags().String(FlagSignerPath, def.Signer.SignerPath, "path to the signer file or address")
+	cmd.Flags().String(FlagSignerKmsKeyID, def.Signer.KmsKeyID, "AWS KMS Key ID or ARN for awskms signer")
+	cmd.Flags().String(FlagSignerKmsRegion, def.Signer.KmsRegion, "AWS Region for awskms signer")
 	cmd.Flags().String(FlagSignerPassphraseFile, "", "path to file containing the signer passphrase (required for file signer and if aggregator is enabled)")
 
 	cmd.MarkFlagsMutuallyExclusive(FlagLight, FlagAggregator)

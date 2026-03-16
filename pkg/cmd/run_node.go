@@ -26,6 +26,7 @@ import (
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/signer"
+	awssigner "github.com/evstack/ev-node/pkg/signer/aws"
 	"github.com/evstack/ev-node/pkg/signer/file"
 	"github.com/evstack/ev-node/pkg/telemetry"
 )
@@ -110,40 +111,50 @@ func StartNode(
 	// Validate and load signer first (before attempting DA connection, which may fail
 	// eagerly over WebSocket if no DA server is running).
 	var signer signer.Signer
-	if nodeConfig.Signer.SignerType == "file" && (nodeConfig.Node.Aggregator && !nodeConfig.Node.BasedSequencer) {
-		// Get passphrase file path
-		passphraseFile, err := cmd.Flags().GetString(rollconf.FlagSignerPassphraseFile)
-		if err != nil {
-			return fmt.Errorf("failed to get '%s' flag: %w", rollconf.FlagSignerPassphraseFile, err)
-		}
+	if nodeConfig.Node.Aggregator && !nodeConfig.Node.BasedSequencer {
+		switch nodeConfig.Signer.SignerType {
+		case "file":
+			// Get passphrase file path
+			passphraseFile, err := cmd.Flags().GetString(rollconf.FlagSignerPassphraseFile)
+			if err != nil {
+				return fmt.Errorf("failed to get '%s' flag: %w", rollconf.FlagSignerPassphraseFile, err)
+			}
 
-		if passphraseFile == "" {
-			return fmt.Errorf("passphrase file must be provided via --evnode.signer.passphrase_file")
-		}
+			if passphraseFile == "" {
+				return fmt.Errorf("passphrase file must be provided via --evnode.signer.passphrase_file")
+			}
 
-		// Read passphrase from file
-		passphraseBytes, err := os.ReadFile(passphraseFile)
-		if err != nil {
-			return fmt.Errorf("failed to read passphrase from file '%s': %w", passphraseFile, err)
-		}
-		passphrase := strings.TrimSpace(string(passphraseBytes))
+			// Read passphrase from file
+			passphraseBytes, err := os.ReadFile(passphraseFile)
+			if err != nil {
+				return fmt.Errorf("failed to read passphrase from file '%s': %w", passphraseFile, err)
+			}
+			passphrase := strings.TrimSpace(string(passphraseBytes))
 
-		if passphrase == "" {
-			return fmt.Errorf("passphrase file '%s' is empty", passphraseFile)
-		}
+			if passphrase == "" {
+				return fmt.Errorf("passphrase file '%s' is empty", passphraseFile)
+			}
 
-		// Resolve signer path; allow absolute, relative to node root, or relative to CWD if resolution fails
-		signerPath, err := filepath.Abs(strings.TrimSuffix(nodeConfig.Signer.SignerPath, "signer.json"))
-		if err != nil {
-			return err
-		}
+			// Resolve signer path; allow absolute, relative to node root, or relative to CWD if resolution fails
+			signerPath, err := filepath.Abs(strings.TrimSuffix(nodeConfig.Signer.SignerPath, "signer.json"))
+			if err != nil {
+				return err
+			}
 
-		signer, err = file.LoadFileSystemSigner(signerPath, []byte(passphrase))
-		if err != nil {
-			return err
+			signer, err = file.LoadFileSystemSigner(signerPath, []byte(passphrase))
+			if err != nil {
+				return err
+			}
+		case "awskms":
+			logger.Info().Msg("initializing AWS KMS signer")
+			var err error
+			signer, err = awssigner.NewKmsSigner(ctx, nodeConfig.Signer.KmsRegion, nodeConfig.Signer.KmsKeyID)
+			if err != nil {
+				return fmt.Errorf("failed to initialize AWS KMS signer: %w", err)
+			}
+		default:
+			return fmt.Errorf("unknown signer type: %s", nodeConfig.Signer.SignerType)
 		}
-	} else if nodeConfig.Node.Aggregator && nodeConfig.Signer.SignerType != "file" {
-		return fmt.Errorf("unknown signer type: %s", nodeConfig.Signer.SignerType)
 	}
 
 	blobClient, err := blobrpc.NewWSClient(ctx, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")

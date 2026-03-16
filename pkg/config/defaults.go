@@ -93,6 +93,8 @@ func DefaultConfig() Config {
 		Signer: SignerConfig{
 			SignerType: "file",
 			SignerPath: "config",
+			KmsKeyID:   "",
+			KmsRegion:  "",
 		},
 		RPC: RPCConfig{
 			Address:               "127.0.0.1:7331",
