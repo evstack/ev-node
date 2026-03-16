@@ -13,16 +13,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Fix race on startup sync. [#3162](https://github.com/evstack/ev-node/pull/3162)
 
+### Changes
+
+- Subscribe to forced inclusion namespace events [#3146](https://github.com/evstack/ev-node/pull/3146)
+
 ## v1.0.0
 
 ### Fixed
 
 - Persist cache snapshot only once at shutdown to avoid Badger vlog
   increase. [#3153](https://github.com/evstack/ev-node/pull/3153)
-
-### Changes
-
-- Subscribe to forced inclusion namespace events [#3146](https://github.com/evstack/ev-node/pull/3146)
 
 ## v1.0.0-rc.5
 
