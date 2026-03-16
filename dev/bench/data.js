@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1773701161614,
+  "lastUpdate": 1773703248507,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -3012,6 +3012,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 175288,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "marko@baricevic.me",
+            "name": "Marko",
+            "username": "tac0turtle"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "fd6591c5034884770a7f3ecfe0d7a3883c4a661d",
+          "message": "chore: minor changes from audit tool (#3165)\n\n* minor changes from audit tool\n\n* just deps\n\n* revert\n\n* revert++\n\n---------\n\nCo-authored-by: julienrbrt <julien@rbrt.fr>",
+          "timestamp": "2026-03-16T23:00:34Z",
+          "tree_id": "8c02fb83f7e9e05905b247834e1ccfdb3bc2df91",
+          "url": "https://github.com/evstack/ev-node/commit/fd6591c5034884770a7f3ecfe0d7a3883c4a661d"
+        },
+        "date": 1773703245475,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 908590318,
+            "unit": "ns/op\t30585212 B/op\t  161490 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 908590318,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 30585212,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 161490,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
