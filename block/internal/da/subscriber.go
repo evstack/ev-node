@@ -81,8 +81,8 @@ type Subscriber struct {
 
 	// lifecycle
 	lifecycleMu sync.Mutex
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
+	cancel      context.CancelFunc
+	wg          sync.WaitGroup
 }
 
 // NewSubscriber creates a new Subscriber.
