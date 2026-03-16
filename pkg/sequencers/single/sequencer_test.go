@@ -105,6 +105,9 @@ func newTestSequencer(t *testing.T, db ds.Batching, daClient block.FullDAClient)
 		mockExec,
 	)
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		seq.fiRetriever.Stop()
+	})
 	return seq
 }
 
@@ -115,10 +118,9 @@ func TestSequencer_SubmitBatchTxs(t *testing.T) {
 	logger := zerolog.Nop()
 	mockExec := createDefaultMockExecutor(t)
 	seq, err := NewSequencer(logger, db, dummyDA, config.DefaultConfig(), Id, 1000, genesis.Genesis{}, mockExec)
-	if err != nil {
-		t.Fatalf("Failed to create sequencer: %v", err)
-	}
+	require.NoError(t, err)
 	defer func() {
+		seq.fiRetriever.Stop()
 		err := db.Close()
 		if err != nil {
 			t.Fatalf("Failed to close sequencer: %v", err)
@@ -167,6 +169,7 @@ func TestSequencer_SubmitBatchTxs_EmptyBatch(t *testing.T) {
 	seq, err := NewSequencer(logger, db, dummyDA, config.DefaultConfig(), Id, 1000, genesis.Genesis{}, mockExec)
 	require.NoError(t, err, "Failed to create sequencer")
 	defer func() {
+		seq.fiRetriever.Stop()
 		err := db.Close()
 		require.NoError(t, err, "Failed to close sequencer")
 	}()
@@ -224,6 +227,7 @@ func TestSequencer_GetNextBatch_NoLastBatch(t *testing.T) {
 	require.NoError(t, err)
 
 	defer func() {
+		seq.fiRetriever.Stop()
 		err := db.Close()
 		if err != nil {
 			t.Fatalf("Failed to close sequencer: %v", err)
@@ -339,10 +343,9 @@ func TestSequencer_GetNextBatch_BeforeDASubmission(t *testing.T) {
 	Id := []byte("test1")
 	mockExec := createDefaultMockExecutor(t)
 	seq, err := NewSequencer(logger, db, dummyDA, config.DefaultConfig(), Id, 1000, genesis.Genesis{}, mockExec)
-	if err != nil {
-		t.Fatalf("Failed to create sequencer: %v", err)
-	}
+	require.NoError(t, err)
 	defer func() {
+		seq.fiRetriever.Stop()
 		err := db.Close()
 		if err != nil {
 			t.Fatalf("Failed to close sequencer: %v", err)
@@ -420,6 +423,7 @@ func TestSequencer_GetNextBatch_ForcedInclusionAndBatch_MaxBytes(t *testing.T) {
 		createDefaultMockExecutor(t),
 	)
 	require.NoError(t, err)
+	defer seq.fiRetriever.Stop()
 
 	// Submit batch txs that are 40 bytes each
 	batchTx1 := make([]byte, 40)
@@ -513,7 +517,7 @@ func TestSequencer_GetNextBatch_ForcedInclusion_ExceedsMaxBytes(t *testing.T) {
 		createDefaultMockExecutor(t),
 	)
 	require.NoError(t, err)
-
+	defer seq.fiRetriever.Stop()
 	// Request batch with maxBytes = 120
 	getReq := coresequencer.GetNextBatchRequest{
 		Id:            []byte("test-chain"),
@@ -588,6 +592,7 @@ func TestSequencer_GetNextBatch_AlwaysCheckPendingForcedInclusion(t *testing.T) 
 		createDefaultMockExecutor(t),
 	)
 	require.NoError(t, err)
+	defer seq.fiRetriever.Stop()
 
 	// Submit a batch tx
 	batchTx := make([]byte, 50)
@@ -663,6 +668,7 @@ func TestSequencer_QueueLimit_Integration(t *testing.T) {
 		createDefaultMockExecutor(t),
 	)
 	require.NoError(t, err)
+	defer seq.fiRetriever.Stop()
 
 	// Test successful batch submission within limit
 	batch1 := createTestBatch(t, 3)
@@ -779,7 +785,7 @@ func TestSequencer_DAFailureAndQueueThrottling_Integration(t *testing.T) {
 		createDefaultMockExecutor(t),
 	)
 	require.NoError(t, err)
-
+	defer seq.fiRetriever.Stop()
 	ctx := t.Context()
 
 	// Phase 1: Normal operation - send some batches successfully
@@ -940,6 +946,7 @@ func TestSequencer_CheckpointPersistence_CrashRecovery(t *testing.T) {
 		createDefaultMockExecutor(t),
 	)
 	require.NoError(t, err)
+	defer seq1.fiRetriever.Stop()
 
 	// First call - get all forced txs (they fit in maxBytes=200)
 	getReq := coresequencer.GetNextBatchRequest{
@@ -970,6 +977,7 @@ func TestSequencer_CheckpointPersistence_CrashRecovery(t *testing.T) {
 		createDefaultMockExecutor(t),
 	)
 	require.NoError(t, err)
+	defer seq2.fiRetriever.Stop()
 
 	// Verify checkpoint was loaded from disk
 	assert.Equal(t, uint64(0), seq2.checkpoint.TxIndex, "TxIndex should be loaded from disk")
@@ -1039,6 +1047,7 @@ func TestSequencer_GetNextBatch_EmptyDABatch_IncreasesDAHeight(t *testing.T) {
 		createDefaultMockExecutor(t),
 	)
 	require.NoError(t, err)
+	defer seq.fiRetriever.Stop()
 
 	req := coresequencer.GetNextBatchRequest{
 		Id:            seq.Id,
@@ -1149,7 +1158,7 @@ func TestSequencer_GetNextBatch_WithGasFiltering(t *testing.T) {
 		mockExec,
 	)
 	require.NoError(t, err)
-
+	defer seq.fiRetriever.Stop()
 	// Manually set up cached forced txs to simulate DA fetch
 	seq.cachedForcedInclusionTxs = forcedTxs
 	seq.checkpoint.DAHeight = 100
@@ -1233,6 +1242,7 @@ func TestSequencer_GetNextBatch_GasFilterError(t *testing.T) {
 		mockExec,
 	)
 	require.NoError(t, err)
+	defer seq.fiRetriever.Stop()
 
 	// Set up cached txs
 	forcedTxs := [][]byte{[]byte("tx1"), []byte("tx2")}
@@ -1309,7 +1319,7 @@ func TestSequencer_CatchUp_DetectsOldEpoch(t *testing.T) {
 		createDefaultMockExecutor(t),
 	)
 	require.NoError(t, err)
-
+	defer seq.fiRetriever.Stop()
 	// Submit a mempool transaction
 	_, err = seq.SubmitBatchTxs(ctx, coresequencer.SubmitBatchTxsRequest{
 		Id:    []byte("test-chain"),
@@ -1396,7 +1406,7 @@ func TestSequencer_CatchUp_SkipsMempoolDuringCatchUp(t *testing.T) {
 		createDefaultMockExecutor(t),
 	)
 	require.NoError(t, err)
-
+	defer seq.fiRetriever.Stop()
 	// Submit several mempool transactions
 	for range 5 {
 		_, err = seq.SubmitBatchTxs(ctx, coresequencer.SubmitBatchTxsRequest{
@@ -1478,7 +1488,7 @@ func TestSequencer_CatchUp_UsesDATimestamp(t *testing.T) {
 		createDefaultMockExecutor(t),
 	)
 	require.NoError(t, err)
-
+	defer seq.fiRetriever.Stop()
 	req := coresequencer.GetNextBatchRequest{
 		Id:            []byte("test-chain"),
 		MaxBytes:      1000000,
@@ -1545,6 +1555,7 @@ func TestSequencer_CatchUp_ExitsCatchUpAtDAHead(t *testing.T) {
 		createDefaultMockExecutor(t),
 	)
 	require.NoError(t, err)
+	defer seq.fiRetriever.Stop()
 
 	// Submit mempool tx
 	_, err = seq.SubmitBatchTxs(ctx, coresequencer.SubmitBatchTxsRequest{
@@ -1621,7 +1632,7 @@ func TestSequencer_CatchUp_HeightFromFutureExitsCatchUp(t *testing.T) {
 		createDefaultMockExecutor(t),
 	)
 	require.NoError(t, err)
-
+	defer seq.fiRetriever.Stop()
 	req := coresequencer.GetNextBatchRequest{
 		Id:            []byte("test-chain"),
 		MaxBytes:      1000000,
@@ -1677,7 +1688,7 @@ func TestSequencer_CatchUp_NoCatchUpWhenRecentEpoch(t *testing.T) {
 		createDefaultMockExecutor(t),
 	)
 	require.NoError(t, err)
-
+	defer seq.fiRetriever.Stop()
 	// Submit a mempool tx
 	_, err = seq.SubmitBatchTxs(ctx, coresequencer.SubmitBatchTxsRequest{
 		Id:    []byte("test-chain"),
@@ -1759,7 +1770,7 @@ func TestSequencer_CatchUp_MultiEpochReplay(t *testing.T) {
 		createDefaultMockExecutor(t),
 	)
 	require.NoError(t, err)
-
+	defer seq.fiRetriever.Stop()
 	// Submit mempool txs
 	_, err = seq.SubmitBatchTxs(ctx, coresequencer.SubmitBatchTxsRequest{
 		Id:    []byte("test-chain"),
@@ -1837,7 +1848,7 @@ func TestSequencer_CatchUp_NoForcedInclusionConfigured(t *testing.T) {
 		createDefaultMockExecutor(t),
 	)
 	require.NoError(t, err)
-
+	defer seq.fiRetriever.Stop()
 	// Submit mempool tx
 	_, err = seq.SubmitBatchTxs(ctx, coresequencer.SubmitBatchTxsRequest{
 		Id:    []byte("test-chain"),
@@ -1914,6 +1925,7 @@ func TestSequencer_CatchUp_CheckpointAdvancesDuringCatchUp(t *testing.T) {
 		createDefaultMockExecutor(t),
 	)
 	require.NoError(t, err)
+	defer seq.fiRetriever.Stop()
 
 	// Initial checkpoint
 	assert.Equal(t, uint64(100), seq.checkpoint.DAHeight)
@@ -2039,7 +2051,7 @@ func TestSequencer_CatchUp_MonotonicTimestamps(t *testing.T) {
 		mockExec,
 	)
 	require.NoError(t, err)
-
+	defer seq.fiRetriever.Stop()
 	req := coresequencer.GetNextBatchRequest{
 		Id:            []byte("test-chain"),
 		MaxBytes:      1000000,
@@ -2143,7 +2155,7 @@ func TestSequencer_CatchUp_MonotonicTimestamps_EmptyEpoch(t *testing.T) {
 		createDefaultMockExecutor(t),
 	)
 	require.NoError(t, err)
-
+	defer seq.fiRetriever.Stop()
 	req := coresequencer.GetNextBatchRequest{
 		Id:            []byte("test-chain"),
 		MaxBytes:      1000000,
@@ -2227,6 +2239,7 @@ func TestSequencer_GetNextBatch_GasFilteringPreservesUnprocessedTxs(t *testing.T
 		mockExec,
 	)
 	require.NoError(t, err)
+	defer seq.fiRetriever.Stop()
 
 	// Set up cached forced inclusion txs: 4 transactions of 50 bytes each
 	tx0 := make([]byte, 50)
