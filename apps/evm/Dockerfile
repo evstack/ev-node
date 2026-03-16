@@ -1,34 +1,33 @@
-FROM golang:1.25-alpine AS build-env
+FROM golang:1.26-bookworm AS build-env
 
 WORKDIR /src
 
 COPY core core
 
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 COPY . .
 
 WORKDIR /src/apps/evm
-RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -o evm .
+RUN --mount=type=cache,target=/go/pkg/mod \
+    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags "-s -w" -o /out/evm .
 
-FROM alpine:3.22.2
+
+FROM busybox:1.36.1-musl AS busybox
+
+FROM scratch
 
 ENV HOME=/home/ev-node
 
-#hadolint ignore=DL3018
-RUN apk --no-cache add ca-certificates curl
-
-RUN addgroup -g 1000 ev-node && \
-    adduser -u 1000 -G ev-node -s /bin/sh -D ev-node
+COPY --from=build-env /out/evm /usr/bin/evm
+COPY --from=build-env /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=build-env --chown=10001:10001 /out/home-ev-node /home/ev-node
+COPY --from=busybox /bin/busybox /bin/busybox
+COPY apps/evm/entrypoint.sh /usr/bin/entrypoint.sh
 
 WORKDIR /home/ev-node
+USER 10001:10001
 
-COPY --from=build-env /src/apps/evm/evm /usr/bin/evm
-COPY apps/evm/entrypoint.sh /usr/bin/entrypoint.sh
-RUN chmod +x /usr/bin/entrypoint.sh && \
-    chown -R ev-node:ev-node /home/ev-node
-
-USER ev-node
-
-ENTRYPOINT ["/usr/bin/entrypoint.sh"]
+ENTRYPOINT ["/bin/busybox", "sh", "/usr/bin/entrypoint.sh"]

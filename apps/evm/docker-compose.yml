@@ -39,6 +39,13 @@ services:
           --txpool.max-account-slots 2048 \
           --txpool.max-new-txns 2048 \
           --txpool.additional-validation-tasks 16 \
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
     networks:
       - evolve-network
 
@@ -47,6 +54,13 @@ services:
     ports:
       - "7980:7980"
     command: ["-listen-all"]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
     networks:
       - evolve-network
 
@@ -75,6 +89,13 @@ services:
       - DA_ADDRESS=http://local-da:7980 # http://localhost:26658 (Use if not using local-da)
       # - DA_AUTH_TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJBbGxvdyI6WyJwdWJsaWMiLCJyZWFkIiwid3JpdGUiXSwiTm9uY2UiOiJQcEswTmhyWi9IY05NWkVtUG9sSXNpRTRDcUpMdE9mbWtBMW0zMWFUaEswPSIsIkV4cGlyZXNBdCI6IjAwMDEtMDEtMDFUMDA6MDA6MDBaIn0.gaWh6tS6Rel1XFYclDkapNnZlaZVjrikCRNBxSDkCGk
       # - DA_NAMESPACE=00000000000000000000000000000000000000000008e5f679bf7116c1
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
     networks:
       - evolve-network
 

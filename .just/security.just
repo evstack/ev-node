@@ -18,6 +18,7 @@ trivy-scan-fs:
         {{trivy_image}} \
         fs --scanners vuln,misconfig,secret \
         --severity {{trivy_severity}} \
+        --exit-code 1 \
         /workspace
     @echo "--> Filesystem scan complete"
 
@@ -30,6 +31,7 @@ trivy-scan-image:
             -v /var/run/docker.sock:/var/run/docker.sock \
             {{trivy_image}} \
             image --severity {{trivy_severity}} \
+            --exit-code 1 \
             $img; \
     done
     @echo "--> Image scan complete"

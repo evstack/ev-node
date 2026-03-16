@@ -10,11 +10,13 @@ services:
       - "7980:7980"
     environment:
       - DA_NAMESPACE=00000000000000000000000000000000000000000000000000000000deadbeef
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7980/health"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
 
   # Example gRPC execution service (replace with your implementation)
   # execution-service:
@@ -36,7 +38,7 @@ services:
       dockerfile: apps/grpc/Dockerfile
     depends_on:
       local-da:
-        condition: service_healthy
+        condition: service_started
       # execution-service:
       #   condition: service_healthy
     ports:
@@ -48,10 +50,10 @@ services:
       - DA_NAMESPACE=00000000000000000000000000000000000000000000000000deadbeef
       - GRPC_EXECUTOR_URL=http://host.docker.internal:50051 # Change to your execution service
     volumes:
-      - evolve-data:/home/evolve/.evgrpc
+      - evolve-data:/home/ev-node/.evgrpc
     command:
       - start
-      - --root-dir=/home/evolve/.evgrpc
+      - --root-dir=/home/ev-node/.evgrpc
       - --da.address=${DA_ADDRESS:-http://local-da:7980}
       - --da.namespace=${DA_NAMESPACE}
       - --grpc-executor-url=${GRPC_EXECUTOR_URL:-http://host.docker.internal:50051}
@@ -59,6 +61,13 @@ services:
       - --rpc.laddr=tcp://0.0.0.0:26657
       - --instrumentation.prometheus=true
       - --instrumentation.prometheus-listen-addr=0.0.0.0:26660
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
 
 volumes:
   evolve-data:

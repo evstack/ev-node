@@ -1,40 +1,26 @@
-FROM golang:1.25 AS base
-
-#hadolint ignore=DL3018
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    build-essential \
-    ca-certificates \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# enable faster module downloading.
-ENV GOPROXY=https://proxy.golang.org
-
-## builder stage.
-#
-FROM base AS builder
+FROM golang:1.26-bookworm AS builder
 
 WORKDIR /ev-node
 
-# Copy all source code first
+COPY go.mod go.sum ./
+COPY apps/testapp/go.mod apps/testapp/go.sum ./apps/testapp/
+COPY core/go.mod core/go.sum ./core/
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
+
 COPY . .
+RUN mkdir -p /home/ev-node
+RUN --mount=type=cache,target=/go/pkg/mod \
+   cd apps/testapp && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags "-s -w" -o /out/testapp .
 
-# Now download dependencies and build
-RUN go mod download && cd apps/testapp && go install .
+FROM scratch
 
-## prep the final image.
-#
-FROM base
-
-RUN groupadd -g 1000 ev-node && \
-    useradd -u 1000 -g ev-node -s /bin/sh -m ev-node
-
-COPY --from=builder /go/bin/testapp /usr/bin
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder --chown=10001:10001 /home/ev-node /home/ev-node
+COPY --from=builder /out/testapp /usr/bin/testapp
 
 WORKDIR /home/ev-node
-RUN chown -R ev-node:ev-node /home/ev-node
 
-USER ev-node
+USER 10001:10001
 
 ENTRYPOINT ["testapp"]
