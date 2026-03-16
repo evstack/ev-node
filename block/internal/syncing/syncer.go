@@ -40,10 +40,6 @@ const (
 	// fullnessThreshold is the fraction of DefaultMaxBlobSize above which a block
 	// is considered full. Exceeding it extends the grace period for that epoch.
 	fullnessThreshold = 0.8
-
-	// maxSeenBlockTxs is the upper bound on the seenBlockTxs map to prevent
-	// unbounded memory growth between epoch prune cycles at high throughput.
-	maxSeenBlockTxs = 500_000
 )
 
 // Syncer handles block synchronization from DA and P2P sources.
@@ -901,10 +897,6 @@ func (s *Syncer) VerifyForcedInclusionTxs(ctx context.Context, daHeight uint64, 
 	}
 	s.seenBlockTxsByHeight[daHeight] = hashes
 	s.daBlockBytes[daHeight] = blockBytes
-	if len(s.seenBlockTxs) > maxSeenBlockTxs {
-		s.logger.Warn().Int("size", len(s.seenBlockTxs)).Int("max", maxSeenBlockTxs).
-			Msg("seenBlockTxs map exceeds bound, forced inclusion verification may have reduced accuracy until next epoch prune")
-	}
 	s.forcedInclusionMu.Unlock()
 
 	if daHeight < daStart || daHeight < s.getLastState().DAHeight {
