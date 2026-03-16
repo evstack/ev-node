@@ -304,8 +304,8 @@ type P2PConfig struct {
 
 // SignerConfig contains all signer configuration parameters
 type SignerConfig struct {
-	SignerType string `mapstructure:"signer_type" yaml:"signer_type" comment:"Type of remote signer to use (file, grpc, awskms)"`
-	SignerPath string `mapstructure:"signer_path" yaml:"signer_path" comment:"Path to the signer file or address"`
+	SignerType    string          `mapstructure:"signer_type" yaml:"signer_type" comment:"Type of remote signer to use (file, awskms)"`
+	SignerPath    string          `mapstructure:"signer_path" yaml:"signer_path" comment:"Path to the signer file or address"`
 	KmsKeyID      string          `mapstructure:"kms_key_id" yaml:"kms_key_id" comment:"AWS KMS Key ID or ARN for awskms signer"`
 	KmsRegion     string          `mapstructure:"kms_region" yaml:"kms_region" comment:"AWS Region for awskms signer"`
 	KmsProfile    string          `mapstructure:"kms_profile" yaml:"kms_profile" comment:"AWS Profile for awskms signer"`

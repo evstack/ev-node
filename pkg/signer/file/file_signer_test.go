@@ -2,7 +2,6 @@ package file
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -175,7 +174,7 @@ func TestSign(t *testing.T) {
 
 		// Sign a message
 		message := []byte("Hello, Evolve!")
-		signature, err := signer.Sign(context.Background(), message)
+		signature, err := signer.Sign(t.Context(), message)
 		require.NoError(t, err)
 		require.NotNil(t, signature)
 
@@ -209,7 +208,7 @@ func TestSign(t *testing.T) {
 
 		for _, msg := range messages {
 			message := []byte(msg)
-			signature, err := signer.Sign(context.Background(), message)
+			signature, err := signer.Sign(t.Context(), message)
 			require.NoError(t, err)
 
 			valid, err := pubKey.Verify(message, signature)
@@ -249,7 +248,7 @@ func TestKeyPersistence(t *testing.T) {
 
 	// Sign a test message
 	message := []byte("Test message")
-	signature, err := signer1.Sign(context.Background(), message)
+	signature, err := signer1.Sign(t.Context(), message)
 	require.NoError(t, err)
 
 	// Verify signature works with this key
@@ -406,7 +405,7 @@ func TestConcurrentAccess(t *testing.T) {
 				}
 
 				// Sign message
-				signature, err := signer.Sign(context.Background(), message)
+				signature, err := signer.Sign(t.Context(), message)
 				if err != nil {
 					errChan <- err
 					continue
@@ -605,7 +604,7 @@ func TestSign_NilPrivateKey(t *testing.T) {
 	}
 
 	message := []byte("test message")
-	_, err := signer.Sign(context.Background(), message)
+	_, err := signer.Sign(t.Context(), message)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "private key not loaded")
 }

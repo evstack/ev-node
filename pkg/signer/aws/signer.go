@@ -7,7 +7,9 @@ import (
 	"crypto/ed25519"
 	"crypto/sha256"
 	"crypto/x509"
+	"errors"
 	"fmt"
+	"net"
 	"sync"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/kms/types"
+	"github.com/aws/smithy-go"
 	"github.com/libp2p/go-libp2p/core/crypto"
 
 	"github.com/evstack/ev-node/pkg/signer"
@@ -38,26 +41,11 @@ type Options struct {
 	CacheTTL time.Duration
 }
 
-func (o *Options) timeout() time.Duration {
-	if o != nil && o.Timeout > 0 {
-		return o.Timeout
-	}
-	return 10 * time.Second
-}
+func (o *Options) timeout() time.Duration { return o.Timeout }
 
-func (o *Options) maxRetries() int {
-	if o != nil && o.MaxRetries > 0 {
-		return o.MaxRetries
-	}
-	return 3
-}
+func (o *Options) maxRetries() int { return o.MaxRetries }
 
-func (o *Options) cacheTTL() time.Duration {
-	if o != nil {
-		return o.CacheTTL
-	}
-	return 0
-}
+func (o *Options) cacheTTL() time.Duration { return o.CacheTTL }
 
 // KmsSigner implements the signer.Signer interface using AWS KMS.
 type KmsSigner struct {
@@ -102,10 +90,19 @@ func NewKmsSignerFromClient(ctx context.Context, client KMSClient, keyID string,
 	if keyID == "" {
 		return nil, fmt.Errorf("aws kms key ID is required")
 	}
+	if client == nil {
+		return nil, fmt.Errorf("aws kms client is required")
+	}
 
-	o := Options{}
+	o := Options{Timeout: 5 * time.Second, MaxRetries: 3, CacheTTL: 0}
 	if opts != nil {
-		o = *opts
+		if opts.Timeout > 0 {
+			o.Timeout = opts.Timeout
+		}
+		if opts.MaxRetries >= 0 {
+			o.MaxRetries = opts.MaxRetries
+		}
+		o.CacheTTL = opts.CacheTTL
 	}
 
 	s := &KmsSigner{
@@ -170,8 +167,9 @@ func (s *KmsSigner) Sign(ctx context.Context, message []byte) ([]byte, error) {
 	var lastErr error
 	maxRetries := s.opts.maxRetries()
 	timeout := s.opts.timeout()
+	maxAttempts := maxRetries + 1
 
-	for attempt := 0; attempt < maxRetries; attempt++ {
+	for attempt := 0; attempt < maxAttempts; attempt++ {
 		if attempt > 0 {
 			// Exponential backoff: 100ms, 200ms, 400ms, ...
 			backoff := time.Duration(100<<uint(attempt-1)) * time.Millisecond
@@ -193,13 +191,16 @@ func (s *KmsSigner) Sign(ctx context.Context, message []byte) ([]byte, error) {
 
 		if err != nil {
 			lastErr = err
+			if !isRetryableKMSError(err) {
+				return nil, fmt.Errorf("KMS Sign failed with non-retryable error: %w", err)
+			}
 			continue
 		}
 
 		return out.Signature, nil
 	}
 
-	return nil, fmt.Errorf("KMS Sign failed after %d attempts: %w", maxRetries, lastErr)
+	return nil, fmt.Errorf("KMS Sign failed after %d attempts: %w", maxAttempts, lastErr)
 }
 
 // GetPublic returns the cached public key, optionally refreshing if cache TTL
@@ -213,7 +214,10 @@ func (s *KmsSigner) GetPublic() (crypto.PubKey, error) {
 	s.mu.RUnlock()
 
 	if expired {
-		if err := s.fetchPublicKey(context.Background()); err != nil {
+		refreshCtx, cancel := context.WithTimeout(context.Background(), s.opts.timeout())
+		err := s.fetchPublicKey(refreshCtx)
+		cancel()
+		if err != nil {
 			// If refresh fails, return the stale cached key
 			if pubKey != nil {
 				return pubKey, nil
@@ -242,4 +246,29 @@ func (s *KmsSigner) GetAddress() ([]byte, error) {
 	}
 
 	return s.address, nil
+}
+
+func isRetryableKMSError(err error) bool {
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return true
+	}
+
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) {
+		switch apiErr.ErrorCode() {
+		case "DependencyTimeoutException", "KMSInternalException", "KeyUnavailableException", "ThrottlingException", "ServiceUnavailableException", "InternalFailure", "InternalException", "RequestTimeout", "RequestTimeoutException":
+			return true
+		}
+	}
+
+	return false
 }

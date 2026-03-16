@@ -383,12 +383,15 @@ func (s *FileSystemSigner) loadKeys(passphrase []byte) error {
 }
 
 // Sign signs a message using the private key
-func (s *FileSystemSigner) Sign(_ context.Context, message []byte) ([]byte, error) {
+func (s *FileSystemSigner) Sign(ctx context.Context, message []byte) ([]byte, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	if s.privateKey == nil {
 		return nil, fmt.Errorf("private key not loaded")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 
 	return s.privateKey.Sign(message)

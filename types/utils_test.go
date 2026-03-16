@@ -1,6 +1,7 @@
 package types_test
 
 import (
+	"context"
 	// Import bytes package
 	"testing"
 	"time" // Used for time.Time comparison
@@ -78,7 +79,7 @@ func TestGetFirstSignedHeader(t *testing.T) {
 			noopSigner, err := noop.NewNoopSigner(privKey)
 			assert.NoError(t, err)
 
-			firstSignedHeader, err := types.GetFirstSignedHeader(noopSigner, tc.chainID)
+			firstSignedHeader, err := types.GetFirstSignedHeader(context.Background(), noopSigner, tc.chainID)
 			assert.NoError(t, err)
 			assert.NotNil(t, firstSignedHeader)
 			assert.Equal(t, uint64(1), firstSignedHeader.Height())

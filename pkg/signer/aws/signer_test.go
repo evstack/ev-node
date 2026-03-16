@@ -5,10 +5,13 @@ import (
 	"crypto/ed25519"
 	"crypto/x509"
 	"fmt"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/kms/types"
+	"github.com/aws/smithy-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -73,6 +76,12 @@ func TestNewKmsSignerFromClient_EmptyKeyID(t *testing.T) {
 	assert.Contains(t, err.Error(), "key ID is required")
 }
 
+func TestNewKmsSignerFromClient_NilClient(t *testing.T) {
+	_, err := NewKmsSignerFromClient(context.Background(), nil, "test-key", nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "client is required")
+}
+
 func TestNewKmsSignerFromClient_GetPublicKeyFails(t *testing.T) {
 	mock := &mockKMSClient{
 		getPubFn: func(_ context.Context, _ *kms.GetPublicKeyInput) (*kms.GetPublicKeyOutput, error) {
@@ -109,10 +118,12 @@ func TestSign_Success(t *testing.T) {
 func TestSign_KMSFailure(t *testing.T) {
 	_, der := generateTestEd25519DER(t)
 
+	var calls int32
 	mock := &mockKMSClient{
 		pubKeyDER: der,
 		signFn: func(_ context.Context, _ *kms.SignInput) (*kms.SignOutput, error) {
-			return nil, fmt.Errorf("throttling exception")
+			atomic.AddInt32(&calls, 1)
+			return nil, &smithy.GenericAPIError{Code: "ThrottlingException", Message: "rate limit"}
 		},
 	}
 
@@ -122,6 +133,48 @@ func TestSign_KMSFailure(t *testing.T) {
 	_, err = s.Sign(context.Background(), []byte("hello world"))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "KMS Sign failed")
+	assert.Equal(t, int32(4), atomic.LoadInt32(&calls), "default retries should make 4 attempts")
+}
+
+func TestSign_MaxRetriesZero_DisablesRetries(t *testing.T) {
+	_, der := generateTestEd25519DER(t)
+
+	var calls int32
+	mock := &mockKMSClient{
+		pubKeyDER: der,
+		signFn: func(_ context.Context, _ *kms.SignInput) (*kms.SignOutput, error) {
+			atomic.AddInt32(&calls, 1)
+			return nil, &smithy.GenericAPIError{Code: "ThrottlingException", Message: "rate limit"}
+		},
+	}
+
+	s, err := NewKmsSignerFromClient(context.Background(), mock, "test-key", &Options{MaxRetries: 0})
+	require.NoError(t, err)
+
+	_, err = s.Sign(context.Background(), []byte("hello world"))
+	require.Error(t, err)
+	assert.Equal(t, int32(1), atomic.LoadInt32(&calls), "max retries 0 should only make one attempt")
+}
+
+func TestSign_NonRetryableError_NoRetries(t *testing.T) {
+	_, der := generateTestEd25519DER(t)
+
+	var calls int32
+	mock := &mockKMSClient{
+		pubKeyDER: der,
+		signFn: func(_ context.Context, _ *kms.SignInput) (*kms.SignOutput, error) {
+			atomic.AddInt32(&calls, 1)
+			return nil, fmt.Errorf("access denied")
+		},
+	}
+
+	s, err := NewKmsSignerFromClient(context.Background(), mock, "test-key", &Options{MaxRetries: 3})
+	require.NoError(t, err)
+
+	_, err = s.Sign(context.Background(), []byte("hello world"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "non-retryable")
+	assert.Equal(t, int32(1), atomic.LoadInt32(&calls), "non-retryable errors should fail fast")
 }
 
 func TestGetPublic_Cached(t *testing.T) {
@@ -153,4 +206,35 @@ func TestGetAddress_Deterministic(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, addr1, addr2, "address should be deterministic")
+}
+
+func TestGetPublic_RefreshTimeoutReturnsStale(t *testing.T) {
+	_, der := generateTestEd25519DER(t)
+
+	var getPubCalls int32
+	mock := &mockKMSClient{
+		pubKeyDER: der,
+		getPubFn: func(ctx context.Context, _ *kms.GetPublicKeyInput) (*kms.GetPublicKeyOutput, error) {
+			call := atomic.AddInt32(&getPubCalls, 1)
+			if call == 1 {
+				return &kms.GetPublicKeyOutput{PublicKey: der}, nil
+			}
+			<-ctx.Done()
+			return nil, ctx.Err()
+		},
+	}
+
+	s, err := NewKmsSignerFromClient(context.Background(), mock, "test-key", &Options{CacheTTL: time.Nanosecond, Timeout: 20 * time.Millisecond})
+	require.NoError(t, err)
+
+	time.Sleep(2 * time.Millisecond)
+
+	start := time.Now()
+	pub, err := s.GetPublic()
+	duration := time.Since(start)
+
+	require.NoError(t, err)
+	require.NotNil(t, pub)
+	assert.Less(t, duration, 200*time.Millisecond, "refresh should respect timeout and return stale key")
+	assert.GreaterOrEqual(t, atomic.LoadInt32(&getPubCalls), int32(2), "should attempt refresh call")
 }

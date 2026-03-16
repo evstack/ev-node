@@ -17,4 +17,3 @@ type Signer interface {
 	// GetAddress returns the address of the signer.
 	GetAddress() ([]byte, error)
 }
-

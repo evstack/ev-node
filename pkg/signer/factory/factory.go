@@ -15,6 +15,16 @@ import (
 
 // NewSigner creates a new Signer based on the configuration.
 func NewSigner(ctx context.Context, config *rollconf.Config, passphrase string) (signer.Signer, error) {
+	return newSigner(ctx, config, passphrase, false)
+}
+
+// NewSignerForInit creates a new Signer for init-time flows.
+// For file signer, it creates a new key if signer.json is missing.
+func NewSignerForInit(ctx context.Context, config *rollconf.Config, passphrase string) (signer.Signer, error) {
+	return newSigner(ctx, config, passphrase, true)
+}
+
+func newSigner(ctx context.Context, config *rollconf.Config, passphrase string, allowCreate bool) (signer.Signer, error) {
 	switch config.Signer.SignerType {
 	case "file":
 		if passphrase == "" {
@@ -27,20 +37,16 @@ func NewSigner(ctx context.Context, config *rollconf.Config, passphrase string) 
 			return nil, err
 		}
 
-		// Ensure directory exists for init command cases
-		if err := os.MkdirAll(signerPath, 0o750); err != nil {
-			return nil, fmt.Errorf("failed to create signer directory: %w", err)
+		signerFile := filepath.Join(signerPath, "signer.json")
+		if allowCreate {
+			if err := os.MkdirAll(signerPath, 0o750); err != nil {
+				return nil, fmt.Errorf("failed to create signer directory: %w", err)
+			}
+			if _, err := os.Stat(signerFile); os.IsNotExist(err) {
+				return file.CreateFileSystemSigner(signerPath, []byte(passphrase))
+			}
 		}
 
-		// This will either create (if it doesn't exist) or load (if it does).
-		// In a strictly decoupled factory we'd differentiate Create vs Load, but given the 
-		// underlying CreateFileSystemSigner and LoadFileSystemSigner are typically idempotent 
-		// in behavior if files are provided, let's check for existing files:
-		signerFile := filepath.Join(signerPath, "signer.json")
-		if _, err := os.Stat(signerFile); os.IsNotExist(err) {
-			return file.CreateFileSystemSigner(signerPath, []byte(passphrase))
-		}
-		
 		return file.LoadFileSystemSigner(signerPath, []byte(passphrase))
 
 	case "awskms":

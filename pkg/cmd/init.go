@@ -3,10 +3,8 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 
-	rollconf "github.com/evstack/ev-node/pkg/config"
 	rollconf "github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/hash"
 	"github.com/evstack/ev-node/pkg/p2p/key"
@@ -14,7 +12,7 @@ import (
 )
 
 // CreateSigner sets up the signer configuration and creates necessary files
-func CreateSigner(config *rollconf.Config, homePath string, passphrase string) ([]byte, error) {
+func CreateSigner(ctx context.Context, config *rollconf.Config, homePath string, passphrase string) ([]byte, error) {
 	if !config.Node.Aggregator {
 		return nil, nil
 	}
@@ -24,7 +22,7 @@ func CreateSigner(config *rollconf.Config, homePath string, passphrase string) (
 		config.Signer.SignerPath = signerDir
 	}
 
-	signer, err := factory.NewSigner(context.Background(), config, passphrase)
+	signer, err := factory.NewSignerForInit(ctx, config, passphrase)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize signer via factory: %w", err)
 	}

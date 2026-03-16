@@ -35,9 +35,12 @@ func NewNoopSigner(privKey crypto.PrivKey) (signer.Signer, error) {
 }
 
 // Sign implements the Signer interface by signing the message with the Ed25519 private key.
-func (n *NoopSigner) Sign(_ context.Context, message []byte) ([]byte, error) {
+func (n *NoopSigner) Sign(ctx context.Context, message []byte) ([]byte, error) {
 	if n.privKey == nil {
 		return nil, fmt.Errorf("private key not loaded")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	return n.privKey.Sign(message)
 }

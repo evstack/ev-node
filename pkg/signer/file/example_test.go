@@ -32,7 +32,7 @@ func TestFileSystemSigner(t *testing.T) {
 
 	// Sign a message
 	message := []byte("Hello, world!")
-	signature, err := signer.Sign(context.Background(), message)
+	signature, err := signer.Sign(t.Context(), message)
 	require.NoError(t, err)
 	require.NotNil(t, signature)
 

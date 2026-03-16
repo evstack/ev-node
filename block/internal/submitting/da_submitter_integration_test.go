@@ -53,7 +53,7 @@ func TestDASubmitter_SubmitHeadersAndData_MarksInclusionAndUpdatesLastSubmitted(
 	hdr1 := &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: gen.ChainID, Height: 1, Time: uint64(time.Now().UnixNano())}, AppHash: stateRoot, ProposerAddress: addr}, Signer: types.Signer{PubKey: pub, Address: addr}}
 	bz1, err := types.DefaultAggregatorNodeSignatureBytesProvider(&hdr1.Header)
 	require.NoError(t, err)
-	sig1, err := n.Sign(context.Background(), bz1)
+	sig1, err := n.Sign(t.Context(), bz1)
 	require.NoError(t, err)
 	hdr1.Signature = sig1
 	data1 := &types.Data{Metadata: &types.Metadata{ChainID: gen.ChainID, Height: 1, Time: uint64(time.Now().UnixNano())}, Txs: types.Txs{types.Tx("a")}}
@@ -61,7 +61,7 @@ func TestDASubmitter_SubmitHeadersAndData_MarksInclusionAndUpdatesLastSubmitted(
 	hdr2 := &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: gen.ChainID, Height: 2, Time: uint64(time.Now().Add(time.Second).UnixNano())}, AppHash: stateRoot, ProposerAddress: addr}, Signer: types.Signer{PubKey: pub, Address: addr}}
 	bz2, err := types.DefaultAggregatorNodeSignatureBytesProvider(&hdr2.Header)
 	require.NoError(t, err)
-	sig2, err := n.Sign(context.Background(), bz2)
+	sig2, err := n.Sign(t.Context(), bz2)
 	require.NoError(t, err)
 	hdr2.Signature = sig2
 	data2 := &types.Data{Metadata: &types.Metadata{ChainID: gen.ChainID, Height: 2, Time: uint64(time.Now().Add(time.Second).UnixNano())}, Txs: types.Txs{types.Tx("b")}}

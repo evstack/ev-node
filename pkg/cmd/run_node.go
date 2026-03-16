@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"syscall"
@@ -136,9 +135,9 @@ func StartNode(
 		var err error
 		signer, err = factory.NewSigner(ctx, &nodeConfig, passphrase)
 		if err != nil {
-			return fmt.Errorf("failed to initialize signer via factory: %w", err)
+			return fmt.Errorf("initialize signer via factory: %w", err)
 		}
-		
+
 		if nodeConfig.Signer.SignerType == "awskms" {
 			logger.Info().Msg("initialized AWS KMS signer via factory")
 		}
