@@ -972,7 +972,7 @@ func TestEvmSequencerCatchUpBasedSequencerE2E(t *testing.T) {
 
 	// ===== PHASE 10: Verify Nodes Are in Sync =====
 	t.Log("Phase 10: Verify Nodes Are in Sync")
-	time.Sleep(4 * time.Second) // hack to give some head start to the sequencer, otherwise it will pass immediatelly.
+	time.Sleep(4 * time.Second) // hack to give some head start to the sequencer, otherwise it will pass immediately.
 
 	// Wait for sync node to catch up to sequencer
 	require.Eventually(t, func() bool {
@@ -1062,7 +1062,7 @@ func TestEvmBasedSequencerBaselineE2E(t *testing.T) {
 		"--evm.eth-url", env.Endpoints.GetSequencerEthURL(),
 		"--evnode.log.level", "debug",
 	)
-	// We cannot use AwaitNodeUp immediatly, as a base sequencer does not create blocks until getting txs from DA.
+	// We cannot use AwaitNodeUp immediately, as a base sequencer does not create blocks until getting txs from DA.
 	// sut.AwaitNodeUp(t, env.Endpoints.GetRollkitRPCAddress(), NodeStartupTimeout)
 	t.Log("Based sequencer is up")
 
