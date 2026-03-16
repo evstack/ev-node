@@ -93,7 +93,6 @@ type Syncer struct {
 	ctx              context.Context
 	cancel           context.CancelFunc
 	wg               sync.WaitGroup
-	closeOnce        sync.Once
 	hasCriticalError atomic.Bool
 
 	// P2P wait coordination
@@ -272,7 +271,7 @@ func (s *Syncer) Stop(ctx context.Context) error {
 	}
 
 	s.logger.Info().Msg("syncer stopped")
-	s.closeOnce.Do(func() { close(s.heightInCh) })
+	close(s.heightInCh)
 	s.cancel = nil
 	return nil
 }
