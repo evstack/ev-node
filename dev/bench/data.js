@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1773703248507,
+  "lastUpdate": 1773703250046,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -8534,6 +8534,102 @@ window.BENCHMARK_DATA = {
             "value": 81,
             "unit": "allocs/op",
             "extra": "30493 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "marko@baricevic.me",
+            "name": "Marko",
+            "username": "tac0turtle"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "fd6591c5034884770a7f3ecfe0d7a3883c4a661d",
+          "message": "chore: minor changes from audit tool (#3165)\n\n* minor changes from audit tool\n\n* just deps\n\n* revert\n\n* revert++\n\n---------\n\nCo-authored-by: julienrbrt <julien@rbrt.fr>",
+          "timestamp": "2026-03-16T23:00:34Z",
+          "tree_id": "8c02fb83f7e9e05905b247834e1ccfdb3bc2df91",
+          "url": "https://github.com/evstack/ev-node/commit/fd6591c5034884770a7f3ecfe0d7a3883c4a661d"
+        },
+        "date": 1773703249573,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 38019,
+            "unit": "ns/op\t    7008 B/op\t      71 allocs/op",
+            "extra": "32085 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 38019,
+            "unit": "ns/op",
+            "extra": "32085 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 7008,
+            "unit": "B/op",
+            "extra": "32085 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 71,
+            "unit": "allocs/op",
+            "extra": "32085 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 39130,
+            "unit": "ns/op\t    7470 B/op\t      81 allocs/op",
+            "extra": "31220 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 39130,
+            "unit": "ns/op",
+            "extra": "31220 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 7470,
+            "unit": "B/op",
+            "extra": "31220 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 81,
+            "unit": "allocs/op",
+            "extra": "31220 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 49172,
+            "unit": "ns/op\t   26165 B/op\t      81 allocs/op",
+            "extra": "24849 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 49172,
+            "unit": "ns/op",
+            "extra": "24849 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 26165,
+            "unit": "B/op",
+            "extra": "24849 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 81,
+            "unit": "allocs/op",
+            "extra": "24849 times\n4 procs"
           }
         ]
       }
