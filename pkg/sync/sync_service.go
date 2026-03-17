@@ -190,20 +190,9 @@ func (s *SyncService[H]) AppendDAHint(ctx context.Context, daHeight uint64, heig
 
 // Start is a part of Service interface.
 func (syncService *SyncService[H]) Start(ctx context.Context) error {
-	// setup P2P infrastructure, but don't start Subscriber yet.
-	peerIDs, err := syncService.setupP2PInfrastructure(ctx)
+	peerIDs, err := syncService.prepareStart(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to setup syncer P2P infrastructure: %w", err)
-	}
-
-	// create syncer, must be before initFromP2PWithRetry which calls startSyncer.
-	if syncService.syncer, err = newSyncer(
-		syncService.ex,
-		syncService.store,
-		syncService.sub,
-		[]goheadersync.Option{goheadersync.WithBlockTime(syncService.conf.Node.BlockTime.Duration)},
-	); err != nil {
-		return fmt.Errorf("failed to create syncer: %w", err)
+		return err
 	}
 
 	// initialize stores from P2P (blocking until genesis is fetched for followers)
@@ -221,6 +210,45 @@ func (syncService *SyncService[H]) Start(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// StartForPublishing starts the sync service in publisher mode.
+//
+// This mode is used by a raft leader with an empty local store: no peer can serve
+// height 1 yet, so waiting for initFromP2PWithRetry would deadlock block production.
+// We still need the P2P exchange server and pubsub subscriber to be ready before the
+// first block is produced, because WriteToStoreAndBroadcast relies on them to gossip
+// the block that bootstraps the network.
+func (syncService *SyncService[H]) StartForPublishing(ctx context.Context) error {
+	if _, err := syncService.prepareStart(ctx); err != nil {
+		return err
+	}
+
+	if err := syncService.startSubscriber(ctx); err != nil {
+		return fmt.Errorf("failed to start subscriber: %w", err)
+	}
+
+	return nil
+}
+
+func (syncService *SyncService[H]) prepareStart(ctx context.Context) ([]peer.ID, error) {
+	// setup P2P infrastructure, but don't start Subscriber yet.
+	peerIDs, err := syncService.setupP2PInfrastructure(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to setup syncer P2P infrastructure: %w", err)
+	}
+
+	// create syncer, must be before initFromP2PWithRetry which calls startSyncer.
+	if syncService.syncer, err = newSyncer(
+		syncService.ex,
+		syncService.store,
+		syncService.sub,
+		[]goheadersync.Option{goheadersync.WithBlockTime(syncService.conf.Node.BlockTime.Duration)},
+	); err != nil {
+		return nil, fmt.Errorf("failed to create syncer: %w", err)
+	}
+
+	return peerIDs, nil
 }
 
 // startSyncer starts the SyncService's syncer
