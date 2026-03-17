@@ -149,7 +149,7 @@ func TestHeaderSyncServiceRestart(t *testing.T) {
 	require.NoError(t, signedHeader.Validate())
 	require.NoError(t, svc.WriteToStoreAndBroadcast(ctx, &types.P2PSignedHeader{SignedHeader: signedHeader}))
 
-	for i := genesisDoc.InitialHeight + 1; i < 2; i++ {
+	for i := genesisDoc.InitialHeight + 1; i < 10; i++ {
 		signedHeader = nextHeader(t, signedHeader, genesisDoc.ChainID, noopSigner)
 		t.Logf("signed header: %d", i)
 		require.NoError(t, svc.WriteToStoreAndBroadcast(ctx, &types.P2PSignedHeader{SignedHeader: signedHeader}))

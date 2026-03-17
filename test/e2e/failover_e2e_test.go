@@ -964,11 +964,9 @@ func leader(t require.TestingT, nodes map[string]*nodeDetails) (string, *nodeDet
 		}
 		resp, err := client.Get(details.rpcAddr + "/raft/node")
 		require.NoError(t, err)
-		defer resp.Body.Close()
-
 		var status nodeStatus
 		require.NoError(t, json.NewDecoder(resp.Body).Decode(&status))
-
+		_ = resp.Body.Close()
 		if status.IsLeader {
 			return node, details
 		}
@@ -994,13 +992,14 @@ func IsNodeUp(t *testing.T, rpcAddr string, timeout time.Duration) bool {
 	ctx, done := context.WithTimeout(context.Background(), timeout)
 	defer done()
 
-	ticker := time.Tick(min(timeout/10, 200*time.Millisecond))
+	ticker := time.NewTimer(min(timeout/10, 200*time.Millisecond))
+	defer ticker.Stop()
 	c := client.NewClient(rpcAddr)
 	require.NotNil(t, c)
 	var lastBlock uint64
 	for {
 		select {
-		case <-ticker:
+		case <-ticker.C:
 			switch s, err := c.GetState(ctx); {
 			case err != nil: // ignore
 			case lastBlock == 0:
