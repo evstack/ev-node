@@ -30,5 +30,5 @@ EXPOSE 26656
 EXPOSE 26657
 EXPOSE 26660
 
-ENTRYPOINT ["evgrpc"]
+ENTRYPOINT ["/usr/local/bin/evgrpc"]
 CMD ["start"]
