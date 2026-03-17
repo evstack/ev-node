@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1773703250046,
+  "lastUpdate": 1773737879336,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -3060,6 +3060,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 161490,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "8849e05b3b4591446f2be5250785162a533f7232",
+          "message": "build(deps): Bump the all-go group across 3 directories with 3 updates (#3168)\n\n* build(deps): Bump the all-go group across 3 directories with 3 updates\n\nBumps the all-go group with 2 updates in the / directory: [golang.org/x/crypto](https://github.com/golang/crypto) and [golang.org/x/net](https://github.com/golang/net).\nBumps the all-go group with 1 update in the /execution/grpc directory: [golang.org/x/net](https://github.com/golang/net).\nBumps the all-go group with 1 update in the /test/docker-e2e directory: [github.com/evstack/ev-node/execution/evm](https://github.com/evstack/ev-node).\n\n\nUpdates `golang.org/x/crypto` from 0.48.0 to 0.49.0\n- [Commits](https://github.com/golang/crypto/compare/v0.48.0...v0.49.0)\n\nUpdates `golang.org/x/net` from 0.51.0 to 0.52.0\n- [Commits](https://github.com/golang/net/compare/v0.51.0...v0.52.0)\n\nUpdates `golang.org/x/net` from 0.51.0 to 0.52.0\n- [Commits](https://github.com/golang/net/compare/v0.51.0...v0.52.0)\n\nUpdates `github.com/evstack/ev-node/execution/evm` from 1.0.0-rc.4 to 1.0.0\n- [Release notes](https://github.com/evstack/ev-node/releases)\n- [Changelog](https://github.com/evstack/ev-node/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/evstack/ev-node/compare/v1.0.0-rc.4...v1.0.0)\n\n---\nupdated-dependencies:\n- dependency-name: golang.org/x/crypto\n  dependency-version: 0.49.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: golang.org/x/net\n  dependency-version: 0.52.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: golang.org/x/net\n  dependency-version: 0.52.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: github.com/evstack/ev-node/execution/evm\n  dependency-version: 1.0.0\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\n\n* chore: run just deps after Dependabot update\n\n---------\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\nCo-authored-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>\nCo-authored-by: julienrbrt <julien@rbrt.fr>",
+          "timestamp": "2026-03-17T09:54:36+01:00",
+          "tree_id": "1871b90bd39157bf6cb4d109d7cc4a7b7c33f4b5",
+          "url": "https://github.com/evstack/ev-node/commit/8849e05b3b4591446f2be5250785162a533f7232"
+        },
+        "date": 1773737876357,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 914802846,
+            "unit": "ns/op\t33886904 B/op\t  195696 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 914802846,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 33886904,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 195696,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
