@@ -224,6 +224,13 @@ func (d *DummyDA) Retrieve(_ context.Context, height uint64, namespace []byte) d
 	}
 }
 
+// RetrieveBlobs returns blobs stored at the given height and namespace without
+// requiring a timestamp lookup. DummyDA already serves timestamps from memory,
+// so this shares the same implementation.
+func (d *DummyDA) RetrieveBlobs(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
+	return d.Retrieve(ctx, height, namespace)
+}
+
 // GetHeaderNamespace returns the header namespace.
 func (d *DummyDA) GetHeaderNamespace() []byte { return []byte("hdr") }
 

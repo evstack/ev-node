@@ -17,12 +17,13 @@ import (
 
 // mockFullClient provides function hooks for testing the tracing decorator.
 type mockFullClient struct {
-	submitFn    func(ctx context.Context, data [][]byte, gasPrice float64, namespace []byte, options []byte) datypes.ResultSubmit
-	retrieveFn  func(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve
-	getFn       func(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error)
-	getProofsFn func(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error)
-	validateFn  func(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error)
-	subscribeFn func(ctx context.Context, namespace []byte, ts bool) (<-chan datypes.SubscriptionEvent, error)
+	submitFn        func(ctx context.Context, data [][]byte, gasPrice float64, namespace []byte, options []byte) datypes.ResultSubmit
+	retrieveFn      func(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve
+	retrieveBlobsFn func(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve
+	getFn           func(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error)
+	getProofsFn     func(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error)
+	validateFn      func(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error)
+	subscribeFn     func(ctx context.Context, namespace []byte, ts bool) (<-chan datypes.SubscriptionEvent, error)
 }
 
 func (m *mockFullClient) Subscribe(ctx context.Context, namespace []byte, ts bool) (<-chan datypes.SubscriptionEvent, error) {
@@ -41,6 +42,12 @@ func (m *mockFullClient) Submit(ctx context.Context, data [][]byte, gasPrice flo
 func (m *mockFullClient) Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
 	if m.retrieveFn != nil {
 		return m.retrieveFn(ctx, height, namespace)
+	}
+	return datypes.ResultRetrieve{}
+}
+func (m *mockFullClient) RetrieveBlobs(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
+	if m.retrieveBlobsFn != nil {
+		return m.retrieveBlobsFn(ctx, height, namespace)
 	}
 	return datypes.ResultRetrieve{}
 }
@@ -162,6 +169,26 @@ func TestTracedDA_Retrieve_Error(t *testing.T) {
 	span := spans[0]
 	require.Equal(t, codes.Error, span.Status().Code)
 	require.Equal(t, "oops", span.Status().Description)
+}
+
+func TestTracedDA_RetrieveBlobs_Success(t *testing.T) {
+	mock := &mockFullClient{
+		retrieveBlobsFn: func(ctx context.Context, height uint64, _ []byte) datypes.ResultRetrieve {
+			return datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Height: height}, Data: []datypes.Blob{{}}}
+		},
+	}
+	client, sr := setupDATrace(t, mock)
+	ctx := context.Background()
+
+	_ = client.RetrieveBlobs(ctx, 11, []byte{0x01})
+
+	spans := sr.Ended()
+	require.Len(t, spans, 1)
+	span := spans[0]
+	require.Equal(t, "DA.RetrieveBlobs", span.Name())
+	attrs := span.Attributes()
+	testutil.RequireAttribute(t, attrs, "ns.length", 1)
+	testutil.RequireAttribute(t, attrs, "blob.count", 1)
 }
 
 func TestTracedDA_Get_Success(t *testing.T) {
