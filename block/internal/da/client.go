@@ -395,7 +395,10 @@ func (c *client) HasForcedInclusionNamespace() bool {
 // DA block containing a matching blob. The channel is closed when ctx is
 // cancelled. The caller must drain the channel after cancellation to avoid
 // goroutine leaks.
-func (c *client) Subscribe(ctx context.Context, namespace []byte) (<-chan datypes.SubscriptionEvent, error) {
+// Timestamps are included from the header if available (celestia-node v0.29.1+§), otherwise
+// fetched via a separate call when includeTimestamp is true. Be aware that fetching timestamps
+// separately is an additional call to the celestia node for each event.
+func (c *client) Subscribe(ctx context.Context, namespace []byte, includeTimestamp bool) (<-chan datypes.SubscriptionEvent, error) {
 	ns, err := share.NewNamespaceFromBytes(namespace)
 	if err != nil {
 		return nil, fmt.Errorf("invalid namespace: %w", err)
@@ -420,10 +423,24 @@ func (c *client) Subscribe(ctx context.Context, namespace []byte) (<-chan datype
 				if resp == nil {
 					continue
 				}
+				var blockTime time.Time
+				// Use header time if available (celestia-node v0.21.0+)
+				if resp.Header != nil && !resp.Header.Time.IsZero() {
+					blockTime = resp.Header.Time
+				} else if includeTimestamp {
+					// Fallback to fetching timestamp for older nodes
+					blockTime, err = c.getBlockTimestamp(ctx, resp.Height)
+					if err != nil {
+						c.logger.Error().Uint64("height", resp.Height).Err(err).Msg("failed to get DA block timestamp for subscription event")
+						blockTime = time.Now()
+						// TODO: we should retry fetching the timestamp. Current time may mess block time consistency for based sequencers.
+					}
+				}
 				select {
 				case out <- datypes.SubscriptionEvent{
-					Height: resp.Height,
-					Blobs:  extractBlobData(resp),
+					Height:    resp.Height,
+					Timestamp: blockTime,
+					Blobs:     extractBlobData(resp),
 				}:
 				case <-ctx.Done():
 					return

@@ -1,6 +1,10 @@
 package common
 
-import "github.com/evstack/ev-node/types"
+import (
+	"context"
+
+	"github.com/evstack/ev-node/types"
+)
 
 // EventSource represents the origin of a block event
 type EventSource string
@@ -23,4 +27,19 @@ type DAHeightEvent struct {
 
 	// Optional DA height hints from P2P. first is the DA height hint for the header, second is the DA height hint for the data
 	DaHeightHints [2]uint64
+}
+
+// EventSink receives parsed DA events with backpressure support.
+type EventSink interface {
+	PipeEvent(ctx context.Context, event DAHeightEvent) error
+}
+
+// EventSinkFunc adapts a plain function to the EventSink interface.
+// Useful in tests:
+//
+//	sink := common.EventSinkFunc(func(ctx context.Context, ev common.DAHeightEvent) error { return nil })
+type EventSinkFunc func(ctx context.Context, event DAHeightEvent) error
+
+func (f EventSinkFunc) PipeEvent(ctx context.Context, event DAHeightEvent) error {
+	return f(ctx, event)
 }

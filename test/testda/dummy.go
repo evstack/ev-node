@@ -54,7 +54,7 @@ type DummyDA struct {
 // Subscribe returns a channel that emits a SubscriptionEvent for every new DA
 // height produced by Submit or StartHeightTicker. The channel is closed when
 // ctx is cancelled or Reset is called.
-func (d *DummyDA) Subscribe(ctx context.Context, _ []byte) (<-chan datypes.SubscriptionEvent, error) {
+func (d *DummyDA) Subscribe(ctx context.Context, _ []byte, _ bool) (<-chan datypes.SubscriptionEvent, error) {
 	ch := make(chan datypes.SubscriptionEvent, 64)
 	sub := &subscriber{ch: ch, ctx: ctx}
 

@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Strict raft state. [#3167](https://github.com/evstack/ev-node/pull/3167)
 - Retry fetching the timestamp on error in da-client [#3166](https://github.com/evstack/ev-node/pull/3166)
 
+### Changes
+
+- Subscribe to forced inclusion namespace events [#3146](https://github.com/evstack/ev-node/pull/3146)
+
 ## v1.0.0
 
 ### Fixed

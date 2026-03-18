@@ -78,6 +78,7 @@ type ForcedInclusionEvent = da.ForcedInclusionEvent
 type ForcedInclusionRetriever interface {
 	RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error)
 	Stop()
+	Start(ctx context.Context)
 }
 
 // NewForcedInclusionRetriever creates a new forced inclusion retriever.
@@ -89,7 +90,14 @@ func NewForcedInclusionRetriever(
 	logger zerolog.Logger,
 	daStartHeight, daEpochSize uint64,
 ) ForcedInclusionRetriever {
-	return da.NewForcedInclusionRetriever(client, logger, cfg, daStartHeight, daEpochSize)
+	return da.NewForcedInclusionRetriever(
+		client,
+		logger,
+		cfg.DA.BlockTime.Duration,
+		cfg.Instrumentation.IsTracingEnabled(),
+		daStartHeight,
+		daEpochSize,
+	)
 }
 
 // Expose Raft types for consensus integration
