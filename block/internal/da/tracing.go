@@ -67,6 +67,26 @@ func (t *tracedClient) Retrieve(ctx context.Context, height uint64, namespace []
 	return res
 }
 
+func (t *tracedClient) RetrieveBlobs(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
+	ctx, span := t.tracer.Start(ctx, "DA.RetrieveBlobs",
+		trace.WithAttributes(
+			attribute.Int("ns.length", len(namespace)),
+			attribute.String("da.namespace", hex.EncodeToString(namespace)),
+		),
+	)
+	defer span.End()
+
+	res := t.inner.RetrieveBlobs(ctx, height, namespace)
+
+	if res.Code != datypes.StatusSuccess && res.Code != datypes.StatusNotFound {
+		span.RecordError(&submitError{msg: res.Message})
+		span.SetStatus(codes.Error, res.Message)
+	} else {
+		span.SetAttributes(attribute.Int("blob.count", len(res.Data)))
+	}
+	return res
+}
+
 func (t *tracedClient) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
 	ctx, span := t.tracer.Start(ctx, "DA.Get",
 		trace.WithAttributes(
