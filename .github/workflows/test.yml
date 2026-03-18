@@ -103,7 +103,16 @@ jobs:
       - name: Install just
         uses: extractions/setup-just@v3
       - name: E2E Tests
-        run: just test-e2e
+        run: |
+          mkdir -p .artifacts/e2e-server-logs
+          EV_E2E_LOG_DIR="${{ github.workspace }}/.artifacts/e2e-server-logs" just test-e2e
+      - name: Upload E2E server logs
+        if: failure()
+        uses: actions/upload-artifact@v7.0.0
+        with:
+          name: e2e-server-logs-${{ github.sha }}
+          path: ./.artifacts/e2e-server-logs
+          if-no-files-found: warn
 
   evm-tests:
     name: Run EVM Execution Tests
