@@ -56,14 +56,6 @@ func (t *tracedDARetriever) RetrieveFromDA(ctx context.Context, daHeight uint64)
 	return events, nil
 }
 
-func (t *tracedDARetriever) QueuePriorityHeight(daHeight uint64) {
-	t.inner.QueuePriorityHeight(daHeight)
-}
-
-func (t *tracedDARetriever) PopPriorityHeight() uint64 {
-	return t.inner.PopPriorityHeight()
-}
-
 func (t *tracedDARetriever) ProcessBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent {
 	return t.inner.ProcessBlobs(ctx, blobs, daHeight)
 }

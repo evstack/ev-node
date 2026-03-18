@@ -144,7 +144,7 @@ func NewSyncer(
 	}
 	s.blockSyncer = s
 	if raftNode != nil && !reflect.ValueOf(raftNode).IsNil() {
-		s.raftRetriever = newRaftRetriever(raftNode, genesis, logger, eventProcessorFn(s.pipeEvent),
+		s.raftRetriever = newRaftRetriever(raftNode, genesis, logger, s,
 			func(ctx context.Context, state *raft.RaftBlockState) error {
 				s.logger.Debug().Uint64("header_height", state.LastSubmittedDaHeaderHeight).Uint64("data_height", state.LastSubmittedDaDataHeight).Msg("received raft block state")
 				cache.SetLastSubmittedHeaderHeight(ctx, state.LastSubmittedDaHeaderHeight)
@@ -182,7 +182,8 @@ func (s *Syncer) Start(ctx context.Context) (err error) {
 		s.daRetriever = WithTracingDARetriever(s.daRetriever)
 	}
 
-	s.fiRetriever = da.NewForcedInclusionRetriever(s.daClient, s.logger, s.config, s.genesis.DAStartHeight, s.genesis.DAEpochForcedInclusion)
+	s.fiRetriever = da.NewForcedInclusionRetriever(s.daClient, s.logger, s.config.DA.BlockTime.Duration, s.config.Instrumentation.IsTracingEnabled(), s.genesis.DAStartHeight, s.genesis.DAEpochForcedInclusion)
+	s.fiRetriever.Start(ctx)
 	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.cache, s.genesis, s.logger)
 
 	currentHeight, initErr := s.store.Height(ctx)
@@ -210,7 +211,7 @@ func (s *Syncer) Start(ctx context.Context) (err error) {
 		Client:        s.daClient,
 		Retriever:     s.daRetriever,
 		Logger:        s.logger,
-		PipeEvent:     s.pipeEvent,
+		EventSink:     s,
 		Namespace:     s.daClient.GetHeaderNamespace(),
 		DataNamespace: s.daClient.GetDataNamespace(),
 		StartDAHeight: s.daRetrieverHeight.Load(),
@@ -235,11 +236,13 @@ func (s *Syncer) Stop(ctx context.Context) error {
 	s.cancel()
 	s.cancelP2PWait(0)
 
-	// Stop the DA follower first (it owns its own goroutines).
+	if s.fiRetriever != nil {
+		s.fiRetriever.Stop()
+	}
+
 	if s.daFollower != nil {
 		s.daFollower.Stop()
 	}
-
 	s.wg.Wait()
 
 	// Skip draining if we're shutting down due to a critical error (e.g. execution
@@ -495,7 +498,7 @@ func (s *Syncer) waitForGenesis() bool {
 	return true
 }
 
-func (s *Syncer) pipeEvent(ctx context.Context, event common.DAHeightEvent) error {
+func (s *Syncer) PipeEvent(ctx context.Context, event common.DAHeightEvent) error {
 	select {
 	case s.heightInCh <- event:
 		return nil
@@ -611,7 +614,7 @@ func (s *Syncer) processHeightEvent(ctx context.Context, event *common.DAHeightE
 					Msg("P2P event with DA height hint, queuing priority DA retrieval")
 
 				// Queue priority DA retrieval - will be processed in fetchDAUntilCaughtUp
-				s.daRetriever.QueuePriorityHeight(daHeightHint)
+				s.daFollower.QueuePriorityHeight(daHeightHint)
 			}
 		}
 	}

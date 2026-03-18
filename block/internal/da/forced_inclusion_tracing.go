@@ -49,6 +49,10 @@ func (t *tracedForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.C
 	return event, nil
 }
 
+func (t *tracedForcedInclusionRetriever) Start(ctx context.Context) {
+	t.inner.Start(ctx)
+}
+
 func (t *tracedForcedInclusionRetriever) Stop() {
 	t.inner.Stop()
 }
