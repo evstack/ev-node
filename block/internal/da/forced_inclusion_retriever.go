@@ -8,7 +8,6 @@ import (
 
 	"github.com/rs/zerolog"
 
-	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/types"
 )
@@ -19,6 +18,7 @@ var ErrForceInclusionNotConfigured = errors.New("forced inclusion namespace not 
 // ForcedInclusionRetriever defines the interface for retrieving forced inclusion transactions from DA.
 type ForcedInclusionRetriever interface {
 	RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error)
+	Start(ctx context.Context)
 	Stop()
 }
 
@@ -44,7 +44,8 @@ type ForcedInclusionEvent struct {
 func NewForcedInclusionRetriever(
 	client Client,
 	logger zerolog.Logger,
-	cfg config.Config,
+	daBlockTime time.Duration,
+	tracingEnabled bool,
 	daStartHeight, daEpochSize uint64,
 ) ForcedInclusionRetriever {
 	retrieverLogger := logger.With().Str("component", "forced_inclusion_retriever").Logger()
@@ -54,11 +55,10 @@ func NewForcedInclusionRetriever(
 		client,
 		logger,
 		client.GetForcedInclusionNamespace(),
-		cfg,
+		daBlockTime,
 		daStartHeight,
 		daEpochSize*2, // prefetch window: 2x epoch size
 	)
-	asyncFetcher.Start()
 
 	base := &forcedInclusionRetriever{
 		client:        client,
@@ -67,10 +67,15 @@ func NewForcedInclusionRetriever(
 		daEpochSize:   daEpochSize,
 		asyncFetcher:  asyncFetcher,
 	}
-	if cfg.Instrumentation.IsTracingEnabled() {
+	if tracingEnabled {
 		return withTracingForcedInclusionRetriever(base)
 	}
 	return base
+}
+
+// Start begins the background prefetcher.
+func (r *forcedInclusionRetriever) Start(ctx context.Context) {
+	r.asyncFetcher.Start(ctx)
 }
 
 // Stop stops the background prefetcher.

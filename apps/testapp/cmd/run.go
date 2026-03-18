@@ -124,7 +124,7 @@ func createSequencer(
 			return nil, fmt.Errorf("based sequencer mode requires aggregator mode to be enabled")
 		}
 
-		basedSeq, err := based.NewBasedSequencer(daClient, nodeConfig, datastore, genesis, logger, executor)
+		basedSeq, err := based.NewBasedSequencer(ctx, daClient, nodeConfig, datastore, genesis, logger, executor)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create based sequencer: %w", err)
 		}

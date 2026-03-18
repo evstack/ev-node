@@ -1,6 +1,7 @@
 package syncing
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 
@@ -9,7 +10,7 @@ import (
 )
 
 func assertExpectedProposer(genesis genesis.Genesis, proposerAddr []byte) error {
-	if string(proposerAddr) != string(genesis.ProposerAddress) {
+	if !bytes.Equal(proposerAddr, genesis.ProposerAddress) {
 		return fmt.Errorf("unexpected proposer: got %x, expected %x",
 			proposerAddr, genesis.ProposerAddress)
 	}

@@ -58,6 +58,7 @@ type CacheManager interface {
 	// Pending events syncing coordination
 	GetNextPendingEvent(blockHeight uint64) *common.DAHeightEvent
 	SetPendingEvent(blockHeight uint64, event *common.DAHeightEvent)
+	PendingEventsCount() int
 
 	// Store operations
 	SaveToStore() error
@@ -319,6 +320,10 @@ func (m *implementation) NumPendingData() uint64 {
 // SetPendingEvent sets the event at the specified height.
 func (m *implementation) SetPendingEvent(height uint64, event *common.DAHeightEvent) {
 	m.pendingEventsCache.setItem(height, event)
+}
+
+func (m *implementation) PendingEventsCount() int {
+	return m.pendingEventsCache.itemCount()
 }
 
 // GetNextPendingEvent efficiently retrieves and removes the event at the specified height.
