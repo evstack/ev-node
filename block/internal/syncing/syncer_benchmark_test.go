@@ -16,6 +16,7 @@ import (
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/pkg/config"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/store"
 	testmocks "github.com/evstack/ev-node/test/mocks"
@@ -43,25 +44,27 @@ func BenchmarkSyncerIO(b *testing.B) {
 				fixt := newBenchFixture(b, spec.heights, spec.shuffledTx, spec.daDelay, spec.execDelay, true)
 
 				// run both loops
-				runCtx := fixt.s.ctx
-				go fixt.s.processLoop(runCtx)
+				ctx := b.Context()
+				go fixt.s.processLoop(ctx)
 
 				// Create a DAFollower to drive DA retrieval.
+				daClient, eventCh := setupMockDAClient(b)
 				follower := NewDAFollower(DAFollowerConfig{
+					Client:        daClient,
 					Retriever:     fixt.s.daRetriever,
 					Logger:        zerolog.Nop(),
-					PipeEvent:     fixt.s.pipeEvent,
+					EventSink:     fixt.s,
 					Namespace:     []byte("ns"),
 					StartDAHeight: fixt.s.daRetrieverHeight.Load(),
 					DABlockTime:   0,
 				}).(*daFollower)
-				follower.highestSeenDAHeight.Store(spec.heights + daHeightOffset)
-				go follower.runCatchup(runCtx)
+				follower.Start(ctx)
+				eventCh <- datypes.SubscriptionEvent{Height: spec.heights + daHeightOffset}
 
-				fixt.s.startSyncWorkers(runCtx)
+				fixt.s.startSyncWorkers(ctx)
 
 				require.Eventually(b, func() bool {
-					processedHeight, _ := fixt.s.store.Height(b.Context())
+					processedHeight, _ := fixt.s.store.Height(ctx)
 					return processedHeight == spec.heights
 				}, 5*time.Second, 50*time.Microsecond)
 				fixt.s.cancel()
@@ -75,7 +78,7 @@ func BenchmarkSyncerIO(b *testing.B) {
 				require.Len(b, fixt.s.heightInCh, 0)
 
 				assert.Equal(b, spec.heights+daHeightOffset, fixt.s.daRetrieverHeight)
-				gotStoreHeight, err := fixt.s.store.Height(b.Context())
+				gotStoreHeight, err := fixt.s.store.Height(ctx)
 				require.NoError(b, err)
 				assert.Equal(b, spec.heights, gotStoreHeight)
 			}
@@ -151,7 +154,7 @@ func newBenchFixture(b *testing.B, totalHeights uint64, shuffledTx bool, daDelay
 
 	// Mock DA retriever to emit exactly totalHeights events, then HFF and cancel
 	daR := NewMockDARetriever(b)
-	daR.On("PopPriorityHeight").Return(uint64(0)).Maybe()
+
 	for i := range totalHeights {
 		daHeight := i + daHeightOffset
 		daR.On("RetrieveFromDA", mock.Anything, daHeight).
