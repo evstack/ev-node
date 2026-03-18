@@ -16,9 +16,7 @@ func (s *SpamoorSuite) TestSpamoorSmoke() {
 	w := newResultWriter(t, "SpamoorSmoke")
 	defer w.flush()
 
-	e := s.setupEnv(config{
-		serviceName: "ev-node-smoke",
-	})
+	e := s.setupEnv(newBenchConfig("ev-node-smoke"))
 	api := e.spamoorAPI
 
 	s.Require().NoError(deleteAllSpammers(api), "failed to delete stale spammers")
@@ -66,7 +64,7 @@ func (s *SpamoorSuite) TestSpamoorSmoke() {
 	}
 
 	// allow spamoor enough time to generate transaction throughput
-	// so that the expected tracing spans appear in Jaeger.
+	// so that the expected tracing spans appear in the trace backend.
 	time.Sleep(60 * time.Second)
 
 	// fetch parsed metrics and print a concise summary.
