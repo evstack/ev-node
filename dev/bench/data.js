@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1773820193424,
+  "lastUpdate": 1773820195351,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -8822,6 +8822,102 @@ window.BENCHMARK_DATA = {
             "value": 71,
             "unit": "allocs/op",
             "extra": "33898 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "alpe@users.noreply.github.com",
+            "name": "Alexander Peters",
+            "username": "alpe"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "6e0bd9a42b807173a4c2ed327fd15120b090749f",
+          "message": "feat: Subscribe to forced inclusion ns events (#3146)\n\n* Use subscription with forced inclusion; refactorings\n\n* Fix compile errors in tests after rebase\n\n* Include timestamp for subscription events\n\n* Doc update\n\n(cherry picked from commit 7a2adbd8a24df57e6e5db8aeaf8d3a57396ff750)\n\n* Apply review feedback\n\n* Updates - WIP\n\n* Updates\n\n* No fetch when in cache\n\n* Updates\n\n* Review feedback\n\n* Review feedback\n\n* Minor fixes\n\n* Minor udpates for tests\n\n* Fix tests\n\n* Fix test\n\n* Review feedback\n\n* Handle edge case in catch up\n\n* Review feedback\n\n* Review feedback\n\n* Linter\n\n* Stop fi retriever in tests\n\n* Update changelog",
+          "timestamp": "2026-03-18T07:30:08Z",
+          "tree_id": "5a2d0036708aedad5f3d45123a3aea611205f66f",
+          "url": "https://github.com/evstack/ev-node/commit/6e0bd9a42b807173a4c2ed327fd15120b090749f"
+        },
+        "date": 1773820194644,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 35854,
+            "unit": "ns/op\t    6958 B/op\t      71 allocs/op",
+            "extra": "34280 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 35854,
+            "unit": "ns/op",
+            "extra": "34280 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 6958,
+            "unit": "B/op",
+            "extra": "34280 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 71,
+            "unit": "allocs/op",
+            "extra": "34280 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 36418,
+            "unit": "ns/op\t    7419 B/op\t      81 allocs/op",
+            "extra": "33320 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 36418,
+            "unit": "ns/op",
+            "extra": "33320 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 7419,
+            "unit": "B/op",
+            "extra": "33320 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 81,
+            "unit": "allocs/op",
+            "extra": "33320 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 45556,
+            "unit": "ns/op\t   26105 B/op\t      81 allocs/op",
+            "extra": "26409 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 45556,
+            "unit": "ns/op",
+            "extra": "26409 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 26105,
+            "unit": "B/op",
+            "extra": "26409 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 81,
+            "unit": "allocs/op",
+            "extra": "26409 times\n4 procs"
           }
         ]
       }
