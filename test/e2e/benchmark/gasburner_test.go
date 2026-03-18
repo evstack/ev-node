@@ -51,9 +51,8 @@ func (s *SpamoorSuite) TestGasBurner() {
 		t.Cleanup(func() { _ = api.DeleteSpammer(id) })
 	}
 
-	// give spammers a moment to start, then verify none failed immediately
-	time.Sleep(3 * time.Second)
-	assertSpammersRunning(t, api, spammerIDs)
+	// verify spammers started successfully
+	requireSpammersRunning(t, api, spammerIDs)
 
 	// wait for wallet prep and contract deployment to finish before
 	// recording start block so warmup is excluded from the measurement.

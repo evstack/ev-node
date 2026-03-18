@@ -76,9 +76,10 @@ func (r *benchmarkResult) log(t testing.TB, wallClock time.Duration) {
 	if ggas, ok := rethExecutionRate(r.traces.evNode, r.bm.TotalGasUsed); ok {
 		t.Logf("ev-reth execution rate: %.3f GGas/s", ggas)
 	}
-	for _, e := range engineSpanEntries(r.prefix, r.traces.evNode) {
-		if e.Name == r.prefix+" - ProduceBlock avg" {
-			t.Logf("ProduceBlock avg: %.0fms", e.Value)
+	if stats := e2e.AggregateSpanStats(r.traces.evNode); stats != nil {
+		if pb, ok := stats[spanProduceBlock]; ok && pb.Count > 0 {
+			avg := pb.Total / time.Duration(pb.Count)
+			t.Logf("ProduceBlock avg: %dms", avg.Milliseconds())
 		}
 	}
 	if r.summary.AchievedMGas > 0 {

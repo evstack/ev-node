@@ -16,13 +16,6 @@ import (
 // Primary metric: achieved MGas/s.
 // Diagnostic metrics: per-span latency breakdown, gas/block, tx/block.
 func (s *SpamoorSuite) TestERC20Throughput() {
-	const (
-		numSpammers     = 2
-		countPerSpammer = 50000
-		totalCount      = numSpammers * countPerSpammer
-		waitTimeout     = 5 * time.Minute
-	)
-
 	cfg := newBenchConfig("ev-node-erc20")
 
 	t := s.T()
@@ -33,8 +26,8 @@ func (s *SpamoorSuite) TestERC20Throughput() {
 	e := s.setupEnv(cfg)
 
 	erc20Config := map[string]any{
-		"throughput":      50, // 50 tx per 100ms slot = 500 tx/s per spammer
-		"total_count":     countPerSpammer,
+		"throughput":      cfg.Throughput,
+		"total_count":     cfg.CountPerSpammer,
 		"max_pending":     50000,
 		"max_wallets":     200,
 		"base_fee":        20,
@@ -49,7 +42,7 @@ func (s *SpamoorSuite) TestERC20Throughput() {
 
 	// launch all spammers before recording startBlock so warm-up
 	// (contract deploy + wallet funding) is excluded from the measurement window.
-	for i := range numSpammers {
+	for i := range cfg.NumSpammers {
 		name := fmt.Sprintf("bench-erc20-%d", i)
 		id, err := e.spamoorAPI.CreateSpammer(name, spamoor.ScenarioERC20TX, erc20Config, true)
 		s.Require().NoError(err, "failed to create spammer %s", name)
@@ -64,9 +57,9 @@ func (s *SpamoorSuite) TestERC20Throughput() {
 	loadStart := time.Now()
 
 	// wait for spamoor to finish sending all transactions
-	waitCtx, cancel := context.WithTimeout(ctx, waitTimeout)
+	waitCtx, cancel := context.WithTimeout(ctx, cfg.WaitTimeout)
 	defer cancel()
-	sent, failed, err := waitForSpamoorDone(waitCtx, t.Logf, e.spamoorAPI, totalCount, 2*time.Second)
+	sent, failed, err := waitForSpamoorDone(waitCtx, t.Logf, e.spamoorAPI, cfg.totalCount(), 2*time.Second)
 	s.Require().NoError(err, "spamoor did not finish in time")
 
 	// wait for pending txs to drain

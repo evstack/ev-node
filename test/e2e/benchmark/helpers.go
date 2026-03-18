@@ -13,6 +13,9 @@ import (
 
 	"github.com/celestiaorg/tastora/framework/docker/evstack/spamoor"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	e2e "github.com/evstack/ev-node/test/e2e"
 )
 
@@ -190,20 +193,21 @@ func waitForSpamoorDone(ctx context.Context, log func(string, ...any), api *spam
 	}
 }
 
-// assertSpammersRunning checks that all spammers are still active (status > 0).
-// spamoor uses status=0 for "stopped/failed" and status>0 for running states.
-// This catches immediate failures like "replacement transaction underpriced".
-func assertSpammersRunning(t testing.TB, api *spamoor.API, ids []int) {
+// requireSpammersRunning polls spammers until all report a running status (> 0),
+// or fails the test after 5 seconds. spamoor uses status=0 for "stopped/failed"
+// and status>0 for running states.
+func requireSpammersRunning(t testing.TB, api *spamoor.API, ids []int) {
 	t.Helper()
-	for _, id := range ids {
-		sp, err := api.GetSpammer(id)
-		if err != nil {
-			t.Fatalf("failed to get spammer %d: %v", id, err)
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		for _, id := range ids {
+			sp, err := api.GetSpammer(id)
+			if !assert.NoError(collect, err, "failed to get spammer %d", id) {
+				return
+			}
+			assert.Greater(collect, sp.Status, 0,
+				"spammer %d (%s) failed (status=0); check spamoor container logs", id, sp.Name)
 		}
-		if sp.Status == 0 {
-			t.Fatalf("spammer %d (%s) failed immediately (status=0); check spamoor container logs for errors", id, sp.Name)
-		}
-	}
+	}, 5*time.Second, 100*time.Millisecond)
 }
 
 // deleteAllSpammers removes any pre-existing spammers from the daemon.
@@ -453,16 +457,28 @@ func engineSpanEntries(prefix string, spans []e2e.TraceSpan) []entry {
 // returned value >= target, or fails the test on timeout.
 func waitForMetricTarget(t testing.TB, name string, poll func() (float64, error), target float64, timeout time.Duration) {
 	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
+	ctx := t.Context()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
 		v, err := poll()
 		if err == nil && v >= target {
 			t.Logf("metric %s reached %.0f (target %.0f)", name, v, target)
 			return
 		}
-		time.Sleep(2 * time.Second)
+		select {
+		case <-ctx.Done():
+			t.Logf("metric %s: context cancelled (target %.0f)", name, target)
+			return
+		case <-timer.C:
+			t.Logf("metric %s did not reach target %.0f within %v", name, target, timeout)
+			return
+		case <-ticker.C:
+		}
 	}
-	t.Logf("metric %s did not reach target %.0f within %v", name, target, timeout)
 }
 
 // collectBlockMetrics iterates all headers in [startBlock, endBlock] to collect

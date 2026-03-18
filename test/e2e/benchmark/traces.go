@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	neturl "net/url"
 	"strconv"
@@ -147,8 +148,10 @@ func (v *victoriaTraceProvider) collectRichSpans(ctx context.Context, serviceNam
 	}
 }
 
-// fetchAllRichSpans is like fetchAllSpans but returns richSpan with full hierarchy info.
-func (v *victoriaTraceProvider) fetchAllRichSpans(ctx context.Context, serviceName string) ([]richSpan, error) {
+// fetchLogStream opens a streaming LogsQL query against VictoriaTraces and
+// returns a scanner over the newline-delimited JSON response. The caller must
+// close the returned io.Closer when done.
+func (v *victoriaTraceProvider) fetchLogStream(ctx context.Context, serviceName string) (*bufio.Scanner, io.Closer, error) {
 	end := time.Now()
 	query := fmt.Sprintf(`_stream:{resource_attr:service.name="%s"}`, serviceName)
 	baseURL := strings.TrimRight(v.queryURL, "/")
@@ -160,22 +163,33 @@ func (v *victoriaTraceProvider) fetchAllRichSpans(ctx context.Context, serviceNa
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("creating request: %w", err)
+		return nil, nil, fmt.Errorf("creating request: %w", err)
 	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetching spans from %s: %w", url, err)
+		return nil, nil, fmt.Errorf("fetching spans from %s: %w", url, err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status %d from %s", resp.StatusCode, url)
+		resp.Body.Close()
+		return nil, nil, fmt.Errorf("unexpected status %d from %s", resp.StatusCode, url)
 	}
 
-	var spans []richSpan
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	return scanner, resp.Body, nil
+}
+
+// fetchAllRichSpans returns richSpan with full hierarchy info for flowchart rendering.
+func (v *victoriaTraceProvider) fetchAllRichSpans(ctx context.Context, serviceName string) ([]richSpan, error) {
+	scanner, body, err := v.fetchLogStream(ctx, serviceName)
+	if err != nil {
+		return nil, err
+	}
+	defer body.Close()
+
+	var spans []richSpan
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		if len(line) == 0 {
@@ -209,34 +223,13 @@ func (v *victoriaTraceProvider) fetchAllRichSpans(ctx context.Context, serviceNa
 // fetchAllSpans queries VictoriaTraces via the LogsQL API which supports
 // streaming all results without the Jaeger API's 1000 trace limit.
 func (v *victoriaTraceProvider) fetchAllSpans(ctx context.Context, serviceName string) ([]e2e.TraceSpan, error) {
-	end := time.Now()
-	query := fmt.Sprintf(`_stream:{resource_attr:service.name="%s"}`, serviceName)
-	baseURL := strings.TrimRight(v.queryURL, "/")
-	url := fmt.Sprintf("%s/select/logsql/query?query=%s&start=%s&end=%s",
-		baseURL,
-		neturl.QueryEscape(query),
-		v.startTime.Format(time.RFC3339Nano),
-		end.Format(time.RFC3339Nano))
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	scanner, body, err := v.fetchLogStream(ctx, serviceName)
 	if err != nil {
-		return nil, fmt.Errorf("creating request: %w", err)
+		return nil, err
 	}
+	defer body.Close()
 
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("fetching spans from %s: %w", url, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status %d from %s", resp.StatusCode, url)
-	}
-
-	// LogsQL returns newline-delimited JSON, one span per line.
 	var spans []e2e.TraceSpan
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		if len(line) == 0 {
@@ -257,7 +250,7 @@ func (v *victoriaTraceProvider) fetchAllSpans(ctx context.Context, serviceName s
 
 	v.t.Logf("fetched %d spans for %s in window [%s, %s]",
 		len(spans), serviceName,
-		v.startTime.Format(time.RFC3339), end.Format(time.RFC3339))
+		v.startTime.Format(time.RFC3339), time.Now().Format(time.RFC3339))
 	return spans, nil
 }
 

@@ -43,7 +43,7 @@ func newBenchConfig(serviceName string) benchConfig {
 		WarmupTxs:       envInt("BENCH_WARMUP_TXS", 200),
 		GasUnitsToBurn:  envInt("BENCH_GAS_UNITS_TO_BURN", 1_000_000),
 		MaxWallets:      envInt("BENCH_MAX_WALLETS", 500),
-		WaitTimeout:     10 * time.Minute,
+		WaitTimeout:     envDuration("BENCH_WAIT_TIMEOUT", 10*time.Minute),
 	}
 }
 
@@ -65,6 +65,8 @@ func envOrDefault(key, fallback string) string {
 	return fallback
 }
 
+// envInt returns the integer value of the given env var, or fallback if unset
+// or unparseable. Invalid values silently fall back to the default.
 func envInt(key string, fallback int) int {
 	v := os.Getenv(key)
 	if v == "" {
@@ -75,4 +77,18 @@ func envInt(key string, fallback int) int {
 		return fallback
 	}
 	return n
+}
+
+// envDuration returns the duration value of the given env var (e.g. "5m", "30s"),
+// or fallback if unset or unparseable.
+func envDuration(key string, fallback time.Duration) time.Duration {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		return fallback
+	}
+	return d
 }

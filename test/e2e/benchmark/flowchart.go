@@ -286,13 +286,6 @@ func uniqueHosts(spans []richSpan) []string {
 	return hosts
 }
 
-func truncateID(id string) string {
-	if len(id) > 12 {
-		return id[:12] + "..."
-	}
-	return id
-}
-
 // aggregateNode represents a canonical span in the aggregate tree.
 type aggregateNode struct {
 	name        string
