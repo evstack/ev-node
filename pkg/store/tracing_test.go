@@ -32,6 +32,7 @@ type tracingMockStore struct {
 	rollbackFn            func(ctx context.Context, height uint64, aggregator bool) error
 	pruneBlocksFn         func(ctx context.Context, height uint64) error
 	deleteStateAtHeightFn func(ctx context.Context, height uint64) error
+	syncFn                func(ctx context.Context) error
 	newBatchFn            func(ctx context.Context) (Batch, error)
 }
 
@@ -134,6 +135,13 @@ func (m *tracingMockStore) DeleteStateAtHeight(ctx context.Context, height uint6
 }
 
 func (m *tracingMockStore) Close() error {
+	return nil
+}
+
+func (m *tracingMockStore) Sync(ctx context.Context) error {
+	if m.syncFn != nil {
+		return m.syncFn(ctx)
+	}
 	return nil
 }
 
