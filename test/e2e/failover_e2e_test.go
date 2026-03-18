@@ -989,10 +989,10 @@ func must[T any](r T, err error) T {
 func IsNodeUp(t *testing.T, rpcAddr string, timeout time.Duration) bool {
 	t.Helper()
 	t.Logf("Query node is up: %s", rpcAddr)
-	ctx, done := context.WithTimeout(context.Background(), timeout)
+	ctx, done := context.WithTimeout(t.Context(), timeout)
 	defer done()
 
-	ticker := time.NewTimer(min(timeout/10, 200*time.Millisecond))
+	ticker := time.NewTicker(min(timeout/10, 200*time.Millisecond))
 	defer ticker.Stop()
 	c := client.NewClient(rpcAddr)
 	require.NotNil(t, c)

@@ -162,8 +162,12 @@ func (s *SystemUnderTest) awaitProcessCleanup(cmd *exec.Cmd) {
 	s.cmdToPids[cmdKey] = append(s.cmdToPids[cmdKey], pid)
 	s.pidsLock.Unlock()
 	go func() {
-		_ = cmd.Wait() // blocks until shutdown
-		s.logf("Process stopped, pid: %d\n", pid)
+		waitErr := cmd.Wait() // blocks until shutdown
+		if waitErr != nil {
+			s.logf("Process stopped, pid: %d, err: %v\n", pid, waitErr)
+		} else {
+			s.logf("Process stopped, pid: %d\n", pid)
+		}
 		s.pidsLock.Lock()
 		defer s.pidsLock.Unlock()
 		delete(s.pids, pid)
