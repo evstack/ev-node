@@ -34,6 +34,10 @@ func (m *mockDA) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 	return da.ResultRetrieve{}
 }
 
+func (m *mockDA) RetrieveBlobs(ctx context.Context, height uint64, namespace []byte) da.ResultRetrieve {
+	return da.ResultRetrieve{}
+}
+
 func (m *mockDA) RetrieveHeaders(ctx context.Context, height uint64) da.ResultRetrieve {
 	return da.ResultRetrieve{}
 }

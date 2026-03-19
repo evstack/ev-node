@@ -417,6 +417,69 @@ func (_c *MockClient_Retrieve_Call) RunAndReturn(run func(ctx context.Context, h
 	return _c
 }
 
+// RetrieveBlobs provides a mock function for the type MockClient
+func (_mock *MockClient) RetrieveBlobs(ctx context.Context, height uint64, namespace []byte) da.ResultRetrieve {
+	ret := _mock.Called(ctx, height, namespace)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RetrieveBlobs")
+	}
+
+	var r0 da.ResultRetrieve
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, []byte) da.ResultRetrieve); ok {
+		r0 = returnFunc(ctx, height, namespace)
+	} else {
+		r0 = ret.Get(0).(da.ResultRetrieve)
+	}
+	return r0
+}
+
+// MockClient_RetrieveBlobs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RetrieveBlobs'
+type MockClient_RetrieveBlobs_Call struct {
+	*mock.Call
+}
+
+// RetrieveBlobs is a helper method to define mock.On call
+//   - ctx context.Context
+//   - height uint64
+//   - namespace []byte
+func (_e *MockClient_Expecter) RetrieveBlobs(ctx interface{}, height interface{}, namespace interface{}) *MockClient_RetrieveBlobs_Call {
+	return &MockClient_RetrieveBlobs_Call{Call: _e.mock.On("RetrieveBlobs", ctx, height, namespace)}
+}
+
+func (_c *MockClient_RetrieveBlobs_Call) Run(run func(ctx context.Context, height uint64, namespace []byte)) *MockClient_RetrieveBlobs_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uint64
+		if args[1] != nil {
+			arg1 = args[1].(uint64)
+		}
+		var arg2 []byte
+		if args[2] != nil {
+			arg2 = args[2].([]byte)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockClient_RetrieveBlobs_Call) Return(resultRetrieve da.ResultRetrieve) *MockClient_RetrieveBlobs_Call {
+	_c.Call.Return(resultRetrieve)
+	return _c
+}
+
+func (_c *MockClient_RetrieveBlobs_Call) RunAndReturn(run func(ctx context.Context, height uint64, namespace []byte) da.ResultRetrieve) *MockClient_RetrieveBlobs_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Submit provides a mock function for the type MockClient
 func (_mock *MockClient) Submit(ctx context.Context, data [][]byte, gasPrice float64, namespace []byte, options []byte) da.ResultSubmit {
 	ret := _mock.Called(ctx, data, gasPrice, namespace, options)

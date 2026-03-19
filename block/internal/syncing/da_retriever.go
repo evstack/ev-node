@@ -84,14 +84,14 @@ func (r *daRetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]co
 // fetchBlobs retrieves blobs from both header and data namespaces
 func (r *daRetriever) fetchBlobs(ctx context.Context, daHeight uint64) (datypes.ResultRetrieve, error) {
 	// Retrieve from both namespaces using the DA client
-	headerRes := r.client.Retrieve(ctx, daHeight, r.client.GetHeaderNamespace())
+	headerRes := r.client.RetrieveBlobs(ctx, daHeight, r.client.GetHeaderNamespace())
 
 	// If namespaces are the same, return header result
 	if bytes.Equal(r.client.GetHeaderNamespace(), r.client.GetDataNamespace()) {
 		return headerRes, r.validateBlobResponse(headerRes, daHeight)
 	}
 
-	dataRes := r.client.Retrieve(ctx, daHeight, r.client.GetDataNamespace())
+	dataRes := r.client.RetrieveBlobs(ctx, daHeight, r.client.GetDataNamespace())
 
 	// Validate responses
 	headerErr := r.validateBlobResponse(headerRes, daHeight)

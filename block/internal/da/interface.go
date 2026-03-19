@@ -14,6 +14,11 @@ type Client interface {
 	// Retrieve retrieves blobs from the DA layer at the specified height and namespace.
 	Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve
 
+	// RetrieveBlobs retrieves blobs from the DA layer at the specified height and namespace
+	// without requiring a DA header timestamp. Callers that need deterministic DA time should
+	// use Retrieve instead.
+	RetrieveBlobs(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve
+
 	// Get retrieves blobs by their IDs. Used for visualization and fetching specific blobs.
 	Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error)
 
