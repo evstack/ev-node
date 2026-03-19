@@ -1,7 +1,7 @@
 ---
 # This workflow builds and pushes Docker images to GHCR
 name: Build Docker Images
-permissions: {}
+permissions: { }
 "on":
   workflow_call:
     inputs:
@@ -12,7 +12,7 @@ permissions: {}
       apps:
         required: true
         type: string
-        description: 'JSON array of apps to build (e.g., [{"name": "testapp", "dockerfile": "apps/testapp/Dockerfile"}])'
+        description: 'JSON array of apps (e.g., [{"name": "testapp", "dockerfile": "apps/testapp/Dockerfile"}])'
 
 jobs:
   build-images:
@@ -48,3 +48,13 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           tags: ghcr.io/${{ github.repository_owner }}/${{ matrix.app.name }}:${{ inputs.image-tag }}
+
+      - name: Scan pushed image with Trivy
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          scan-type: image
+          image-ref: ghcr.io/${{ github.repository_owner }}/${{ matrix.app.name }}:${{ inputs.image-tag }}
+          scanners: vuln,secret
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"

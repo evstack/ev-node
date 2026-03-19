@@ -1,26 +1,32 @@
-FROM golang:1.25-alpine AS build-env
+FROM golang:1.26-bookworm AS build-env
 
 WORKDIR /src
 
 COPY core core
 
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 COPY . .
 
-WORKDIR /src/apps/evm
-RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -o evm .
+RUN --mount=type=cache,target=/go/pkg/mod \
+    cd ./apps/evm && \
+    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags "-s -w" -o /out/evm .
 
-FROM alpine:3.22.2
 
-#hadolint ignore=DL3018
-RUN apk --no-cache add ca-certificates curl
+FROM busybox:1.36.1-musl AS busybox
 
-WORKDIR /root
+FROM scratch
 
-COPY --from=build-env /src/apps/evm/evm /usr/bin/evm
-COPY apps/evm/entrypoint.sh /usr/bin/entrypoint.sh
-RUN chmod +x /usr/bin/entrypoint.sh
 
-ENTRYPOINT ["/usr/bin/entrypoint.sh"]
+COPY --from=build-env /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=build-env /out/evm /usr/bin/evm
+COPY --from=build-env /src/apps/evm/entrypoint.sh /usr/bin/entrypoint.sh
+COPY --from=busybox /bin/busybox /bin/busybox
+
+ENV HOME=/home/ev-node
+WORKDIR /home/ev-node
+USER 10001:10001
+
+ENTRYPOINT ["/bin/busybox", "sh", "/usr/bin/entrypoint.sh"]

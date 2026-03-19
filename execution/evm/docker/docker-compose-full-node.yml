@@ -62,6 +62,13 @@ services:
           --txpool.max-new-txns 2048 \
           --txpool.additional-validation-tasks 16 \
           --engine.always-process-payload-attributes-on-canonical-head \
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
 
 volumes:
   reth:
