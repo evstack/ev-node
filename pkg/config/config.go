@@ -150,8 +150,6 @@ const (
 	FlagSignerKmsTimeout = FlagPrefixEvnode + "signer.kms_timeout"
 	// FlagSignerKmsMaxRetries is a flag for specifying the KMS sign max retries
 	FlagSignerKmsMaxRetries = FlagPrefixEvnode + "signer.kms_max_retries"
-	// FlagSignerKmsCacheTTL is a flag for specifying the KMS public key cache TTL
-	FlagSignerKmsCacheTTL = FlagPrefixEvnode + "signer.kms_cache_ttl"
 
 	// FlagSignerPassphraseFile is a flag for specifying the file containing the signer passphrase
 	FlagSignerPassphraseFile = FlagPrefixEvnode + "signer.passphrase_file"
@@ -311,7 +309,6 @@ type SignerConfig struct {
 	KmsProfile    string          `mapstructure:"kms_profile" yaml:"kms_profile" comment:"AWS Profile for awskms signer"`
 	KmsTimeout    DurationWrapper `mapstructure:"kms_timeout" yaml:"kms_timeout" comment:"Timeout for individual AWS KMS Sign requests"`
 	KmsMaxRetries int             `mapstructure:"kms_max_retries" yaml:"kms_max_retries" comment:"Maximum number of retries for transient AWS KMS failures"`
-	KmsCacheTTL   DurationWrapper `mapstructure:"kms_cache_ttl" yaml:"kms_cache_ttl" comment:"Time-to-live for caching the AWS KMS public key (0 means cache forever)"`
 }
 
 // RPCConfig contains all RPC server configuration parameters
@@ -584,7 +581,6 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().String(FlagSignerKmsProfile, def.Signer.KmsProfile, "AWS Profile for awskms signer")
 	cmd.Flags().Duration(FlagSignerKmsTimeout, def.Signer.KmsTimeout.Duration, "Timeout for individual AWS KMS Sign requests")
 	cmd.Flags().Int(FlagSignerKmsMaxRetries, def.Signer.KmsMaxRetries, "Maximum number of retries for transient AWS KMS failures")
-	cmd.Flags().Duration(FlagSignerKmsCacheTTL, def.Signer.KmsCacheTTL.Duration, "Time-to-live for caching the AWS KMS public key (0 means cache forever)")
 	cmd.Flags().String(FlagSignerPassphraseFile, "", "path to file containing the signer passphrase (required for file signer and if aggregator is enabled)")
 
 	cmd.MarkFlagsMutuallyExclusive(FlagLight, FlagAggregator)

@@ -24,8 +24,7 @@ import (
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
-	"github.com/evstack/ev-node/pkg/signer"
-	"github.com/evstack/ev-node/pkg/signer/factory"
+	pkgsigner "github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/telemetry"
 )
 
@@ -106,9 +105,9 @@ func StartNode(
 		}()
 	}
 
-	// Validate and load signer first (before attempting DA connection, which may fail
+	// Validate and load pkgsigner first (before attempting DA connection, which may fail
 	// eagerly over WebSocket if no DA server is running).
-	var signer signer.Signer
+	var signer pkgsigner.Signer
 	if nodeConfig.Node.Aggregator && !nodeConfig.Node.BasedSequencer {
 		passphrase := ""
 		if nodeConfig.Signer.SignerType == "file" {
@@ -133,7 +132,7 @@ func StartNode(
 		}
 
 		var err error
-		signer, err = factory.NewSigner(ctx, &nodeConfig, passphrase)
+		signer, err = pkgsigner.NewSigner(ctx, &nodeConfig, passphrase)
 		if err != nil {
 			return fmt.Errorf("initialize signer via factory: %w", err)
 		}

@@ -19,8 +19,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/kms/types"
 	"github.com/aws/smithy-go"
 	"github.com/libp2p/go-libp2p/core/crypto"
-
-	"github.com/evstack/ev-node/pkg/signer"
 )
 
 // KMSClient is the subset of the AWS KMS client API that KmsSigner needs.
@@ -36,16 +34,11 @@ type Options struct {
 	Timeout time.Duration
 	// MaxRetries for transient KMS failures during Sign. Default: 3.
 	MaxRetries int
-	// CacheTTL controls how long the public key is cached before being
-	// re-fetched from KMS. 0 (default) means cache forever.
-	CacheTTL time.Duration
 }
 
 func (o *Options) timeout() time.Duration { return o.Timeout }
 
 func (o *Options) maxRetries() int { return o.MaxRetries }
-
-func (o *Options) cacheTTL() time.Duration { return o.CacheTTL }
 
 // KmsSigner implements the signer.Signer interface using AWS KMS.
 type KmsSigner struct {
@@ -55,10 +48,7 @@ type KmsSigner struct {
 	mu      sync.RWMutex
 	pubKey  crypto.PubKey
 	address []byte
-	cacheAt time.Time
 }
-
-var _ signer.Signer = (*KmsSigner)(nil)
 
 // NewKmsSigner creates a new Signer backed by an AWS KMS Ed25519 key.
 // It uses the standard AWS credential chain (env vars, ~/.aws/credentials, IAM roles, etc.).
@@ -67,7 +57,7 @@ func NewKmsSigner(ctx context.Context, region string, profile string, keyID stri
 		return nil, fmt.Errorf("aws kms key ID is required")
 	}
 
-	cfgOpts := []func(*awsconfig.LoadOptions) error{}
+	var cfgOpts []func(*awsconfig.LoadOptions) error
 	if region != "" {
 		cfgOpts = append(cfgOpts, awsconfig.WithRegion(region))
 	}
@@ -81,12 +71,12 @@ func NewKmsSigner(ctx context.Context, region string, profile string, keyID stri
 	}
 
 	client := kms.NewFromConfig(cfg)
-	return NewKmsSignerFromClient(ctx, client, keyID, opts)
+	return kmsSignerFromClient(ctx, client, keyID, opts)
 }
 
-// NewKmsSignerFromClient creates a KmsSigner from an existing KMS client.
+// kmsSignerFromClient creates a KmsSigner from an existing KMS client.
 // Useful for testing with a mock client.
-func NewKmsSignerFromClient(ctx context.Context, client KMSClient, keyID string, opts *Options) (*KmsSigner, error) {
+func kmsSignerFromClient(ctx context.Context, client KMSClient, keyID string, opts *Options) (*KmsSigner, error) {
 	if keyID == "" {
 		return nil, fmt.Errorf("aws kms key ID is required")
 	}
@@ -94,7 +84,7 @@ func NewKmsSignerFromClient(ctx context.Context, client KMSClient, keyID string,
 		return nil, fmt.Errorf("aws kms client is required")
 	}
 
-	o := Options{Timeout: 5 * time.Second, MaxRetries: 3, CacheTTL: 0}
+	o := Options{Timeout: 1 * time.Second, MaxRetries: 3}
 	if opts != nil {
 		if opts.Timeout > 0 {
 			o.Timeout = opts.Timeout
@@ -102,7 +92,6 @@ func NewKmsSignerFromClient(ctx context.Context, client KMSClient, keyID string,
 		if opts.MaxRetries >= 0 {
 			o.MaxRetries = opts.MaxRetries
 		}
-		o.CacheTTL = opts.CacheTTL
 	}
 
 	s := &KmsSigner{
@@ -156,7 +145,6 @@ func (s *KmsSigner) fetchPublicKey(ctx context.Context) error {
 
 	s.pubKey = cryptoPubKey
 	s.address = address[:]
-	s.cacheAt = time.Now()
 
 	return nil
 }
@@ -203,31 +191,11 @@ func (s *KmsSigner) Sign(ctx context.Context, message []byte) ([]byte, error) {
 	return nil, fmt.Errorf("KMS Sign failed after %d attempts: %w", maxAttempts, lastErr)
 }
 
-// GetPublic returns the cached public key, optionally refreshing if cache TTL
-// has expired.
+// GetPublic returns the cached public key.
 func (s *KmsSigner) GetPublic() (crypto.PubKey, error) {
-	ttl := s.opts.cacheTTL()
-
 	s.mu.RLock()
 	pubKey := s.pubKey
-	expired := ttl > 0 && time.Since(s.cacheAt) > ttl
 	s.mu.RUnlock()
-
-	if expired {
-		refreshCtx, cancel := context.WithTimeout(context.Background(), s.opts.timeout())
-		err := s.fetchPublicKey(refreshCtx)
-		cancel()
-		if err != nil {
-			// If refresh fails, return the stale cached key
-			if pubKey != nil {
-				return pubKey, nil
-			}
-			return nil, fmt.Errorf("failed to refresh public key: %w", err)
-		}
-		s.mu.RLock()
-		pubKey = s.pubKey
-		s.mu.RUnlock()
-	}
 
 	if pubKey == nil {
 		return nil, fmt.Errorf("public key not loaded")

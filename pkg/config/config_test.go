@@ -112,7 +112,6 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagSignerKmsProfile, DefaultConfig().Signer.KmsProfile)
 	assertFlagValue(t, flags, FlagSignerKmsTimeout, DefaultConfig().Signer.KmsTimeout.Duration)
 	assertFlagValue(t, flags, FlagSignerKmsMaxRetries, DefaultConfig().Signer.KmsMaxRetries)
-	assertFlagValue(t, flags, FlagSignerKmsCacheTTL, DefaultConfig().Signer.KmsCacheTTL.Duration)
 
 	// RPC flags
 	assertFlagValue(t, flags, FlagRPCAddress, DefaultConfig().RPC.Address)
@@ -124,7 +123,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagPruningInterval, DefaultConfig().Pruning.Interval.Duration)
 
 	// Count the number of flags we're explicitly checking
-	expectedFlagCount := 73 // Update this number if you add more flag checks above
+	expectedFlagCount := 72 // Update this number if you add more flag checks above
 
 	// Get the actual number of flags (both regular and persistent)
 	actualFlagCount := 0

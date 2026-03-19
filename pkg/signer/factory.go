@@ -1,4 +1,4 @@
-package factory
+package signer
 
 import (
 	"context"
@@ -8,23 +8,22 @@ import (
 	"strings"
 
 	rollconf "github.com/evstack/ev-node/pkg/config"
-	"github.com/evstack/ev-node/pkg/signer"
 	awssigner "github.com/evstack/ev-node/pkg/signer/aws"
 	"github.com/evstack/ev-node/pkg/signer/file"
 )
 
 // NewSigner creates a new Signer based on the configuration.
-func NewSigner(ctx context.Context, config *rollconf.Config, passphrase string) (signer.Signer, error) {
+func NewSigner(ctx context.Context, config *rollconf.Config, passphrase string) (Signer, error) {
 	return newSigner(ctx, config, passphrase, false)
 }
 
 // NewSignerForInit creates a new Signer for init-time flows.
 // For file signer, it creates a new key if signer.json is missing.
-func NewSignerForInit(ctx context.Context, config *rollconf.Config, passphrase string) (signer.Signer, error) {
+func NewSignerForInit(ctx context.Context, config *rollconf.Config, passphrase string) (Signer, error) {
 	return newSigner(ctx, config, passphrase, true)
 }
 
-func newSigner(ctx context.Context, config *rollconf.Config, passphrase string, allowCreate bool) (signer.Signer, error) {
+func newSigner(ctx context.Context, config *rollconf.Config, passphrase string, allowCreate bool) (Signer, error) {
 	switch config.Signer.SignerType {
 	case "file":
 		if passphrase == "" {
@@ -53,7 +52,6 @@ func newSigner(ctx context.Context, config *rollconf.Config, passphrase string, 
 		opts := &awssigner.Options{
 			Timeout:    config.Signer.KmsTimeout.Duration,
 			MaxRetries: config.Signer.KmsMaxRetries,
-			CacheTTL:   config.Signer.KmsCacheTTL.Duration,
 		}
 		return awssigner.NewKmsSigner(ctx, config.Signer.KmsRegion, config.Signer.KmsProfile, config.Signer.KmsKeyID, opts)
 

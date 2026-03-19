@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/kms/types"
@@ -55,7 +54,7 @@ func TestNewKmsSignerFromClient_Success(t *testing.T) {
 	_, der := generateTestEd25519DER(t)
 
 	mock := &mockKMSClient{pubKeyDER: der}
-	s, err := NewKmsSignerFromClient(context.Background(), mock, "arn:aws:kms:us-east-1:123456789012:key/test-key-id", nil)
+	s, err := kmsSignerFromClient(context.Background(), mock, "arn:aws:kms:us-east-1:123456789012:key/test-key-id", nil)
 	require.NoError(t, err)
 	require.NotNil(t, s)
 
@@ -71,13 +70,13 @@ func TestNewKmsSignerFromClient_Success(t *testing.T) {
 }
 
 func TestNewKmsSignerFromClient_EmptyKeyID(t *testing.T) {
-	_, err := NewKmsSignerFromClient(context.Background(), &mockKMSClient{}, "", nil)
+	_, err := kmsSignerFromClient(context.Background(), &mockKMSClient{}, "", nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "key ID is required")
 }
 
 func TestNewKmsSignerFromClient_NilClient(t *testing.T) {
-	_, err := NewKmsSignerFromClient(context.Background(), nil, "test-key", nil)
+	_, err := kmsSignerFromClient(context.Background(), nil, "test-key", nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "client is required")
 }
@@ -89,7 +88,7 @@ func TestNewKmsSignerFromClient_GetPublicKeyFails(t *testing.T) {
 		},
 	}
 
-	_, err := NewKmsSignerFromClient(context.Background(), mock, "test-key", nil)
+	_, err := kmsSignerFromClient(context.Background(), mock, "test-key", nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "access denied")
 }
@@ -107,7 +106,7 @@ func TestSign_Success(t *testing.T) {
 		},
 	}
 
-	s, err := NewKmsSignerFromClient(context.Background(), mock, "test-key", nil)
+	s, err := kmsSignerFromClient(context.Background(), mock, "test-key", nil)
 	require.NoError(t, err)
 
 	sig, err := s.Sign(context.Background(), []byte("hello world"))
@@ -127,7 +126,7 @@ func TestSign_KMSFailure(t *testing.T) {
 		},
 	}
 
-	s, err := NewKmsSignerFromClient(context.Background(), mock, "test-key", nil)
+	s, err := kmsSignerFromClient(context.Background(), mock, "test-key", nil)
 	require.NoError(t, err)
 
 	_, err = s.Sign(context.Background(), []byte("hello world"))
@@ -148,7 +147,7 @@ func TestSign_MaxRetriesZero_DisablesRetries(t *testing.T) {
 		},
 	}
 
-	s, err := NewKmsSignerFromClient(context.Background(), mock, "test-key", &Options{MaxRetries: 0})
+	s, err := kmsSignerFromClient(context.Background(), mock, "test-key", &Options{MaxRetries: 0})
 	require.NoError(t, err)
 
 	_, err = s.Sign(context.Background(), []byte("hello world"))
@@ -168,7 +167,7 @@ func TestSign_NonRetryableError_NoRetries(t *testing.T) {
 		},
 	}
 
-	s, err := NewKmsSignerFromClient(context.Background(), mock, "test-key", &Options{MaxRetries: 3})
+	s, err := kmsSignerFromClient(context.Background(), mock, "test-key", &Options{MaxRetries: 3})
 	require.NoError(t, err)
 
 	_, err = s.Sign(context.Background(), []byte("hello world"))
@@ -181,7 +180,7 @@ func TestGetPublic_Cached(t *testing.T) {
 	pub, der := generateTestEd25519DER(t)
 
 	mock := &mockKMSClient{pubKeyDER: der}
-	s, err := NewKmsSignerFromClient(context.Background(), mock, "test-key", nil)
+	s, err := kmsSignerFromClient(context.Background(), mock, "test-key", nil)
 	require.NoError(t, err)
 
 	cryptoPub, err := s.GetPublic()
@@ -196,7 +195,7 @@ func TestGetAddress_Deterministic(t *testing.T) {
 	_, der := generateTestEd25519DER(t)
 
 	mock := &mockKMSClient{pubKeyDER: der}
-	s, err := NewKmsSignerFromClient(context.Background(), mock, "test-key", nil)
+	s, err := kmsSignerFromClient(context.Background(), mock, "test-key", nil)
 	require.NoError(t, err)
 
 	addr1, err := s.GetAddress()
@@ -206,35 +205,4 @@ func TestGetAddress_Deterministic(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, addr1, addr2, "address should be deterministic")
-}
-
-func TestGetPublic_RefreshTimeoutReturnsStale(t *testing.T) {
-	_, der := generateTestEd25519DER(t)
-
-	var getPubCalls int32
-	mock := &mockKMSClient{
-		pubKeyDER: der,
-		getPubFn: func(ctx context.Context, _ *kms.GetPublicKeyInput) (*kms.GetPublicKeyOutput, error) {
-			call := atomic.AddInt32(&getPubCalls, 1)
-			if call == 1 {
-				return &kms.GetPublicKeyOutput{PublicKey: der}, nil
-			}
-			<-ctx.Done()
-			return nil, ctx.Err()
-		},
-	}
-
-	s, err := NewKmsSignerFromClient(context.Background(), mock, "test-key", &Options{CacheTTL: time.Nanosecond, Timeout: 20 * time.Millisecond})
-	require.NoError(t, err)
-
-	time.Sleep(2 * time.Millisecond)
-
-	start := time.Now()
-	pub, err := s.GetPublic()
-	duration := time.Since(start)
-
-	require.NoError(t, err)
-	require.NotNil(t, pub)
-	assert.Less(t, duration, 200*time.Millisecond, "refresh should respect timeout and return stale key")
-	assert.GreaterOrEqual(t, atomic.LoadInt32(&getPubCalls), int32(2), "should attempt refresh call")
 }

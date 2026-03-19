@@ -15,8 +15,6 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"golang.org/x/crypto/argon2"
-
-	"github.com/evstack/ev-node/pkg/signer"
 )
 
 // FileSystemSigner implements a signer that securely stores keys on disk
@@ -37,7 +35,7 @@ type keyData struct {
 }
 
 // CreateFileSystemSigner creates a new key pair and saves it encrypted to disk.
-func CreateFileSystemSigner(keyPath string, passphrase []byte) (signer.Signer, error) {
+func CreateFileSystemSigner(keyPath string, passphrase []byte) (*FileSystemSigner, error) {
 	defer zeroBytes(passphrase) // Wipe passphrase from memory after use
 
 	filePath := filepath.Join(keyPath, "signer.json")
@@ -79,7 +77,7 @@ func CreateFileSystemSigner(keyPath string, passphrase []byte) (signer.Signer, e
 }
 
 // LoadFileSystemSigner loads existing keys from an encrypted file on disk.
-func LoadFileSystemSigner(keyPath string, passphrase []byte) (signer.Signer, error) {
+func LoadFileSystemSigner(keyPath string, passphrase []byte) (*FileSystemSigner, error) {
 	defer zeroBytes(passphrase) // Wipe passphrase from memory after use
 
 	filePath := filepath.Join(keyPath, "signer.json")
