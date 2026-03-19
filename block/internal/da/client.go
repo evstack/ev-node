@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/celestiaorg/go-square/v3/share"
@@ -37,10 +38,80 @@ type client struct {
 	dataNamespaceBz    []byte
 	forcedNamespaceBz  []byte
 	hasForcedNamespace bool
+	timestampCache     *blockTimestampCache
 }
 
 // Ensure client implements the FullClient interface (Client + BlobGetter + Verifier).
 var _ FullClient = (*client)(nil)
+
+const (
+	blockTimestampFetchMaxAttempts = 3
+	blockTimestampFetchBackoff     = 100 * time.Millisecond
+	blockTimestampCacheWindow      = 2048
+)
+
+type blockTimestampCache struct {
+	mu       sync.RWMutex
+	byHeight map[uint64]time.Time
+	highest  uint64
+	window   uint64
+}
+
+func newBlockTimestampCache(window uint64) *blockTimestampCache {
+	if window == 0 {
+		window = blockTimestampCacheWindow
+	}
+	return &blockTimestampCache{
+		byHeight: make(map[uint64]time.Time),
+		window:   window,
+	}
+}
+
+func (c *blockTimestampCache) get(height uint64) (time.Time, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	blockTime, ok := c.byHeight[height]
+	return blockTime, ok
+}
+
+func (c *blockTimestampCache) put(height uint64, blockTime time.Time) {
+	if c == nil || blockTime.IsZero() {
+		return
+	}
+
+	blockTime = blockTime.UTC()
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	minRetained := c.minRetainedHeightLocked()
+	if minRetained > 0 && height < minRetained {
+		return
+	}
+
+	if height > c.highest {
+		c.highest = height
+	}
+	c.byHeight[height] = blockTime
+
+	minRetained = c.minRetainedHeightLocked()
+	if minRetained == 0 {
+		return
+	}
+	for cachedHeight := range c.byHeight {
+		if cachedHeight < minRetained {
+			delete(c.byHeight, cachedHeight)
+		}
+	}
+}
+
+func (c *blockTimestampCache) minRetainedHeightLocked() uint64 {
+	if c.window == 0 || c.highest < c.window-1 {
+		return 0
+	}
+	return c.highest - c.window + 1
+}
 
 // NewClient creates a new blob client wrapper with pre-calculated namespace bytes.
 func NewClient(cfg Config) FullClient {
@@ -66,6 +137,7 @@ func NewClient(cfg Config) FullClient {
 		dataNamespaceBz:    datypes.NamespaceFromString(cfg.DataNamespace).Bytes(),
 		forcedNamespaceBz:  forcedNamespaceBz,
 		hasForcedNamespace: hasForcedNamespace,
+		timestampCache:     newBlockTimestampCache(blockTimestampCacheWindow),
 	}
 }
 
@@ -184,21 +256,76 @@ func (c *client) Submit(ctx context.Context, data [][]byte, _ float64, namespace
 
 // getBlockTimestamp fetches the block timestamp from the DA layer header.
 func (c *client) getBlockTimestamp(ctx context.Context, height uint64) (time.Time, error) {
-	headerCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
-	defer cancel()
+	var lastErr error
+	backoff := blockTimestampFetchBackoff
 
-	header, err := c.headerAPI.GetByHeight(headerCtx, height)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("failed to get header timestamp for block %d: %w", height, err)
+	for attempt := 1; attempt <= blockTimestampFetchMaxAttempts; attempt++ {
+		headerCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
+		header, err := c.headerAPI.GetByHeight(headerCtx, height)
+		cancel()
+		if err == nil {
+			blockTime := header.Time().UTC()
+			c.storeBlockTimestamp(height, blockTime)
+			return blockTime, nil
+		}
+		lastErr = err
+
+		if attempt == blockTimestampFetchMaxAttempts {
+			break
+		}
+
+		c.logger.Info().
+			Uint64("height", height).
+			Int("attempt", attempt).
+			Int("max_attempts", blockTimestampFetchMaxAttempts).
+			Dur("retry_in", backoff).
+			Err(err).
+			Msg("failed to get block timestamp, retrying")
+
+		select {
+		case <-ctx.Done():
+			return time.Time{}, fmt.Errorf("fetching header timestamp for block %d: %w", height, ctx.Err())
+		case <-time.After(backoff):
+		}
+
+		backoff *= 2
 	}
 
-	return header.Time(), nil
+	return time.Time{}, fmt.Errorf("get header timestamp for block %d after %d attempts: %w", height, blockTimestampFetchMaxAttempts, lastErr)
+}
+
+func (c *client) cachedBlockTimestamp(height uint64) (time.Time, bool) {
+	return c.timestampCache.get(height)
+}
+
+func (c *client) storeBlockTimestamp(height uint64, blockTime time.Time) {
+	c.timestampCache.put(height, blockTime)
+}
+
+func (c *client) resolveBlockTimestamp(ctx context.Context, height uint64, strict bool) (time.Time, error) {
+	if !strict {
+		if blockTime, ok := c.cachedBlockTimestamp(height); ok {
+			return blockTime, nil
+		}
+		return time.Time{}, nil
+	}
+
+	return c.getBlockTimestamp(ctx, height)
+}
+
+// RetrieveBlobs retrieves blobs without blocking on DA header timestamps.
+func (c *client) RetrieveBlobs(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
+	return c.retrieve(ctx, height, namespace, false)
 }
 
 // Retrieve retrieves blobs from the DA layer at the specified height and namespace.
 // It uses GetAll to fetch all blobs at once.
 // The timestamp is derived from the DA block header to ensure determinism.
 func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
+	return c.retrieve(ctx, height, namespace, true)
+}
+
+func (c *client) retrieve(ctx context.Context, height uint64, namespace []byte, strictTimestamp bool) datypes.ResultRetrieve {
 	ns, err := share.NewNamespaceFromBytes(namespace)
 	if err != nil {
 		return datypes.ResultRetrieve{
@@ -220,12 +347,16 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 		switch {
 		case strings.Contains(err.Error(), datypes.ErrBlobNotFound.Error()):
 			c.logger.Debug().Uint64("height", height).Msg("No blobs found at height")
-			// Fetch block timestamp for deterministic responses using parent context
-			blockTime, err := c.getBlockTimestamp(ctx, height)
+			blockTime, err := c.resolveBlockTimestamp(ctx, height, strictTimestamp)
 			if err != nil {
 				c.logger.Error().Uint64("height", height).Err(err).Msg("failed to get block timestamp")
-				blockTime = time.Now()
-				// TODO: we should retry fetching the timestamp. Current time may mess block time consistency for based sequencers.
+				return datypes.ResultRetrieve{
+					BaseResult: datypes.BaseResult{
+						Code:    datypes.StatusError,
+						Message: fmt.Sprintf("failed to get block timestamp: %s", err.Error()),
+						Height:  height,
+					},
+				}
 			}
 
 			return datypes.ResultRetrieve{
@@ -258,12 +389,16 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 		}
 	}
 
-	// Fetch block timestamp for deterministic responses using parent context
-	blockTime, err := c.getBlockTimestamp(ctx, height)
+	blockTime, err := c.resolveBlockTimestamp(ctx, height, strictTimestamp)
 	if err != nil {
 		c.logger.Error().Uint64("height", height).Err(err).Msg("failed to get block timestamp")
-		blockTime = time.Now()
-		// TODO: we should retry fetching the timestamp. Current time may mess block time consistency for based sequencers.
+		return datypes.ResultRetrieve{
+			BaseResult: datypes.BaseResult{
+				Code:    datypes.StatusError,
+				Message: fmt.Sprintf("failed to get block timestamp: %s", err.Error()),
+				Height:  height,
+			},
+		}
 	}
 
 	if len(blobs) == 0 {
@@ -355,7 +490,10 @@ func (c *client) HasForcedInclusionNamespace() bool {
 // DA block containing a matching blob. The channel is closed when ctx is
 // cancelled. The caller must drain the channel after cancellation to avoid
 // goroutine leaks.
-func (c *client) Subscribe(ctx context.Context, namespace []byte) (<-chan datypes.SubscriptionEvent, error) {
+// Timestamps are included from the header if available (celestia-node v0.29.1+§), otherwise
+// fetched via a separate call when includeTimestamp is true. Be aware that fetching timestamps
+// separately is an additional call to the celestia node for each event.
+func (c *client) Subscribe(ctx context.Context, namespace []byte, includeTimestamp bool) (<-chan datypes.SubscriptionEvent, error) {
 	ns, err := share.NewNamespaceFromBytes(namespace)
 	if err != nil {
 		return nil, fmt.Errorf("invalid namespace: %w", err)
@@ -380,10 +518,24 @@ func (c *client) Subscribe(ctx context.Context, namespace []byte) (<-chan datype
 				if resp == nil {
 					continue
 				}
+				var blockTime time.Time
+				// Use header time if available (celestia-node v0.21.0+)
+				if resp.Header != nil && !resp.Header.Time.IsZero() {
+					blockTime = resp.Header.Time.UTC()
+					c.storeBlockTimestamp(resp.Height, blockTime)
+				} else if includeTimestamp {
+					// Fallback to fetching timestamp for older nodes
+					blockTime, err = c.getBlockTimestamp(ctx, resp.Height)
+					if err != nil {
+						c.logger.Error().Uint64("height", resp.Height).Err(err).Msg("failed to get DA block timestamp for subscription event")
+						blockTime = time.Time{}
+					}
+				}
 				select {
 				case out <- datypes.SubscriptionEvent{
-					Height: resp.Height,
-					Blobs:  extractBlobData(resp),
+					Height:    resp.Height,
+					Timestamp: blockTime,
+					Blobs:     extractBlobData(resp),
 				}:
 				case <-ctx.Done():
 					return

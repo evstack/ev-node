@@ -88,6 +88,9 @@ func SplitID(id []byte) (uint64, []byte, error) {
 type SubscriptionEvent struct {
 	// Height is the DA layer height at which the blob was finalized.
 	Height uint64
+	// Timestamp is the DA block timestamp at the given height.
+	// This is an optional field that is not set by default. Enable via SubscribeExtra method
+	Timestamp time.Time
 	// Blobs contains the raw blob data from the subscription response.
 	// When non-nil, followers can process blobs inline without re-fetching from DA.
 	Blobs [][]byte
