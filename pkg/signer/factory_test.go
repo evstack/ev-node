@@ -5,12 +5,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	rollconf "github.com/evstack/ev-node/pkg/config"
 	"github.com/stretchr/testify/require"
+
+	rollconf "github.com/evstack/ev-node/pkg/config"
 )
 
 func TestNewSigner_ErrorPaths(t *testing.T) {
-	t.Parallel()
 
 	specs := map[string]struct {
 		mutateCfg func(cfg *rollconf.Config)
@@ -37,7 +37,7 @@ func TestNewSigner_ErrorPaths(t *testing.T) {
 				cfg.Signer.SignerType = "awskms"
 				cfg.Signer.KmsKeyID = ""
 			},
-			pass:    "unused-passphrase",
+			pass:    "test-passphrase",
 			wantErr: "aws kms key ID is required",
 		},
 	}
