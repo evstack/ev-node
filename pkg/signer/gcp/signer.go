@@ -84,7 +84,7 @@ func NewKmsSigner(ctx context.Context, keyName string, opts *Options) (*KmsSigne
 
 	var clientOpts []option.ClientOption
 	if opts != nil && opts.CredentialsFile != "" {
-		clientOpts = append(clientOpts, option.WithCredentialsFile(opts.CredentialsFile))
+		clientOpts = append(clientOpts, option.WithAuthCredentialsFile(option.ServiceAccount, opts.CredentialsFile))
 	}
 
 	client, err := kms.NewKeyManagementClient(ctx, clientOpts...)

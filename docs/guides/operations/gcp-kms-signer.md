@@ -24,7 +24,7 @@ gcloud kms keys create signer \
   --location=global \
   --keyring=ev-node \
   --purpose=asymmetric-signing \
-  --default-algorithm=ed25519
+  --default-algorithm=ec-sign-ed25519
 ```
 
 Get key version resource name:
