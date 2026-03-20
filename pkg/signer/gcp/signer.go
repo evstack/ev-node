@@ -10,6 +10,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"net"
 	"sync"
 	"time"
@@ -20,6 +21,14 @@ import (
 	"google.golang.org/api/option"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/wrapperspb"
+)
+
+var castagnoliTable = crc32.MakeTable(crc32.Castagnoli)
+
+const (
+	baseRetryBackoff = 100 * time.Millisecond
+	maxRetryBackoff  = 5 * time.Second
 )
 
 // KMSClient is the subset of the Google Cloud KMS client API that KmsSigner needs.
@@ -173,8 +182,8 @@ func (s *KmsSigner) Sign(ctx context.Context, message []byte) ([]byte, error) {
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		if attempt > 0 {
-			// Exponential backoff: 100ms, 200ms, 400ms, ...
-			backoff := time.Duration(100<<uint(attempt-1)) * time.Millisecond
+			// Exponential backoff with cap: 100ms, 200ms, 400ms, ... up to 5s.
+			backoff := retryBackoff(attempt)
 			select {
 			case <-ctx.Done():
 				return nil, fmt.Errorf("KMS Sign canceled: %w", ctx.Err())
@@ -183,9 +192,11 @@ func (s *KmsSigner) Sign(ctx context.Context, message []byte) ([]byte, error) {
 		}
 
 		callCtx, cancel := context.WithTimeout(ctx, timeout)
+		dataCRC32C := int64(crc32.Checksum(message, castagnoliTable))
 		out, err := s.client.AsymmetricSign(callCtx, &kmspb.AsymmetricSignRequest{
-			Name: s.keyName,
-			Data: message,
+			Name:       s.keyName,
+			Data:       message,
+			DataCrc32C: wrapperspb.Int64(dataCRC32C),
 		})
 		cancel()
 
@@ -197,10 +208,54 @@ func (s *KmsSigner) Sign(ctx context.Context, message []byte) ([]byte, error) {
 			continue
 		}
 
+		if err := verifySignResponse(out); err != nil {
+			lastErr = err
+			continue
+		}
+
 		return out.GetSignature(), nil
 	}
 
 	return nil, fmt.Errorf("KMS Sign failed after %d attempts: %w", maxAttempts, lastErr)
+}
+
+func retryBackoff(attempt int) time.Duration {
+	if attempt <= 1 {
+		return baseRetryBackoff
+	}
+
+	backoff := baseRetryBackoff
+	for i := 1; i < attempt; i++ {
+		if backoff >= maxRetryBackoff/2 {
+			return maxRetryBackoff
+		}
+		backoff *= 2
+	}
+
+	if backoff > maxRetryBackoff {
+		return maxRetryBackoff
+	}
+
+	return backoff
+}
+
+func verifySignResponse(out *kmspb.AsymmetricSignResponse) error {
+	if !out.GetVerifiedDataCrc32C() {
+		return fmt.Errorf("KMS Sign integrity check failed: verified_data_crc32c is false")
+	}
+
+	signatureCRC32C := out.GetSignatureCrc32C()
+	if signatureCRC32C == nil {
+		return fmt.Errorf("KMS Sign integrity check failed: signature_crc32c is missing")
+	}
+
+	signature := out.GetSignature()
+	expectedCRC32C := int64(crc32.Checksum(signature, castagnoliTable))
+	if signatureCRC32C.GetValue() != expectedCRC32C {
+		return fmt.Errorf("KMS Sign integrity check failed: signature_crc32c mismatch")
+	}
+
+	return nil
 }
 
 // GetPublic returns the cached public key.

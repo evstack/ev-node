@@ -6,14 +6,17 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"hash/crc32"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"cloud.google.com/go/kms/apiv1/kmspb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 // mockKMSClient is a test double implementing KMSClient.
@@ -98,19 +101,26 @@ func TestSign_Success(t *testing.T) {
 	_, publicKeyPEM := generateTestEd25519PEM(t)
 
 	expectedSig := []byte("test-signature-bytes")
+	expectedMsg := []byte("hello world")
 	mock := &mockKMSClient{
 		publicKeyPEM: publicKeyPEM,
 		signFn: func(_ context.Context, req *kmspb.AsymmetricSignRequest) (*kmspb.AsymmetricSignResponse, error) {
 			assert.Equal(t, "projects/p/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1", req.Name)
-			assert.Equal(t, []byte("hello world"), req.Data)
-			return &kmspb.AsymmetricSignResponse{Signature: expectedSig}, nil
+			assert.Equal(t, expectedMsg, req.Data)
+			require.NotNil(t, req.DataCrc32C)
+			assert.Equal(t, int64(crc32.Checksum(expectedMsg, castagnoliTable)), req.DataCrc32C.GetValue())
+			return &kmspb.AsymmetricSignResponse{
+				Signature:          expectedSig,
+				VerifiedDataCrc32C: true,
+				SignatureCrc32C:    wrapperspb.Int64(int64(crc32.Checksum(expectedSig, castagnoliTable))),
+			}, nil
 		},
 	}
 
 	s, err := kmsSignerFromClient(context.Background(), mock, "projects/p/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1", nil)
 	require.NoError(t, err)
 
-	sig, err := s.Sign(context.Background(), []byte("hello world"))
+	sig, err := s.Sign(context.Background(), expectedMsg)
 	require.NoError(t, err)
 	assert.Equal(t, expectedSig, sig)
 }
@@ -175,6 +185,125 @@ func TestSign_NonRetryableError_NoRetries(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "non-retryable")
 	assert.Equal(t, int32(1), atomic.LoadInt32(&calls), "non-retryable errors should fail fast")
+}
+
+func TestSign_IntegrityCheckVerifiedDataFalse_RetriesAndFails(t *testing.T) {
+	_, publicKeyPEM := generateTestEd25519PEM(t)
+
+	var calls int32
+	mock := &mockKMSClient{
+		publicKeyPEM: publicKeyPEM,
+		signFn: func(_ context.Context, _ *kmspb.AsymmetricSignRequest) (*kmspb.AsymmetricSignResponse, error) {
+			atomic.AddInt32(&calls, 1)
+			sig := []byte("sig")
+			return &kmspb.AsymmetricSignResponse{
+				Signature:          sig,
+				VerifiedDataCrc32C: false,
+				SignatureCrc32C:    wrapperspb.Int64(int64(crc32.Checksum(sig, castagnoliTable))),
+			}, nil
+		},
+	}
+
+	s, err := kmsSignerFromClient(
+		context.Background(),
+		mock,
+		"projects/p/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1",
+		&Options{MaxRetries: 1},
+	)
+	require.NoError(t, err)
+
+	_, err = s.Sign(context.Background(), []byte("hello world"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "verified_data_crc32c is false")
+	assert.Equal(t, int32(2), atomic.LoadInt32(&calls), "integrity failures should be retried")
+}
+
+func TestSign_IntegrityCheckSignatureCRC32CMismatch_RetriesAndFails(t *testing.T) {
+	_, publicKeyPEM := generateTestEd25519PEM(t)
+
+	var calls int32
+	mock := &mockKMSClient{
+		publicKeyPEM: publicKeyPEM,
+		signFn: func(_ context.Context, _ *kmspb.AsymmetricSignRequest) (*kmspb.AsymmetricSignResponse, error) {
+			atomic.AddInt32(&calls, 1)
+			return &kmspb.AsymmetricSignResponse{
+				Signature:          []byte("sig"),
+				VerifiedDataCrc32C: true,
+				SignatureCrc32C:    wrapperspb.Int64(12345),
+			}, nil
+		},
+	}
+
+	s, err := kmsSignerFromClient(
+		context.Background(),
+		mock,
+		"projects/p/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1",
+		&Options{MaxRetries: 1},
+	)
+	require.NoError(t, err)
+
+	_, err = s.Sign(context.Background(), []byte("hello world"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "signature_crc32c mismatch")
+	assert.Equal(t, int32(2), atomic.LoadInt32(&calls), "integrity failures should be retried")
+}
+
+func TestSign_IntegrityCheckRecoversOnRetry(t *testing.T) {
+	_, publicKeyPEM := generateTestEd25519PEM(t)
+
+	var calls int32
+	expectedSig := []byte("valid-signature")
+	mock := &mockKMSClient{
+		publicKeyPEM: publicKeyPEM,
+		signFn: func(_ context.Context, _ *kmspb.AsymmetricSignRequest) (*kmspb.AsymmetricSignResponse, error) {
+			attempt := atomic.AddInt32(&calls, 1)
+			if attempt == 1 {
+				return &kmspb.AsymmetricSignResponse{
+					Signature:          []byte("corrupted"),
+					VerifiedDataCrc32C: false,
+					SignatureCrc32C:    wrapperspb.Int64(1),
+				}, nil
+			}
+			return &kmspb.AsymmetricSignResponse{
+				Signature:          expectedSig,
+				VerifiedDataCrc32C: true,
+				SignatureCrc32C:    wrapperspb.Int64(int64(crc32.Checksum(expectedSig, castagnoliTable))),
+			}, nil
+		},
+	}
+
+	s, err := kmsSignerFromClient(
+		context.Background(),
+		mock,
+		"projects/p/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1",
+		&Options{MaxRetries: 2},
+	)
+	require.NoError(t, err)
+
+	got, err := s.Sign(context.Background(), []byte("hello world"))
+	require.NoError(t, err)
+	assert.Equal(t, expectedSig, got)
+	assert.Equal(t, int32(2), atomic.LoadInt32(&calls), "second attempt should succeed")
+}
+
+func TestRetryBackoff_Capped(t *testing.T) {
+	testCases := []struct {
+		name     string
+		attempt  int
+		expected time.Duration
+	}{
+		{name: "attempt 1", attempt: 1, expected: 100 * time.Millisecond},
+		{name: "attempt 2", attempt: 2, expected: 200 * time.Millisecond},
+		{name: "attempt 6", attempt: 6, expected: 3200 * time.Millisecond},
+		{name: "attempt 7 capped", attempt: 7, expected: 5 * time.Second},
+		{name: "attempt 10 capped", attempt: 10, expected: 5 * time.Second},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expected, retryBackoff(tc.attempt))
+		})
+	}
 }
 
 func TestGetPublic_Cached(t *testing.T) {
