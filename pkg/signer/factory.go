@@ -10,6 +10,7 @@ import (
 	rollconf "github.com/evstack/ev-node/pkg/config"
 	awssigner "github.com/evstack/ev-node/pkg/signer/aws"
 	"github.com/evstack/ev-node/pkg/signer/file"
+	gcpsigner "github.com/evstack/ev-node/pkg/signer/gcp"
 )
 
 // NewSigner creates a new Signer based on the configuration.
@@ -48,12 +49,30 @@ func newSigner(ctx context.Context, config *rollconf.Config, passphrase string, 
 
 		return file.LoadFileSystemSigner(signerPath, []byte(passphrase))
 
-	case "awskms":
-		opts := &awssigner.Options{
-			Timeout:    config.Signer.KmsTimeout.Duration,
-			MaxRetries: config.Signer.KmsMaxRetries,
+	case "kms":
+		switch config.Signer.KMS.Provider {
+		case "aws":
+			opts := &awssigner.Options{
+				Timeout:    config.Signer.KMS.AWS.Timeout.Duration,
+				MaxRetries: config.Signer.KMS.AWS.MaxRetries,
+			}
+			return awssigner.NewKmsSigner(
+				ctx,
+				config.Signer.KMS.AWS.Region,
+				config.Signer.KMS.AWS.Profile,
+				config.Signer.KMS.AWS.KeyID,
+				opts,
+			)
+		case "gcp":
+			opts := &gcpsigner.Options{
+				CredentialsFile: config.Signer.KMS.GCP.CredentialsFile,
+				Timeout:         config.Signer.KMS.GCP.Timeout.Duration,
+				MaxRetries:      config.Signer.KMS.GCP.MaxRetries,
+			}
+			return gcpsigner.NewKmsSigner(ctx, config.Signer.KMS.GCP.KeyName, opts)
+		default:
+			return nil, fmt.Errorf("unknown kms signer provider: %s", config.Signer.KMS.Provider)
 		}
-		return awssigner.NewKmsSigner(ctx, config.Signer.KmsRegion, config.Signer.KmsProfile, config.Signer.KmsKeyID, opts)
 
 	default:
 		return nil, fmt.Errorf("unknown signer type: %s", config.Signer.SignerType)

@@ -137,8 +137,15 @@ func StartNode(
 			return fmt.Errorf("initialize signer via factory: %w", err)
 		}
 
-		if nodeConfig.Signer.SignerType == "awskms" {
-			logger.Info().Msg("initialized AWS KMS signer via factory")
+		if nodeConfig.Signer.SignerType == "kms" {
+			switch nodeConfig.Signer.KMS.Provider {
+			case "aws":
+				logger.Info().Msg("initialized AWS KMS signer via factory")
+			case "gcp":
+				logger.Info().Msg("initialized GCP KMS signer via factory")
+			default:
+				logger.Info().Str("provider", nodeConfig.Signer.KMS.Provider).Msg("initialized KMS signer via factory")
+			}
 		}
 	}
 

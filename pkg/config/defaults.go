@@ -91,13 +91,24 @@ func DefaultConfig() Config {
 			Trace:  false,
 		},
 		Signer: SignerConfig{
-			SignerType:    "file",
-			SignerPath:    "config",
-			KmsKeyID:      "",
-			KmsRegion:     "",
-			KmsProfile:    "",
-			KmsTimeout:    DurationWrapper{10 * time.Second},
-			KmsMaxRetries: 3,
+			SignerType: "file",
+			SignerPath: "config",
+			KMS: SignerKMSConfig{
+				Provider: "",
+				AWS: SignerAWSKMSConfig{
+					KeyID:      "",
+					Region:     "",
+					Profile:    "",
+					Timeout:    DurationWrapper{10 * time.Second},
+					MaxRetries: 3,
+				},
+				GCP: SignerGCPKMSConfig{
+					KeyName:         "",
+					CredentialsFile: "",
+					Timeout:         DurationWrapper{10 * time.Second},
+					MaxRetries:      3,
+				},
+			},
 		},
 		RPC: RPCConfig{
 			Address:               "127.0.0.1:7331",
