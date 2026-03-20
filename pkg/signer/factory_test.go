@@ -32,13 +32,31 @@ func TestNewSigner_ErrorPaths(t *testing.T) {
 			pass:    "",
 			wantErr: "passphrase is required when using local file signer",
 		},
-		"awskms-empty-key-id": {
+		"kms-aws-empty-key-id": {
 			mutateCfg: func(cfg *rollconf.Config) {
-				cfg.Signer.SignerType = "awskms"
-				cfg.Signer.KmsKeyID = ""
+				cfg.Signer.SignerType = "kms"
+				cfg.Signer.KMS.Provider = "aws"
+				cfg.Signer.KMS.AWS.KeyID = ""
 			},
 			pass:    "test-passphrase",
 			wantErr: "aws kms key ID is required",
+		},
+		"kms-gcp-empty-key-name": {
+			mutateCfg: func(cfg *rollconf.Config) {
+				cfg.Signer.SignerType = "kms"
+				cfg.Signer.KMS.Provider = "gcp"
+				cfg.Signer.KMS.GCP.KeyName = ""
+			},
+			pass:    "test-passphrase",
+			wantErr: "gcp kms key name is required",
+		},
+		"kms-unknown-provider": {
+			mutateCfg: func(cfg *rollconf.Config) {
+				cfg.Signer.SignerType = "kms"
+				cfg.Signer.KMS.Provider = "azure"
+			},
+			pass:    "test-passphrase",
+			wantErr: "unknown kms signer provider: azure",
 		},
 	}
 

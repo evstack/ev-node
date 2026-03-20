@@ -107,11 +107,16 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagSignerPassphraseFile, "")
 	assertFlagValue(t, flags, FlagSignerType, "file")
 	assertFlagValue(t, flags, FlagSignerPath, DefaultConfig().Signer.SignerPath)
-	assertFlagValue(t, flags, FlagSignerKmsKeyID, DefaultConfig().Signer.KmsKeyID)
-	assertFlagValue(t, flags, FlagSignerKmsRegion, DefaultConfig().Signer.KmsRegion)
-	assertFlagValue(t, flags, FlagSignerKmsProfile, DefaultConfig().Signer.KmsProfile)
-	assertFlagValue(t, flags, FlagSignerKmsTimeout, DefaultConfig().Signer.KmsTimeout.Duration)
-	assertFlagValue(t, flags, FlagSignerKmsMaxRetries, DefaultConfig().Signer.KmsMaxRetries)
+	assertFlagValue(t, flags, FlagSignerKmsProvider, DefaultConfig().Signer.KMS.Provider)
+	assertFlagValue(t, flags, FlagSignerKmsAwsKeyID, DefaultConfig().Signer.KMS.AWS.KeyID)
+	assertFlagValue(t, flags, FlagSignerKmsAwsRegion, DefaultConfig().Signer.KMS.AWS.Region)
+	assertFlagValue(t, flags, FlagSignerKmsAwsProfile, DefaultConfig().Signer.KMS.AWS.Profile)
+	assertFlagValue(t, flags, FlagSignerKmsAwsTimeout, DefaultConfig().Signer.KMS.AWS.Timeout.Duration)
+	assertFlagValue(t, flags, FlagSignerKmsAwsMaxRetries, DefaultConfig().Signer.KMS.AWS.MaxRetries)
+	assertFlagValue(t, flags, FlagSignerKmsGcpKeyName, DefaultConfig().Signer.KMS.GCP.KeyName)
+	assertFlagValue(t, flags, FlagSignerKmsGcpCredentialsFile, DefaultConfig().Signer.KMS.GCP.CredentialsFile)
+	assertFlagValue(t, flags, FlagSignerKmsGcpTimeout, DefaultConfig().Signer.KMS.GCP.Timeout.Duration)
+	assertFlagValue(t, flags, FlagSignerKmsGcpMaxRetries, DefaultConfig().Signer.KMS.GCP.MaxRetries)
 
 	// RPC flags
 	assertFlagValue(t, flags, FlagRPCAddress, DefaultConfig().RPC.Address)
@@ -123,7 +128,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagPruningInterval, DefaultConfig().Pruning.Interval.Duration)
 
 	// Count the number of flags we're explicitly checking
-	expectedFlagCount := 72 // Update this number if you add more flag checks above
+	expectedFlagCount := 77 // Update this number if you add more flag checks above
 
 	// Get the actual number of flags (both regular and persistent)
 	actualFlagCount := 0
@@ -521,6 +526,92 @@ func TestBasedSequencerValidation(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 			}
+		})
+	}
+}
+
+func TestSignerValidation(t *testing.T) {
+	tests := []struct {
+		name        string
+		modify      func(cfg *Config)
+		expectError string
+	}{
+		{
+			name: "kms aws requires key id",
+			modify: func(cfg *Config) {
+				cfg.Signer.SignerType = "kms"
+				cfg.Signer.KMS.Provider = "aws"
+				cfg.Signer.KMS.AWS.KeyID = ""
+			},
+			expectError: "evnode.signer.kms.aws.key_id is required when signer.signer_type is kms and signer.kms.provider is aws",
+		},
+		{
+			name: "kms aws requires positive timeout",
+			modify: func(cfg *Config) {
+				cfg.Signer.SignerType = "kms"
+				cfg.Signer.KMS.Provider = "aws"
+				cfg.Signer.KMS.AWS.KeyID = "arn:aws:kms:eu-central-1:123456789012:key/test"
+				cfg.Signer.KMS.AWS.Timeout = DurationWrapper{0}
+			},
+			expectError: "evnode.signer.kms.aws.timeout must be positive",
+		},
+		{
+			name: "kms aws retries must be non-negative",
+			modify: func(cfg *Config) {
+				cfg.Signer.SignerType = "kms"
+				cfg.Signer.KMS.Provider = "aws"
+				cfg.Signer.KMS.AWS.KeyID = "arn:aws:kms:eu-central-1:123456789012:key/test"
+				cfg.Signer.KMS.AWS.MaxRetries = -1
+			},
+			expectError: "evnode.signer.kms.aws.max_retries must be non-negative",
+		},
+		{
+			name: "kms gcp requires key name",
+			modify: func(cfg *Config) {
+				cfg.Signer.SignerType = "kms"
+				cfg.Signer.KMS.Provider = "gcp"
+				cfg.Signer.KMS.GCP.KeyName = ""
+			},
+			expectError: "evnode.signer.kms.gcp.key_name is required when signer.signer_type is kms and signer.kms.provider is gcp",
+		},
+		{
+			name: "kms gcp requires positive timeout",
+			modify: func(cfg *Config) {
+				cfg.Signer.SignerType = "kms"
+				cfg.Signer.KMS.Provider = "gcp"
+				cfg.Signer.KMS.GCP.KeyName = "projects/p/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1"
+				cfg.Signer.KMS.GCP.Timeout = DurationWrapper{0}
+			},
+			expectError: "evnode.signer.kms.gcp.timeout must be positive",
+		},
+		{
+			name: "kms gcp retries must be non-negative",
+			modify: func(cfg *Config) {
+				cfg.Signer.SignerType = "kms"
+				cfg.Signer.KMS.Provider = "gcp"
+				cfg.Signer.KMS.GCP.KeyName = "projects/p/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1"
+				cfg.Signer.KMS.GCP.MaxRetries = -1
+			},
+			expectError: "evnode.signer.kms.gcp.max_retries must be non-negative",
+		},
+		{
+			name: "kms requires provider",
+			modify: func(cfg *Config) {
+				cfg.Signer.SignerType = "kms"
+				cfg.Signer.KMS.Provider = ""
+			},
+			expectError: "evnode.signer.kms.provider must be one of: aws, gcp when signer.signer_type is kms",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.RootDir = t.TempDir()
+			tt.modify(&cfg)
+			err := cfg.Validate()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.expectError)
 		})
 	}
 }

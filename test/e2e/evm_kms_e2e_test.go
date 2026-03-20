@@ -5,6 +5,7 @@ package e2e
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,6 +23,7 @@ import (
 // as the block signer. The test is skipped unless KMS env vars are provided.
 // export EVNODE_E2E_AWS_KMS_KEY_ID=
 // export EVNODE_E2E_AWS_KMS_REGION=
+// export EVNODE_E2E_AWS_KMS_PROFILE=
 // go test -v -tags e2e,evm -run TestEvmSequencerWithAWSKMSSignerE2E -count=1 --evm-binary=$(pwd)/../../build/testapp
 func TestEvmSequencerWithAWSKMSSignerE2E(t *testing.T) {
 	if testing.Short() {
@@ -41,79 +43,53 @@ func TestEvmSequencerWithAWSKMSSignerE2E(t *testing.T) {
 	)
 	kmsProfile := os.Getenv("EVNODE_E2E_AWS_KMS_PROFILE")
 
-	workDir := t.TempDir()
-	sequencerHome := filepath.Join(workDir, "evm-kms-agg")
-	sut := NewSystemUnderTest(t)
-	evmBinary := requireEVMBinary(t, sut)
-
-	dockerClient, networkID := tastoradocker.Setup(t)
-	evmEnv := SetupCommonEVMEnv(t, sut, dockerClient, networkID)
-
-	jwtSecretFile := createJWTSecretFile(t, sequencerHome, evmEnv.SequencerJWT)
-
-	initArgs := []string{
-		"init",
-		"--home", sequencerHome,
-		"--evnode.node.aggregator=true",
-		"--evnode.signer.signer_type=awskms",
-		"--evnode.signer.kms_key_id=" + kmsKeyID,
-		"--evnode.signer.kms_timeout=10s",
-		"--evnode.signer.kms_max_retries=3",
+	signerArgs := []string{
+		"--evnode.signer.signer_type=kms",
+		"--evnode.signer.kms.provider=aws",
+		"--evnode.signer.kms.aws.key_id=" + kmsKeyID,
+		"--evnode.signer.kms.aws.timeout=10s",
+		"--evnode.signer.kms.aws.max_retries=3",
 	}
 	if kmsRegion != "" {
-		initArgs = append(initArgs, "--evnode.signer.kms_region="+kmsRegion)
+		signerArgs = append(signerArgs, "--evnode.signer.kms.aws.region="+kmsRegion)
 	}
 	if kmsProfile != "" {
-		initArgs = append(initArgs, "--evnode.signer.kms_profile="+kmsProfile)
+		signerArgs = append(signerArgs, "--evnode.signer.kms.aws.profile="+kmsProfile)
 	}
 
-	output, err := sut.RunCmd(evmBinary, initArgs...)
-	require.NoError(t, err, "failed to init evm sequencer with awskms signer: %s", output)
+	runEvmSequencerWithKMSSignerE2E(t, "aws", signerArgs)
+}
 
-	startArgs := []string{
-		"start",
-		"--evnode.log.format", "json",
-		"--home", sequencerHome,
-		"--evnode.node.aggregator=true",
-		"--evnode.node.block_time", DefaultBlockTime,
-		"--evnode.da.block_time", DefaultDABlockTime,
-		"--evnode.da.address", evmEnv.Endpoints.GetDAAddress(),
-		"--evnode.da.namespace", DefaultDANamespace,
-		"--evnode.da.batching_strategy", "immediate",
-		"--evnode.rpc.address", evmEnv.Endpoints.GetRollkitRPCListen(),
-		"--evnode.p2p.listen_address", evmEnv.Endpoints.GetRollkitP2PAddress(),
-		"--evnode.signer.signer_type=awskms",
-		"--evnode.signer.kms_key_id=" + kmsKeyID,
-		"--evnode.signer.kms_timeout=10s",
-		"--evnode.signer.kms_max_retries=3",
-		"--evm.jwt-secret-file", jwtSecretFile,
-		"--evm.genesis-hash", evmEnv.GenesisHash,
-		"--evm.engine-url", evmEnv.Endpoints.GetSequencerEngineURL(),
-		"--evm.eth-url", evmEnv.Endpoints.GetSequencerEthURL(),
+// TestEvmSequencerWithGCPKMSSignerE2E validates an EVM sequencer using GCP KMS
+// as the block signer. The test is skipped unless KMS env vars are provided.
+// export EVNODE_E2E_GCP_KMS_KEY_NAME=
+// export EVNODE_E2E_GCP_KMS_CREDENTIALS_FILE= # optional; defaults to ADC when unset
+// go test -v -tags e2e,evm -run TestEvmSequencerWithGCPKMSSignerE2E -count=1 --evm-binary=$(pwd)/../../build/testapp
+func TestEvmSequencerWithGCPKMSSignerE2E(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skip e2e in short mode")
 	}
-	if kmsRegion != "" {
-		startArgs = append(startArgs, "--evnode.signer.kms_region="+kmsRegion)
-	}
-	if kmsProfile != "" {
-		startArgs = append(startArgs, "--evnode.signer.kms_profile="+kmsProfile)
+	flag.Parse()
+
+	kmsKeyName := os.Getenv("EVNODE_E2E_GCP_KMS_KEY_NAME")
+	if kmsKeyName == "" {
+		t.Skip("set EVNODE_E2E_GCP_KMS_KEY_NAME to run GCP KMS EVM e2e test")
 	}
 
-	sut.ExecCmd(evmBinary, startArgs...)
-	sut.AwaitNodeUp(t, evmEnv.Endpoints.GetRollkitRPCAddress(), NodeStartupTimeout)
+	kmsCredentialsFile := os.Getenv("EVNODE_E2E_GCP_KMS_CREDENTIALS_FILE")
 
-	client, err := ethclient.Dial(evmEnv.Endpoints.GetSequencerEthURL())
-	require.NoError(t, err, "should connect to evm endpoint")
-	defer client.Close()
+	signerArgs := []string{
+		"--evnode.signer.signer_type=kms",
+		"--evnode.signer.kms.provider=gcp",
+		"--evnode.signer.kms.gcp.key_name=" + kmsKeyName,
+		"--evnode.signer.kms.gcp.timeout=10s",
+		"--evnode.signer.kms.gcp.max_retries=3",
+	}
+	if kmsCredentialsFile != "" {
+		signerArgs = append(signerArgs, "--evnode.signer.kms.gcp.credentials_file="+kmsCredentialsFile)
+	}
 
-	var nonce uint64
-	tx := evm.GetRandomTransaction(t, TestPrivateKey, TestToAddress, DefaultChainID, DefaultGasLimit, &nonce)
-	require.NoError(t, client.SendTransaction(context.Background(), tx), "failed to submit tx")
-
-	require.Eventually(t, func() bool {
-		return evm.CheckTxIncluded(client, tx.Hash())
-	}, 20*time.Second, 500*time.Millisecond, "tx should be included in a block")
-
-	t.Logf("KMS-backed EVM tx included: %s", tx.Hash().Hex())
+	runEvmSequencerWithKMSSignerE2E(t, "gcp", signerArgs)
 }
 
 func firstNonEmptyEVMKMS(values ...string) string {
@@ -139,4 +115,64 @@ func requireEVMBinary(t testing.TB, sut *SystemUnderTest) string {
 	}
 
 	return evmSingleBinaryPath
+}
+
+func runEvmSequencerWithKMSSignerE2E(t *testing.T, provider string, signerArgs []string) {
+	t.Helper()
+
+	workDir := t.TempDir()
+	sequencerHome := filepath.Join(workDir, fmt.Sprintf("evm-kms-%s-agg", provider))
+	sut := NewSystemUnderTest(t)
+	evmBinary := requireEVMBinary(t, sut)
+
+	dockerClient, networkID := tastoradocker.Setup(t)
+	evmEnv := SetupCommonEVMEnv(t, sut, dockerClient, networkID)
+
+	jwtSecretFile := createJWTSecretFile(t, sequencerHome, evmEnv.SequencerJWT)
+
+	initArgs := []string{
+		"init",
+		"--home", sequencerHome,
+		"--evnode.node.aggregator=true",
+	}
+	initArgs = append(initArgs, signerArgs...)
+
+	output, err := sut.RunCmd(evmBinary, initArgs...)
+	require.NoError(t, err, "failed to init evm sequencer with %s kms signer: %s", provider, output)
+
+	startArgs := []string{
+		"start",
+		"--evnode.log.format", "json",
+		"--home", sequencerHome,
+		"--evnode.node.aggregator=true",
+		"--evnode.node.block_time", DefaultBlockTime,
+		"--evnode.da.block_time", DefaultDABlockTime,
+		"--evnode.da.address", evmEnv.Endpoints.GetDAAddress(),
+		"--evnode.da.namespace", DefaultDANamespace,
+		"--evnode.da.batching_strategy", "immediate",
+		"--evnode.rpc.address", evmEnv.Endpoints.GetRollkitRPCListen(),
+		"--evnode.p2p.listen_address", evmEnv.Endpoints.GetRollkitP2PAddress(),
+		"--evm.jwt-secret-file", jwtSecretFile,
+		"--evm.genesis-hash", evmEnv.GenesisHash,
+		"--evm.engine-url", evmEnv.Endpoints.GetSequencerEngineURL(),
+		"--evm.eth-url", evmEnv.Endpoints.GetSequencerEthURL(),
+	}
+	startArgs = append(startArgs, signerArgs...)
+
+	sut.ExecCmd(evmBinary, startArgs...)
+	sut.AwaitNodeUp(t, evmEnv.Endpoints.GetRollkitRPCAddress(), NodeStartupTimeout)
+
+	client, err := ethclient.Dial(evmEnv.Endpoints.GetSequencerEthURL())
+	require.NoError(t, err, "should connect to evm endpoint")
+	defer client.Close()
+
+	var nonce uint64
+	tx := evm.GetRandomTransaction(t, TestPrivateKey, TestToAddress, DefaultChainID, DefaultGasLimit, &nonce)
+	require.NoError(t, client.SendTransaction(context.Background(), tx), "failed to submit tx")
+
+	require.Eventually(t, func() bool {
+		return evm.CheckTxIncluded(client, tx.Hash())
+	}, 20*time.Second, 500*time.Millisecond, "tx should be included in a block")
+
+	t.Logf("%s KMS-backed EVM tx included: %s", strings.ToUpper(provider), tx.Hash().Hex())
 }
