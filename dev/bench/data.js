@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774014157025,
+  "lastUpdate": 1774021396387,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -3300,6 +3300,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 180839,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "c07e6f7c5e796342c0bdaf6b108154c03cb026b8",
+          "message": "build(deps): Bump google.golang.org/grpc from 1.79.2 to 1.79.3 (#3181)\n\n* build(deps): Bump google.golang.org/grpc from 1.79.2 to 1.79.3\n\nBumps [google.golang.org/grpc](https://github.com/grpc/grpc-go) from 1.79.2 to 1.79.3.\n- [Release notes](https://github.com/grpc/grpc-go/releases)\n- [Commits](https://github.com/grpc/grpc-go/compare/v1.79.2...v1.79.3)\n\n---\nupdated-dependencies:\n- dependency-name: google.golang.org/grpc\n  dependency-version: 1.79.3\n  dependency-type: indirect\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\n\n* chore: run just deps after Dependabot update\n\n---------\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\nCo-authored-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>\nCo-authored-by: julienrbrt <julien@rbrt.fr>",
+          "timestamp": "2026-03-20T16:39:35+01:00",
+          "tree_id": "57ab86bf034bec72ed51be15e1cfda3ae4418ac0",
+          "url": "https://github.com/evstack/ev-node/commit/c07e6f7c5e796342c0bdaf6b108154c03cb026b8"
+        },
+        "date": 1774021393535,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 906215528,
+            "unit": "ns/op\t32350892 B/op\t  180874 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 906215528,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 32350892,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 180874,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
