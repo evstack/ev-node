@@ -73,8 +73,7 @@ func TestAsyncBlockRetriever_SubscriptionDrivenCaching(t *testing.T) {
 	logger := zerolog.Nop()
 	fetcher := NewAsyncBlockRetriever(client, logger, fiNs, 200*time.Millisecond, 100, 5)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	fetcher.Start(ctx)
 	defer fetcher.Stop()
 
@@ -128,8 +127,7 @@ func TestAsyncBlockRetriever_CatchupFillsGaps(t *testing.T) {
 	logger := zerolog.Nop()
 	fetcher := NewAsyncBlockRetriever(client, logger, fiNs, 100*time.Millisecond, 100, 10)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	fetcher.Start(ctx)
 	defer fetcher.Stop()
 
@@ -198,8 +196,7 @@ func TestAsyncBlockRetriever_StopGracefully(t *testing.T) {
 	logger := zerolog.Nop()
 	fetcher := NewAsyncBlockRetriever(client, logger, fiNs, 100*time.Millisecond, 100, 10)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	fetcher.Start(ctx)
 	time.Sleep(100 * time.Millisecond)
 
@@ -240,8 +237,7 @@ func TestAsyncBlockRetriever_ReconnectOnSubscriptionError(t *testing.T) {
 	// Very short backoff so reconnect is fast in tests.
 	fetcher := NewAsyncBlockRetriever(client, logger, fiNs, 50*time.Millisecond, 100, 5)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	fetcher.Start(ctx)
 	defer fetcher.Stop()
 
