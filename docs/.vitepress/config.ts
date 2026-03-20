@@ -318,6 +318,10 @@ function sidebarHome() {
           link: "/guides/metrics",
         },
         {
+          text: "Use AWS KMS signer",
+          link: "/guides/operations/aws-kms-signer",
+        },
+        {
           text: "Use IBC token (TIA) as gas token in your chain",
           link: "/guides/use-tia-for-gas",
         },

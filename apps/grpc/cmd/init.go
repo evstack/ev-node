@@ -60,7 +60,7 @@ This will create the necessary configuration structure in the specified root dir
 				}
 			}
 
-			proposerAddress, err := rollcmd.CreateSigner(&cfg, homePath, passphrase)
+			proposerAddress, err := rollcmd.CreateSigner(cmd.Context(), &cfg, homePath, passphrase)
 			if err != nil {
 				return err
 			}

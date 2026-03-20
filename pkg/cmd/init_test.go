@@ -24,7 +24,7 @@ func TestCreateSigner(t *testing.T) {
 			Signer: rollconf.SignerConfig{SignerType: "file"},
 			Node:   rollconf.NodeConfig{Aggregator: true},
 		}
-		_, err := cmd.CreateSigner(cfg, tmpDir, "")
+		_, err := cmd.CreateSigner(t.Context(), cfg, tmpDir, "")
 		require.Error(err)
 		assert.Contains(err.Error(), "passphrase is required")
 	})
@@ -36,7 +36,7 @@ func TestCreateSigner(t *testing.T) {
 			Signer: rollconf.SignerConfig{SignerType: "file"},
 			Node:   rollconf.NodeConfig{Aggregator: true},
 		}
-		addr, err := cmd.CreateSigner(cfg, tmpDir, "testpass")
+		addr, err := cmd.CreateSigner(t.Context(), cfg, tmpDir, "testpass")
 		require.NoError(err)
 		assert.NotNil(addr)
 		assert.NotEmpty(addr)
@@ -46,16 +46,16 @@ func TestCreateSigner(t *testing.T) {
 		assert.NoError(err, "signer file should exist")
 	})
 
-	// Case 3: Non-File signer, Aggregator -> Error (Remote signer not implemented)
+	// Case 3: Non-File signer, Aggregator -> Error (unknown signer type)
 	t.Run("RemoteSigner_Aggregator", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		cfg := &rollconf.Config{
 			Signer: rollconf.SignerConfig{SignerType: "remote"},
 			Node:   rollconf.NodeConfig{Aggregator: true},
 		}
-		_, err := cmd.CreateSigner(cfg, tmpDir, "")
+		_, err := cmd.CreateSigner(t.Context(), cfg, tmpDir, "")
 		require.Error(err)
-		assert.Contains(err.Error(), "remote signer not implemented")
+		assert.Contains(err.Error(), "unknown signer type")
 	})
 
 	// Case 4: Not Aggregator -> No-op (returns nil, nil)
@@ -65,7 +65,7 @@ func TestCreateSigner(t *testing.T) {
 			Signer: rollconf.SignerConfig{SignerType: "file"}, // Signer type doesn't matter here
 			Node:   rollconf.NodeConfig{Aggregator: false},
 		}
-		addr, err := cmd.CreateSigner(cfg, tmpDir, "testpass")
+		addr, err := cmd.CreateSigner(t.Context(), cfg, tmpDir, "testpass")
 		require.NoError(err)
 		assert.Nil(addr)
 	})
@@ -83,7 +83,7 @@ func TestCreateSigner(t *testing.T) {
 			Signer: rollconf.SignerConfig{SignerType: "file"},
 			Node:   rollconf.NodeConfig{Aggregator: true},
 		}
-		_, err = cmd.CreateSigner(cfg, tmpDir, "testpass")
+		_, err = cmd.CreateSigner(t.Context(), cfg, tmpDir, "testpass")
 		require.Error(err)
 		assert.Contains(err.Error(), "failed to create signer directory")
 	})

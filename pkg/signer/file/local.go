@@ -1,6 +1,7 @@
 package file
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -14,8 +15,6 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"golang.org/x/crypto/argon2"
-
-	"github.com/evstack/ev-node/pkg/signer"
 )
 
 // FileSystemSigner implements a signer that securely stores keys on disk
@@ -36,7 +35,7 @@ type keyData struct {
 }
 
 // CreateFileSystemSigner creates a new key pair and saves it encrypted to disk.
-func CreateFileSystemSigner(keyPath string, passphrase []byte) (signer.Signer, error) {
+func CreateFileSystemSigner(keyPath string, passphrase []byte) (*FileSystemSigner, error) {
 	defer zeroBytes(passphrase) // Wipe passphrase from memory after use
 
 	filePath := filepath.Join(keyPath, "signer.json")
@@ -78,7 +77,7 @@ func CreateFileSystemSigner(keyPath string, passphrase []byte) (signer.Signer, e
 }
 
 // LoadFileSystemSigner loads existing keys from an encrypted file on disk.
-func LoadFileSystemSigner(keyPath string, passphrase []byte) (signer.Signer, error) {
+func LoadFileSystemSigner(keyPath string, passphrase []byte) (*FileSystemSigner, error) {
 	defer zeroBytes(passphrase) // Wipe passphrase from memory after use
 
 	filePath := filepath.Join(keyPath, "signer.json")
@@ -382,12 +381,15 @@ func (s *FileSystemSigner) loadKeys(passphrase []byte) error {
 }
 
 // Sign signs a message using the private key
-func (s *FileSystemSigner) Sign(message []byte) ([]byte, error) {
+func (s *FileSystemSigner) Sign(ctx context.Context, message []byte) ([]byte, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	if s.privateKey == nil {
 		return nil, fmt.Errorf("private key not loaded")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 
 	return s.privateKey.Sign(message)
