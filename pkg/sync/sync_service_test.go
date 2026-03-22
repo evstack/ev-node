@@ -12,6 +12,7 @@ import (
 	"github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
+	"github.com/multiformats/go-multiaddr"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
@@ -24,6 +25,76 @@ import (
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
 )
+
+func TestHeaderSyncServiceStartForPublishingWithPeers(t *testing.T) {
+	mainKV := sync.MutexWrap(datastore.NewMapDatastore())
+	pk, _, err := crypto.GenerateEd25519Key(cryptoRand.Reader)
+	require.NoError(t, err)
+	noopSigner, err := noop.NewNoopSigner(pk)
+	require.NoError(t, err)
+	rnd := rand.New(rand.NewSource(1)) // nolint:gosec // test code only
+	mn := mocknet.New()
+
+	chainID := "test-chain-id"
+	genesisDoc := genesispkg.Genesis{
+		ChainID:         chainID,
+		StartTime:       time.Now(),
+		InitialHeight:   1,
+		ProposerAddress: []byte("test"),
+	}
+
+	conf := config.DefaultConfig()
+	conf.RootDir = t.TempDir()
+	logger := zerolog.Nop()
+
+	nodeKey1, err := key.LoadOrGenNodeKey(filepath.Join(conf.RootDir, "node1_key.json"))
+	require.NoError(t, err)
+	host1, err := mn.AddPeer(nodeKey1.PrivKey, multiaddr.StringCast("/ip4/127.0.0.1/tcp/0"))
+	require.NoError(t, err)
+
+	nodeKey2, err := key.LoadOrGenNodeKey(filepath.Join(conf.RootDir, "node2_key.json"))
+	require.NoError(t, err)
+	host2, err := mn.AddPeer(nodeKey2.PrivKey, multiaddr.StringCast("/ip4/127.0.0.1/tcp/0"))
+	require.NoError(t, err)
+
+	require.NoError(t, mn.LinkAll())
+	require.NoError(t, mn.ConnectAllButSelf())
+
+	client1, err := p2p.NewClientWithHost(conf.P2P, nodeKey1.PrivKey, mainKV, chainID, logger, p2p.NopMetrics(), host1)
+	require.NoError(t, err)
+	client2, err := p2p.NewClientWithHost(conf.P2P, nodeKey2.PrivKey, mainKV, chainID, logger, p2p.NopMetrics(), host2)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	require.NoError(t, client1.Start(ctx))
+	require.NoError(t, client2.Start(ctx))
+	t.Cleanup(func() { _ = client1.Close() })
+	t.Cleanup(func() { _ = client2.Close() })
+
+	require.Eventually(t, func() bool {
+		return len(client1.PeerIDs()) > 0
+	}, time.Second, 10*time.Millisecond)
+
+	evStore := store.New(mainKV)
+	svc, err := NewHeaderSyncService(evStore, conf, genesisDoc, client1, logger)
+	require.NoError(t, err)
+	require.NoError(t, svc.StartForPublishing(ctx))
+	t.Cleanup(func() { _ = svc.Stop(context.Background()) })
+
+	headerConfig := types.HeaderConfig{
+		Height:   genesisDoc.InitialHeight,
+		DataHash: bytesN(rnd, 32),
+		AppHash:  bytesN(rnd, 32),
+		Signer:   noopSigner,
+	}
+	signedHeader, err := types.GetRandomSignedHeaderCustom(&headerConfig, genesisDoc.ChainID)
+	require.NoError(t, err)
+	require.NoError(t, signedHeader.Validate())
+
+	require.NoError(t, svc.WriteToStoreAndBroadcast(ctx, &types.P2PSignedHeader{SignedHeader: signedHeader}))
+	require.True(t, svc.storeInitialized.Load())
+}
 
 func TestHeaderSyncServiceRestart(t *testing.T) {
 	mainKV := sync.MutexWrap(datastore.NewMapDatastore())
@@ -78,7 +149,7 @@ func TestHeaderSyncServiceRestart(t *testing.T) {
 	require.NoError(t, signedHeader.Validate())
 	require.NoError(t, svc.WriteToStoreAndBroadcast(ctx, &types.P2PSignedHeader{SignedHeader: signedHeader}))
 
-	for i := genesisDoc.InitialHeight + 1; i < 2; i++ {
+	for i := genesisDoc.InitialHeight + 1; i < 10; i++ {
 		signedHeader = nextHeader(t, signedHeader, genesisDoc.ChainID, noopSigner)
 		t.Logf("signed header: %d", i)
 		require.NoError(t, svc.WriteToStoreAndBroadcast(ctx, &types.P2PSignedHeader{SignedHeader: signedHeader}))

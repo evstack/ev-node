@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"time"
 
 	ds "github.com/ipfs/go-datastore"
 	"google.golang.org/protobuf/proto"
@@ -30,7 +31,21 @@ func New(ds ds.Batching) Store {
 
 // Close safely closes underlying data storage, to ensure that data is actually saved.
 func (s *DefaultStore) Close() error {
-	return s.db.Close()
+	done := make(chan error, 1)
+	go func() {
+		syncCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		_ = s.Sync(syncCtx)
+		done <- s.db.Close()
+	}()
+
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(4 * time.Second):
+		return nil
+	}
 }
 
 // Height returns height of the highest block saved in the Store.

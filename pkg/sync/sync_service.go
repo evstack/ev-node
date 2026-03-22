@@ -143,12 +143,9 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 		}
 	}
 
-	firstStart := false
-	if !syncService.syncerStatus.started.Load() {
-		firstStart = true
-		if err := syncService.startSyncer(ctx); err != nil {
-			return fmt.Errorf("failed to start syncer after initializing the store: %w", err)
-		}
+	firstStart, err := syncService.startSyncer(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to start syncer after initializing the store: %w", err)
 	}
 
 	// Broadcast for subscribers
@@ -190,20 +187,9 @@ func (s *SyncService[H]) AppendDAHint(ctx context.Context, daHeight uint64, heig
 
 // Start is a part of Service interface.
 func (syncService *SyncService[H]) Start(ctx context.Context) error {
-	// setup P2P infrastructure, but don't start Subscriber yet.
-	peerIDs, err := syncService.setupP2PInfrastructure(ctx)
+	peerIDs, err := syncService.prepareStart(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to setup syncer P2P infrastructure: %w", err)
-	}
-
-	// create syncer, must be before initFromP2PWithRetry which calls startSyncer.
-	if syncService.syncer, err = newSyncer(
-		syncService.ex,
-		syncService.store,
-		syncService.sub,
-		[]goheadersync.Option{goheadersync.WithBlockTime(syncService.conf.Node.BlockTime.Duration)},
-	); err != nil {
-		return fmt.Errorf("failed to create syncer: %w", err)
+		return err
 	}
 
 	// initialize stores from P2P (blocking until genesis is fetched for followers)
@@ -223,18 +209,59 @@ func (syncService *SyncService[H]) Start(ctx context.Context) error {
 	return nil
 }
 
-// startSyncer starts the SyncService's syncer
-func (syncService *SyncService[H]) startSyncer(ctx context.Context) error {
-	if syncService.syncerStatus.isStarted() {
-		return nil
+// StartForPublishing starts the sync service in publisher mode.
+//
+// This mode is used by a raft leader with an empty local store: no peer can serve
+// height 1 yet, so waiting for initFromP2PWithRetry would deadlock block production.
+// We still need the P2P exchange server and pubsub subscriber to be ready before the
+// first block is produced, because WriteToStoreAndBroadcast relies on them to gossip
+// the block that bootstraps the network.
+func (syncService *SyncService[H]) StartForPublishing(ctx context.Context) error {
+	if _, err := syncService.prepareStart(ctx); err != nil {
+		return err
 	}
 
-	if err := syncService.syncer.Start(ctx); err != nil {
-		return fmt.Errorf("failed to start syncer: %w", err)
+	if err := syncService.startSubscriber(ctx); err != nil {
+		return fmt.Errorf("failed to start subscriber: %w", err)
 	}
 
-	syncService.syncerStatus.started.Store(true)
 	return nil
+}
+
+func (syncService *SyncService[H]) prepareStart(ctx context.Context) ([]peer.ID, error) {
+	// setup P2P infrastructure, but don't start Subscriber yet.
+	peerIDs, err := syncService.setupP2PInfrastructure(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to setup syncer P2P infrastructure: %w", err)
+	}
+
+	// create syncer, must be before initFromP2PWithRetry which calls startSyncer.
+	if syncService.syncer, err = newSyncer(
+		syncService.ex,
+		syncService.store,
+		syncService.sub,
+		[]goheadersync.Option{goheadersync.WithBlockTime(syncService.conf.Node.BlockTime.Duration)},
+	); err != nil {
+		return nil, fmt.Errorf("failed to create syncer: %w", err)
+	}
+
+	return peerIDs, nil
+}
+
+// startSyncer starts the SyncService's syncer.
+// It returns true when this call performed the actual start.
+func (syncService *SyncService[H]) startSyncer(ctx context.Context) (bool, error) {
+	startedNow, err := syncService.syncerStatus.startOnce(func() error {
+		if err := syncService.syncer.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start syncer: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+
+	return startedNow, nil
 }
 
 // initStore initializes the store with the given initial header.
@@ -371,7 +398,7 @@ func (syncService *SyncService[H]) initFromP2PWithRetry(ctx context.Context, pee
 				return false, fmt.Errorf("failed to initialize the store: %w", err)
 			}
 		}
-		if err := syncService.startSyncer(ctx); err != nil {
+		if _, err := syncService.startSyncer(ctx); err != nil {
 			return false, err
 		}
 		return true, nil
@@ -386,6 +413,8 @@ func (syncService *SyncService[H]) initFromP2PWithRetry(ctx context.Context, pee
 	p2pInitTimeout := 30 * time.Second
 	timeoutTimer := time.NewTimer(p2pInitTimeout)
 	defer timeoutTimer.Stop()
+	retryTimer := time.NewTimer(backoff)
+	defer retryTimer.Stop()
 
 	for {
 		ok, err := tryInit(ctx)
@@ -403,13 +432,13 @@ func (syncService *SyncService[H]) initFromP2PWithRetry(ctx context.Context, pee
 				Dur("timeout", p2pInitTimeout).
 				Msg("P2P header sync initialization timed out, deferring to DA sync")
 			return nil
-		case <-time.After(backoff):
+		case <-retryTimer.C:
 		}
-
 		backoff *= 2
 		if backoff > maxBackoff {
 			backoff = maxBackoff
 		}
+		retryTimer.Reset(backoff)
 	}
 }
 
@@ -424,9 +453,9 @@ func (syncService *SyncService[H]) Stop(ctx context.Context) error {
 		syncService.ex.Stop(ctx),
 		syncService.sub.Stop(ctx),
 	)
-	if syncService.syncerStatus.isStarted() {
-		err = errors.Join(err, syncService.syncer.Stop(ctx))
-	}
+	err = errors.Join(err, syncService.syncerStatus.stopIfStarted(func() error {
+		return syncService.syncer.Stop(ctx)
+	}))
 	// Stop the store adapter if it has a Stop method
 	if stopper, ok := syncService.store.(interface{ Stop(context.Context) error }); ok {
 		err = errors.Join(err, stopper.Stop(ctx))

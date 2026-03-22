@@ -33,6 +33,8 @@ type failoverState struct {
 	dataSyncService   *evsync.DataSyncService
 	rpcServer         *http.Server
 	bc                *block.Components
+	raftNode          *raft.Node
+	isAggregator      bool
 
 	// catchup fields — used when the aggregator needs to sync before producing
 	catchupEnabled bool
@@ -172,11 +174,32 @@ func setupFailoverState(
 		dataSyncService:   dataSyncService,
 		rpcServer:         rpcServer,
 		bc:                bc,
+		raftNode:          raftNode,
+		isAggregator:      isAggregator,
 		store:             rktStore,
 		catchupEnabled:    catchupEnabled,
 		catchupTimeout:    nodeConfig.Node.CatchupTimeout.Duration,
 		daBlockTime:       nodeConfig.DA.BlockTime.Duration,
 	}, nil
+}
+
+func (f *failoverState) shouldStartSyncInPublisherMode(ctx context.Context) bool {
+	if !f.isAggregator || f.raftNode == nil || !f.raftNode.IsLeader() {
+		return false
+	}
+
+	height, err := f.store.Height(ctx)
+	if err != nil {
+		f.logger.Warn().Err(err).Msg("cannot determine local height; keeping blocking sync startup")
+		return false
+	}
+	if height > 0 {
+		return false
+	}
+
+	f.logger.Info().
+		Msg("raft leader with empty store: starting sync services in publisher mode")
+	return true
 }
 
 func (f *failoverState) Run(pCtx context.Context) (multiErr error) {
@@ -207,15 +230,28 @@ func (f *failoverState) Run(pCtx context.Context) (multiErr error) {
 	})
 
 	// start header and data sync services concurrently to avoid cumulative startup delay.
+	startSyncInPublisherMode := f.shouldStartSyncInPublisherMode(ctx)
 	syncWg, syncCtx := errgroup.WithContext(ctx)
 	syncWg.Go(func() error {
-		if err := f.headerSyncService.Start(syncCtx); err != nil {
+		var err error
+		if startSyncInPublisherMode {
+			err = f.headerSyncService.StartForPublishing(syncCtx)
+		} else {
+			err = f.headerSyncService.Start(syncCtx)
+		}
+		if err != nil {
 			return fmt.Errorf("header sync service: %w", err)
 		}
 		return nil
 	})
 	syncWg.Go(func() error {
-		if err := f.dataSyncService.Start(syncCtx); err != nil {
+		var err error
+		if startSyncInPublisherMode {
+			err = f.dataSyncService.StartForPublishing(syncCtx)
+		} else {
+			err = f.dataSyncService.Start(syncCtx)
+		}
+		if err != nil {
 			return fmt.Errorf("data sync service: %w", err)
 		}
 		return nil

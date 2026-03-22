@@ -46,6 +46,7 @@ type Store interface {
 	Metadata
 	Rollback
 	Pruner
+	Syncer
 
 	// Close safely closes underlying data storage, to ensure that data is actually saved.
 	Close() error
@@ -103,4 +104,9 @@ type Pruner interface {
 	// DeleteStateAtHeight removes the state at the given height from the store.
 	// It does not affect the current state or any states at other heights, allowing for targeted pruning of historical state snapshots.
 	DeleteStateAtHeight(ctx context.Context, height uint64) error
+}
+
+// Syncer flushes buffered store state to durable storage.
+type Syncer interface {
+	Sync(ctx context.Context) error
 }

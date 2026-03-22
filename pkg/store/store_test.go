@@ -35,6 +35,22 @@ type mockBatch struct {
 	commitError error
 }
 
+type syncingBatchingDatastore struct {
+	ds.Batching
+	syncCalled  bool
+	closeCalled bool
+}
+
+func (m *syncingBatchingDatastore) Sync(ctx context.Context, key ds.Key) error {
+	m.syncCalled = true
+	return m.Batching.Sync(ctx, key)
+}
+
+func (m *syncingBatchingDatastore) Close() error {
+	m.closeCalled = true
+	return m.Batching.Close()
+}
+
 func (m *mockBatchingDatastore) Put(ctx context.Context, key ds.Key, value []byte) error {
 	if m.putError != nil {
 		return m.putError
@@ -139,6 +155,20 @@ func TestStoreHeight(t *testing.T) {
 			assert.Equal(c.expected, height)
 		})
 	}
+}
+
+func TestStoreCloseSyncsBeforeClose(t *testing.T) {
+	t.Parallel()
+
+	kv, err := NewTestInMemoryKVStore()
+	require.NoError(t, err)
+
+	mock := &syncingBatchingDatastore{Batching: kv}
+	s := New(mock)
+
+	require.NoError(t, s.Close())
+	require.True(t, mock.syncCalled)
+	require.True(t, mock.closeCalled)
 }
 
 func TestStoreLoad(t *testing.T) {

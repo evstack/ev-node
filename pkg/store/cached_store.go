@@ -174,3 +174,8 @@ func (cs *CachedStore) Close() error {
 	cs.ClearCache()
 	return cs.Store.Close()
 }
+
+// Sync flushes the underlying store to durable storage.
+func (cs *CachedStore) Sync(ctx context.Context) error {
+	return cs.Store.Sync(ctx)
+}

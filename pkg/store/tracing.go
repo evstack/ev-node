@@ -265,6 +265,19 @@ func (t *tracedStore) Close() error {
 	return t.inner.Close()
 }
 
+func (t *tracedStore) Sync(ctx context.Context) error {
+	ctx, span := t.tracer.Start(ctx, "Store.Sync")
+	defer span.End()
+
+	if err := t.inner.Sync(ctx); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return err
+	}
+
+	return nil
+}
+
 func (t *tracedStore) NewBatch(ctx context.Context) (Batch, error) {
 	ctx, span := t.tracer.Start(ctx, "Store.NewBatch")
 	defer span.End()
