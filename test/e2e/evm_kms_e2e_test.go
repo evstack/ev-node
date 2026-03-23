@@ -4,7 +4,6 @@ package e2e
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -29,8 +28,6 @@ func TestEvmSequencerWithAWSKMSSignerE2E(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skip e2e in short mode")
 	}
-	flag.Parse()
-
 	kmsKeyID := os.Getenv("EVNODE_E2E_AWS_KMS_KEY_ID")
 	if kmsKeyID == "" {
 		t.Skip("set EVNODE_E2E_AWS_KMS_KEY_ID to run AWS KMS EVM e2e test")
@@ -69,7 +66,6 @@ func TestEvmSequencerWithGCPKMSSignerE2E(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skip e2e in short mode")
 	}
-	flag.Parse()
 
 	kmsKeyName := os.Getenv("EVNODE_E2E_GCP_KMS_KEY_NAME")
 	if kmsKeyName == "" {

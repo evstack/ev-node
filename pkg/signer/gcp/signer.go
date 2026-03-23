@@ -105,7 +105,7 @@ func kmsSignerFromClient(ctx context.Context, client KMSClient, keyName string, 
 		return nil, fmt.Errorf("gcp kms client is required")
 	}
 
-	o := Options{Timeout: 10 * time.Second, MaxRetries: 3}
+	o := Options{Timeout: 1 * time.Second, MaxRetries: 3}
 	if opts != nil {
 		if opts.Timeout > 0 {
 			o.Timeout = opts.Timeout
@@ -181,6 +181,9 @@ func (s *KmsSigner) Sign(ctx context.Context, message []byte) ([]byte, error) {
 	maxAttempts := maxRetries + 1
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if attempt > 0 {
 			// Exponential backoff with cap: 100ms, 200ms, 400ms, ... up to 5s.
 			backoff := retryBackoff(attempt)
@@ -203,7 +206,7 @@ func (s *KmsSigner) Sign(ctx context.Context, message []byte) ([]byte, error) {
 		if err != nil {
 			lastErr = err
 			if !isRetryableKMSError(err) {
-				return nil, fmt.Errorf("KMS Sign failed with non-retryable error: %w", err)
+				return nil, fmt.Errorf("GCP KMS sign failed with non-retryable error: %w", err)
 			}
 			continue
 		}
@@ -279,8 +282,9 @@ func (s *KmsSigner) GetAddress() ([]byte, error) {
 	if s.address == nil {
 		return nil, fmt.Errorf("address not loaded")
 	}
-
-	return s.address, nil
+	r := make([]byte, len(s.address))
+	copy(r, s.address)
+	return r, nil
 }
 
 func isRetryableKMSError(err error) bool {

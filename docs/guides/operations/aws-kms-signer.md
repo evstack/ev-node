@@ -59,7 +59,7 @@ signer:
       key_id: "arn:aws:kms:us-east-1:123456789012:key/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
       region: "us-east-1"    # optional but recommended
       profile: "prod"        # optional; omit when using IAM role/env creds
-      timeout: "10s"         # must be > 0
+      timeout: "1s"         # must be > 0
       max_retries: 3         # must be >= 0
 ```
 

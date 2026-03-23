@@ -312,7 +312,7 @@ type P2PConfig struct {
 
 // SignerConfig contains all signer configuration parameters
 type SignerConfig struct {
-	SignerType string          `mapstructure:"signer_type" yaml:"signer_type" comment:"Type of remote signer to use (file, grpc, kms)"`
+	SignerType string          `mapstructure:"signer_type" yaml:"signer_type" comment:"Type of remote signer to use (file, kms)"`
 	SignerPath string          `mapstructure:"signer_path" yaml:"signer_path" comment:"Path to the signer file or address"`
 	KMS        SignerKMSConfig `mapstructure:"kms" yaml:"kms"`
 }

@@ -30,8 +30,10 @@ func newSigner(ctx context.Context, config *rollconf.Config, passphrase string, 
 		if passphrase == "" {
 			return nil, fmt.Errorf("passphrase is required when using local file signer")
 		}
+		if config.Signer.SignerPath == "" {
+			return nil, fmt.Errorf("signer path is required when using local file signer")
+		}
 
-		// Resolve signer path; allow absolute, relative to node root, or relative to CWD if resolution fails
 		signerPath, err := filepath.Abs(strings.TrimSuffix(config.Signer.SignerPath, "signer.json"))
 		if err != nil {
 			return nil, err

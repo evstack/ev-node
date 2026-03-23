@@ -195,7 +195,7 @@ func GetRandomNextSignedHeader(ctx context.Context, signedHeader *SignedHeader, 
 		Signer: signedHeader.Signer,
 	}
 
-	signature, err := GetSignature(ctx, signedHeader.Header, signer)
+	signature, err := GetSignature(ctx, newSignedHeader.Header, signer)
 	if err != nil {
 		return nil, err
 	}

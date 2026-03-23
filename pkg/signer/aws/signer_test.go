@@ -131,7 +131,7 @@ func TestSign_KMSFailure(t *testing.T) {
 
 	_, err = s.Sign(context.Background(), []byte("hello world"))
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "KMS Sign failed")
+	assert.Contains(t, err.Error(), "AWS KMS sign failed")
 	assert.Equal(t, int32(4), atomic.LoadInt32(&calls), "default retries should make 4 attempts")
 }
 
