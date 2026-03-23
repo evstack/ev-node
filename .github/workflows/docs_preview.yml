@@ -38,8 +38,10 @@ jobs:
         run: BASE='/docs-preview/pr-${{ github.event.number }}/' yarn build
         working-directory: docs
 
-      - name: Clear default git credentials
-        run: git config --global --unset http.https://github.com/.extraheader || true
+      - name: Check deploy token is set
+        env:
+          HAS_TOKEN: ${{ secrets.PREVIEW_DEPLOY != '' }}
+        run: echo "PREVIEW_DEPLOY is set=$HAS_TOKEN"
 
       - name: Deploy preview
         uses: rossjrw/pr-preview-action@v1
