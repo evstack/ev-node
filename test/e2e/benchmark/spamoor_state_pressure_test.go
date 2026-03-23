@@ -34,7 +34,7 @@ func (s *SpamoorSuite) TestStatePressure() {
 	storageSpamConfig := map[string]any{
 		"throughput":        cfg.Throughput,
 		"total_count":       cfg.CountPerSpammer,
-		"gas_units_to_burn": envInt("BENCH_GAS_UNITS_TO_BURN", 2000000),
+		"gas_units_to_burn": cfg.GasUnitsToBurn,
 		"max_pending":       50000,
 		"max_wallets":       cfg.MaxWallets,
 		"base_fee":          20,
@@ -55,6 +55,7 @@ func (s *SpamoorSuite) TestStatePressure() {
 		t.Cleanup(func() { _ = e.spamoorAPI.DeleteSpammer(id) })
 	}
 
+	// allow spamoor time to initialise spammer goroutines before polling status
 	time.Sleep(3 * time.Second)
 	requireSpammersRunning(t, e.spamoorAPI, spammerIDs)
 
@@ -103,4 +104,11 @@ func (s *SpamoorSuite) TestStatePressure() {
 	s.Require().Greater(result.summary.SteadyState, time.Duration(0), "expected non-zero steady-state duration")
 	result.log(t, wallClock)
 	w.addEntries(result.entries())
+
+	metrics, mErr := e.spamoorAPI.GetMetrics()
+	s.Require().NoError(mErr, "failed to get final metrics")
+	sent := sumCounter(metrics["spamoor_transactions_sent_total"])
+	failed := sumCounter(metrics["spamoor_transactions_failed_total"])
+	s.Require().Greater(sent, float64(0), "at least one transaction should have been sent")
+	s.Require().Zero(failed, "no transactions should have failed")
 }
