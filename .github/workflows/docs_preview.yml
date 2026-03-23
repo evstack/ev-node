@@ -22,6 +22,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -37,11 +39,6 @@ jobs:
       - name: Build with Base URL
         run: BASE='/docs-preview/pr-${{ github.event.number }}/' yarn build
         working-directory: docs
-
-      - name: Check deploy token is set
-        env:
-          HAS_TOKEN: ${{ secrets.PREVIEW_DEPLOY != '' }}
-        run: echo "PREVIEW_DEPLOY is set=$HAS_TOKEN"
 
       - name: Deploy preview
         uses: rossjrw/pr-preview-action@v1
