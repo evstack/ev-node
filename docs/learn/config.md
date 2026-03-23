@@ -12,22 +12,26 @@ This document provides a comprehensive reference for all configuration options a
   - [Chain ID](#chain-id)
 - [Node Configuration (`node`)](#node-configuration-node)
   - [Aggregator Mode](#aggregator-mode)
+  - [Based Sequencer Mode](#based-sequencer-mode)
   - [Light Client Mode](#light-client-mode)
   - [Block Time](#block-time)
-  - [Maximum Pending Blocks](#maximum-pending-blocks)
+  - [Maximum Pending Headers and Data](#maximum-pending-headers-and-data)
   - [Lazy Mode (Lazy Aggregator)](#lazy-mode-lazy-aggregator)
   - [Lazy Block Interval](#lazy-block-interval)
+  - [Scrape Interval](#scrape-interval)
+  - [Catchup Timeout](#catchup-timeout)
+  - [Readiness Window Seconds](#readiness-window-seconds)
+  - [Readiness Max Blocks Behind](#readiness-max-blocks-behind)
 - [Pruning Configuration (`pruning`)](#pruning-configuration-pruning)
 - [Data Availability Configuration (`da`)](#data-availability-configuration-da)
   - [DA Service Address](#da-service-address)
   - [DA Authentication Token](#da-authentication-token)
-  - [DA Gas Price](#da-gas-price)
-  - [DA Gas Multiplier](#da-gas-multiplier)
   - [DA Submit Options](#da-submit-options)
   - [DA Signing Addresses](#da-signing-addresses)
+  - [DA Max Submit Attempts](#da-max-submit-attempts)
   - [DA Namespace](#da-namespace)
-  - [DA Header Namespace](#da-namespace)
   - [DA Data Namespace](#da-data-namespace)
+  - [DA Forced Inclusion Namespace](#da-forced-inclusion-namespace)
   - [DA Block Time](#da-block-time)
   - [DA Mempool TTL](#da-mempool-ttl)
   - [DA Request Timeout](#da-request-timeout)
@@ -50,6 +54,10 @@ This document provides a comprehensive reference for all configuration options a
   - [Maximum Open Connections](#maximum-open-connections)
   - [Enable Pprof Profiling](#enable-pprof-profiling)
   - [Pprof Listen Address](#pprof-listen-address)
+  - [Enable Tracing](#enable-tracing)
+  - [Tracing Endpoint](#tracing-endpoint)
+  - [Tracing Service Name](#tracing-service-name)
+  - [Tracing Sample Rate](#tracing-sample-rate)
 - [Logging Configuration (`log`)](#logging-configuration-log)
   - [Log Level](#log-level)
   - [Log Format](#log-format)
@@ -57,7 +65,18 @@ This document provides a comprehensive reference for all configuration options a
 - [Signer Configuration (`signer`)](#signer-configuration-signer)
   - [Signer Type](#signer-type)
   - [Signer Path](#signer-path)
-  - [Signer Passphrase](#signer-passphrase)
+  - [Signer Passphrase File](#signer-passphrase-file)
+- [Raft Configuration (`raft`)](#raft-configuration-raft)
+  - [Enable Raft](#enable-raft)
+  - [Raft Node ID](#raft-node-id)
+  - [Raft Address](#raft-address)
+  - [Raft Directory](#raft-directory)
+  - [Raft Bootstrap](#raft-bootstrap)
+  - [Raft Peers](#raft-peers)
+  - [Raft Snap Count](#raft-snap-count)
+  - [Raft Send Timeout](#raft-send-timeout)
+  - [Raft Heartbeat Timeout](#raft-heartbeat-timeout)
+  - [Raft Leader Lease Timeout](#raft-leader-lease-timeout)
 
 ## DA-Only Sync Mode
 
@@ -138,8 +157,8 @@ db_path: "data"
 ```
 
 **Command-line Flag:**
-`--rollkit.db_path <path>`
-_Example:_ `--rollkit.db_path "node_db"`
+`--evnode.db_path <path>`
+_Example:_ `--evnode.db_path "node_db"`
 _Default:_ `"data"`
 _Constant:_ `FlagDBPath`
 
@@ -185,10 +204,28 @@ node:
 ```
 
 **Command-line Flag:**
-`--rollkit.node.aggregator` (boolean, presence enables it)
-_Example:_ `--rollkit.node.aggregator`
+`--evnode.node.aggregator` (boolean, presence enables it)
+_Example:_ `--evnode.node.aggregator`
 _Default:_ `false`
 _Constant:_ `FlagAggregator`
+
+### Based Sequencer Mode
+
+**Description:**
+If true, the node runs in based sequencer mode. In this mode the aggregator only processes transactions fetched from the DA forced inclusion namespace rather than from the P2P mempool. Requires aggregator mode to be enabled.
+
+**YAML:**
+
+```yaml
+node:
+  based_sequencer: true
+```
+
+**Command-line Flag:**
+`--evnode.node.based_sequencer` (boolean, presence enables it)
+_Example:_ `--evnode.node.based_sequencer`
+_Default:_ `false`
+_Constant:_ `FlagBasedSequencer`
 
 ### Light Client Mode
 
@@ -203,8 +240,8 @@ node:
 ```
 
 **Command-line Flag:**
-`--rollkit.node.light` (boolean, presence enables it)
-_Example:_ `--rollkit.node.light`
+`--evnode.node.light` (boolean, presence enables it)
+_Example:_ `--evnode.node.light`
 _Default:_ `false`
 _Constant:_ `FlagLight`
 
@@ -221,28 +258,28 @@ node:
 ```
 
 **Command-line Flag:**
-`--rollkit.node.block_time <duration>`
-_Example:_ `--rollkit.node.block_time 2s`
+`--evnode.node.block_time <duration>`
+_Example:_ `--evnode.node.block_time 2s`
 _Default:_ `"1s"`
 _Constant:_ `FlagBlockTime`
 
-### Maximum Pending Blocks
+### Maximum Pending Headers and Data
 
 **Description:**
-The maximum number of blocks that can be pending Data Availability (DA) submission. When this limit is reached, the aggregator pauses block production until some blocks are confirmed on the DA layer. Use 0 for no limit. This helps manage resource usage and DA layer capacity.
+The maximum number of headers or data items that can be pending Data Availability (DA) confirmation. When this limit is reached, the aggregator pauses block production until some are confirmed on the DA layer. Use 0 for no limit. This helps manage resource usage and DA layer capacity.
 
 **YAML:**
 
 ```yaml
 node:
-  max_pending_blocks: 100
+  max_pending_headers_and_data: 100
 ```
 
 **Command-line Flag:**
-`--rollkit.node.max_pending_blocks <uint64>`
-_Example:_ `--rollkit.node.max_pending_blocks 50`
+`--evnode.node.max_pending_headers_and_data <uint64>`
+_Example:_ `--evnode.node.max_pending_headers_and_data 50`
 _Default:_ `0` (no limit)
-_Constant:_ `FlagMaxPendingBlocks`
+_Constant:_ `FlagMaxPendingHeadersAndData`
 
 ### Lazy Mode (Lazy Aggregator)
 
@@ -257,8 +294,8 @@ node:
 ```
 
 **Command-line Flag:**
-`--rollkit.node.lazy_mode` (boolean, presence enables it)
-_Example:_ `--rollkit.node.lazy_mode`
+`--evnode.node.lazy_mode` (boolean, presence enables it)
+_Example:_ `--evnode.node.lazy_mode`
 _Default:_ `false`
 _Constant:_ `FlagLazyAggregator`
 
@@ -275,12 +312,84 @@ node:
 ```
 
 **Command-line Flag:**
-`--rollkit.node.lazy_block_interval <duration>`
-_Example:_ `--rollkit.node.lazy_block_interval 1m`
-_Default:_ `"30s"`
+`--evnode.node.lazy_block_interval <duration>`
+_Example:_ `--evnode.node.lazy_block_interval 2m`
+_Default:_ `"1m"`
 _Constant:_ `FlagLazyBlockTime`
 
-### Pruning Configuration (`pruning`)
+### Scrape Interval
+
+**Description:**
+The interval at which the reaper polls the execution layer for new transactions. Lower values reduce transaction detection latency but increase RPC load on the execution client.
+
+**YAML:**
+
+```yaml
+node:
+  scrape_interval: "1s"
+```
+
+**Command-line Flag:**
+`--evnode.node.scrape_interval <duration>`
+_Example:_ `--evnode.node.scrape_interval 500ms`
+_Default:_ `"1s"`
+_Constant:_ `FlagScrapeInterval`
+
+### Catchup Timeout
+
+**Description:**
+When set to a non-zero duration, the aggregator syncs from DA and P2P before producing blocks. The value specifies how long to wait for P2P catchup after DA sync completes. Requires aggregator mode. Mutually exclusive with Raft consensus.
+
+**YAML:**
+
+```yaml
+node:
+  catchup_timeout: "30s"
+```
+
+**Command-line Flag:**
+`--evnode.node.catchup_timeout <duration>`
+_Example:_ `--evnode.node.catchup_timeout 1m`
+_Default:_ `"0s"` (disabled)
+_Constant:_ `FlagCatchupTimeout`
+
+### Readiness Window Seconds
+
+**Description:**
+The time window in seconds used to calculate how many blocks behind the node can be and still be considered ready. The actual block threshold is derived by dividing this window by the block time. Default is 15 seconds.
+
+**YAML:**
+
+```yaml
+node:
+  readiness_window_seconds: 15
+```
+
+**Command-line Flag:**
+`--evnode.node.readiness_window_seconds <uint64>`
+_Example:_ `--evnode.node.readiness_window_seconds 30`
+_Default:_ `15`
+_Constant:_ `FlagReadinessWindowSeconds`
+
+### Readiness Max Blocks Behind
+
+**Description:**
+Explicit override for how many blocks behind best-known head the node can be and still be considered ready. When set to 0, the value is calculated automatically from `readiness_window_seconds` and the block time. Override this to set an absolute block count instead of a time-based window.
+
+**YAML:**
+
+```yaml
+node:
+  readiness_max_blocks_behind: 15
+```
+
+**Command-line Flag:**
+`--evnode.node.readiness_max_blocks_behind <uint64>`
+_Example:_ `--evnode.node.readiness_max_blocks_behind 30`
+_Default:_ `0` (calculated from `readiness_window_seconds`)
+_Constant:_ `FlagReadinessMaxBlocksBehind`
+
+## Pruning Configuration (`pruning`)
 
 **Description:**
 Controls automatic pruning of stored block data and metadata from the local store. Pruning helps manage disk space by periodically removing old blocks and their associated state, while keeping a recent window of history for validation and queries.
@@ -371,9 +480,9 @@ da:
 ```
 
 **Command-line Flag:**
-`--rollkit.da.address <string>`
-_Example:_ `--rollkit.da.address 192.168.1.100:26659`
-_Default:_ `""` (empty, must be configured if DA is used)
+`--evnode.da.address <string>`
+_Example:_ `--evnode.da.address 192.168.1.100:26659`
+_Default:_ `"http://localhost:7980"`
 _Constant:_ `FlagDAAddress`
 
 ### DA Authentication Token
@@ -389,46 +498,10 @@ da:
 ```
 
 **Command-line Flag:**
-`--rollkit.da.auth_token <string>`
-_Example:_ `--rollkit.da.auth_token mysecrettoken`
+`--evnode.da.auth_token <string>`
+_Example:_ `--evnode.da.auth_token mysecrettoken`
 _Default:_ `""` (empty)
 _Constant:_ `FlagDAAuthToken`
-
-### DA Gas Price
-
-**Description:**
-The gas price to use for transactions submitted to the DA layer. A value of -1 indicates automatic gas price determination (if supported by the DA layer). Higher values may lead to faster inclusion of data.
-
-**YAML:**
-
-```yaml
-da:
-  gas_price: 0.025
-```
-
-**Command-line Flag:**
-`--rollkit.da.gas_price <float64>`
-_Example:_ `--rollkit.da.gas_price 0.05`
-_Default:_ `-1` (automatic)
-_Constant:_ `FlagDAGasPrice`
-
-### DA Gas Multiplier
-
-**Description:**
-A multiplier applied to the gas price when retrying failed DA submissions. Values greater than 1 increase the gas price on retries, potentially improving the chances of successful inclusion.
-
-**YAML:**
-
-```yaml
-da:
-  gas_multiplier: 1.1
-```
-
-**Command-line Flag:**
-`--rollkit.da.gas_multiplier <float64>`
-_Example:_ `--rollkit.da.gas_multiplier 1.5`
-_Default:_ `1.0` (no multiplication)
-_Constant:_ `FlagDAGasMultiplier`
 
 ### DA Submit Options
 
@@ -445,8 +518,8 @@ da:
 ```
 
 **Command-line Flag:**
-`--rollkit.da.submit_options <string>`
-_Example:_ `--rollkit.da.submit_options '{"custom_param":true}'`
+`--evnode.da.submit_options <string>`
+_Example:_ `--evnode.da.submit_options '{"custom_param":true}'`
 _Default:_ `""` (empty)
 _Constant:_ `FlagDASubmitOptions`
 
@@ -474,7 +547,7 @@ da:
 
 **Command-line Flag:**
 `--evnode.da.signing_addresses <string>`
-_Example:_ `--rollkit.da.signing_addresses celestia1abc...,celestia1def...,celestia1ghi...`
+_Example:_ `--evnode.da.signing_addresses celestia1abc...,celestia1def...,celestia1ghi...`
 _Default:_ `[]` (empty, uses default DA node behavior)
 _Constant:_ `FlagDASigningAddresses`
 
@@ -484,6 +557,24 @@ _Constant:_ `FlagDASigningAddresses`
 - If one address is configured, all submissions use that address
 - If multiple addresses are configured, they are used in round-robin order to distribute the load and prevent nonce/sequence conflicts
 - The address selection is thread-safe for concurrent submissions
+
+### DA Max Submit Attempts
+
+**Description:**
+The maximum number of attempts to submit data to the DA layer before giving up. Higher values provide more resilience against transient DA failures but can delay error reporting.
+
+**YAML:**
+
+```yaml
+da:
+  max_submit_attempts: 30
+```
+
+**Command-line Flag:**
+`--evnode.da.max_submit_attempts <int>`
+_Example:_ `--evnode.da.max_submit_attempts 10`
+_Default:_ `30`
+_Constant:_ `FlagDAMaxSubmitAttempts`
 
 ### DA Namespace
 
@@ -500,9 +591,9 @@ da:
 ```
 
 **Command-line Flag:**
-`--rollkit.da.namespace <string>`
-_Example:_ `--rollkit.da.namespace 0x1234567890abcdef`
-_Default:_ `""` (empty)
+`--evnode.da.namespace <string>`
+_Example:_ `--evnode.da.namespace 0x1234567890abcdef`
+_Default:_ randomly generated at startup
 _Constant:_ `FlagDANamespace`
 
 ### DA Data Namespace
@@ -518,10 +609,28 @@ da:
 ```
 
 **Command-line Flag:**
-`--rollkit.da.data_namespace <string>`
-_Example:_ `--rollkit.da.data_namespace my_data_namespace`
-_Default:_ Falls back to `namespace` if not set
+`--evnode.da.data_namespace <string>`
+_Example:_ `--evnode.da.data_namespace my_data_namespace`
+_Default:_ `""` (falls back to `namespace` if not set)
 _Constant:_ `FlagDADataNamespace`
+
+### DA Forced Inclusion Namespace
+
+**Description:**
+The namespace ID used for forced inclusion transactions on the DA layer. When set, the based sequencer will fetch transactions from this namespace. Required when running in based sequencer mode.
+
+**YAML:**
+
+```yaml
+da:
+  forced_inclusion_namespace: "FORCED_INCLUSION_NAMESPACE_ID"
+```
+
+**Command-line Flag:**
+`--evnode.da.forced_inclusion_namespace <string>`
+_Example:_ `--evnode.da.forced_inclusion_namespace 0xabcdef1234567890`
+_Default:_ `""` (empty)
+_Constant:_ `FlagDAForcedInclusionNamespace`
 
 ### DA Block Time
 
@@ -540,8 +649,8 @@ da:
 ```
 
 **Command-line Flag:**
-`--rollkit.da.block_time <duration>`
-_Example:_ `--rollkit.da.block_time 12s`
+`--evnode.da.block_time <duration>`
+_Example:_ `--evnode.da.block_time 12s`
 _Default:_ `"6s"`
 _Constant:_ `FlagDABlockTime`
 
@@ -558,9 +667,9 @@ da:
 ```
 
 **Command-line Flag:**
-`--rollkit.da.mempool_ttl <uint64>`
-_Example:_ `--rollkit.da.mempool_ttl 30`
-_Default:_ `20`
+`--evnode.da.mempool_ttl <uint64>`
+_Example:_ `--evnode.da.mempool_ttl 30`
+_Default:_ `0`
 _Constant:_ `FlagDAMempoolTTL`
 
 ### DA Request Timeout
@@ -576,9 +685,9 @@ da:
 ```
 
 **Command-line Flag:**
-`--rollkit.da.request_timeout <duration>`
-_Example:_ `--rollkit.da.request_timeout 45s`
-_Default:_ `"30s"`
+`--evnode.da.request_timeout <duration>`
+_Example:_ `--evnode.da.request_timeout 45s`
+_Default:_ `"1m"`
 _Constant:_ `FlagDARequestTimeout`
 
 ### DA Batching Strategy
@@ -601,8 +710,8 @@ da:
 ```
 
 **Command-line Flag:**
-`--rollkit.da.batching_strategy <string>`
-_Example:_ `--rollkit.da.batching_strategy adaptive`
+`--evnode.da.batching_strategy <string>`
+_Example:_ `--evnode.da.batching_strategy adaptive`
 _Default:_ `"time"`
 _Constant:_ `FlagDABatchingStrategy`
 
@@ -621,8 +730,8 @@ da:
 ```
 
 **Command-line Flag:**
-`--rollkit.da.batch_size_threshold <float64>`
-_Example:_ `--rollkit.da.batch_size_threshold 0.9`
+`--evnode.da.batch_size_threshold <float64>`
+_Example:_ `--evnode.da.batch_size_threshold 0.9`
 _Default:_ `0.8` (80% of max blob size)
 _Constant:_ `FlagDABatchSizeThreshold`
 
@@ -641,8 +750,8 @@ da:
 ```
 
 **Command-line Flag:**
-`--rollkit.da.batch_max_delay <duration>`
-_Example:_ `--rollkit.da.batch_max_delay 12s`
+`--evnode.da.batch_max_delay <duration>`
+_Example:_ `--evnode.da.batch_max_delay 12s`
 _Default:_ `0` (uses DA BlockTime)
 _Constant:_ `FlagDABatchMaxDelay`
 
@@ -659,8 +768,8 @@ da:
 ```
 
 **Command-line Flag:**
-`--rollkit.da.batch_min_items <uint64>`
-_Example:_ `--rollkit.da.batch_min_items 5`
+`--evnode.da.batch_min_items <uint64>`
+_Example:_ `--evnode.da.batch_min_items 5`
 _Default:_ `1`
 _Constant:_ `FlagDABatchMinItems`
 
@@ -688,8 +797,8 @@ p2p:
 ```
 
 **Command-line Flag:**
-`--rollkit.p2p.listen_address <string>`
-_Example:_ `--rollkit.p2p.listen_address /ip4/127.0.0.1/tcp/26656`
+`--evnode.p2p.listen_address <string>`
+_Example:_ `--evnode.p2p.listen_address /ip4/127.0.0.1/tcp/26656`
 _Default:_ `"/ip4/0.0.0.0/tcp/7676"`
 _Constant:_ `FlagP2PListenAddress`
 
@@ -710,8 +819,8 @@ p2p:
 ```
 
 **Command-line Flag:**
-`--rollkit.p2p.peers <string>`
-_Example:_ `--rollkit.p2p.peers /dns4/seed.example.com/tcp/26656/p2p/12D3KooW...`
+`--evnode.p2p.peers <string>`
+_Example:_ `--evnode.p2p.peers /dns4/seed.example.com/tcp/26656/p2p/12D3KooW...`
 _Default:_ `""` (empty - enables DA-only sync mode)
 _Constant:_ `FlagP2PPeers`
 
@@ -728,8 +837,8 @@ p2p:
 ```
 
 **Command-line Flag:**
-`--rollkit.p2p.blocked_peers <string>`
-_Example:_ `--rollkit.p2p.blocked_peers 12D3KooW...,12D3KooX...`
+`--evnode.p2p.blocked_peers <string>`
+_Example:_ `--evnode.p2p.blocked_peers 12D3KooW...,12D3KooX...`
 _Default:_ `""` (empty)
 _Constant:_ `FlagP2PBlockedPeers`
 
@@ -746,8 +855,8 @@ p2p:
 ```
 
 **Command-line Flag:**
-`--rollkit.p2p.allowed_peers <string>`
-_Example:_ `--rollkit.p2p.allowed_peers 12D3KooY...,12D3KooZ...`
+`--evnode.p2p.allowed_peers <string>`
+_Example:_ `--evnode.p2p.allowed_peers 12D3KooY...,12D3KooZ...`
 _Default:_ `""` (empty, allow all unless blocked)
 _Constant:_ `FlagP2PAllowedPeers`
 
@@ -775,8 +884,8 @@ rpc:
 ```
 
 **Command-line Flag:**
-`--rollkit.rpc.address <string>`
-_Example:_ `--rollkit.rpc.address 0.0.0.0:26657`
+`--evnode.rpc.address <string>`
+_Example:_ `--evnode.rpc.address 0.0.0.0:26657`
 _Default:_ `"127.0.0.1:7331"`
 _Constant:_ `FlagRPCAddress`
 
@@ -793,8 +902,8 @@ rpc:
 ```
 
 **Command-line Flag:**
-`--rollkit.rpc.enable_da_visualization` (boolean, presence enables it)
-_Example:_ `--rollkit.rpc.enable_da_visualization`
+`--evnode.rpc.enable_da_visualization` (boolean, presence enables it)
+_Example:_ `--evnode.rpc.enable_da_visualization`
 _Default:_ `false`
 _Constant:_ `FlagRPCEnableDAVisualization`
 
@@ -824,12 +933,7 @@ Returns `200 OK` if the node can serve correct data. Checks:
 curl http://localhost:7331/health/ready
 ```
 
-Configure max blocks behind:
-
-```yaml
-node:
-  readiness_max_blocks_behind: 15
-```
+Configure these via [`readiness_window_seconds`](#readiness-window-seconds) and [`readiness_max_blocks_behind`](#readiness-max-blocks-behind) in the node configuration.
 
 ## Instrumentation Configuration (`instrumentation`)
 
@@ -855,8 +959,8 @@ instrumentation:
 ```
 
 **Command-line Flag:**
-`--rollkit.instrumentation.prometheus` (boolean, presence enables it)
-_Example:_ `--rollkit.instrumentation.prometheus`
+`--evnode.instrumentation.prometheus` (boolean, presence enables it)
+_Example:_ `--evnode.instrumentation.prometheus`
 _Default:_ `false`
 _Constant:_ `FlagPrometheus`
 
@@ -875,9 +979,9 @@ instrumentation:
 ```
 
 **Command-line Flag:**
-`--rollkit.instrumentation.prometheus_listen_addr <string>`
-_Example:_ `--rollkit.instrumentation.prometheus_listen_addr 0.0.0.0:9090`
-_Default:_ `":2112"`
+`--evnode.instrumentation.prometheus_listen_addr <string>`
+_Example:_ `--evnode.instrumentation.prometheus_listen_addr 0.0.0.0:9090`
+_Default:_ `":26660"`
 _Constant:_ `FlagPrometheusListenAddr`
 
 ### Maximum Open Connections
@@ -893,9 +997,9 @@ instrumentation:
 ```
 
 **Command-line Flag:**
-`--rollkit.instrumentation.max_open_connections <int>`
-_Example:_ `--rollkit.instrumentation.max_open_connections 50`
-_Default:_ (Refer to `DefaultInstrumentationConfig()` in code, typically a reasonable number like 100)
+`--evnode.instrumentation.max_open_connections <int>`
+_Example:_ `--evnode.instrumentation.max_open_connections 50`
+_Default:_ `3`
 _Constant:_ `FlagMaxOpenConnections`
 
 ### Enable Pprof Profiling
@@ -911,8 +1015,8 @@ instrumentation:
 ```
 
 **Command-line Flag:**
-`--rollkit.instrumentation.pprof` (boolean, presence enables it)
-_Example:_ `--rollkit.instrumentation.pprof`
+`--evnode.instrumentation.pprof` (boolean, presence enables it)
+_Example:_ `--evnode.instrumentation.pprof`
 _Default:_ `false`
 _Constant:_ `FlagPprof`
 
@@ -929,10 +1033,82 @@ instrumentation:
 ```
 
 **Command-line Flag:**
-`--rollkit.instrumentation.pprof_listen_addr <string>`
-_Example:_ `--rollkit.instrumentation.pprof_listen_addr 0.0.0.0:6061`
-_Default:_ `"localhost:6060"`
+`--evnode.instrumentation.pprof_listen_addr <string>`
+_Example:_ `--evnode.instrumentation.pprof_listen_addr 0.0.0.0:6061`
+_Default:_ `":6060"`
 _Constant:_ `FlagPprofListenAddr`
+
+### Enable Tracing
+
+**Description:**
+If true, enables OpenTelemetry tracing. Traces are exported via OTLP to the configured endpoint.
+
+**YAML:**
+
+```yaml
+instrumentation:
+  tracing: true
+```
+
+**Command-line Flag:**
+`--evnode.instrumentation.tracing` (boolean, presence enables it)
+_Example:_ `--evnode.instrumentation.tracing`
+_Default:_ `false`
+_Constant:_ `FlagTracing`
+
+### Tracing Endpoint
+
+**Description:**
+The OTLP endpoint (host:port) to which traces are exported. Must be set when tracing is enabled.
+
+**YAML:**
+
+```yaml
+instrumentation:
+  tracing_endpoint: "localhost:4318"
+```
+
+**Command-line Flag:**
+`--evnode.instrumentation.tracing_endpoint <string>`
+_Example:_ `--evnode.instrumentation.tracing_endpoint otel-collector:4318`
+_Default:_ `"localhost:4318"`
+_Constant:_ `FlagTracingEndpoint`
+
+### Tracing Service Name
+
+**Description:**
+The `service.name` resource attribute attached to all traces exported by this node. Use this to identify the node in your tracing backend.
+
+**YAML:**
+
+```yaml
+instrumentation:
+  tracing_service_name: "ev-node"
+```
+
+**Command-line Flag:**
+`--evnode.instrumentation.tracing_service_name <string>`
+_Example:_ `--evnode.instrumentation.tracing_service_name my-rollup-node`
+_Default:_ `"ev-node"`
+_Constant:_ `FlagTracingServiceName`
+
+### Tracing Sample Rate
+
+**Description:**
+The TraceID ratio-based sampling rate for traces, between 0.0 and 1.0. A value of 1.0 samples all traces; 0.1 samples 10%.
+
+**YAML:**
+
+```yaml
+instrumentation:
+  tracing_sample_rate: 0.1
+```
+
+**Command-line Flag:**
+`--evnode.instrumentation.tracing_sample_rate <float64>`
+_Example:_ `--evnode.instrumentation.tracing_sample_rate 0.5`
+_Default:_ `0.1`
+_Constant:_ `FlagTracingSampleRate`
 
 ## Logging Configuration (`log`)
 
@@ -1023,9 +1199,9 @@ signer:
 ```
 
 **Command-line Flag:**
-`--rollkit.signer.signer_type <string>`
-_Example:_ `--rollkit.signer.signer_type grpc`
-_Default:_ (Depends on application, often "file" or none if not an aggregator)
+`--evnode.signer.signer_type <string>`
+_Example:_ `--evnode.signer.signer_type grpc`
+_Default:_ `"file"`
 _Constant:_ `FlagSignerType`
 
 ### Signer Path
@@ -1042,25 +1218,207 @@ signer:
 ```
 
 **Command-line Flag:**
-`--rollkit.signer.signer_path <string>`
-_Example:_ `--rollkit.signer.signer_path ./config`
-_Default:_ (Depends on application)
+`--evnode.signer.signer_path <string>`
+_Example:_ `--evnode.signer.signer_path ./config`
+_Default:_ `"config"`
 _Constant:_ `FlagSignerPath`
 
-### Signer Passphrase
+### Signer Passphrase File
 
 **Description:**
-The passphrase required to decrypt or access the signer key, particularly if using a `file` signer and the key is encrypted, or if the aggregator mode is enabled and requires it. This flag is not directly a field in the `SignerConfig` struct but is used in conjunction with it.
+Path to a file containing the passphrase for the signer key. Required when using a `file` signer in aggregator mode. Reading the passphrase from a file avoids exposing it in shell history.
 
 **YAML:**
-This is typically not stored in the YAML file for security reasons but provided via flag or environment variable.
+This is not stored in the YAML file. Provide it via flag or environment variable.
 
 **Command-line Flag:**
-`--rollkit.signer.passphrase <string>`
-_Example:_ `--rollkit.signer.passphrase "mysecretpassphrase"`
+`--evnode.signer.passphrase_file <string>`
+_Example:_ `--evnode.signer.passphrase_file /run/secrets/signer_passphrase`
 _Default:_ `""` (empty)
-_Constant:_ `FlagSignerPassphrase`
-_Note:_ Be cautious with providing passphrases directly on the command line in shared environments due to history logging. Environment variables or secure input methods are often preferred.
+_Constant:_ `FlagSignerPassphraseFile`
+
+## Raft Configuration (`raft`)
+
+Settings for Raft-based consensus used for leader election and state replication in multi-aggregator deployments. All fields are ignored when `raft.enable` is false.
+
+**Note:** Raft consensus and `catchup_timeout` are mutually exclusive. Enabling both will produce a validation error.
+
+**YAML Section:**
+
+```yaml
+raft:
+  # ... raft configurations ...
+```
+
+### Enable Raft
+
+**Description:**
+If true, enables Raft consensus for leader election and state replication across multiple aggregator nodes.
+
+**YAML:**
+
+```yaml
+raft:
+  enable: true
+```
+
+**Command-line Flag:**
+`--evnode.raft.enable` (boolean, presence enables it)
+_Default:_ `false`
+_Constant:_ `FlagRaftEnable`
+
+### Raft Node ID
+
+**Description:**
+Unique identifier for this node within the Raft cluster. Required when Raft is enabled.
+
+**YAML:**
+
+```yaml
+raft:
+  node_id: "node1"
+```
+
+**Command-line Flag:**
+`--evnode.raft.node_id <string>`
+_Default:_ `""` (required when enabled)
+_Constant:_ `FlagRaftNodeID`
+
+### Raft Address
+
+**Description:**
+Network address (host:port) for Raft inter-node communication. Required when Raft is enabled.
+
+**YAML:**
+
+```yaml
+raft:
+  raft_addr: "0.0.0.0:7000"
+```
+
+**Command-line Flag:**
+`--evnode.raft.raft_addr <string>`
+_Default:_ `""` (required when enabled)
+_Constant:_ `FlagRaftAddr`
+
+### Raft Directory
+
+**Description:**
+Directory for storing Raft logs and snapshots. Required when Raft is enabled.
+
+**YAML:**
+
+```yaml
+raft:
+  raft_dir: "/home/user/.evnode/raft"
+```
+
+**Command-line Flag:**
+`--evnode.raft.raft_dir <string>`
+_Default:_ `"<home>/raft"`
+_Constant:_ `FlagRaftDir`
+
+### Raft Bootstrap
+
+**Description:**
+If true, bootstraps a new Raft cluster. Only set this on the very first node when initializing a new cluster.
+
+**YAML:**
+
+```yaml
+raft:
+  bootstrap: true
+```
+
+**Command-line Flag:**
+`--evnode.raft.bootstrap` (boolean, presence enables it)
+_Default:_ `false`
+_Constant:_ `FlagRaftBootstrap`
+
+### Raft Peers
+
+**Description:**
+Comma-separated list of peer Raft addresses in `nodeID@host:port` format.
+
+**YAML:**
+
+```yaml
+raft:
+  peers: "node2@192.168.1.2:7000,node3@192.168.1.3:7000"
+```
+
+**Command-line Flag:**
+`--evnode.raft.peers <string>`
+_Default:_ `""` (empty)
+_Constant:_ `FlagRaftPeers`
+
+### Raft Snap Count
+
+**Description:**
+Number of log entries between Raft snapshots. Lower values reduce recovery time but increase snapshot I/O overhead.
+
+**YAML:**
+
+```yaml
+raft:
+  snap_count: 10000
+```
+
+**Command-line Flag:**
+`--evnode.raft.snap_count <uint64>`
+_Default:_ `0`
+_Constant:_ `FlagRaftSnapCount`
+
+### Raft Send Timeout
+
+**Description:**
+Maximum duration to wait for a message to be sent to a peer before considering it failed.
+
+**YAML:**
+
+```yaml
+raft:
+  send_timeout: "200ms"
+```
+
+**Command-line Flag:**
+`--evnode.raft.send_timeout <duration>`
+_Default:_ `"200ms"`
+_Constant:_ `FlagRaftSendTimeout`
+
+### Raft Heartbeat Timeout
+
+**Description:**
+Time between leader heartbeats sent to followers.
+
+**YAML:**
+
+```yaml
+raft:
+  heartbeat_timeout: "350ms"
+```
+
+**Command-line Flag:**
+`--evnode.raft.heartbeat_timeout <duration>`
+_Default:_ `"350ms"`
+_Constant:_ `FlagRaftHeartbeatTimeout`
+
+### Raft Leader Lease Timeout
+
+**Description:**
+Duration of the leader lease, which allows a leader to serve reads locally without round-tripping to followers.
+
+**YAML:**
+
+```yaml
+raft:
+  leader_lease_timeout: "175ms"
+```
+
+**Command-line Flag:**
+`--evnode.raft.leader_lease_timeout <duration>`
+_Default:_ `"175ms"`
+_Constant:_ `FlagRaftLeaderLeaseTimeout`
 
 ---
 
