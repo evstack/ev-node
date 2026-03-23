@@ -38,6 +38,9 @@ jobs:
         run: BASE='/docs-preview/pr-${{ github.event.number }}/' yarn build
         working-directory: docs
 
+      - name: Clear default git credentials
+        run: git config --global --unset http.https://github.com/.extraheader || true
+
       - name: Deploy preview
         uses: rossjrw/pr-preview-action@v1
         with:
