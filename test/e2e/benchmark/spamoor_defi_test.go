@@ -21,27 +21,23 @@ import (
 // Primary metrics: MGas/s, TPS.
 // Diagnostic metrics: per-span latency breakdown, ev-node overhead %.
 func (s *SpamoorSuite) TestDeFiSimulation() {
-	const (
-		numSpammers     = 4
-		countPerSpammer = 10000
-		totalCount      = numSpammers * countPerSpammer
-		waitTimeout     = 10 * time.Minute
-	)
-
 	cfg := newBenchConfig("ev-node-defi")
 
 	t := s.T()
 	ctx := t.Context()
+	cfg.log(t)
 	w := newResultWriter(t, "DeFiSimulation")
 	defer w.flush()
 
 	e := s.setupEnv(cfg)
 
 	uniswapConfig := map[string]any{
-		"throughput":      30, // 30 tx per 100ms slot = 300 tx/s per spammer, 1200 tx/s total
-		"total_count":     countPerSpammer,
+		"throughput":      cfg.Throughput,
+		"total_count":     cfg.CountPerSpammer,
 		"max_pending":     50000,
-		"max_wallets":     200,
+		"max_wallets":     cfg.MaxWallets,
+		"pair_count":      envInt("BENCH_PAIR_COUNT", 1),
+		"rebroadcast":     envInt("BENCH_REBROADCAST", 0),
 		"base_fee":        20,
 		"tip_fee":         2,
 		"refill_amount":   "10000000000000000000", // 10 ETH (swaps need ETH for WETH wrapping and router approvals)
@@ -55,7 +51,7 @@ func (s *SpamoorSuite) TestDeFiSimulation() {
 	// (Uniswap contract deploys + liquidity provision + wallet funding)
 	// is excluded from the measurement window.
 	var spammerIDs []int
-	for i := range numSpammers {
+	for i := range cfg.NumSpammers {
 		name := fmt.Sprintf("bench-defi-%d", i)
 		id, err := e.spamoorAPI.CreateSpammer(name, spamoor.ScenarioUniswapSwaps, uniswapConfig, true)
 		s.Require().NoError(err, "failed to create spammer %s", name)
@@ -66,7 +62,7 @@ func (s *SpamoorSuite) TestDeFiSimulation() {
 	// give spammers time to deploy contracts and provision liquidity,
 	// then verify none failed during warmup.
 	time.Sleep(5 * time.Second)
-	assertSpammersRunning(t, e.spamoorAPI, spammerIDs)
+	requireSpammersRunning(t, e.spamoorAPI, spammerIDs)
 
 	// wait for warmup transactions (contract deploys, liquidity adds) to land
 	// before recording start block.
@@ -89,7 +85,7 @@ func (s *SpamoorSuite) TestDeFiSimulation() {
 	t.Logf("start block: %d (after warmup)", startBlock)
 
 	// wait for all transactions to be sent
-	waitForMetricTarget(t, "spamoor_transactions_sent_total", pollSentTotal, float64(totalCount), cfg.WaitTimeout)
+	waitForMetricTarget(t, "spamoor_transactions_sent_total", pollSentTotal, float64(cfg.totalCount()), cfg.WaitTimeout)
 
 	// wait for pending txs to drain
 	drainCtx, drainCancel := context.WithTimeout(ctx, 30*time.Second)
