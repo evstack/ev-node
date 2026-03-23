@@ -21,28 +21,22 @@ import (
 // Primary metrics: MGas/s.
 // Diagnostic metrics: Engine.NewPayload latency, ev-node overhead %.
 func (s *SpamoorSuite) TestStatePressure() {
-	const (
-		numSpammers     = 4
-		countPerSpammer = 5000
-		totalCount      = numSpammers * countPerSpammer
-		waitTimeout     = 10 * time.Minute
-	)
-
 	cfg := newBenchConfig("ev-node-state-pressure")
 
 	t := s.T()
 	ctx := t.Context()
+	cfg.log(t)
 	w := newResultWriter(t, "StatePressure")
 	defer w.flush()
 
 	e := s.setupEnv(cfg)
 
 	storageSpamConfig := map[string]any{
-		"throughput":        20, // 20 tx per 100ms slot = 200 tx/s per spammer, 800 tx/s total
-		"total_count":       countPerSpammer,
-		"gas_units_to_burn": 2000000, // 2M gas per tx via SSTORE. 100M / 2M = 50 txs to fill block
+		"throughput":        cfg.Throughput,
+		"total_count":       cfg.CountPerSpammer,
+		"gas_units_to_burn": envInt("BENCH_GAS_UNITS_TO_BURN", 2000000),
 		"max_pending":       50000,
-		"max_wallets":       100,
+		"max_wallets":       cfg.MaxWallets,
 		"base_fee":          20,
 		"tip_fee":           2,
 		"refill_amount":     "5000000000000000000", // 5 ETH
@@ -53,7 +47,7 @@ func (s *SpamoorSuite) TestStatePressure() {
 	s.Require().NoError(deleteAllSpammers(e.spamoorAPI), "failed to delete stale spammers")
 
 	var spammerIDs []int
-	for i := range numSpammers {
+	for i := range cfg.NumSpammers {
 		name := fmt.Sprintf("bench-storage-%d", i)
 		id, err := e.spamoorAPI.CreateSpammer(name, spamoor.ScenarioStorageSpam, storageSpamConfig, true)
 		s.Require().NoError(err, "failed to create spammer %s", name)
@@ -62,7 +56,7 @@ func (s *SpamoorSuite) TestStatePressure() {
 	}
 
 	time.Sleep(3 * time.Second)
-	assertSpammersRunning(t, e.spamoorAPI, spammerIDs)
+	requireSpammersRunning(t, e.spamoorAPI, spammerIDs)
 
 	// wait for wallet funding to finish before recording start block
 	pollSentTotal := func() (float64, error) {
@@ -84,7 +78,7 @@ func (s *SpamoorSuite) TestStatePressure() {
 	t.Logf("start block: %d (after warmup)", startBlock)
 
 	// wait for all transactions to be sent
-	waitForMetricTarget(t, "spamoor_transactions_sent_total", pollSentTotal, float64(totalCount), cfg.WaitTimeout)
+	waitForMetricTarget(t, "spamoor_transactions_sent_total", pollSentTotal, float64(cfg.totalCount()), cfg.WaitTimeout)
 
 	// wait for pending txs to drain
 	drainCtx, drainCancel := context.WithTimeout(ctx, 30*time.Second)
