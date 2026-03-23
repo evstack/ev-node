@@ -55,7 +55,7 @@ type Options struct {
 	// CredentialsFile is an optional path to a Google credentials JSON file.
 	// If empty, Application Default Credentials are used.
 	CredentialsFile string
-	// Timeout for individual KMS Sign API calls. Default: 10s.
+	// Timeout for individual KMS Sign API calls. Default: 1s.
 	Timeout time.Duration
 	// MaxRetries for transient KMS failures during Sign. Default: 3.
 	MaxRetries int

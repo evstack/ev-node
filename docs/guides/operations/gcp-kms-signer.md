@@ -6,14 +6,14 @@ of a local key file.
 ## Prerequisites
 
 - A Google Cloud KMS asymmetric key version with:
-    - `purpose: ASYMMETRIC_SIGN`
-    - `algorithm: EC_SIGN_ED25519`
+  - `purpose: ASYMMETRIC_SIGN`
+  - `algorithm: EC_SIGN_ED25519`
 - IAM permissions for runtime:
-    - `cloudkms.cryptoKeyVersions.useToSign`
-    - `cloudkms.cryptoKeyVersions.viewPublicKey`
+  - `cloudkms.cryptoKeyVersions.useToSign`
+  - `cloudkms.cryptoKeyVersions.viewPublicKey`
 - Google credentials available to the node process:
-    - Application Default Credentials (recommended), or
-    - service-account JSON file.
+  - Application Default Credentials (recommended), or
+  - service-account JSON file.
 
 ## 1. Create an ED25519 KMS key (example)
 
