@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774162623181,
+  "lastUpdate": 1774272494447,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -3444,6 +3444,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 180920,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "github.qpeyb@simplelogin.fr",
+            "name": "Cian Hatton",
+            "username": "chatton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": false,
+          "id": "005e06cb2c1dc9d732cbd1e852aafb69f572217c",
+          "message": "feat: add TestDeFiSimulation benchmark for Uniswap V2 workload (#3187)\n\n* feat: add TestDeFiSimulation benchmark for Uniswap V2 workload\n\n* refactor: use benchConfig for TestDeFiSimulation spamoor parameters\n\nReplace hardcoded spammer config with benchConfig fields so all\nparameters are controllable via BENCH_* env vars. Add pair_count\nand rebroadcast as configurable options for the uniswap-swaps scenario.\n\n* ci: add DeFi simulation benchmark to CI workflow",
+          "timestamp": "2026-03-23T13:06:08Z",
+          "tree_id": "3f46bcdf9ce7482e1e13356b0da3b2fbe0d37680",
+          "url": "https://github.com/evstack/ev-node/commit/005e06cb2c1dc9d732cbd1e852aafb69f572217c"
+        },
+        "date": 1774272490937,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 908465884,
+            "unit": "ns/op\t32251160 B/op\t  177342 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 908465884,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 32251160,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 177342,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
