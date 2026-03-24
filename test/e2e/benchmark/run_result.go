@@ -23,6 +23,7 @@ type runResult struct {
 	Platform          string            `json:"platform"`
 	Config            runConfig         `json:"config"`
 	Tags              runTags           `json:"tags"`
+	Host              *resourceAttrs    `json:"host,omitempty"`
 	Metrics           runMetrics        `json:"metrics"`
 	BlockRange        runBlockRange     `json:"block_range"`
 	Spamoor           *runSpamoorStats  `json:"spamoor,omitempty"`
@@ -166,6 +167,7 @@ func buildRunResult(cfg benchConfig, br *benchmarkResult, wallClock time.Duratio
 		Objective:     os.Getenv("BENCH_OBJECTIVE"),
 		Timestamp:     time.Now().UTC().Format(time.RFC3339),
 		Platform:      envOrDefault("BENCH_PLATFORM", runtime.GOOS+"/"+runtime.GOARCH),
+		Host:          br.traces.evNodeAttrs,
 		Config: runConfig{
 			BlockTime:       cfg.BlockTime,
 			SlotDuration:    cfg.SlotDuration,
@@ -253,6 +255,14 @@ func fieldDescriptions() map[string]string {
 
 		"tags.ev_reth": "ev-reth docker image tag",
 		"tags.ev_node": "ev-node git commit or tag",
+
+		"host.host_name":     "hostname of the machine running ev-node (from OTEL_RESOURCE_ATTRIBUTES)",
+		"host.host_cpu":      "vCPU count (from OTEL_RESOURCE_ATTRIBUTES)",
+		"host.host_memory":   "total memory (from OTEL_RESOURCE_ATTRIBUTES)",
+		"host.host_type":     "CPU architecture (from OTEL_RESOURCE_ATTRIBUTES)",
+		"host.os_name":       "operating system name (from OTEL_RESOURCE_ATTRIBUTES)",
+		"host.os_version":    "kernel version (from OTEL_RESOURCE_ATTRIBUTES)",
+		"host.service_type":  "node role: sequencer or fullnode (from OTEL_RESOURCE_ATTRIBUTES)",
 
 		"metrics.mgas_per_sec":          "total gas / steady-state seconds / 1e6",
 		"metrics.tps":                   "total tx count / steady-state seconds",

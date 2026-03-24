@@ -46,6 +46,12 @@ type richSpanCollector interface {
 	collectRichSpans(ctx context.Context, serviceName string) ([]richSpan, error)
 }
 
+// resourceAttrCollector is an optional interface for providers that can
+// extract OTEL resource attributes from trace spans.
+type resourceAttrCollector interface {
+	fetchResourceAttrs(ctx context.Context, serviceName string) *resourceAttrs
+}
+
 // victoriaTraceProvider collects spans from a VictoriaTraces instance via its
 // LogsQL streaming API.
 type victoriaTraceProvider struct {
@@ -254,6 +260,27 @@ func (v *victoriaTraceProvider) fetchAllSpans(ctx context.Context, serviceName s
 	return spans, nil
 }
 
+// fetchResourceAttrs queries a single span and extracts OTEL resource attributes
+// from it. Returns nil if no spans are available.
+func (v *victoriaTraceProvider) fetchResourceAttrs(ctx context.Context, serviceName string) *resourceAttrs {
+	scanner, body, err := v.fetchLogStream(ctx, serviceName)
+	if err != nil {
+		v.t.Logf("warning: failed to fetch resource attrs: %v", err)
+		return nil
+	}
+	defer body.Close()
+
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		attrs := extractResourceAttrs(line)
+		return &attrs
+	}
+	return nil
+}
+
 // logsqlSpan maps the fields returned by VictoriaTraces' LogsQL endpoint.
 type logsqlSpan struct {
 	Name     string `json:"name"`
@@ -273,16 +300,47 @@ type logsqlRichSpan struct {
 // VictoriaTraces encodes it as resource_attr:'host.name which Go's
 // struct tags can't match due to the single quote.
 func extractHostName(line []byte) string {
+	return extractResourceAttr(line, "host.name")
+}
+
+// extractResourceAttr pulls a specific resource attribute from a raw LogsQL JSON line.
+// VictoriaTraces encodes resource attributes with keys like resource_attr:'host.name
+// which can't be mapped via struct tags.
+func extractResourceAttr(line []byte, attr string) string {
 	var raw map[string]string
 	if err := json.Unmarshal(line, &raw); err != nil {
 		return ""
 	}
 	for k, v := range raw {
-		if strings.Contains(k, "host.name") {
+		if strings.Contains(k, attr) {
 			return v
 		}
 	}
 	return ""
+}
+
+// resourceAttrs holds OTEL resource attributes extracted from trace spans.
+type resourceAttrs struct {
+	HostName    string `json:"host_name,omitempty"`
+	HostCPU     string `json:"host_cpu,omitempty"`
+	HostMemory  string `json:"host_memory,omitempty"`
+	HostType    string `json:"host_type,omitempty"`
+	OSName      string `json:"os_name,omitempty"`
+	OSVersion   string `json:"os_version,omitempty"`
+	ServiceType string `json:"service_type,omitempty"`
+}
+
+// extractResourceAttrs pulls all known OTEL resource attributes from a raw LogsQL JSON line.
+func extractResourceAttrs(line []byte) resourceAttrs {
+	return resourceAttrs{
+		HostName:    extractResourceAttr(line, "host.name"),
+		HostCPU:     extractResourceAttr(line, "host.cpu"),
+		HostMemory:  extractResourceAttr(line, "host.memory"),
+		HostType:    extractResourceAttr(line, "host.type"),
+		OSName:      extractResourceAttr(line, "os.name"),
+		OSVersion:   extractResourceAttr(line, "os.version"),
+		ServiceType: extractResourceAttr(line, "service.type"),
+	}
 }
 
 func (s logsqlSpan) SpanName() string { return s.Name }

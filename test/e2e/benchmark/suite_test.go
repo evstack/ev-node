@@ -237,6 +237,11 @@ func (s *SpamoorSuite) collectTraces(e *env, serviceName string) *traceResult {
 		}
 	}
 
+	if rac, ok := e.traces.(resourceAttrCollector); ok {
+		tr.evNodeAttrs = rac.fetchResourceAttrs(ctx, serviceName)
+		tr.evRethAttrs = rac.fetchResourceAttrs(ctx, "ev-reth")
+	}
+
 	tr.displayFlowcharts(t, serviceName)
 	return tr
 }
