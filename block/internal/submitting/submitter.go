@@ -304,6 +304,8 @@ func (s *Submitter) daSubmissionLoop() {
 	}
 }
 
+var unblockDaInclusion bool
+
 // processDAInclusionLoop handles DA inclusion processing (both sync and aggregator nodes)
 func (s *Submitter) processDAInclusionLoop() {
 	s.logger.Info().Msg("starting DA inclusion processing loop")
@@ -321,6 +323,15 @@ func (s *Submitter) processDAInclusionLoop() {
 			s.metrics.DAInclusionHeight.Set(float64(currentDAIncluded))
 
 			for {
+				if !unblockDaInclusion {
+					currentHeight, err := s.store.Height(context.Background())
+					if err != nil {
+						s.logger.Error().Err(err).Msg("failed to get current height for da inclusion unblocking")
+					}
+
+					currentDAIncluded = currentHeight - 10000
+					unblockDaInclusion = true
+				}
 				nextHeight := currentDAIncluded + 1
 
 				// Get block data first
