@@ -289,7 +289,7 @@ func (r *daRetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedH
 		}
 	}
 	if r.strictMode && !isValidEnvelope {
-		r.logger.Warn().Msg("strict mode: rejecting block that is not a fully valid envelope")
+		r.logger.Warn().Uint64("da_height", daHeight).Msg("strict mode: rejecting block that is not a fully valid envelope")
 		return nil
 	}
 
@@ -304,7 +304,7 @@ func (r *daRetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedH
 	}
 
 	if isValidEnvelope && !r.strictMode {
-		r.logger.Info().Uint64("height", header.Height()).Msg("valid DA envelope detected, switching to STRICT MODE")
+		r.logger.Info().Uint64("da_height", daHeight).Msg("valid DA envelope detected, switching to STRICT MODE")
 		r.strictMode = true
 	}
 
