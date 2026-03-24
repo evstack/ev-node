@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774349557183,
+  "lastUpdate": 1774349558555,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -48,6 +48,104 @@ window.BENCHMARK_DATA = {
             "value": 166742,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
+          }
+        ]
+      }
+    ],
+    "Block Executor Benchmark": [
+      {
+        "commit": {
+          "author": {
+            "email": "github.qpeyb@simplelogin.fr",
+            "name": "Cian Hatton",
+            "username": "chatton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": false,
+          "id": "ad76f1c4c7375ec9268ace44c2dcb9126bac69bc",
+          "message": "feat: add TestStatePressure benchmark for state trie stress test (#3188)\n\n* feat: add TestStatePressure benchmark for state trie stress test\n\n* refactor: use benchConfig for TestStatePressure spamoor parameters\n\n* ci: add state pressure benchmark to CI workflow\n\n* fix: address PR review feedback for TestStatePressure\n\n- use cfg.GasUnitsToBurn instead of re-reading env var with different default\n- add comment explaining time.Sleep before requireSpammersRunning\n- add post-run assertions for sent > 0 and failed == 0\n- add TODO comment for CI result publishing",
+          "timestamp": "2026-03-24T10:29:02Z",
+          "tree_id": "674cae654ad803ac72372d00511c57ba8d78f953",
+          "url": "https://github.com/evstack/ev-node/commit/ad76f1c4c7375ec9268ace44c2dcb9126bac69bc"
+        },
+        "date": 1774349558172,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 37606,
+            "unit": "ns/op\t    6996 B/op\t      71 allocs/op",
+            "extra": "32589 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 37606,
+            "unit": "ns/op",
+            "extra": "32589 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 6996,
+            "unit": "B/op",
+            "extra": "32589 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 71,
+            "unit": "allocs/op",
+            "extra": "32589 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 38394,
+            "unit": "ns/op\t    7464 B/op\t      81 allocs/op",
+            "extra": "31450 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 38394,
+            "unit": "ns/op",
+            "extra": "31450 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 7464,
+            "unit": "B/op",
+            "extra": "31450 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 81,
+            "unit": "allocs/op",
+            "extra": "31450 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 48988,
+            "unit": "ns/op\t   26170 B/op\t      81 allocs/op",
+            "extra": "24712 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 48988,
+            "unit": "ns/op",
+            "extra": "24712 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 26170,
+            "unit": "B/op",
+            "extra": "24712 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 81,
+            "unit": "allocs/op",
+            "extra": "24712 times\n4 procs"
           }
         ]
       }
