@@ -522,11 +522,6 @@ const (
 	legacyLastResultsHashField = 9
 )
 
-// Maximum size of unknown fields to prevent DoS attacks via malicious headers
-// with excessive unknown field data. 1MB should be more than sufficient for
-// legitimate legacy headers (typical header is ~500 bytes).
-const maxUnknownFieldSize = 1024 * 1024 // 1MB
-
 // Maximum size for individual legacy hash fields. Standard hashes are 32 bytes,
 // but we allow up to 1KB for flexibility with different hash algorithms.
 const maxLegacyHashSize = 1024 // 1KB
@@ -537,13 +532,7 @@ func decodeLegacyHeaderFields(pHeader *pb.Header) (*LegacyHeaderFields, error) {
 		return nil, nil
 	}
 
-	// Protect against DoS attacks via headers with massive unknown field data
-	if len(unknown) > maxUnknownFieldSize {
-		return nil, fmt.Errorf("unknown fields too large: %d bytes (max %d)", len(unknown), maxUnknownFieldSize)
-	}
-
 	var legacy LegacyHeaderFields
-
 	for len(unknown) > 0 {
 		fieldNum, typ, n := protowire.ConsumeTag(unknown)
 		if n < 0 {
