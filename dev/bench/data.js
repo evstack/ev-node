@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774349558555,
+  "lastUpdate": 1774351045171,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -46,6 +46,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 166742,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "julien@rbrt.fr",
+            "name": "julienrbrt",
+            "username": "julienrbrt"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "9d7b1c2c059b2d97691fbdb66a14dadd49ae5807",
+          "message": "chore: remove cache analyzer (#3192)",
+          "timestamp": "2026-03-24T10:39:16Z",
+          "tree_id": "f052e9cc07e7387a68ee9da794564b9acf0bbb0a",
+          "url": "https://github.com/evstack/ev-node/commit/9d7b1c2c059b2d97691fbdb66a14dadd49ae5807"
+        },
+        "date": 1774351041965,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 904073722,
+            "unit": "ns/op\t31953604 B/op\t  175966 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 904073722,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 31953604,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 175966,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
