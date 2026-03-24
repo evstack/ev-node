@@ -304,7 +304,7 @@ func (r *daRetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedH
 	}
 
 	if isValidEnvelope && !r.strictMode {
-		r.logger.Info().Uint64("da_height", daHeight).Msg("valid DA envelope detected, switching to STRICT MODE")
+		r.logger.Info().Uint64("height", header.Height()).Uint64("da_height", daHeight).Msg("valid DA envelope detected, switching to STRICT MODE")
 		r.strictMode = true
 	}
 
