@@ -35,10 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Verify DA and P2P state on restart (prevent double-signing). [#3061](https://github.com/evstack/ev-node/pull/3061)
 - Node pruning support. [#2984](https://github.com/evstack/ev-node/pull/2984)
   - Two different sort of pruning implemented:
-      _Classic pruning_ (`all`): prunes given `HEAD-n` blocks from the databases, including store metadatas.
-      _Auto Storage Optimization_ (`metadata`): prunes only the state metadatas, keeps all blocks.
-      By using one or the other, you are losing the ability to rollback or replay transactions earlier than `HEAD-n`.
-      When using _classic pruning_, you aren't able to fetch blocks prior to `HEAD-n`.
+    _Classic pruning_ (`all`): prunes given `HEAD-n` blocks from the databases, including store metadatas.
+    _Auto Storage Optimization_ (`metadata`): prunes only the state metadatas, keeps all blocks.
+    By using one or the other, you are losing the ability to rollback or replay transactions earlier than `HEAD-n`.
+    When using _classic pruning_, you aren't able to fetch blocks prior to `HEAD-n`.
 
 ### Fixed
 
