@@ -101,5 +101,10 @@ func (s *SpamoorSuite) TestGasBurner() {
 	result.log(t, wallClock)
 	w.addEntries(result.entries())
 
-	emitRunResult(t, cfg, result, wallClock, nil)
+	metrics, mErr := api.GetMetrics()
+	s.Require().NoError(mErr, "failed to get final metrics")
+	sent := sumCounter(metrics["spamoor_transactions_sent_total"])
+	failed := sumCounter(metrics["spamoor_transactions_failed_total"])
+
+	emitRunResult(t, cfg, result, wallClock, &runSpamoorStats{Sent: sent, Failed: failed})
 }

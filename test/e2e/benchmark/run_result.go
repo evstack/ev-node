@@ -195,33 +195,6 @@ func buildRunResult(cfg benchConfig, br *benchmarkResult, wallClock time.Duratio
 	}
 }
 
-// overheadFromStats computes ev-node overhead from pre-aggregated span stats.
-func overheadFromStats(stats map[string]*e2e.SpanStats) (float64, bool) {
-	produce, ok := stats[spanProduceBlock]
-	if !ok || produce.Count == 0 {
-		return 0, false
-	}
-	execute, ok := stats[spanExecuteTxs]
-	if !ok || execute.Count == 0 {
-		return 0, false
-	}
-	produceAvg := float64(produce.Total.Microseconds()) / float64(produce.Count)
-	executeAvg := float64(execute.Total.Microseconds()) / float64(execute.Count)
-	if produceAvg <= 0 {
-		return 0, false
-	}
-	return (produceAvg - executeAvg) / produceAvg * 100, true
-}
-
-// rethRateFromStats computes ev-reth GGas/s from pre-aggregated span stats.
-func rethRateFromStats(stats map[string]*e2e.SpanStats, totalGasUsed uint64) (float64, bool) {
-	np, ok := stats[spanNewPayload]
-	if !ok || np.Total <= 0 || totalGasUsed == 0 {
-		return 0, false
-	}
-	return float64(totalGasUsed) / np.Total.Seconds() / 1e9, true
-}
-
 func setEngineSpanTimings(m *runMetrics, stats map[string]*e2e.SpanStats) {
 	type spanTarget struct {
 		name          string
@@ -237,9 +210,9 @@ func setEngineSpanTimings(m *runMetrics, stats map[string]*e2e.SpanStats) {
 		if !ok || s.Count == 0 {
 			continue
 		}
-		avg := float64((s.Total / time.Duration(s.Count)).Milliseconds())
-		min := float64(s.Min.Milliseconds())
-		max := float64(s.Max.Milliseconds())
+		avg := float64(s.Total.Microseconds()) / float64(s.Count) / 1000.0
+		min := float64(s.Min.Microseconds()) / 1000.0
+		max := float64(s.Max.Microseconds()) / 1000.0
 		*target.avg = &avg
 		*target.min = &min
 		*target.max = &max
