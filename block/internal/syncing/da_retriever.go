@@ -289,6 +289,7 @@ func (r *daRetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedH
 		}
 	}
 	if r.strictMode && !isValidEnvelope {
+		// no need to print warnings, as tryDecodeHeader could try to decode data first, which will show this warning.
 		r.logger.Debug().Msg("strict mode: rejecting block that is not a fully valid envelope")
 		return nil
 	}
