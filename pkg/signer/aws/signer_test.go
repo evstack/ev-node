@@ -63,9 +63,9 @@ func TestNewKmsSignerFromClient_Success(t *testing.T) {
 
 func TestNewKmsSignerFromClient_Validation(t *testing.T) {
 	specs := map[string]struct {
-		client     KMSClient
-		keyID      string
-		errSubstr  string
+		client    KMSClient
+		keyID     string
+		errSubstr string
 	}{
 		"empty key id": {
 			client:    &mockKMSClient{},
