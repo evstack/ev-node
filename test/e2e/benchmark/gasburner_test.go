@@ -23,6 +23,15 @@ func (s *SpamoorSuite) TestGasBurner() {
 
 	cfg.log(t)
 
+	var result *benchmarkResult
+	var wallClock time.Duration
+	var spamoorStats *runSpamoorStats
+	defer func() {
+		if result != nil {
+			emitRunResult(t, cfg, result, wallClock, spamoorStats)
+		}
+	}()
+
 	e := s.setupEnv(cfg)
 	api := e.spamoorAPI
 
@@ -83,7 +92,7 @@ func (s *SpamoorSuite) TestGasBurner() {
 	if err := waitForDrain(drainCtx, t.Logf, e.ethClient, 10); err != nil {
 		t.Logf("warning: %v", err)
 	}
-	wallClock := time.Since(loadStart)
+	wallClock = time.Since(loadStart)
 
 	endHeader, err := e.ethClient.HeaderByNumber(ctx, nil)
 	s.Require().NoError(err, "failed to get end block header")
@@ -96,7 +105,7 @@ func (s *SpamoorSuite) TestGasBurner() {
 
 	traces := s.collectTraces(e, cfg.ServiceName)
 
-	result := newBenchmarkResult("GasBurner", bm, traces)
+	result = newBenchmarkResult("GasBurner", bm, traces)
 	s.Require().Greater(result.summary.SteadyState, time.Duration(0), "expected non-zero steady-state duration")
 	result.log(t, wallClock)
 	w.addEntries(result.entries())
@@ -105,6 +114,5 @@ func (s *SpamoorSuite) TestGasBurner() {
 	s.Require().NoError(mErr, "failed to get final metrics")
 	sent := sumCounter(metrics["spamoor_transactions_sent_total"])
 	failed := sumCounter(metrics["spamoor_transactions_failed_total"])
-
-	emitRunResult(t, cfg, result, wallClock, &runSpamoorStats{Sent: sent, Failed: failed})
+	spamoorStats = &runSpamoorStats{Sent: sent, Failed: failed}
 }
