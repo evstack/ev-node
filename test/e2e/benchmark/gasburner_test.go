@@ -100,4 +100,6 @@ func (s *SpamoorSuite) TestGasBurner() {
 	s.Require().Greater(result.summary.SteadyState, time.Duration(0), "expected non-zero steady-state duration")
 	result.log(t, wallClock)
 	w.addEntries(result.entries())
+
+	emitRunResult(t, cfg, result, wallClock, nil)
 }

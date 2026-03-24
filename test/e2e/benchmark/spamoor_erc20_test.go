@@ -87,4 +87,6 @@ func (s *SpamoorSuite) TestERC20Throughput() {
 
 	s.Require().Greater(sent, float64(0), "at least one transaction should have been sent")
 	s.Require().Zero(failed, "no transactions should have failed")
+
+	emitRunResult(t, cfg, result, wallClock, &runSpamoorStats{Sent: sent, Failed: failed})
 }
