@@ -19,46 +19,36 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
+const myKeyID = "projects/p/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1"
+
 // mockKMSClient is a test double implementing KMSClient.
 type mockKMSClient struct {
 	publicKeyPEM string
 	signFn       func(ctx context.Context, req *kmspb.AsymmetricSignRequest) (*kmspb.AsymmetricSignResponse, error)
 	getPubFn     func(ctx context.Context, req *kmspb.GetPublicKeyRequest) (*kmspb.PublicKey, error)
+	keyID        string
 }
 
 func (m *mockKMSClient) AsymmetricSign(ctx context.Context, req *kmspb.AsymmetricSignRequest) (*kmspb.AsymmetricSignResponse, error) {
 	if m.signFn != nil {
 		return m.signFn(ctx, req)
 	}
-	return &kmspb.AsymmetricSignResponse{Signature: []byte("mock-signature")}, nil
+	return &kmspb.AsymmetricSignResponse{Signature: []byte("mock-signature"), Name: m.keyID}, nil
 }
 
 func (m *mockKMSClient) GetPublicKey(ctx context.Context, req *kmspb.GetPublicKeyRequest) (*kmspb.PublicKey, error) {
 	if m.getPubFn != nil {
 		return m.getPubFn(ctx, req)
 	}
-	return &kmspb.PublicKey{Pem: m.publicKeyPEM}, nil
-}
-
-// generateTestEd25519PEM generates an Ed25519 key pair and returns
-// the public key in PEM format.
-func generateTestEd25519PEM(t *testing.T) (ed25519.PublicKey, string) {
-	t.Helper()
-	pub, _, err := ed25519.GenerateKey(nil)
-	require.NoError(t, err)
-
-	der, err := x509.MarshalPKIXPublicKey(pub)
-	require.NoError(t, err)
-
-	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der})
-	return pub, string(pemBytes)
+	crc := crc32.Checksum([]byte(m.publicKeyPEM), castagnoliTable)
+	return &kmspb.PublicKey{Pem: m.publicKeyPEM, Name: m.keyID, PemCrc32C: wrapperspb.Int64(int64(crc))}, nil
 }
 
 func TestNewKmsSignerFromClient_Success(t *testing.T) {
 	_, publicKeyPEM := generateTestEd25519PEM(t)
 
-	mock := &mockKMSClient{publicKeyPEM: publicKeyPEM}
-	s, err := kmsSignerFromClient(context.Background(), mock, "projects/p/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1", nil)
+	mock := &mockKMSClient{publicKeyPEM: publicKeyPEM, keyID: myKeyID}
+	s, err := kmsSignerFromClient(t.Context(), mock, myKeyID, nil)
 	require.NoError(t, err)
 	require.NotNil(t, s)
 
@@ -73,26 +63,42 @@ func TestNewKmsSignerFromClient_Success(t *testing.T) {
 	assert.Len(t, addr, 32) // sha256 output
 }
 
-func TestNewKmsSignerFromClient_EmptyKeyName(t *testing.T) {
-	_, err := kmsSignerFromClient(context.Background(), &mockKMSClient{}, "", nil)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "key name is required")
-}
+func TestNewKmsSignerFromClient_Validation(t *testing.T) {
+	specs := map[string]struct {
+		client    KMSClient
+		keyName   string
+		errSubstr string
+	}{
+		"empty key name": {
+			client:    &mockKMSClient{},
+			keyName:   "",
+			errSubstr: "key name is required",
+		},
+		"nil client": {
+			client:    nil,
+			keyName:   myKeyID,
+			errSubstr: "client is required",
+		},
+	}
 
-func TestNewKmsSignerFromClient_NilClient(t *testing.T) {
-	_, err := kmsSignerFromClient(context.Background(), nil, "projects/p/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1", nil)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "client is required")
+	for name, spec := range specs {
+		t.Run(name, func(t *testing.T) {
+			_, err := kmsSignerFromClient(t.Context(), spec.client, spec.keyName, nil)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), spec.errSubstr)
+		})
+	}
 }
 
 func TestNewKmsSignerFromClient_GetPublicKeyFails(t *testing.T) {
 	mock := &mockKMSClient{
+		keyID: myKeyID,
 		getPubFn: func(_ context.Context, _ *kmspb.GetPublicKeyRequest) (*kmspb.PublicKey, error) {
 			return nil, fmt.Errorf("permission denied")
 		},
 	}
 
-	_, err := kmsSignerFromClient(context.Background(), mock, "projects/p/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1", nil)
+	_, err := kmsSignerFromClient(t.Context(), mock, myKeyID, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "permission denied")
 }
@@ -103,13 +109,15 @@ func TestSign_Success(t *testing.T) {
 	expectedSig := []byte("test-signature-bytes")
 	expectedMsg := []byte("hello world")
 	mock := &mockKMSClient{
+		keyID:        myKeyID,
 		publicKeyPEM: publicKeyPEM,
 		signFn: func(_ context.Context, req *kmspb.AsymmetricSignRequest) (*kmspb.AsymmetricSignResponse, error) {
-			assert.Equal(t, "projects/p/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1", req.Name)
+			assert.Equal(t, myKeyID, req.Name)
 			assert.Equal(t, expectedMsg, req.Data)
 			require.NotNil(t, req.DataCrc32C)
 			assert.Equal(t, int64(crc32.Checksum(expectedMsg, castagnoliTable)), req.DataCrc32C.GetValue())
 			return &kmspb.AsymmetricSignResponse{
+				Name:               myKeyID,
 				Signature:          expectedSig,
 				VerifiedDataCrc32C: true,
 				SignatureCrc32C:    wrapperspb.Int64(int64(crc32.Checksum(expectedSig, castagnoliTable))),
@@ -117,135 +125,125 @@ func TestSign_Success(t *testing.T) {
 		},
 	}
 
-	s, err := kmsSignerFromClient(context.Background(), mock, "projects/p/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1", nil)
+	s, err := kmsSignerFromClient(t.Context(), mock, myKeyID, nil)
 	require.NoError(t, err)
 
-	sig, err := s.Sign(context.Background(), expectedMsg)
+	sig, err := s.Sign(t.Context(), expectedMsg)
 	require.NoError(t, err)
 	assert.Equal(t, expectedSig, sig)
 }
 
-func TestSign_KMSFailure(t *testing.T) {
-	_, publicKeyPEM := generateTestEd25519PEM(t)
-
-	var calls int32
-	mock := &mockKMSClient{
-		publicKeyPEM: publicKeyPEM,
-		signFn: func(_ context.Context, _ *kmspb.AsymmetricSignRequest) (*kmspb.AsymmetricSignResponse, error) {
-			atomic.AddInt32(&calls, 1)
-			return nil, status.Error(codes.Unavailable, "temporarily unavailable")
+func TestSign_RetryBehavior(t *testing.T) {
+	specs := map[string]struct {
+		opts         *Options
+		signErr      error
+		errSubstr    string
+		expectedCall int32
+	}{
+		"retryable uses default retries": {
+			opts:         nil,
+			signErr:      status.Error(codes.Unavailable, "temporarily unavailable"),
+			errSubstr:    "KMS Sign failed",
+			expectedCall: 4,
+		},
+		"max retries zero disables retries": {
+			opts:         &Options{MaxRetries: 0},
+			signErr:      status.Error(codes.Unavailable, "temporarily unavailable"),
+			errSubstr:    "KMS Sign failed",
+			expectedCall: 1,
+		},
+		"non retryable fails fast": {
+			opts:         &Options{MaxRetries: 3},
+			signErr:      status.Error(codes.PermissionDenied, "permission denied"),
+			errSubstr:    "non-retryable",
+			expectedCall: 1,
 		},
 	}
 
-	s, err := kmsSignerFromClient(context.Background(), mock, "projects/p/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1", nil)
-	require.NoError(t, err)
+	for name, spec := range specs {
+		t.Run(name, func(t *testing.T) {
+			_, publicKeyPEM := generateTestEd25519PEM(t)
 
-	_, err = s.Sign(context.Background(), []byte("hello world"))
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "KMS Sign failed")
-	assert.Equal(t, int32(4), atomic.LoadInt32(&calls), "default retries should make 4 attempts")
+			var calls int32
+			signer := newTestSigner(t, &mockKMSClient{
+				keyID:        myKeyID,
+				publicKeyPEM: publicKeyPEM,
+				signFn: func(_ context.Context, _ *kmspb.AsymmetricSignRequest) (*kmspb.AsymmetricSignResponse, error) {
+					atomic.AddInt32(&calls, 1)
+					return nil, spec.signErr
+				},
+			}, spec.opts)
+
+			_, err := signer.Sign(t.Context(), []byte("hello world"))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), spec.errSubstr)
+			assert.Equal(t, spec.expectedCall, atomic.LoadInt32(&calls))
+		})
+	}
 }
 
-func TestSign_MaxRetriesZero_DisablesRetries(t *testing.T) {
-	_, publicKeyPEM := generateTestEd25519PEM(t)
-
-	var calls int32
-	mock := &mockKMSClient{
-		publicKeyPEM: publicKeyPEM,
-		signFn: func(_ context.Context, _ *kmspb.AsymmetricSignRequest) (*kmspb.AsymmetricSignResponse, error) {
-			atomic.AddInt32(&calls, 1)
-			return nil, status.Error(codes.Unavailable, "temporarily unavailable")
+func TestSign_IntegrityFailures_RetryAndFail(t *testing.T) {
+	specs := map[string]struct {
+		expectedErrSubstr string
+		responseFn        func() *kmspb.AsymmetricSignResponse
+	}{
+		"verified data false": {
+			expectedErrSubstr: "verified_data_crc32c is false",
+			responseFn: func() *kmspb.AsymmetricSignResponse {
+				sig := []byte("sig")
+				return &kmspb.AsymmetricSignResponse{
+					Name:               myKeyID,
+					Signature:          sig,
+					VerifiedDataCrc32C: false,
+					SignatureCrc32C:    wrapperspb.Int64(int64(crc32.Checksum(sig, castagnoliTable))),
+				}
+			},
+		},
+		"signature crc mismatch": {
+			expectedErrSubstr: "signature_crc32c mismatch",
+			responseFn: func() *kmspb.AsymmetricSignResponse {
+				return &kmspb.AsymmetricSignResponse{
+					Name:               myKeyID,
+					Signature:          []byte("sig"),
+					VerifiedDataCrc32C: true,
+					SignatureCrc32C:    wrapperspb.Int64(12345),
+				}
+			},
+		},
+		"key name mismatch": {
+			expectedErrSubstr: "unexpected key name",
+			responseFn: func() *kmspb.AsymmetricSignResponse {
+				sig := []byte("sig")
+				return &kmspb.AsymmetricSignResponse{
+					Name:               "projects/p/locations/global/keyRings/r/cryptoKeys/other/cryptoKeyVersions/1",
+					Signature:          sig,
+					VerifiedDataCrc32C: true,
+					SignatureCrc32C:    wrapperspb.Int64(int64(crc32.Checksum(sig, castagnoliTable))),
+				}
+			},
 		},
 	}
 
-	s, err := kmsSignerFromClient(context.Background(), mock, "projects/p/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1", &Options{MaxRetries: 0})
-	require.NoError(t, err)
+	for name, spec := range specs {
+		t.Run(name, func(t *testing.T) {
+			_, publicKeyPEM := generateTestEd25519PEM(t)
 
-	_, err = s.Sign(context.Background(), []byte("hello world"))
-	require.Error(t, err)
-	assert.Equal(t, int32(1), atomic.LoadInt32(&calls), "max retries 0 should only make one attempt")
-}
+			var calls int32
+			signer := newTestSigner(t, &mockKMSClient{
+				keyID:        myKeyID,
+				publicKeyPEM: publicKeyPEM,
+				signFn: func(_ context.Context, _ *kmspb.AsymmetricSignRequest) (*kmspb.AsymmetricSignResponse, error) {
+					atomic.AddInt32(&calls, 1)
+					return spec.responseFn(), nil
+				},
+			}, &Options{MaxRetries: 1})
 
-func TestSign_NonRetryableError_NoRetries(t *testing.T) {
-	_, publicKeyPEM := generateTestEd25519PEM(t)
-
-	var calls int32
-	mock := &mockKMSClient{
-		publicKeyPEM: publicKeyPEM,
-		signFn: func(_ context.Context, _ *kmspb.AsymmetricSignRequest) (*kmspb.AsymmetricSignResponse, error) {
-			atomic.AddInt32(&calls, 1)
-			return nil, status.Error(codes.PermissionDenied, "permission denied")
-		},
+			_, err := signer.Sign(t.Context(), []byte("hello world"))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), spec.expectedErrSubstr)
+			assert.Equal(t, int32(2), atomic.LoadInt32(&calls), "integrity failures should be retried")
+		})
 	}
-
-	s, err := kmsSignerFromClient(context.Background(), mock, "projects/p/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1", &Options{MaxRetries: 3})
-	require.NoError(t, err)
-
-	_, err = s.Sign(context.Background(), []byte("hello world"))
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "non-retryable")
-	assert.Equal(t, int32(1), atomic.LoadInt32(&calls), "non-retryable errors should fail fast")
-}
-
-func TestSign_IntegrityCheckVerifiedDataFalse_RetriesAndFails(t *testing.T) {
-	_, publicKeyPEM := generateTestEd25519PEM(t)
-
-	var calls int32
-	mock := &mockKMSClient{
-		publicKeyPEM: publicKeyPEM,
-		signFn: func(_ context.Context, _ *kmspb.AsymmetricSignRequest) (*kmspb.AsymmetricSignResponse, error) {
-			atomic.AddInt32(&calls, 1)
-			sig := []byte("sig")
-			return &kmspb.AsymmetricSignResponse{
-				Signature:          sig,
-				VerifiedDataCrc32C: false,
-				SignatureCrc32C:    wrapperspb.Int64(int64(crc32.Checksum(sig, castagnoliTable))),
-			}, nil
-		},
-	}
-
-	s, err := kmsSignerFromClient(
-		context.Background(),
-		mock,
-		"projects/p/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1",
-		&Options{MaxRetries: 1},
-	)
-	require.NoError(t, err)
-
-	_, err = s.Sign(context.Background(), []byte("hello world"))
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "verified_data_crc32c is false")
-	assert.Equal(t, int32(2), atomic.LoadInt32(&calls), "integrity failures should be retried")
-}
-
-func TestSign_IntegrityCheckSignatureCRC32CMismatch_RetriesAndFails(t *testing.T) {
-	_, publicKeyPEM := generateTestEd25519PEM(t)
-
-	var calls int32
-	mock := &mockKMSClient{
-		publicKeyPEM: publicKeyPEM,
-		signFn: func(_ context.Context, _ *kmspb.AsymmetricSignRequest) (*kmspb.AsymmetricSignResponse, error) {
-			atomic.AddInt32(&calls, 1)
-			return &kmspb.AsymmetricSignResponse{
-				Signature:          []byte("sig"),
-				VerifiedDataCrc32C: true,
-				SignatureCrc32C:    wrapperspb.Int64(12345),
-			}, nil
-		},
-	}
-
-	s, err := kmsSignerFromClient(
-		context.Background(),
-		mock,
-		"projects/p/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1",
-		&Options{MaxRetries: 1},
-	)
-	require.NoError(t, err)
-
-	_, err = s.Sign(context.Background(), []byte("hello world"))
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "signature_crc32c mismatch")
-	assert.Equal(t, int32(2), atomic.LoadInt32(&calls), "integrity failures should be retried")
 }
 
 func TestSign_IntegrityCheckRecoversOnRetry(t *testing.T) {
@@ -254,17 +252,20 @@ func TestSign_IntegrityCheckRecoversOnRetry(t *testing.T) {
 	var calls int32
 	expectedSig := []byte("valid-signature")
 	mock := &mockKMSClient{
+		keyID:        myKeyID,
 		publicKeyPEM: publicKeyPEM,
 		signFn: func(_ context.Context, _ *kmspb.AsymmetricSignRequest) (*kmspb.AsymmetricSignResponse, error) {
 			attempt := atomic.AddInt32(&calls, 1)
 			if attempt == 1 {
 				return &kmspb.AsymmetricSignResponse{
+					Name:               myKeyID,
 					Signature:          []byte("corrupted"),
 					VerifiedDataCrc32C: false,
 					SignatureCrc32C:    wrapperspb.Int64(1),
 				}, nil
 			}
 			return &kmspb.AsymmetricSignResponse{
+				Name:               myKeyID,
 				Signature:          expectedSig,
 				VerifiedDataCrc32C: true,
 				SignatureCrc32C:    wrapperspb.Int64(int64(crc32.Checksum(expectedSig, castagnoliTable))),
@@ -272,15 +273,9 @@ func TestSign_IntegrityCheckRecoversOnRetry(t *testing.T) {
 		},
 	}
 
-	s, err := kmsSignerFromClient(
-		context.Background(),
-		mock,
-		"projects/p/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1",
-		&Options{MaxRetries: 2},
-	)
-	require.NoError(t, err)
+	s := newTestSigner(t, mock, &Options{MaxRetries: 2})
 
-	got, err := s.Sign(context.Background(), []byte("hello world"))
+	got, err := s.Sign(t.Context(), []byte("hello world"))
 	require.NoError(t, err)
 	assert.Equal(t, expectedSig, got)
 	assert.Equal(t, int32(2), atomic.LoadInt32(&calls), "second attempt should succeed")
@@ -309,9 +304,8 @@ func TestRetryBackoff_Capped(t *testing.T) {
 func TestGetPublic_Cached(t *testing.T) {
 	pub, publicKeyPEM := generateTestEd25519PEM(t)
 
-	mock := &mockKMSClient{publicKeyPEM: publicKeyPEM}
-	s, err := kmsSignerFromClient(context.Background(), mock, "projects/p/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1", nil)
-	require.NoError(t, err)
+	mock := &mockKMSClient{publicKeyPEM: publicKeyPEM, keyID: myKeyID}
+	s := newTestSigner(t, mock, nil)
 
 	cryptoPub, err := s.GetPublic()
 	require.NoError(t, err)
@@ -324,9 +318,8 @@ func TestGetPublic_Cached(t *testing.T) {
 func TestGetAddress_Deterministic(t *testing.T) {
 	_, publicKeyPEM := generateTestEd25519PEM(t)
 
-	mock := &mockKMSClient{publicKeyPEM: publicKeyPEM}
-	s, err := kmsSignerFromClient(context.Background(), mock, "projects/p/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1", nil)
-	require.NoError(t, err)
+	mock := &mockKMSClient{publicKeyPEM: publicKeyPEM, keyID: myKeyID}
+	s := newTestSigner(t, mock, nil)
 
 	addr1, err := s.GetAddress()
 	require.NoError(t, err)
@@ -335,4 +328,25 @@ func TestGetAddress_Deterministic(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, addr1, addr2, "address should be deterministic")
+}
+
+// generateTestEd25519PEM generates an Ed25519 key pair and returns
+// the public key in PEM format.
+func generateTestEd25519PEM(t *testing.T) (ed25519.PublicKey, string) {
+	t.Helper()
+	pub, _, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+
+	der, err := x509.MarshalPKIXPublicKey(pub)
+	require.NoError(t, err)
+
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der})
+	return pub, string(pemBytes)
+}
+
+func newTestSigner(t *testing.T, mock *mockKMSClient, opts *Options) *KmsSigner {
+	t.Helper()
+	s, err := kmsSignerFromClient(t.Context(), mock, myKeyID, opts)
+	require.NoError(t, err)
+	return s
 }

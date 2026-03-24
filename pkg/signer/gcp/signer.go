@@ -136,6 +136,15 @@ func (s *KmsSigner) fetchPublicKey(ctx context.Context) error {
 		return fmt.Errorf("KMS GetPublicKey failed: %w", err)
 	}
 
+	if out.GetName() != s.keyName {
+		return fmt.Errorf("KMS GetPublicKey integrity check failed: unexpected key name %q", out.GetName())
+	}
+	if out.GetPemCrc32C() == nil {
+		return fmt.Errorf("KMS GetPublicKey integrity check failed: pem_crc32c is missing")
+	}
+	if got, want := out.GetPemCrc32C().GetValue(), int64(crc32.Checksum([]byte(out.GetPem()), castagnoliTable)); got != want {
+		return fmt.Errorf("KMS GetPublicKey integrity check failed: pem_crc32c mismatch")
+	}
 	block, _ := pem.Decode([]byte(out.GetPem()))
 	if block == nil {
 		return fmt.Errorf("failed to decode PEM public key")
@@ -211,7 +220,7 @@ func (s *KmsSigner) Sign(ctx context.Context, message []byte) ([]byte, error) {
 			continue
 		}
 
-		if err := verifySignResponse(out); err != nil {
+		if err := verifySignResponse(out, s.keyName); err != nil {
 			lastErr = err
 			continue
 		}
@@ -242,11 +251,13 @@ func retryBackoff(attempt int) time.Duration {
 	return backoff
 }
 
-func verifySignResponse(out *kmspb.AsymmetricSignResponse) error {
+func verifySignResponse(out *kmspb.AsymmetricSignResponse, expectedName string) error {
 	if !out.GetVerifiedDataCrc32C() {
 		return fmt.Errorf("KMS Sign integrity check failed: verified_data_crc32c is false")
 	}
-
+	if out.GetName() != expectedName {
+		return fmt.Errorf("KMS Sign integrity check failed: unexpected key name %q", out.GetName())
+	}
 	signatureCRC32C := out.GetSignatureCrc32C()
 	if signatureCRC32C == nil {
 		return fmt.Errorf("KMS Sign integrity check failed: signature_crc32c is missing")

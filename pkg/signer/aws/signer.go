@@ -116,7 +116,9 @@ func (s *KmsSigner) fetchPublicKey(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("KMS GetPublicKey failed: %w", err)
 	}
-
+	if out.KeyId == nil || *out.KeyId != s.keyID {
+		return fmt.Errorf("KMS returned unexpected key ID: %v", out.KeyId)
+	}
 	// AWS returns the public key as a DER-encoded X.509 SubjectPublicKeyInfo.
 	pub, err := x509.ParsePKIXPublicKey(out.PublicKey)
 	if err != nil {
@@ -186,6 +188,9 @@ func (s *KmsSigner) Sign(ctx context.Context, message []byte) ([]byte, error) {
 				return nil, fmt.Errorf("AWS KMS sign failed with non-retryable error: %w", err)
 			}
 			continue
+		}
+		if out.KeyId == nil || *out.KeyId != s.keyID {
+			return nil, fmt.Errorf("KMS returned unexpected key ID: %v", out.KeyId)
 		}
 
 		return out.Signature, nil

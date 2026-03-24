@@ -15,18 +15,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const awsTestKeyID = "arn:aws:kms:us-east-1:123456789012:key/test-key-id"
+
 // mockKMSClient is a test double implementing KMSClient.
 type mockKMSClient struct {
 	pubKeyDER []byte
 	signFn    func(ctx context.Context, params *kms.SignInput) (*kms.SignOutput, error)
 	getPubFn  func(ctx context.Context, params *kms.GetPublicKeyInput) (*kms.GetPublicKeyOutput, error)
+	keyID     string
 }
 
 func (m *mockKMSClient) Sign(ctx context.Context, params *kms.SignInput, _ ...func(*kms.Options)) (*kms.SignOutput, error) {
 	if m.signFn != nil {
 		return m.signFn(ctx, params)
 	}
-	return &kms.SignOutput{Signature: []byte("mock-signature")}, nil
+	return &kms.SignOutput{Signature: []byte("mock-signature"), KeyId: &m.keyID}, nil
 }
 
 func (m *mockKMSClient) GetPublicKey(ctx context.Context, params *kms.GetPublicKeyInput, _ ...func(*kms.Options)) (*kms.GetPublicKeyOutput, error) {
@@ -35,26 +38,15 @@ func (m *mockKMSClient) GetPublicKey(ctx context.Context, params *kms.GetPublicK
 	}
 	return &kms.GetPublicKeyOutput{
 		PublicKey: m.pubKeyDER,
+		KeyId:     &m.keyID,
 	}, nil
-}
-
-// generateTestEd25519DER generates an Ed25519 key pair and returns
-// the public key in DER (X.509 SubjectPublicKeyInfo) format.
-func generateTestEd25519DER(t *testing.T) (ed25519.PublicKey, []byte) {
-	t.Helper()
-	pub, _, err := ed25519.GenerateKey(nil)
-	require.NoError(t, err)
-
-	der, err := x509.MarshalPKIXPublicKey(pub)
-	require.NoError(t, err)
-	return pub, der
 }
 
 func TestNewKmsSignerFromClient_Success(t *testing.T) {
 	_, der := generateTestEd25519DER(t)
 
-	mock := &mockKMSClient{pubKeyDER: der}
-	s, err := kmsSignerFromClient(context.Background(), mock, "arn:aws:kms:us-east-1:123456789012:key/test-key-id", nil)
+	mock := &mockKMSClient{pubKeyDER: der, keyID: awsTestKeyID}
+	s, err := kmsSignerFromClient(t.Context(), mock, awsTestKeyID, nil)
 	require.NoError(t, err)
 	require.NotNil(t, s)
 
@@ -69,16 +61,31 @@ func TestNewKmsSignerFromClient_Success(t *testing.T) {
 	assert.Len(t, addr, 32) // sha256 output
 }
 
-func TestNewKmsSignerFromClient_EmptyKeyID(t *testing.T) {
-	_, err := kmsSignerFromClient(context.Background(), &mockKMSClient{}, "", nil)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "key ID is required")
-}
+func TestNewKmsSignerFromClient_Validation(t *testing.T) {
+	specs := map[string]struct {
+		client     KMSClient
+		keyID      string
+		errSubstr  string
+	}{
+		"empty key id": {
+			client:    &mockKMSClient{},
+			keyID:     "",
+			errSubstr: "key ID is required",
+		},
+		"nil client": {
+			client:    nil,
+			keyID:     awsTestKeyID,
+			errSubstr: "client is required",
+		},
+	}
 
-func TestNewKmsSignerFromClient_NilClient(t *testing.T) {
-	_, err := kmsSignerFromClient(context.Background(), nil, "test-key", nil)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "client is required")
+	for name, spec := range specs {
+		t.Run(name, func(t *testing.T) {
+			_, err := kmsSignerFromClient(t.Context(), spec.client, spec.keyID, nil)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), spec.errSubstr)
+		})
+	}
 }
 
 func TestNewKmsSignerFromClient_GetPublicKeyFails(t *testing.T) {
@@ -88,7 +95,7 @@ func TestNewKmsSignerFromClient_GetPublicKeyFails(t *testing.T) {
 		},
 	}
 
-	_, err := kmsSignerFromClient(context.Background(), mock, "test-key", nil)
+	_, err := kmsSignerFromClient(t.Context(), mock, "test-key", nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "access denied")
 }
@@ -98,90 +105,100 @@ func TestSign_Success(t *testing.T) {
 
 	expectedSig := []byte("test-signature-bytes")
 	mock := &mockKMSClient{
+		keyID:     awsTestKeyID,
 		pubKeyDER: der,
 		signFn: func(_ context.Context, params *kms.SignInput) (*kms.SignOutput, error) {
+			keyID := awsTestKeyID
 			assert.Equal(t, types.MessageTypeRaw, params.MessageType)
 			assert.Equal(t, types.SigningAlgorithmSpecEd25519Sha512, params.SigningAlgorithm)
-			return &kms.SignOutput{Signature: expectedSig}, nil
+			return &kms.SignOutput{Signature: expectedSig, KeyId: &keyID}, nil
 		},
 	}
 
-	s, err := kmsSignerFromClient(context.Background(), mock, "test-key", nil)
+	s, err := kmsSignerFromClient(t.Context(), mock, awsTestKeyID, nil)
 	require.NoError(t, err)
 
-	sig, err := s.Sign(context.Background(), []byte("hello world"))
+	sig, err := s.Sign(t.Context(), []byte("hello world"))
 	require.NoError(t, err)
 	assert.Equal(t, expectedSig, sig)
 }
 
-func TestSign_KMSFailure(t *testing.T) {
-	_, der := generateTestEd25519DER(t)
-
-	var calls int32
-	mock := &mockKMSClient{
-		pubKeyDER: der,
-		signFn: func(_ context.Context, _ *kms.SignInput) (*kms.SignOutput, error) {
-			atomic.AddInt32(&calls, 1)
-			return nil, &smithy.GenericAPIError{Code: "ThrottlingException", Message: "rate limit"}
+func TestSign_RetryBehavior(t *testing.T) {
+	specs := map[string]struct {
+		opts         *Options
+		signErr      error
+		errSubstr    string
+		expectedCall int32
+	}{
+		"retryable uses default retries": {
+			opts:         nil,
+			signErr:      &smithy.GenericAPIError{Code: "ThrottlingException", Message: "rate limit"},
+			errSubstr:    "AWS KMS sign failed",
+			expectedCall: 4,
+		},
+		"max retries zero disables retries": {
+			opts:         &Options{MaxRetries: 0},
+			signErr:      &smithy.GenericAPIError{Code: "ThrottlingException", Message: "rate limit"},
+			errSubstr:    "AWS KMS sign failed",
+			expectedCall: 1,
+		},
+		"non retryable fails fast": {
+			opts:         &Options{MaxRetries: 3},
+			signErr:      fmt.Errorf("access denied"),
+			errSubstr:    "non-retryable",
+			expectedCall: 1,
 		},
 	}
 
-	s, err := kmsSignerFromClient(context.Background(), mock, "test-key", nil)
-	require.NoError(t, err)
+	for name, spec := range specs {
+		t.Run(name, func(t *testing.T) {
+			_, der := generateTestEd25519DER(t)
 
-	_, err = s.Sign(context.Background(), []byte("hello world"))
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "AWS KMS sign failed")
-	assert.Equal(t, int32(4), atomic.LoadInt32(&calls), "default retries should make 4 attempts")
+			var calls int32
+			signer := newTestSigner(t, &mockKMSClient{
+				keyID:     awsTestKeyID,
+				pubKeyDER: der,
+				signFn: func(_ context.Context, _ *kms.SignInput) (*kms.SignOutput, error) {
+					atomic.AddInt32(&calls, 1)
+					return nil, spec.signErr
+				},
+			}, spec.opts)
+
+			_, err := signer.Sign(t.Context(), []byte("hello world"))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), spec.errSubstr)
+			assert.Equal(t, spec.expectedCall, atomic.LoadInt32(&calls))
+		})
+	}
 }
 
-func TestSign_MaxRetriesZero_DisablesRetries(t *testing.T) {
+func TestSign_KeyIDMismatch_ReturnsError(t *testing.T) {
 	_, der := generateTestEd25519DER(t)
 
-	var calls int32
+	unexpectedKeyID := "other-key"
 	mock := &mockKMSClient{
+		keyID:     awsTestKeyID,
 		pubKeyDER: der,
 		signFn: func(_ context.Context, _ *kms.SignInput) (*kms.SignOutput, error) {
-			atomic.AddInt32(&calls, 1)
-			return nil, &smithy.GenericAPIError{Code: "ThrottlingException", Message: "rate limit"}
+			return &kms.SignOutput{
+				Signature: []byte("test-signature-bytes"),
+				KeyId:     &unexpectedKeyID,
+			}, nil
 		},
 	}
 
-	s, err := kmsSignerFromClient(context.Background(), mock, "test-key", &Options{MaxRetries: 0})
-	require.NoError(t, err)
+	s := newTestSigner(t, mock, nil)
 
-	_, err = s.Sign(context.Background(), []byte("hello world"))
+	_, err := s.Sign(t.Context(), []byte("hello world"))
 	require.Error(t, err)
-	assert.Equal(t, int32(1), atomic.LoadInt32(&calls), "max retries 0 should only make one attempt")
-}
-
-func TestSign_NonRetryableError_NoRetries(t *testing.T) {
-	_, der := generateTestEd25519DER(t)
-
-	var calls int32
-	mock := &mockKMSClient{
-		pubKeyDER: der,
-		signFn: func(_ context.Context, _ *kms.SignInput) (*kms.SignOutput, error) {
-			atomic.AddInt32(&calls, 1)
-			return nil, fmt.Errorf("access denied")
-		},
-	}
-
-	s, err := kmsSignerFromClient(context.Background(), mock, "test-key", &Options{MaxRetries: 3})
-	require.NoError(t, err)
-
-	_, err = s.Sign(context.Background(), []byte("hello world"))
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "non-retryable")
-	assert.Equal(t, int32(1), atomic.LoadInt32(&calls), "non-retryable errors should fail fast")
+	assert.Contains(t, err.Error(), "unexpected key ID")
 }
 
 func TestGetPublic_Cached(t *testing.T) {
 	pub, der := generateTestEd25519DER(t)
 
-	mock := &mockKMSClient{pubKeyDER: der}
-	s, err := kmsSignerFromClient(context.Background(), mock, "test-key", nil)
-	require.NoError(t, err)
+	mock := &mockKMSClient{pubKeyDER: der, keyID: awsTestKeyID}
+	s := newTestSigner(t, mock, nil)
 
 	cryptoPub, err := s.GetPublic()
 	require.NoError(t, err)
@@ -194,9 +211,8 @@ func TestGetPublic_Cached(t *testing.T) {
 func TestGetAddress_Deterministic(t *testing.T) {
 	_, der := generateTestEd25519DER(t)
 
-	mock := &mockKMSClient{pubKeyDER: der}
-	s, err := kmsSignerFromClient(context.Background(), mock, "test-key", nil)
-	require.NoError(t, err)
+	mock := &mockKMSClient{pubKeyDER: der, keyID: awsTestKeyID}
+	s := newTestSigner(t, mock, nil)
 
 	addr1, err := s.GetAddress()
 	require.NoError(t, err)
@@ -205,4 +221,23 @@ func TestGetAddress_Deterministic(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, addr1, addr2, "address should be deterministic")
+}
+
+// generateTestEd25519DER generates an Ed25519 key pair and returns
+// the public key in DER (X.509 SubjectPublicKeyInfo) format.
+func generateTestEd25519DER(t *testing.T) (ed25519.PublicKey, []byte) {
+	t.Helper()
+	pub, _, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+
+	der, err := x509.MarshalPKIXPublicKey(pub)
+	require.NoError(t, err)
+	return pub, der
+}
+
+func newTestSigner(t *testing.T, mock *mockKMSClient, opts *Options) *KmsSigner {
+	t.Helper()
+	s, err := kmsSignerFromClient(t.Context(), mock, awsTestKeyID, opts)
+	require.NoError(t, err)
+	return s
 }
