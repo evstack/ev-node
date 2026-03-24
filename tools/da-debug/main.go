@@ -136,10 +136,8 @@ func runSearch(args []string, searchHeight, searchRange uint64) error {
 	}
 	defer closeFn()
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	return searchForHeight(ctx, client, startHeight, namespace, searchHeight, searchRange)
+	rootCtx := context.Background()
+	return searchForHeight(rootCtx, client, startHeight, namespace, searchHeight, searchRange)
 }
 
 type blobResult struct {
@@ -170,7 +168,18 @@ func searchForHeight(ctx context.Context, client *blobrpc.Client, startHeight ui
 		}
 
 		fmt.Printf("Checking DA height %d...\r", daHeight)
-		blobs, err := client.Blob.GetAll(ctx, daHeight, []share.Namespace{ns})
+
+		var fetchCtx context.Context
+		var fetchCancel context.CancelFunc
+		if timeout > 0 {
+			fetchCtx, fetchCancel = context.WithTimeout(ctx, timeout)
+		} else {
+			fetchCtx, fetchCancel = ctx, func() {}
+		}
+
+		blobs, err := client.Blob.GetAll(fetchCtx, daHeight, []share.Namespace{ns})
+		fetchCancel()
+
 		if err != nil {
 			if strings.Contains(err.Error(), "future") {
 				fmt.Printf("Reached future height at DA height %d\n", daHeight)
