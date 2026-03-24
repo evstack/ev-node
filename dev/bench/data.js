@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774351248297,
+  "lastUpdate": 1774359324989,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -142,6 +142,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 181068,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "459f3c9ff350fc99b3f221d5c9bb870ea2ba4766",
+          "message": "build(deps): Bump the all-go group across 1 directory with 2 updates (#3191)\n\n* build(deps): Bump the all-go group across 1 directory with 2 updates\n\nBumps the all-go group with 2 updates in the / directory: [github.com/go-viper/mapstructure/v2](https://github.com/go-viper/mapstructure) and [github.com/libp2p/go-libp2p-kad-dht](https://github.com/libp2p/go-libp2p-kad-dht).\n\n\nUpdates `github.com/go-viper/mapstructure/v2` from 2.4.0 to 2.5.0\n- [Release notes](https://github.com/go-viper/mapstructure/releases)\n- [Changelog](https://github.com/go-viper/mapstructure/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/go-viper/mapstructure/compare/v2.4.0...v2.5.0)\n\nUpdates `github.com/libp2p/go-libp2p-kad-dht` from 0.38.0 to 0.39.0\n- [Release notes](https://github.com/libp2p/go-libp2p-kad-dht/releases)\n- [Commits](https://github.com/libp2p/go-libp2p-kad-dht/compare/v0.38.0...v0.39.0)\n\n---\nupdated-dependencies:\n- dependency-name: github.com/go-viper/mapstructure/v2\n  dependency-version: 2.5.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: github.com/libp2p/go-libp2p-kad-dht\n  dependency-version: 0.39.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\n\n* chore: run just deps after Dependabot update\n\n* trigger build\n\n---------\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\nCo-authored-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>\nCo-authored-by: Julien Robert <julien@rbrt.fr>",
+          "timestamp": "2026-03-24T14:31:41+01:00",
+          "tree_id": "510175252cb14972b0f92359b664535f46a27016",
+          "url": "https://github.com/evstack/ev-node/commit/459f3c9ff350fc99b3f221d5c9bb870ea2ba4766"
+        },
+        "date": 1774359321689,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 911271086,
+            "unit": "ns/op\t32457680 B/op\t  181055 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 911271086,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 32457680,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 181055,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
