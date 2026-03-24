@@ -330,7 +330,9 @@ func (s *Submitter) processDAInclusionLoop() {
 					}
 
 					currentDAIncluded = currentHeight - 10000
-					unblockDaInclusion = true
+					if currentDAIncluded > currentHeight-10000 {
+						unblockDaInclusion = true
+					}
 				}
 				nextHeight := currentDAIncluded + 1
 
