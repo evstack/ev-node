@@ -34,12 +34,12 @@ func (s *SpamoorSuite) TestDeFiSimulation() {
 	uniswapConfig := map[string]any{
 		"throughput":      cfg.Throughput,
 		"total_count":     cfg.CountPerSpammer,
-		"max_pending":     50000,
+		"max_pending":     cfg.MaxPending,
 		"max_wallets":     cfg.MaxWallets,
 		"pair_count":      envInt("BENCH_PAIR_COUNT", 1),
-		"rebroadcast":     envInt("BENCH_REBROADCAST", 0),
-		"base_fee":        20,
-		"tip_fee":         2,
+		"rebroadcast":     cfg.Rebroadcast,
+		"base_fee":        cfg.BaseFee,
+		"tip_fee":         cfg.TipFee,
 		"refill_amount":   "10000000000000000000", // 10 ETH (swaps need ETH for WETH wrapping and router approvals)
 		"refill_balance":  "5000000000000000000",  // 5 ETH
 		"refill_interval": 600,
