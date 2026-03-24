@@ -289,7 +289,7 @@ func (r *daRetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedH
 		}
 	}
 	if r.strictMode && !isValidEnvelope {
-		r.logger.Warn().Msg("strict mode: rejecting block that is not a fully valid envelope")
+		r.logger.Debug().Msg("strict mode: rejecting block that is not a fully valid envelope")
 		return nil
 	}
 
