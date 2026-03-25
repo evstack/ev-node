@@ -355,9 +355,12 @@ func (s *Syncer) initializeState() error {
 
 	// Set DA height to the maximum of the genesis start height, the state's DA height, and the cached DA height.
 	// The cache's DaHeight() is initialized from store metadata, so it's always correct even after cache clear.
-	// state.DaHeight-1 if the latest DAHeight was containing more heights.
-	// s.daRetrieverHeight.Store(max(s.genesis.DAStartHeight, s.cache.DaHeight(), state.DAHeight-1))
-	s.daRetrieverHeight.Store(max(s.genesis.DAStartHeight, state.DAHeight-1)) // TODO: s.cache.DaHeight() should only be used if p2p works.
+	// Only use cache.DaHeight() when P2P is enabled, as it contains P2P-specific synchronization info.
+	daHeight := max(s.genesis.DAStartHeight, state.DAHeight-1)
+	if s.headerStore != nil {
+		daHeight = max(daHeight, s.cache.DaHeight())
+	}
+	s.daRetrieverHeight.Store(daHeight)
 
 	s.logger.Info().
 		Uint64("height", state.LastBlockHeight).
