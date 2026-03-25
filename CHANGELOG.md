@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Add AWS KMS signer backend [#3171](https://github.com/evstack/ev-node/pull/3171)
+- Add AWS & GCP KMS signer backend [#3171](https://github.com/evstack/ev-node/pull/3171)
 - Subscribe to forced inclusion namespace events [#3146](https://github.com/evstack/ev-node/pull/3146)
 - Display block source in sync log [#3193](https://github.com/evstack/ev-node/pull/3193)
 
