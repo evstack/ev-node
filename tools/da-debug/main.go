@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/celestiaorg/go-square/v3/share"
@@ -78,12 +79,12 @@ func searchCmd() *cobra.Command {
 Starting from the given DA height, searches through a range of DA heights until it finds matching blobs.`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSearch(cmd, args, searchHeight, searchRange)
+			return runSearch(args, searchHeight, searchRange)
 		},
 	}
 
 	cmd.Flags().Uint64Var(&searchHeight, "target-height", 0, "Target blockchain height to search for (required)")
-	cmd.Flags().Uint64Var(&searchRange, "range", 10, "Number of DA heights to search")
+	cmd.Flags().Uint64Var(&searchRange, "range", 0, "Number of DA heights to search (0 = search until found)")
 	cmd.MarkFlagRequired("target-height")
 
 	return cmd
@@ -115,7 +116,7 @@ func runQuery(cmd *cobra.Command, args []string) error {
 	return queryHeight(ctx, client, height, namespace)
 }
 
-func runSearch(cmd *cobra.Command, args []string, searchHeight, searchRange uint64) error {
+func runSearch(args []string, searchHeight, searchRange uint64) error {
 	startHeight, err := strconv.ParseUint(args[0], 10, 64)
 	if err != nil {
 		return fmt.Errorf("invalid start height: %w", err)
@@ -135,15 +136,24 @@ func runSearch(cmd *cobra.Command, args []string, searchHeight, searchRange uint
 	}
 	defer closeFn()
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
+	rootCtx := context.Background()
+	return searchForHeight(rootCtx, client, startHeight, namespace, searchHeight, searchRange)
+}
 
-	return searchForHeight(ctx, client, startHeight, namespace, searchHeight, searchRange)
+type blobResult struct {
+	blobData   []byte
+	found      bool
+	header     *types.SignedHeader
+	data       *types.SignedData
+	blobHeight uint64
 }
 
 func searchForHeight(ctx context.Context, client *blobrpc.Client, startHeight uint64, namespace []byte, targetHeight, searchRange uint64) error {
-	fmt.Printf("Searching for height %d in DA heights %d-%d...\n", targetHeight, startHeight, startHeight+searchRange-1)
-	fmt.Println()
+	if searchRange > 0 {
+		fmt.Printf("Searching for height %d in DA heights %d-%d...\n", targetHeight, startHeight, startHeight+searchRange-1)
+	} else {
+		fmt.Printf("Searching for height %d from DA height %d onwards...\n", targetHeight, startHeight)
+	}
 
 	ns, err := share.NewNamespaceFromBytes(namespace)
 	if err != nil {
@@ -151,8 +161,25 @@ func searchForHeight(ctx context.Context, client *blobrpc.Client, startHeight ui
 	}
 
 	foundBlobs := 0
-	for daHeight := startHeight; daHeight < startHeight+searchRange; daHeight++ {
-		blobs, err := client.Blob.GetAll(ctx, daHeight, []share.Namespace{ns})
+	daHeight := startHeight
+	for {
+		if searchRange > 0 && daHeight >= startHeight+searchRange || foundBlobs > 0 {
+			break
+		}
+
+		fmt.Printf("Checking DA height %d...\r", daHeight)
+
+		var fetchCtx context.Context
+		var fetchCancel context.CancelFunc
+		if timeout > 0 {
+			fetchCtx, fetchCancel = context.WithTimeout(ctx, timeout)
+		} else {
+			fetchCtx, fetchCancel = ctx, func() {}
+		}
+
+		blobs, err := client.Blob.GetAll(fetchCtx, daHeight, []share.Namespace{ns})
+		fetchCancel()
+
 		if err != nil {
 			if strings.Contains(err.Error(), "future") {
 				fmt.Printf("Reached future height at DA height %d\n", daHeight)
@@ -161,50 +188,83 @@ func searchForHeight(ctx context.Context, client *blobrpc.Client, startHeight ui
 			continue
 		}
 
-		// Check each blob for the target height
-		for _, blob := range blobs {
-			blobData := blob.Data()
-			found := false
-			var blobHeight uint64
+		// Process blobs in parallel
+		results := make(chan blobResult, len(blobs))
+		var wg sync.WaitGroup
 
-			// Try to decode as header first
-			if header := tryDecodeHeader(blobData); header != nil {
-				blobHeight = header.Height()
-				if blobHeight == targetHeight {
-					found = true
+		for _, blob := range blobs {
+			wg.Add(1)
+			go func(b any) {
+				defer wg.Done()
+
+				var blobData []byte
+				switch v := b.(type) {
+				case interface{ Data() []byte }:
+					blobData = v.Data()
+				default:
+					results <- blobResult{blobData: blobData, found: false}
+					return
 				}
-			} else if data := tryDecodeData(blobData); data != nil {
-				if data.Metadata != nil {
-					blobHeight = data.Height()
+
+				// Try to decode as header first
+				if header := tryDecodeHeader(blobData); header != nil {
+					blobHeight := header.Height()
 					if blobHeight == targetHeight {
-						found = true
+						results <- blobResult{blobData: blobData, found: true, header: header, blobHeight: blobHeight}
+						return
 					}
 				}
-			}
 
-			if found {
-				foundBlobs++
-				fmt.Printf("FOUND at DA Height %d - BLOB %d\n", daHeight, foundBlobs)
-				fmt.Println(strings.Repeat("-", 80))
-				displayBlobInfo(blobData)
-
-				// Display the decoded content
-				if header := tryDecodeHeader(blobData); header != nil {
-					printTypeHeader("SignedHeader", "")
-					displayHeader(header)
-				} else if data := tryDecodeData(blobData); data != nil {
-					printTypeHeader("SignedData", "")
-					displayData(data)
+				// Try to decode as data
+				if data := tryDecodeData(blobData); data != nil {
+					if data.Metadata != nil {
+						blobHeight := data.Height()
+						if blobHeight == targetHeight {
+							results <- blobResult{blobData: blobData, found: true, data: data, blobHeight: blobHeight}
+							return
+						}
+					}
 				}
 
+				// Not found
+				results <- blobResult{blobData: blobData, found: false}
+			}(blob)
+		}
+
+		go func() {
+			wg.Wait()
+			close(results)
+		}()
+
+		// Collect results
+		for result := range results {
+			if result.found {
 				fmt.Println()
+				foundBlobs++
+				fmt.Printf("FOUND at DA Height %d - BLOB %d\n", daHeight, foundBlobs)
+				fmt.Println(strings.Repeat("-", 50))
+				displayBlobInfo(result.blobData)
+
+				// Display the decoded content
+				if result.header != nil {
+					printTypeHeader("SignedHeader", "")
+					displayHeader(result.header)
+				} else if result.data != nil {
+					printTypeHeader("SignedData", "")
+					displayData(result.data)
+				}
 			}
 		}
+		daHeight++
 	}
 
 	fmt.Println(strings.Repeat("=", 50))
 	if foundBlobs == 0 {
-		fmt.Printf("No blobs found containing height %d in DA range %d-%d\n", targetHeight, startHeight, startHeight+searchRange-1)
+		if searchRange > 0 {
+			fmt.Printf("No blobs found containing height %d in DA range %d-%d\n", targetHeight, startHeight, startHeight+searchRange-1)
+		} else {
+			fmt.Printf("No blobs found containing height %d from DA height %d onwards\n", targetHeight, startHeight)
+		}
 	} else {
 		fmt.Printf("Found %d blob(s) containing height %d\n", foundBlobs, targetHeight)
 	}
@@ -320,7 +380,11 @@ func printQueryInfo(height uint64, namespace []byte) {
 
 func printSearchInfo(startHeight uint64, namespace []byte, targetHeight, searchRange uint64) {
 	fmt.Printf("Start DA Height: %d | Namespace: %s | URL: %s", startHeight, formatHash(hex.EncodeToString(namespace)), daURL)
-	fmt.Printf(" | Target Height: %d | Range: %d", targetHeight, searchRange)
+	if searchRange > 0 {
+		fmt.Printf(" | Target Height: %d | Range: %d", targetHeight, searchRange)
+	} else {
+		fmt.Printf(" | Target Height: %d | Range: unlimited", targetHeight)
+	}
 	fmt.Println()
 	fmt.Println()
 }
@@ -448,7 +512,7 @@ func printFooter() {
 	fmt.Printf("Analysis complete!\n")
 }
 
-func printError(format string, args ...interface{}) {
+func printError(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "Error: "+format, args...)
 }
 
