@@ -261,15 +261,38 @@ func (v *victoriaTraceProvider) fetchAllSpans(ctx context.Context, serviceName s
 }
 
 // fetchResourceAttrs queries a single span and extracts OTEL resource attributes
-// from it. Returns nil if no spans are available.
+// from it. Uses limit=1 to avoid streaming the full span set on long-lived
+// instances. Returns nil if no spans are available.
 func (v *victoriaTraceProvider) fetchResourceAttrs(ctx context.Context, serviceName string) *resourceAttrs {
-	scanner, body, err := v.fetchLogStream(ctx, serviceName)
+	end := time.Now()
+	query := fmt.Sprintf(`_stream:{resource_attr:service.name="%s"}`, serviceName)
+	baseURL := strings.TrimRight(v.queryURL, "/")
+	url := fmt.Sprintf("%s/select/logsql/query?query=%s&start=%s&end=%s&limit=1",
+		baseURL,
+		neturl.QueryEscape(query),
+		v.startTime.Format(time.RFC3339Nano),
+		end.Format(time.RFC3339Nano))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		v.t.Logf("warning: failed to create resource attrs request: %v", err)
+		return nil
+	}
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		v.t.Logf("warning: failed to fetch resource attrs: %v", err)
 		return nil
 	}
-	defer body.Close()
+	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		v.t.Logf("warning: unexpected status %d fetching resource attrs", resp.StatusCode)
+		return nil
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		if len(line) == 0 {
