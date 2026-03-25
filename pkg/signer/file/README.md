@@ -31,7 +31,7 @@ if err != nil {
 
 // Sign a message
 message := []byte("Message to sign")
-signature, err := signer.Sign(message)
+signature, err := signer.Sign(context.Background(), message)
 if err != nil {
     // Handle error
 }

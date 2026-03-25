@@ -225,7 +225,7 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, headers []*types.Signed
 	s.logger.Info().Int("count", len(headers)).Msg("submitting headers to DA")
 
 	// Create DA envelopes with parallel signing and caching
-	envelopes, err := s.createDAEnvelopes(headers, marshalledHeaders, signer)
+	envelopes, err := s.createDAEnvelopes(ctx, headers, marshalledHeaders, signer)
 	if err != nil {
 		return err
 	}
@@ -256,7 +256,7 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, headers []*types.Signed
 
 // createDAEnvelopes creates signed DA envelopes for the given headers.
 // It uses caching to avoid re-signing on retries and parallel signing for new envelopes.
-func (s *DASubmitter) createDAEnvelopes(headers []*types.SignedHeader, marshalledHeaders [][]byte, signer signer.Signer) ([][]byte, error) {
+func (s *DASubmitter) createDAEnvelopes(ctx context.Context, headers []*types.SignedHeader, marshalledHeaders [][]byte, signer signer.Signer) ([][]byte, error) {
 	envelopes := make([][]byte, len(headers))
 
 	// First pass: check cache for already-signed envelopes
@@ -284,7 +284,7 @@ func (s *DASubmitter) createDAEnvelopes(headers []*types.SignedHeader, marshalle
 	// For small batches, sign sequentially to avoid goroutine overhead
 	if len(needSigning) <= 2 || s.signingWorkers <= 1 {
 		for _, i := range needSigning {
-			envelope, err := s.signAndCacheEnvelope(headers[i], marshalledHeaders[i], signer)
+			envelope, err := s.signAndCacheEnvelope(ctx, headers[i], marshalledHeaders[i], signer)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create envelope for header %d: %w", i, err)
 			}
@@ -294,11 +294,12 @@ func (s *DASubmitter) createDAEnvelopes(headers []*types.SignedHeader, marshalle
 	}
 
 	// Parallel signing for larger batches
-	return s.signEnvelopesParallel(headers, marshalledHeaders, envelopes, needSigning, signer)
+	return s.signEnvelopesParallel(ctx, headers, marshalledHeaders, envelopes, needSigning, signer)
 }
 
 // signEnvelopesParallel signs envelopes in parallel using a worker pool.
 func (s *DASubmitter) signEnvelopesParallel(
+	ctx context.Context,
 	headers []*types.SignedHeader,
 	marshalledHeaders [][]byte,
 	envelopes [][]byte,
@@ -323,7 +324,7 @@ func (s *DASubmitter) signEnvelopesParallel(
 	for range numWorkers {
 		wg.Go(func() {
 			for job := range jobs {
-				envelope, err := s.signAndCacheEnvelope(headers[job.index], marshalledHeaders[job.index], signer)
+				envelope, err := s.signAndCacheEnvelope(ctx, headers[job.index], marshalledHeaders[job.index], signer)
 				results <- signResult{index: job.index, envelope: envelope, err: err}
 			}
 		})
@@ -361,9 +362,9 @@ func (s *DASubmitter) signEnvelopesParallel(
 }
 
 // signAndCacheEnvelope signs a single header and caches the result.
-func (s *DASubmitter) signAndCacheEnvelope(header *types.SignedHeader, marshalledHeader []byte, signer signer.Signer) ([]byte, error) {
+func (s *DASubmitter) signAndCacheEnvelope(ctx context.Context, header *types.SignedHeader, marshalledHeader []byte, signer signer.Signer) ([]byte, error) {
 	// Sign the pre-marshalled header content
-	envelopeSignature, err := signer.Sign(marshalledHeader)
+	envelopeSignature, err := signer.Sign(ctx, marshalledHeader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign envelope: %w", err)
 	}
@@ -426,7 +427,7 @@ func (s *DASubmitter) SubmitData(ctx context.Context, unsignedDataList []*types.
 	}
 
 	// Sign the data (cache returns unsigned SignedData structs)
-	signedDataList, signedDataListBz, err := s.signData(unsignedDataList, marshalledData, signer, genesis)
+	signedDataList, signedDataListBz, err := s.signData(ctx, unsignedDataList, marshalledData, signer, genesis)
 	if err != nil {
 		return fmt.Errorf("failed to sign data: %w", err)
 	}
@@ -460,7 +461,7 @@ func (s *DASubmitter) SubmitData(ctx context.Context, unsignedDataList []*types.
 }
 
 // signData signs unsigned SignedData structs returned from cache
-func (s *DASubmitter) signData(unsignedDataList []*types.SignedData, unsignedDataListBz [][]byte, signer signer.Signer, genesis genesis.Genesis) ([]*types.SignedData, [][]byte, error) {
+func (s *DASubmitter) signData(ctx context.Context, unsignedDataList []*types.SignedData, unsignedDataListBz [][]byte, signer signer.Signer, genesis genesis.Genesis) ([]*types.SignedData, [][]byte, error) {
 	if signer == nil {
 		return nil, nil, fmt.Errorf("signer is nil")
 	}
@@ -493,7 +494,7 @@ func (s *DASubmitter) signData(unsignedDataList []*types.SignedData, unsignedDat
 			continue
 		}
 
-		signature, err := signer.Sign(unsignedDataListBz[i])
+		signature, err := signer.Sign(ctx, unsignedDataListBz[i])
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to sign data: %w", err)
 		}
