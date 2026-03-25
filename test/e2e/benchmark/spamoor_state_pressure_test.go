@@ -106,7 +106,7 @@ func (s *SpamoorSuite) TestStatePressure() {
 	bm, err := collectBlockMetrics(ctx, e.ethClient, startBlock, endBlock)
 	s.Require().NoError(err, "failed to collect block metrics")
 
-	traces := s.collectTraces(e, cfg.ServiceName)
+	traces := s.collectTraces(e)
 
 	result = newBenchmarkResult("StatePressure", bm, traces)
 	s.Require().Greater(result.summary.SteadyState, time.Duration(0), "expected non-zero steady-state duration")
