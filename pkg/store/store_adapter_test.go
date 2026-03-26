@@ -557,7 +557,7 @@ func TestStoreAdapter_ConcurrentAppendAndRead(t *testing.T) {
 			defer wg.Done()
 			for i := range itemsPerWriter {
 				height := uint64(writerID*itemsPerWriter + i + 1)
-				h, _ := types.GetRandomBlock(height, 1, "test-chain")
+				h, _ := types.GetRandomBlock(height, 1, "test-chain") //nolint: contextcheck // test code
 				_ = adapter.Append(ctx, &types.P2PSignedHeader{SignedHeader: h})
 			}
 		}(w)

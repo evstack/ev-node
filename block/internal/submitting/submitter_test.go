@@ -442,7 +442,9 @@ func (f *fakeDASubmitter) SubmitData(ctx context.Context, _ []*types.SignedData,
 // fakeSigner implements signer.Signer with deterministic behavior for tests.
 type fakeSigner struct{}
 
-func (f *fakeSigner) Sign(msg []byte) ([]byte, error)   { return append([]byte(nil), msg...), nil }
+func (f *fakeSigner) Sign(_ context.Context, msg []byte) ([]byte, error) {
+	return append([]byte(nil), msg...), nil
+}
 func (f *fakeSigner) GetPublic() (crypto.PubKey, error) { return nil, nil }
 func (f *fakeSigner) GetAddress() ([]byte, error)       { return []byte("addr"), nil }
 
