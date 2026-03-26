@@ -124,6 +124,11 @@ func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), nil).Once()
 
+	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
+	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
+	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
+	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
+
 	s := NewSyncer(
 		st,
 		mockExec,
@@ -132,8 +137,8 @@ func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		extmocks.NewMockStore[*types.P2PSignedHeader](t),
-		extmocks.NewMockStore[*types.P2PData](t),
+		mockHeaderStore,
+		mockDataStore,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -175,6 +180,11 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), nil).Once()
 
+	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
+	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
+	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
+	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
+
 	errChan := make(chan error, 1)
 	s := NewSyncer(
 		st,
@@ -184,8 +194,8 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		extmocks.NewMockStore[*types.P2PSignedHeader](t),
-		extmocks.NewMockStore[*types.P2PData](t),
+		mockHeaderStore,
+		mockDataStore,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		errChan,
@@ -230,6 +240,11 @@ func TestSequentialBlockSync(t *testing.T) {
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), nil).Once()
 
+	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
+	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
+	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
+	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
+
 	errChan := make(chan error, 1)
 	s := NewSyncer(
 		st,
@@ -239,13 +254,14 @@ func TestSequentialBlockSync(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		extmocks.NewMockStore[*types.P2PSignedHeader](t),
-		extmocks.NewMockStore[*types.P2PData](t),
+		mockHeaderStore,
+		mockDataStore,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		errChan,
 		nil,
 	)
+
 	require.NoError(t, s.initializeState())
 	s.ctx = t.Context()
 
@@ -358,7 +374,9 @@ func TestSyncLoopPersistState(t *testing.T) {
 	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
 
 	mockP2PHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
+	mockP2PHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
 	mockP2PDataStore := extmocks.NewMockStore[*types.P2PData](t)
+	mockP2PDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
 
 	errorCh := make(chan error, 1)
 	syncerInst1 := NewSyncer(
@@ -722,6 +740,11 @@ func TestProcessHeightEvent_TriggersAsyncDARetrieval(t *testing.T) {
 	mockDAClient := testmocks.NewMockClient(t)
 	mockDAClient.EXPECT().GetLatestDAHeight(mock.Anything).Return(uint64(200), nil).Maybe()
 
+	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
+	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
+	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
+	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
+
 	s := NewSyncer(
 		st,
 		mockExec,
@@ -730,8 +753,8 @@ func TestProcessHeightEvent_TriggersAsyncDARetrieval(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		extmocks.NewMockStore[*types.P2PSignedHeader](t),
-		extmocks.NewMockStore[*types.P2PData](t),
+		mockHeaderStore,
+		mockDataStore,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -788,6 +811,11 @@ func TestProcessHeightEvent_RejectsUnreasonableDAHint(t *testing.T) {
 	mockDAClient := testmocks.NewMockClient(t)
 	mockDAClient.EXPECT().GetLatestDAHeight(mock.Anything).Return(uint64(100), nil).Maybe()
 
+	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
+	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
+	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
+	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
+
 	s := NewSyncer(
 		st,
 		mockExec,
@@ -796,8 +824,8 @@ func TestProcessHeightEvent_RejectsUnreasonableDAHint(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		extmocks.NewMockStore[*types.P2PSignedHeader](t),
-		extmocks.NewMockStore[*types.P2PData](t),
+		mockHeaderStore,
+		mockDataStore,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -852,6 +880,11 @@ func TestProcessHeightEvent_AcceptsValidDAHint(t *testing.T) {
 	mockDAClient := testmocks.NewMockClient(t)
 	mockDAClient.EXPECT().GetLatestDAHeight(mock.Anything).Return(uint64(100), nil).Maybe()
 
+	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
+	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
+	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
+	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
+
 	s := NewSyncer(
 		st,
 		mockExec,
@@ -860,8 +893,8 @@ func TestProcessHeightEvent_AcceptsValidDAHint(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		extmocks.NewMockStore[*types.P2PSignedHeader](t),
-		extmocks.NewMockStore[*types.P2PData](t),
+		mockHeaderStore,
+		mockDataStore,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -917,6 +950,11 @@ func TestProcessHeightEvent_SkipsDAHintWhenAlreadyDAIncluded(t *testing.T) {
 
 	mockDAClient := testmocks.NewMockClient(t)
 
+	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
+	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
+	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
+	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
+
 	s := NewSyncer(
 		st,
 		mockExec,
@@ -925,8 +963,8 @@ func TestProcessHeightEvent_SkipsDAHintWhenAlreadyDAIncluded(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		extmocks.NewMockStore[*types.P2PSignedHeader](t),
-		extmocks.NewMockStore[*types.P2PData](t),
+		mockHeaderStore,
+		mockDataStore,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -1005,9 +1043,14 @@ func TestProcessHeightEvent_SkipsDAHintWhenBelowRetrieverCursor(t *testing.T) {
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), nil).Once()
 
-	// Mock DA client reports latest DA height above the hints we'll send
+	// Mock DA client reports latest DA height of 100
 	mockDAClient := testmocks.NewMockClient(t)
-	mockDAClient.EXPECT().GetLatestDAHeight(mock.Anything).Return(uint64(300), nil).Maybe()
+	mockDAClient.EXPECT().GetLatestDAHeight(mock.Anything).Return(uint64(100), nil).Maybe()
+
+	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
+	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
+	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
+	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
 
 	s := NewSyncer(
 		st,
@@ -1017,8 +1060,8 @@ func TestProcessHeightEvent_SkipsDAHintWhenBelowRetrieverCursor(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		extmocks.NewMockStore[*types.P2PSignedHeader](t),
-		extmocks.NewMockStore[*types.P2PData](t),
+		mockHeaderStore,
+		mockDataStore,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -1104,6 +1147,11 @@ func TestProcessHeightEvent_ExecutionFailure_DoesNotReschedule(t *testing.T) {
 		mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.Anything, mock.Anything).
 			Return([]byte(nil), errors.New("connection refused")).Times(common.MaxRetriesBeforeHalt)
 
+		mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
+		mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
+		mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
+		mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
+
 		errChan := make(chan error, 1)
 		s := NewSyncer(
 			st,
@@ -1113,8 +1161,8 @@ func TestProcessHeightEvent_ExecutionFailure_DoesNotReschedule(t *testing.T) {
 			common.NopMetrics(),
 			cfg,
 			gen,
-			extmocks.NewMockStore[*types.P2PSignedHeader](t),
-			extmocks.NewMockStore[*types.P2PData](t),
+			mockHeaderStore,
+			mockDataStore,
 			zerolog.Nop(),
 			common.DefaultBlockOptions(),
 			errChan,
@@ -1166,6 +1214,11 @@ func TestSyncer_Stop_SkipsDrainOnCriticalError(t *testing.T) {
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), nil).Once()
 
+	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
+	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
+	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
+	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
+
 	errChan := make(chan error, 1)
 	s := NewSyncer(
 		st,
@@ -1175,8 +1228,8 @@ func TestSyncer_Stop_SkipsDrainOnCriticalError(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		extmocks.NewMockStore[*types.P2PSignedHeader](t),
-		extmocks.NewMockStore[*types.P2PData](t),
+		mockHeaderStore,
+		mockDataStore,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		errChan,
@@ -1241,6 +1294,11 @@ func TestSyncer_Stop_DrainWorksWithoutCriticalError(t *testing.T) {
 		mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.Anything, mock.Anything).
 			Return([]byte("app1"), nil).Once()
 
+		mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
+		mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
+		mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
+		mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
+
 		errChan := make(chan error, 1)
 		s := NewSyncer(
 			st,
@@ -1250,8 +1308,8 @@ func TestSyncer_Stop_DrainWorksWithoutCriticalError(t *testing.T) {
 			common.NopMetrics(),
 			cfg,
 			gen,
-			extmocks.NewMockStore[*types.P2PSignedHeader](t),
-			extmocks.NewMockStore[*types.P2PData](t),
+			mockHeaderStore,
+			mockDataStore,
 			zerolog.Nop(),
 			common.DefaultBlockOptions(),
 			errChan,
