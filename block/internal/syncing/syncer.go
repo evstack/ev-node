@@ -360,6 +360,16 @@ func (s *Syncer) initializeState() error {
 	if s.headerStore != nil && s.headerStore.Height() > state.LastBlockHeight {
 		daHeight = max(daHeight, s.cache.DaHeight())
 	}
+
+	// dev mode for da start height
+	if startHeight := s.config.DA.StartHeight; startHeight > 0 {
+		s.logger.Info().
+			Uint64("previous_da_start_height", daHeight).
+			Uint64("override_da_start_height", s.config.DA.StartHeight).
+			Msg("DA start height overridden by flag")
+		daHeight = startHeight
+	}
+
 	s.daRetrieverHeight.Store(daHeight)
 
 	s.logger.Info().
