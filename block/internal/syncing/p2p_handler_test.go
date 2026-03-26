@@ -51,7 +51,7 @@ func p2pMakeSignedHeader(t *testing.T, chainID string, height uint64, proposer [
 	}
 	bz, err := types.DefaultAggregatorNodeSignatureBytesProvider(&hdr.Header)
 	require.NoError(t, err, "failed to get signature bytes for header")
-	sig, err := signer.Sign(bz)
+	sig, err := signer.Sign(t.Context(), bz)
 	require.NoError(t, err, "failed to sign header bytes")
 	hdr.Signature = sig
 	return &types.P2PSignedHeader{SignedHeader: hdr}
@@ -140,7 +140,7 @@ func TestP2PHandler_ProcessHeight_EmitsEventWhenHeaderAndDataPresent(t *testing.
 	header.DataHash = data.DACommitment()
 	bz, err := types.DefaultAggregatorNodeSignatureBytesProvider(&header.Header)
 	require.NoError(t, err)
-	sig, err := p.Signer.Sign(bz)
+	sig, err := p.Signer.Sign(t.Context(), bz)
 	require.NoError(t, err)
 	header.Signature = sig
 
@@ -159,14 +159,14 @@ func TestP2PHandler_ProcessHeight_EmitsEventWhenHeaderAndDataPresent(t *testing.
 
 func TestP2PHandler_ProcessHeight_SkipsWhenDataMissing(t *testing.T) {
 	p := setupP2P(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	header := p2pMakeSignedHeader(t, p.Genesis.ChainID, 7, p.ProposerAddr, p.ProposerPub, p.Signer)
 	data := &types.P2PData{Data: makeData(p.Genesis.ChainID, 7, 1)}
 	header.DataHash = data.DACommitment()
 	bz, err := types.DefaultAggregatorNodeSignatureBytesProvider(&header.Header)
 	require.NoError(t, err)
-	sig, err := p.Signer.Sign(bz)
+	sig, err := p.Signer.Sign(ctx, bz)
 	require.NoError(t, err)
 	header.Signature = sig
 
@@ -217,7 +217,7 @@ func TestP2PHandler_ProcessHeight_SkipsOnProposerMismatch(t *testing.T) {
 
 func TestP2PHandler_ProcessedHeightSkipsPreviouslyHandledBlocks(t *testing.T) {
 	p := setupP2P(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Mark up to height 5 as processed.
 	p.Handler.SetProcessedHeight(5)
@@ -236,7 +236,7 @@ func TestP2PHandler_ProcessedHeightSkipsPreviouslyHandledBlocks(t *testing.T) {
 	header.DataHash = data.DACommitment()
 	bz, err := types.DefaultAggregatorNodeSignatureBytesProvider(&header.Header)
 	require.NoError(t, err)
-	sig, err := p.Signer.Sign(bz)
+	sig, err := p.Signer.Sign(ctx, bz)
 	require.NoError(t, err)
 	header.Signature = sig
 
@@ -252,14 +252,14 @@ func TestP2PHandler_ProcessedHeightSkipsPreviouslyHandledBlocks(t *testing.T) {
 
 func TestP2PHandler_SetProcessedHeightPreventsDuplicates(t *testing.T) {
 	p := setupP2P(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	header := p2pMakeSignedHeader(t, p.Genesis.ChainID, 8, p.ProposerAddr, p.ProposerPub, p.Signer)
 	data := &types.P2PData{Data: makeData(p.Genesis.ChainID, 8, 0)}
 	header.DataHash = data.DACommitment()
 	bz, err := types.DefaultAggregatorNodeSignatureBytesProvider(&header.Header)
 	require.NoError(t, err)
-	sig, err := p.Signer.Sign(bz)
+	sig, err := p.Signer.Sign(ctx, bz)
 	require.NoError(t, err)
 	header.Signature = sig
 

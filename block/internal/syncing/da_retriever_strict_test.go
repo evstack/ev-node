@@ -31,7 +31,7 @@ func TestDARetriever_StrictEnvelopeMode_Switch(t *testing.T) {
 	// Sign it
 	bz, err := types.DefaultAggregatorNodeSignatureBytesProvider(&legacyHeader.Header)
 	require.NoError(t, err)
-	sig, err := signer.Sign(bz)
+	sig, err := signer.Sign(t.Context(), bz)
 	require.NoError(t, err)
 	legacyHeader.Signature = sig
 
@@ -50,7 +50,7 @@ func TestDARetriever_StrictEnvelopeMode_Switch(t *testing.T) {
 	// Sign content
 	bz2, err := types.DefaultAggregatorNodeSignatureBytesProvider(&envelopeHeader.Header)
 	require.NoError(t, err)
-	sig2, err := signer.Sign(bz2)
+	sig2, err := signer.Sign(t.Context(), bz2)
 	require.NoError(t, err)
 	envelopeHeader.Signature = sig2
 
@@ -61,7 +61,7 @@ func TestDARetriever_StrictEnvelopeMode_Switch(t *testing.T) {
 	contentBytes, err := envelopeHeader.MarshalBinary()
 	require.NoError(t, err)
 	// Sign envelope
-	envSig, err := signer.Sign(contentBytes)
+	envSig, err := signer.Sign(t.Context(), contentBytes)
 	require.NoError(t, err)
 	// Marshal to envelope
 	envelopeBlob, err := envelopeHeader.MarshalDAEnvelope(envSig)

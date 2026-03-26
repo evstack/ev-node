@@ -79,7 +79,7 @@ func makeSignedHeaderBytes(
 	}
 	bz, err := types.DefaultAggregatorNodeSignatureBytesProvider(&hdr.Header)
 	require.NoError(tb, err)
-	sig, err := signer.Sign(bz)
+	sig, err := signer.Sign(tb.Context(), bz)
 	require.NoError(tb, err)
 	hdr.Signature = sig
 	bin, err := hdr.MarshalBinary()
