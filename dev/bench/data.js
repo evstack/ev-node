@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774528848045,
+  "lastUpdate": 1774533749657,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -94,6 +94,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 156834,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "github.qpeyb@simplelogin.fr",
+            "name": "Cian Hatton",
+            "username": "chatton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "162cda6ced7c806257d87d34e9d3aaaec9599e3f",
+          "message": "fix: state pressure benchmark test (#3203)\n\nfix: increase default CountPerSpammer to prevent empty measurement window\n\nWith 2 spammers at 200 tx/s each, the previous default of 2000 txs per\nspammer meant all 4000 txs could complete during the 3s init sleep +\nwarmup phase, leaving the measurement window with only empty blocks.\nIncreasing to 5000 (10000 total) ensures enough txs remain after warmup.",
+          "timestamp": "2026-03-26T13:42:33Z",
+          "tree_id": "53a7fdc3d6e0fae78b15a1e5fca6467cd0287cd4",
+          "url": "https://github.com/evstack/ev-node/commit/162cda6ced7c806257d87d34e9d3aaaec9599e3f"
+        },
+        "date": 1774533746001,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 897074570,
+            "unit": "ns/op\t31112656 B/op\t  170715 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 897074570,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 31112656,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 170715,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
