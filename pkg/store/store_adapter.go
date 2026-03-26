@@ -758,6 +758,8 @@ func NewHeaderStoreGetter(store Store) *HeaderStoreGetter {
 
 // GetByHeight implements StoreGetter.
 func (g *HeaderStoreGetter) GetByHeight(ctx context.Context, height uint64) (*types.P2PSignedHeader, error) {
+	fmt.Printf("attempt getting %d for header store height\n", height)
+
 	header, err := g.store.GetHeader(ctx, height)
 	if err != nil {
 		return nil, err
@@ -828,6 +830,8 @@ func NewDataStoreGetter(store Store) *DataStoreGetter {
 
 // GetByHeight implements StoreGetter.
 func (g *DataStoreGetter) GetByHeight(ctx context.Context, height uint64) (*types.P2PData, error) {
+	fmt.Printf("attempt getting %d for data store height\n", height)
+
 	_, data, err := g.store.GetBlockData(ctx, height)
 	if err != nil {
 		return nil, err
