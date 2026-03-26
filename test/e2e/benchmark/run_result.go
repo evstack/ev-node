@@ -124,6 +124,8 @@ func emitRunResult(t testing.TB, cfg benchConfig, br *benchmarkResult, wallClock
 	t.Logf("wrote structured result to %s", outputPath)
 }
 
+// buildRunResult populates a runResult from the benchmark config, block metrics,
+// and trace-derived statistics.
 func buildRunResult(cfg benchConfig, br *benchmarkResult, wallClock time.Duration, spamoor *runSpamoorStats) *runResult {
 	s := br.summary
 
@@ -197,6 +199,8 @@ func buildRunResult(cfg benchConfig, br *benchmarkResult, wallClock time.Duratio
 	}
 }
 
+// setEngineSpanTimings populates the ProduceBlock, GetPayload, and NewPayload
+// avg/min/max fields on runMetrics from pre-aggregated span stats.
 func setEngineSpanTimings(m *runMetrics, stats map[string]*e2e.SpanStats) {
 	type spanTarget struct {
 		name          string
@@ -221,6 +225,8 @@ func setEngineSpanTimings(m *runMetrics, stats map[string]*e2e.SpanStats) {
 	}
 }
 
+// evNodeTag returns the ev-node version for result tagging. Checks EV_NODE_TAG
+// env var first, then falls back to the vcs.revision build info, then "unknown".
 func evNodeTag() string {
 	if tag := os.Getenv("EV_NODE_TAG"); tag != "" {
 		return tag
@@ -239,6 +245,7 @@ func evNodeTag() string {
 	return "unknown"
 }
 
+// fieldDescriptions returns human-readable descriptions for every field in runResult.
 func fieldDescriptions() map[string]string {
 	return map[string]string{
 		"config.block_time":        "target block production interval",
