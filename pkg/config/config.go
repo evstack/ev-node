@@ -239,7 +239,7 @@ type Config struct {
 
 // DAConfig contains all Data Availability configuration parameters
 type DAConfig struct {
-	StartHeight uint64 `mapstructure:"-" yaml:"-" comment:"Force DA retrieval to start from a specific height (0 for default)"`
+	StartHeight uint64 `mapstructure:"start_height" yaml:"-" comment:"Force DA retrieval to start from a specific height (0 for default)"`
 
 	Address                  string          `mapstructure:"address" yaml:"address" comment:"Address of the data availability layer service (host:port). This is the endpoint where Rollkit will connect to submit and retrieve data."`
 	AuthToken                string          `mapstructure:"auth_token" yaml:"auth_token" comment:"Authentication token for the data availability layer service. Required if the DA service needs authentication."` //nolint:gosec // this is ok.
@@ -599,7 +599,7 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().Float64(FlagDABatchSizeThreshold, def.DA.BatchSizeThreshold, "batch size threshold as fraction of max blob size (0.0-1.0)")
 	cmd.Flags().Duration(FlagDABatchMaxDelay, def.DA.BatchMaxDelay.Duration, "maximum time to wait before submitting a batch")
 	cmd.Flags().Uint64(FlagDABatchMinItems, def.DA.BatchMinItems, "minimum number of items to accumulate before submission")
-	cmd.Flags().Uint64(FlagDAStartHeight, def.DA.StartHeight, "force DA retrieval to start from a specific height (0 for default)")
+	cmd.Flags().Uint64(FlagDAStartHeight, def.DA.StartHeight, "force DA retrieval to start from a specific height (0 for disabled)")
 	cmd.Flags().MarkHidden(FlagDAStartHeight)
 
 	// P2P configuration flags
