@@ -93,7 +93,8 @@ type implementation struct {
 	dataCache      *Cache
 	txCache        *Cache
 	txTimestamps   *sync.Map // map[string]time.Time
-	pendingEvents  *pendingEventsMap[common.DAHeightEvent]
+	pendingEvents  map[uint64]*common.DAHeightEvent
+	pendingMu      sync.Mutex
 	pendingHeaders *PendingHeaders
 	pendingData    *PendingData
 	store          store.Store
@@ -106,7 +107,6 @@ func NewManager(cfg config.Config, st store.Store, logger zerolog.Logger) (Manag
 	headerCache := NewCache(st, HeaderDAIncludedPrefix)
 	dataCache := NewCache(st, DataDAIncludedPrefix)
 	txCache := NewCache(nil, "")
-	pendingEvents := newPendingEventsMap[common.DAHeightEvent]()
 
 	pendingHeaders, err := NewPendingHeaders(st, logger)
 	if err != nil {
@@ -123,7 +123,7 @@ func NewManager(cfg config.Config, st store.Store, logger zerolog.Logger) (Manag
 		dataCache:      dataCache,
 		txCache:        txCache,
 		txTimestamps:   new(sync.Map),
-		pendingEvents:  pendingEvents,
+		pendingEvents:  make(map[uint64]*common.DAHeightEvent),
 		pendingHeaders: pendingHeaders,
 		pendingData:    pendingData,
 		store:          st,
@@ -252,7 +252,9 @@ func (m *implementation) CleanupOldTxs(olderThan time.Duration) int {
 func (m *implementation) DeleteHeight(blockHeight uint64) {
 	m.headerCache.deleteAllForHeight(blockHeight)
 	m.dataCache.deleteAllForHeight(blockHeight)
-	m.pendingEvents.deleteAllForHeight(blockHeight)
+	m.pendingMu.Lock()
+	delete(m.pendingEvents, blockHeight)
+	m.pendingMu.Unlock()
 
 	// Note: txCache is intentionally NOT deleted here because:
 	// 1. Transactions are tracked by hash, not by block height (they use height 0)
@@ -319,17 +321,27 @@ func (m *implementation) NumPendingData() uint64 {
 
 // SetPendingEvent sets the event at the specified height.
 func (m *implementation) SetPendingEvent(height uint64, event *common.DAHeightEvent) {
-	m.pendingEvents.setItem(height, event)
+	m.pendingMu.Lock()
+	m.pendingEvents[height] = event
+	m.pendingMu.Unlock()
 }
 
 func (m *implementation) PendingEventsCount() int {
-	return m.pendingEvents.itemCount()
+	m.pendingMu.Lock()
+	defer m.pendingMu.Unlock()
+	return len(m.pendingEvents)
 }
 
 // GetNextPendingEvent efficiently retrieves and removes the event at the specified height.
 // Returns nil if no event exists at that height.
 func (m *implementation) GetNextPendingEvent(height uint64) *common.DAHeightEvent {
-	return m.pendingEvents.getNextItem(height)
+	m.pendingMu.Lock()
+	item, ok := m.pendingEvents[height]
+	if ok {
+		delete(m.pendingEvents, height)
+	}
+	m.pendingMu.Unlock()
+	return item
 }
 
 // SaveToStore flushes the DA inclusion snapshot to the store.
@@ -387,7 +399,7 @@ func (m *implementation) ClearFromStore() error {
 	m.headerCache = NewCache(m.store, HeaderDAIncludedPrefix)
 	m.dataCache = NewCache(m.store, DataDAIncludedPrefix)
 	m.txCache = NewCache(nil, "")
-	m.pendingEvents = newPendingEventsMap[common.DAHeightEvent]()
+	m.pendingEvents = make(map[uint64]*common.DAHeightEvent)
 
 	// Initialize DA height from store metadata to ensure DaHeight() is never 0.
 	m.initDAHeightFromStore(ctx)
