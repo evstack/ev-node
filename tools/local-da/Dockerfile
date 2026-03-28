@@ -1,25 +1,21 @@
-FROM golang:1.25-alpine AS build-env
+FROM golang:1.26-bookworm AS build-env
 
 WORKDIR /src
 
-#hadolint ignore=DL3018
-COPY core core
-
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 COPY . .
 
-RUN mkdir -p build && cd tools/local-da && go build -o /src/build/local-da .
+RUN --mount=type=cache,target=/go/pkg/mod \
+    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags "-s -w" -o /out/local-da ./tools/local-da
 
-FROM alpine:3.22.2
+FROM scratch
 
-#hadolint ignore=DL3018
-RUN apk --no-cache add ca-certificates curl
-
-WORKDIR /root
-
-COPY --from=build-env /src/build/local-da /usr/bin/local-da
+COPY --from=build-env /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=build-env /out/local-da /usr/bin/local-da
+USER 10001:10001
 
 ENTRYPOINT ["/usr/bin/local-da"]
 CMD ["-listen-all"]
