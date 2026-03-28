@@ -354,17 +354,25 @@ func (s *Syncer) initializeState() error {
 	}
 
 	// Set DA height to the maximum of the genesis start height, the state's DA height, and the cached DA height.
-	// Use the DA height from the last executed block instead of the maximum from all blocks,
-	// because P2P-fetched heights may be lost on restart.
-	daHeight := max(s.genesis.DAStartHeight, min(state.DAHeight-1, 0))
-	if state.LastBlockHeight > 0 {
-		if lastHeaderDA, ok := s.cache.GetHeaderDAIncludedByHeight(state.LastBlockHeight); ok {
-			daHeight = max(daHeight, lastHeaderDA)
-		}
-		if lastDataDA, ok := s.cache.GetDataDAIncludedByHeight(state.LastBlockHeight); ok {
-			daHeight = max(daHeight, lastDataDA)
-		}
+	// The cache's DaHeight() is initialized from store metadata, so it's always correct even after cache clear.
+	// Only use cache.DaHeight() when P2P is actively syncing (headerStore has higher height than current state).
+	daHeight := s.genesis.DAStartHeight
+	if state.DAHeight > s.genesis.DAStartHeight {
+		daHeight = max(daHeight, state.DAHeight-1)
 	}
+	if s.headerStore != nil && s.headerStore.Height() > state.LastBlockHeight {
+		daHeight = max(daHeight, s.cache.DaHeight())
+	}
+
+	// dev mode for da start height
+	if startHeight := s.config.DA.StartHeight; startHeight > 0 {
+		s.logger.Info().
+			Uint64("previous_da_start_height", daHeight).
+			Uint64("override_da_start_height", s.config.DA.StartHeight).
+			Msg("DA start height overridden by flag")
+		daHeight = startHeight
+	}
+
 	s.daRetrieverHeight.Store(daHeight)
 
 	s.logger.Info().

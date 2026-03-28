@@ -89,6 +89,8 @@ const (
 	FlagDABatchMaxDelay = FlagPrefixEvnode + "da.batch_max_delay"
 	// FlagDABatchMinItems is a flag for specifying the minimum batch items
 	FlagDABatchMinItems = FlagPrefixEvnode + "da.batch_min_items"
+	// FlagDAStartHeight is a flag for forcing the DA retrieval height to start from a specific height
+	FlagDAStartHeight = FlagPrefixEvnode + "da.start_height"
 
 	// P2P configuration flags
 
@@ -237,6 +239,8 @@ type Config struct {
 
 // DAConfig contains all Data Availability configuration parameters
 type DAConfig struct {
+	StartHeight uint64 `mapstructure:"start_height" yaml:"-" comment:"Force DA retrieval to start from a specific height (0 for default)"`
+
 	Address                  string          `mapstructure:"address" yaml:"address" comment:"Address of the data availability layer service (host:port). This is the endpoint where Rollkit will connect to submit and retrieve data."`
 	AuthToken                string          `mapstructure:"auth_token" yaml:"auth_token" comment:"Authentication token for the data availability layer service. Required if the DA service needs authentication."` //nolint:gosec // this is ok.
 	SubmitOptions            string          `mapstructure:"submit_options" yaml:"submit_options" comment:"Additional options passed to the DA layer when submitting data. Format depends on the specific DA implementation being used."`
@@ -563,7 +567,7 @@ func AddFlags(cmd *cobra.Command) {
 	})
 
 	// Add base flags
-	cmd.Flags().String(FlagDBPath, def.DBPath, "path for the node database")
+	cmd.Flags().String(FlagDBPath, def.DBPath, "path for for node database")
 	cmd.Flags().Bool(FlagClearCache, def.ClearCache, "clear the cache")
 
 	// Node configuration flags
@@ -595,6 +599,8 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().Float64(FlagDABatchSizeThreshold, def.DA.BatchSizeThreshold, "batch size threshold as fraction of max blob size (0.0-1.0)")
 	cmd.Flags().Duration(FlagDABatchMaxDelay, def.DA.BatchMaxDelay.Duration, "maximum time to wait before submitting a batch")
 	cmd.Flags().Uint64(FlagDABatchMinItems, def.DA.BatchMinItems, "minimum number of items to accumulate before submission")
+	cmd.Flags().Uint64(FlagDAStartHeight, def.DA.StartHeight, "force DA retrieval to start from a specific height (0 for disabled)")
+	cmd.Flags().MarkHidden(FlagDAStartHeight)
 
 	// P2P configuration flags
 	cmd.Flags().String(FlagP2PListenAddress, def.P2P.ListenAddress, "P2P listen address (host:port)")
