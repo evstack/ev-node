@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774689360374,
+  "lastUpdate": 1774693612478,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -190,6 +190,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 171531,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "julien@rbrt.fr",
+            "name": "julienrbrt",
+            "username": "julienrbrt"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "763e8c6a802460241b68edda723185dcd14bbaff",
+          "message": "refactor: remove unnecessary usage of lru (#3204)\n\n* fix(syncer): refetch latest da height instead of da height +1\n\n* wip\n\n* fixes\n\n* fix changelog and underflow\n\n* fix nil\n\n* fix unit tests\n\n* arrange cl\n\n* updates\n\n* fixes\n\n* fix\n\n* remove lru from generic cache as slow cleanup already happens\n\n* simplify\n\n* Update CHANGELOG.md",
+          "timestamp": "2026-03-28T10:07:28Z",
+          "tree_id": "0c7921ad92c9f2e4bddb33f8cba54eafb4a18b08",
+          "url": "https://github.com/evstack/ev-node/commit/763e8c6a802460241b68edda723185dcd14bbaff"
+        },
+        "date": 1774693608857,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 911615133,
+            "unit": "ns/op\t32571492 B/op\t  181570 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 911615133,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 32571492,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 181570,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
