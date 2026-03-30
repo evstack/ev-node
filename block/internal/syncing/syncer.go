@@ -517,6 +517,11 @@ func (s *Syncer) waitForGenesis() bool {
 }
 
 func (s *Syncer) PipeEvent(ctx context.Context, event common.DAHeightEvent) error {
+	// Avoid sending already seen events to channel (would have been skipped in processHeightEvent anyway)
+	if s.cache.IsHeaderSeen(event.Header.Hash().String()) {
+		return nil
+	}
+
 	select {
 	case s.heightInCh <- event:
 		return nil
@@ -537,6 +542,7 @@ func (s *Syncer) processHeightEvent(ctx context.Context, event *common.DAHeightE
 		Uint64("height", height).
 		Uint64("da_height", event.DaHeight).
 		Str("hash", headerHash).
+		Str("source", string(event.Source)).
 		Msg("processing height event")
 
 	currentHeight, err := s.store.Height(ctx)
@@ -547,7 +553,10 @@ func (s *Syncer) processHeightEvent(ctx context.Context, event *common.DAHeightE
 
 	// Skip if already processed
 	if height <= currentHeight || s.cache.IsHeaderSeen(headerHash) {
-		s.logger.Debug().Uint64("height", height).Msg("height already processed")
+		s.logger.Debug().
+			Uint64("height", height).
+			Str("source", string(event.Source)).
+			Msg("height already processed")
 		return
 	}
 
@@ -656,6 +665,7 @@ func (s *Syncer) processHeightEvent(ctx context.Context, event *common.DAHeightE
 		s.logger.Error().Err(err).
 			Uint64("event-height", event.Header.Height()).
 			Uint64("state-height", s.getLastState().LastBlockHeight).
+			Str("source", string(event.Source)).
 			Msg("failed to sync next block")
 		// If the error is not due to a validation error, re-store the event as pending
 		switch {
