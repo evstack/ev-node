@@ -29,16 +29,26 @@ func (s *SpamoorSuite) TestStatePressure() {
 	w := newResultWriter(t, "StatePressure")
 	defer w.flush()
 
+	var result *benchmarkResult
+	var wallClock time.Duration
+	var spamoorStats *runSpamoorStats
+	defer func() {
+		if result != nil {
+			emitRunResult(t, cfg, result, wallClock, spamoorStats)
+		}
+	}()
+
 	e := s.setupEnv(cfg)
 
 	storageSpamConfig := map[string]any{
 		"throughput":        cfg.Throughput,
 		"total_count":       cfg.CountPerSpammer,
 		"gas_units_to_burn": cfg.GasUnitsToBurn,
-		"max_pending":       50000,
+		"max_pending":       cfg.MaxPending,
 		"max_wallets":       cfg.MaxWallets,
-		"base_fee":          20,
-		"tip_fee":           2,
+		"rebroadcast":       cfg.Rebroadcast,
+		"base_fee":          cfg.BaseFee,
+		"tip_fee":           cfg.TipFee,
 		"refill_amount":     "5000000000000000000", // 5 ETH
 		"refill_balance":    "2000000000000000000", // 2 ETH
 		"refill_interval":   600,
@@ -55,8 +65,6 @@ func (s *SpamoorSuite) TestStatePressure() {
 		t.Cleanup(func() { _ = e.spamoorAPI.DeleteSpammer(id) })
 	}
 
-	// allow spamoor time to initialise spammer goroutines before polling status
-	time.Sleep(3 * time.Second)
 	requireSpammersRunning(t, e.spamoorAPI, spammerIDs)
 
 	// wait for wallet funding to finish before recording start block
@@ -87,7 +95,7 @@ func (s *SpamoorSuite) TestStatePressure() {
 	if err := waitForDrain(drainCtx, t.Logf, e.ethClient, 10); err != nil {
 		t.Logf("warning: %v", err)
 	}
-	wallClock := time.Since(loadStart)
+	wallClock = time.Since(loadStart)
 
 	endHeader, err := e.ethClient.HeaderByNumber(ctx, nil)
 	s.Require().NoError(err, "failed to get end block header")
@@ -98,9 +106,9 @@ func (s *SpamoorSuite) TestStatePressure() {
 	bm, err := collectBlockMetrics(ctx, e.ethClient, startBlock, endBlock)
 	s.Require().NoError(err, "failed to collect block metrics")
 
-	traces := s.collectTraces(e, cfg.ServiceName)
+	traces := s.collectTraces(e)
 
-	result := newBenchmarkResult("StatePressure", bm, traces)
+	result = newBenchmarkResult("StatePressure", bm, traces)
 	s.Require().Greater(result.summary.SteadyState, time.Duration(0), "expected non-zero steady-state duration")
 	result.log(t, wallClock)
 	w.addEntries(result.entries())
@@ -109,6 +117,8 @@ func (s *SpamoorSuite) TestStatePressure() {
 	s.Require().NoError(mErr, "failed to get final metrics")
 	sent := sumCounter(metrics["spamoor_transactions_sent_total"])
 	failed := sumCounter(metrics["spamoor_transactions_failed_total"])
+	spamoorStats = &runSpamoorStats{Sent: sent, Failed: failed}
+
 	s.Require().Greater(sent, float64(0), "at least one transaction should have been sent")
 	s.Require().Zero(failed, "no transactions should have failed")
 }

@@ -59,7 +59,7 @@ var RunCmd = &cobra.Command{
 			return err
 		}
 
-		blobClient, err := blobrpc.NewWSClient(cmd.Context(), nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
+		blobClient, err := blobrpc.NewWSClient(cmd.Context(), logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
 		if err != nil {
 			return fmt.Errorf("failed to create blob client: %w", err)
 		}

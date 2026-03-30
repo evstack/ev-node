@@ -27,6 +27,10 @@ type benchConfig struct {
 	WarmupTxs       int
 	GasUnitsToBurn  int
 	MaxWallets      int
+	MaxPending      int
+	Rebroadcast     int
+	BaseFee         int
+	TipFee          int
 	WaitTimeout     time.Duration
 }
 
@@ -43,6 +47,10 @@ func newBenchConfig(serviceName string) benchConfig {
 		WarmupTxs:       envInt("BENCH_WARMUP_TXS", 200),
 		GasUnitsToBurn:  envInt("BENCH_GAS_UNITS_TO_BURN", 1_000_000),
 		MaxWallets:      envInt("BENCH_MAX_WALLETS", 500),
+		MaxPending:      envInt("BENCH_MAX_PENDING", 50_000),
+		Rebroadcast:     envInt("BENCH_REBROADCAST", 0),
+		BaseFee:         envInt("BENCH_BASE_FEE", 20),
+		TipFee:          envInt("BENCH_TIP_FEE", 2),
 		WaitTimeout:     envDuration("BENCH_WAIT_TIMEOUT", 10*time.Minute),
 	}
 }

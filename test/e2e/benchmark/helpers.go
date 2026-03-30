@@ -382,23 +382,16 @@ func (s *blockMetricsSummary) entries(prefix string) []entry {
 	}
 }
 
-// evNodeOverhead computes the fraction of block production time spent outside
-// EVM execution. It looks up the average durations of BlockExecutor.ProduceBlock
-// (the outer span covering the full block lifecycle) and Executor.ExecuteTxs
-// (the inner span covering only EVM tx execution), then returns:
+// overheadFromStats computes ev-node overhead from pre-aggregated span stats.
 //
 //	overhead% = (avgProduce - avgExecute) / avgProduce * 100
-//
-// This captures time spent on sequencing, DA submission, header construction,
-// and other ev-node orchestration work. Returns false if either span is missing.
-func evNodeOverhead(spans []e2e.TraceSpan) (float64, bool) {
-	stats := e2e.AggregateSpanStats(spans)
+func overheadFromStats(stats map[string]*e2e.SpanStats) (float64, bool) {
 	produce, ok := stats[spanProduceBlock]
-	if !ok {
+	if !ok || produce.Count == 0 {
 		return 0, false
 	}
 	execute, ok := stats[spanExecuteTxs]
-	if !ok {
+	if !ok || execute.Count == 0 {
 		return 0, false
 	}
 	produceAvg := float64(produce.Total.Microseconds()) / float64(produce.Count)
@@ -409,18 +402,23 @@ func evNodeOverhead(spans []e2e.TraceSpan) (float64, bool) {
 	return (produceAvg - executeAvg) / produceAvg * 100, true
 }
 
-// rethExecutionRate computes ev-reth's effective execution throughput in GGas/s
-// based on the total gas processed and the cumulative Engine.NewPayload duration.
-// NewPayload is the engine API call where reth validates and executes all state
-// transitions for a block (EVM execution + state root + disk commit).
-func rethExecutionRate(spans []e2e.TraceSpan, totalGasUsed uint64) (float64, bool) {
-	stats := e2e.AggregateSpanStats(spans)
+// evNodeOverhead aggregates spans then computes overhead.
+func evNodeOverhead(spans []e2e.TraceSpan) (float64, bool) {
+	return overheadFromStats(e2e.AggregateSpanStats(spans))
+}
+
+// rethRateFromStats computes ev-reth GGas/s from pre-aggregated span stats.
+func rethRateFromStats(stats map[string]*e2e.SpanStats, totalGasUsed uint64) (float64, bool) {
 	np, ok := stats[spanNewPayload]
 	if !ok || np.Total <= 0 || totalGasUsed == 0 {
 		return 0, false
 	}
-	// GGas/s = totalGas / newPayloadSeconds / 1e9
 	return float64(totalGasUsed) / np.Total.Seconds() / 1e9, true
+}
+
+// rethExecutionRate aggregates spans then computes GGas/s.
+func rethExecutionRate(spans []e2e.TraceSpan, totalGasUsed uint64) (float64, bool) {
+	return rethRateFromStats(e2e.AggregateSpanStats(spans), totalGasUsed)
 }
 
 // engineSpanEntries extracts ProduceBlock, Engine.GetPayload, and
@@ -443,11 +441,13 @@ func engineSpanEntries(prefix string, spans []e2e.TraceSpan) []entry {
 		if !ok || s.Count == 0 {
 			continue
 		}
-		avg := s.Total / time.Duration(s.Count)
+		avg := float64(s.Total.Microseconds()) / float64(s.Count) / 1000.0
+		min := float64(s.Min.Microseconds()) / 1000.0
+		max := float64(s.Max.Microseconds()) / 1000.0
 		entries = append(entries,
-			entry{Name: prefix + " - " + k.label + " avg", Unit: "ms", Value: float64(avg.Milliseconds())},
-			entry{Name: prefix + " - " + k.label + " min", Unit: "ms", Value: float64(s.Min.Milliseconds())},
-			entry{Name: prefix + " - " + k.label + " max", Unit: "ms", Value: float64(s.Max.Milliseconds())},
+			entry{Name: prefix + " - " + k.label + " avg", Unit: "ms", Value: avg},
+			entry{Name: prefix + " - " + k.label + " min", Unit: "ms", Value: min},
+			entry{Name: prefix + " - " + k.label + " max", Unit: "ms", Value: max},
 		)
 	}
 	return entries
