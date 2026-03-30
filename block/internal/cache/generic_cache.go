@@ -24,7 +24,7 @@ const snapshotEntrySize = 16 // bytes per snapshotEntry
 
 // Cache tracks seen blocks and DA inclusion status.
 type Cache struct {
-	mu sync.Mutex
+	mu sync.RWMutex
 
 	hashes       map[string]bool
 	daIncluded   map[string]uint64
@@ -53,8 +53,8 @@ func NewCache(s store.Store, keyPrefix string) *Cache {
 }
 
 func (c *Cache) isSeen(hash string) bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return c.hashes[hash]
 }
 
@@ -72,15 +72,15 @@ func (c *Cache) removeSeen(hash string) {
 }
 
 func (c *Cache) getDAIncluded(hash string) (uint64, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	v, ok := c.daIncluded[hash]
 	return v, ok
 }
 
 func (c *Cache) getDAIncludedByHeight(blockHeight uint64) (uint64, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	hash, ok := c.hashByHeight[blockHeight]
 	if !ok {
 		return 0, false
@@ -138,8 +138,8 @@ func (c *Cache) deleteAllForHeight(height uint64) {
 }
 
 func (c *Cache) daIncludedLen() int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return len(c.daIncluded)
 }
 
@@ -150,7 +150,7 @@ func (c *Cache) persistSnapshot(ctx context.Context) error {
 		return nil
 	}
 
-	c.mu.Lock()
+	c.mu.RLock()
 	entries := make([]snapshotEntry, 0, len(c.hashByHeight))
 	for h, hash := range c.hashByHeight {
 		daH, ok := c.daIncluded[hash]
@@ -159,7 +159,7 @@ func (c *Cache) persistSnapshot(ctx context.Context) error {
 		}
 		entries = append(entries, snapshotEntry{blockHeight: h, daHeight: daH})
 	}
-	c.mu.Unlock()
+	c.mu.RUnlock()
 
 	return c.store.SetMetadata(ctx, c.snapshotKey(), encodeSnapshot(entries))
 }

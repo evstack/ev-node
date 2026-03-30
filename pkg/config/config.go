@@ -567,7 +567,7 @@ func AddFlags(cmd *cobra.Command) {
 	})
 
 	// Add base flags
-	cmd.Flags().String(FlagDBPath, def.DBPath, "path for for node database")
+	cmd.Flags().String(FlagDBPath, def.DBPath, "path for node database")
 	cmd.Flags().Bool(FlagClearCache, def.ClearCache, "clear the cache")
 
 	// Node configuration flags
