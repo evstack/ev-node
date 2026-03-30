@@ -17,11 +17,14 @@ FROM base AS builder
 
 WORKDIR /ev-node
 
-# Copy all source code first
-COPY . .
+# Copy module files first to leverage Docker layer caching.
+# Dependencies are only re-downloaded when go.mod or go.sum change.
+COPY go.mod go.sum ./
+RUN go mod download
 
-# Now download dependencies and build
-RUN go mod download && cd apps/testapp && go install .
+# Copy the rest of the source and build.
+COPY . .
+RUN cd apps/testapp && go install .
 
 ## prep the final image.
 #
