@@ -128,7 +128,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagPruningInterval, DefaultConfig().Pruning.Interval.Duration)
 
 	// Count the number of flags we're explicitly checking
-	expectedFlagCount := 77 // Update this number if you add more flag checks above
+	expectedFlagCount := 78 // Update this number if you add more flag checks above
 
 	// Get the actual number of flags (both regular and persistent)
 	actualFlagCount := 0
