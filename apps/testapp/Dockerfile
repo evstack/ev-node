@@ -20,11 +20,14 @@ WORKDIR /ev-node
 # Copy module files first to leverage Docker layer caching.
 # Dependencies are only re-downloaded when go.mod or go.sum change.
 COPY go.mod go.sum ./
-RUN go mod download
+COPY apps/testapp/go.mod apps/testapp/go.sum ./apps/testapp/
+RUN go mod download && (cd apps/testapp && go mod download)
 
 # Copy the rest of the source and build.
 COPY . .
-RUN cd apps/testapp && go install .
+
+WORKDIR /ev-node/apps/testapp
+RUN go build -o /go/bin/testapp .
 
 ## prep the final image.
 #
