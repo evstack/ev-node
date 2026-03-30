@@ -517,6 +517,10 @@ func (s *Syncer) waitForGenesis() bool {
 }
 
 func (s *Syncer) PipeEvent(ctx context.Context, event common.DAHeightEvent) error {
+	if s.cache.IsHeaderSeen(event.Header.Hash().String()) {
+		return nil
+	}
+
 	select {
 	case s.heightInCh <- event:
 		return nil
