@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774883656458,
+  "lastUpdate": 1774884518051,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -430,6 +430,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 175757,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "julien@rbrt.fr",
+            "name": "julienrbrt",
+            "username": "julienrbrt"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "8d68f9d5c5f683bdfff1b1e0958182da70e9a371",
+          "message": "fix(pkg/da): fallback to polling when ws cannot connect (#3211)\n\n* fix(pkg/da): fallback to polling when ws cannot connect\n\n* log err and fix typos\n\n* rewording",
+          "timestamp": "2026-03-30T17:21:23+02:00",
+          "tree_id": "cad9732a133fbed7b4725341d5a8f09fa5b6c048",
+          "url": "https://github.com/evstack/ev-node/commit/8d68f9d5c5f683bdfff1b1e0958182da70e9a371"
+        },
+        "date": 1774884514880,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 915174771,
+            "unit": "ns/op\t31627820 B/op\t  171843 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 915174771,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 31627820,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 171843,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
