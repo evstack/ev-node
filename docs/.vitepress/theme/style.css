@@ -1,101 +1,60 @@
 /**
- * Customize default theme styling by overriding CSS variables:
+ * Evolve brand theme — matches the marketing site at evstack/site
  * https://github.com/vuejs/vitepress/blob/main/src/client/theme-default/styles/vars.css
  */
 
 /* Import Evolve brand fonts */
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap");
 
 /**
- * Colors
+ * Brand Tokens
  * -------------------------------------------------------------------------- */
 
 :root {
-    --vp-c-brand: #ff0033;
-    --vp-c-brand-light: #ff3355;
-    --vp-c-brand-lighter: #ff6677;
-    --vp-c-brand-lightest: #ffccdd;
-    --vp-c-brand-dark: #cc0029;
-    --vp-c-brand-darker: #990020;
-    --vp-c-brand-dimm: rgba(255, 0, 51, 0.08);
-
-    /* Additional Evolve brand colors */
-    --vp-c-bg: #0a0a0a;
-    --vp-c-bg-soft: #141414;
-    --vp-c-bg-mute: #1a1a1a;
-    --vp-c-slate: #475569;
-    --vp-c-violet: #4c1d95;
-    --vp-c-violet-light: #6d28d9;
+    /* Core palette */
+    --ev-foreground: #000000;
+    --ev-bg: #F3F4F4;
+    --ev-darkgray: #3C3C3C;
+    --ev-lightgray: #E4EEF1;
+    --ev-darksmoke: #A0A0A0;
+    --ev-smoke: #B8B8B8;
+    --ev-diagonal: #DAE4E7;
+    --ev-purple: #B8A6FF;
+    --ev-yellow: #FFECB6;
+    --ev-green: #BFF3C2;
+    --ev-red: #FFB7B7;
+    --ev-pink: #CDA4EB;
+    --ev-blue: #94EEFF;
 }
 
 /**
- * Component: Button
+ * VitePress color overrides
  * -------------------------------------------------------------------------- */
 
 :root {
-    --vp-button-brand-border: var(--vp-c-brand-light);
-    --vp-button-brand-text: var(--vp-c-white);
-    --vp-button-brand-bg: var(--vp-c-brand);
-    --vp-button-brand-hover-border: var(--vp-c-brand-light);
-    --vp-button-brand-hover-text: var(--vp-c-white);
-    --vp-button-brand-hover-bg: var(--vp-c-brand-light);
-    --vp-button-brand-active-border: var(--vp-c-brand-light);
-    --vp-button-brand-active-text: var(--vp-c-white);
-    --vp-button-brand-active-bg: var(--vp-button-brand-bg);
+    --vp-c-brand-1: #B8A6FF;
+    --vp-c-brand-2: #a08ef0;
+    --vp-c-brand-3: #8976d6;
+    --vp-c-brand-soft: rgba(184, 166, 255, 0.14);
+
+    --vp-c-bg: #F3F4F4;
+    --vp-c-bg-soft: #ebeced;
+    --vp-c-bg-mute: #e2e3e3;
+    --vp-c-bg-alt: #F3F4F4;
+
+    --vp-c-default-1: var(--vp-c-gray-1);
+    --vp-c-default-2: var(--vp-c-gray-2);
+    --vp-c-default-3: var(--vp-c-gray-3);
+    --vp-c-default-soft: var(--vp-c-gray-soft);
+
+    --vp-c-text-1: #000000;
+    --vp-c-text-2: #3C3C3C;
+    --vp-c-text-3: #A0A0A0;
+
+    --vp-c-divider: #DAE4E7;
+    --vp-c-gutter: #DAE4E7;
 }
 
-/**
- * Component: Home
- * -------------------------------------------------------------------------- */
-
-:root {
-    --vp-home-hero-name-color: transparent;
-    --vp-home-hero-name-background: -webkit-linear-gradient(
-        120deg,
-        #ff0033 30%,
-        #6d28d9
-    );
-
-    /* Remove gradient background for hero image */
-    --vp-home-hero-image-background-image: none;
-    --vp-home-hero-image-filter: none;
-}
-
-@media (min-width: 640px) {
-    :root {
-        --vp-home-hero-image-filter: none;
-    }
-}
-
-@media (min-width: 960px) {
-    :root {
-        --vp-home-hero-image-filter: none;
-    }
-}
-
-/**
- * Component: Custom Block
- * -------------------------------------------------------------------------- */
-
-:root {
-    --vp-custom-block-tip-border: var(--vp-c-brand);
-    --vp-custom-block-tip-text: var(--vp-c-brand-darker);
-    --vp-custom-block-tip-bg: var(--vp-c-brand-dimm);
-}
-
-.dark {
-    --vp-custom-block-tip-border: var(--vp-c-brand);
-    --vp-custom-block-tip-text: var(--vp-c-brand-lightest);
-    --vp-custom-block-tip-bg: var(--vp-c-brand-dimm);
-}
-
-/**
- * Component: Algolia
- * -------------------------------------------------------------------------- */
-
-.DocSearch {
-    --docsearch-primary-color: var(--vp-c-brand) !important;
-}
 
 /**
  * Typography
@@ -107,26 +66,166 @@
         Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue",
         sans-serif;
     --vp-font-family-mono:
-        "IBM Plex Mono", source-code-pro, Menlo, Monaco, Consolas,
+        "Geist Mono", source-code-pro, Menlo, Monaco, Consolas,
         "Courier New", monospace;
 }
 
 /**
- * Dark Mode Adjustments
+ * Component: Button
  * -------------------------------------------------------------------------- */
 
-.dark {
-    --vp-c-bg: #000000;
-    --vp-c-bg-soft: #0a0a0a;
-    --vp-c-bg-mute: #141414;
-    --vp-c-bg-alt: #000000;
+:root {
+    /* Brand / primary button — black pill, white text */
+    --vp-button-brand-border: transparent;
+    --vp-button-brand-text: #ffffff;
+    --vp-button-brand-bg: #000000;
+    --vp-button-brand-hover-border: transparent;
+    --vp-button-brand-hover-text: #B8A6FF;
+    --vp-button-brand-hover-bg: #000000;
+    --vp-button-brand-active-border: transparent;
+    --vp-button-brand-active-text: #B8A6FF;
+    --vp-button-brand-active-bg: #000000;
+
+    /* Alt / secondary button — gray pill */
+    --vp-button-alt-border: transparent;
+    --vp-button-alt-text: #374151;
+    --vp-button-alt-bg: #e5e7eb;
+    --vp-button-alt-hover-border: transparent;
+    --vp-button-alt-hover-text: #B8A6FF;
+    --vp-button-alt-hover-bg: #d1d5db;
+    --vp-button-alt-active-border: transparent;
+    --vp-button-alt-active-text: #B8A6FF;
+    --vp-button-alt-active-bg: #d1d5db;
+}
+
+/* Pill-shaped buttons */
+.VPButton {
+    border-radius: 70px !important;
+    font-family: "Geist Mono", monospace !important;
+    text-transform: uppercase !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.02em !important;
+}
+
+/**
+ * Component: Home
+ * -------------------------------------------------------------------------- */
+
+:root {
+    --vp-home-hero-name-color: transparent;
+    --vp-home-hero-name-background: linear-gradient(
+        83deg,
+        #CDA4EB 18.28%,
+        #94EEFF 50.92%,
+        #FFECB6 83.57%
+    );
+    --vp-home-hero-image-background-image: none;
+    --vp-home-hero-image-filter: none;
+}
+
+/**
+ * Component: Custom Block
+ * -------------------------------------------------------------------------- */
+
+:root {
+    --vp-custom-block-tip-border: var(--ev-purple);
+    --vp-custom-block-tip-text: #000000;
+    --vp-custom-block-tip-bg: rgba(184, 166, 255, 0.1);
+    --vp-custom-block-tip-code-bg: rgba(184, 166, 255, 0.12);
+
+    --vp-custom-block-warning-border: var(--ev-yellow);
+    --vp-custom-block-warning-text: #000000;
+    --vp-custom-block-warning-bg: rgba(255, 236, 182, 0.18);
+
+    --vp-custom-block-danger-border: var(--ev-red);
+    --vp-custom-block-danger-text: #000000;
+    --vp-custom-block-danger-bg: rgba(255, 183, 183, 0.14);
+
+    --vp-custom-block-info-border: var(--ev-blue);
+    --vp-custom-block-info-text: #000000;
+    --vp-custom-block-info-bg: rgba(148, 238, 255, 0.1);
+}
+
+/**
+ * Component: Code
+ * -------------------------------------------------------------------------- */
+
+:root {
+    --vp-code-block-bg: #000000;
+    --vp-code-block-color: #ffffff;
+    --vp-code-block-divider-color: rgba(255, 255, 255, 0.1);
+
+    /* Inline code */
+    --vp-code-color: #000000;
+    --vp-code-bg: rgba(0, 0, 0, 0.05);
+}
+
+/* Inline code styling */
+:not(pre) > code {
+    border-radius: 6px !important;
+    padding: 2px 6px !important;
+    font-family: "Geist Mono", monospace !important;
+}
+
+/* Code blocks — rounded, dark */
+div[class*="language-"] {
+    border-radius: 16px !important;
+    background-color: #000000 !important;
+}
+
+div[class*="language-"] pre {
+    background-color: transparent !important;
+}
+
+div[class*="language-"] code {
+    color: #ffffff;
+}
+
+/**
+ * Search
+ * -------------------------------------------------------------------------- */
+
+.DocSearch {
+    --docsearch-primary-color: var(--ev-purple) !important;
+}
+
+/**
+ * Body & Layout
+ * -------------------------------------------------------------------------- */
+
+body {
+    background-color: #F3F4F4;
+}
+
+/* Diagonal hatch pattern on the body */
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background: repeating-linear-gradient(
+        -45deg,
+        #DAE4E7,
+        #DAE4E7 1px,
+        #F3F4F4 1px,
+        #F3F4F4 8px
+    );
+    opacity: 0.35;
+    pointer-events: none;
+}
+
+.Layout,
+.VPContent,
+.VPHome {
+    background-color: transparent !important;
 }
 
 /**
  * Homepage Customizations
  * -------------------------------------------------------------------------- */
 
-/* Center align hero text and buttons */
+/* Center hero */
 .VPHero .VPHomeHero {
     text-align: center;
 }
@@ -139,7 +238,24 @@
     margin-right: auto;
 }
 
-/* Center the action buttons */
+/* Hero heading typography */
+.VPHero .name .clip {
+    font-weight: 500 !important;
+    letter-spacing: -0.06em !important;
+    line-height: 1em !important;
+}
+
+.VPHero .text {
+    font-weight: 500 !important;
+    letter-spacing: -0.06em !important;
+    line-height: 1em !important;
+}
+
+.VPHero .tagline {
+    color: #3C3C3C !important;
+}
+
+/* Center action buttons */
 .VPHero .actions {
     justify-content: center !important;
     display: flex !important;
@@ -150,18 +266,264 @@
     margin: 0 !important;
 }
 
-/* Simple grid background - applied to body only */
-body {
-    background-color: #ffffff;
-    background-image:
-        linear-gradient(#ff0033 1px, transparent 1px),
-        linear-gradient(90deg, #ff0033 1px, transparent 1px);
-    background-size: 60px 60px;
-    background-attachment: fixed;
+/* Hero logo */
+.VPHero .VPImage {
+    display: block;
+    margin: 0 auto;
+}
+
+.VPHero .VPImage img {
+    height: 120px !important;
+    width: auto !important;
+    max-width: none !important;
+}
+
+/* Feature boxes */
+.VPFeature {
+    background-color: rgba(255, 255, 255, 0.6) !important;
+    border: 1px solid #DAE4E7 !important;
+    border-radius: 16px !important;
+    transition: border-color 0.2s ease;
+}
+
+.VPFeature:hover {
+    border-color: #B8A6FF !important;
+}
+
+.VPFeature .title {
+    font-weight: 500 !important;
+    letter-spacing: -0.04em;
+    color: #000000 !important;
+}
+
+.VPFeature .details {
+    color: #3C3C3C !important;
 }
 
 /**
- * Gas calculator page layout adjustments
+ * Navbar
+ * -------------------------------------------------------------------------- */
+
+:root {
+    --vp-nav-bg-color: #F3F4F4;
+    --vp-nav-height: 64px;
+}
+
+.VPNav,
+.VPNavBar,
+header.VPNav {
+    background-color: #F3F4F4 !important;
+    border-bottom: 1px solid #DAE4E7 !important;
+    backdrop-filter: none !important;
+}
+
+/* Nav links — use mono font, uppercase */
+.VPNavBarMenu .VPNavBarMenuLink {
+    font-family: "Geist Mono", monospace !important;
+    text-transform: uppercase !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    color: #000000 !important;
+}
+
+.VPNavBarMenu .VPNavBarMenuLink:hover,
+.VPNavBarMenu .VPNavBarMenuLink.active {
+    color: #B8A6FF !important;
+}
+
+/* VPLocalNav (mobile sub-nav) */
+.VPLocalNav {
+    background-color: #F3F4F4 !important;
+    border-bottom: 1px solid #DAE4E7 !important;
+    backdrop-filter: none !important;
+}
+
+/* Mobile nav screen */
+.VPNavScreen {
+    background-color: #F3F4F4 !important;
+}
+
+/* Scroll states */
+.VPNav.scrolled,
+.VPNavBar.scrolled,
+.VPNav.filled,
+.VPNavBar.filled,
+.VPNavBar.has-sidebar,
+.VPNavBar.no-sidebar {
+    background-color: #F3F4F4 !important;
+}
+
+/**
+ * Logo
+ * -------------------------------------------------------------------------- */
+
+.VPNavBarTitle .VPImage,
+.VPNavBarTitle .logo,
+.VPNavBarTitle img {
+    height: 32px !important;
+    width: auto !important;
+    max-height: 32px !important;
+}
+
+.VPNavBarTitle {
+    display: flex;
+    align-items: center;
+}
+
+.VPNavBarTitle a {
+    display: flex;
+    align-items: center;
+    height: 100%;
+}
+
+/**
+ * Sidebar
+ * -------------------------------------------------------------------------- */
+
+.VPSidebar {
+    background-color: #F3F4F4 !important;
+    border-right: 1px solid #DAE4E7 !important;
+    backdrop-filter: none !important;
+}
+
+/* Group headings — Geist Mono uppercase (matches H2 kicker) */
+.VPSidebarItem.level-0 > .item > .text,
+.VPSidebarItem.is-group > .item > .text {
+    font-family: "Geist Mono", monospace !important;
+    text-transform: uppercase !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.02em !important;
+    color: #A0A0A0 !important;
+}
+
+/* Page links — Inter */
+.VPSidebarItem.level-1 .text,
+.VPSidebarItem.level-2 .text {
+    font-family: "Inter", sans-serif !important;
+    color: #3C3C3C !important;
+}
+
+/* Active state — purple left accent */
+.VPSidebarItem.is-active > .item > .link,
+.VPSidebarItem.is-active > .item {
+    border-left: 3px solid #B8A6FF !important;
+    color: #000000 !important;
+}
+
+.VPSidebarItem.is-active > .item > .text,
+.VPSidebarItem.is-active .link .text {
+    color: #000000 !important;
+    font-weight: 500 !important;
+}
+
+/* Hover */
+.VPSidebarItem .link:hover .text {
+    color: #B8A6FF !important;
+    transition: color 0.15s ease;
+}
+
+/**
+ * Documentation Content
+ * -------------------------------------------------------------------------- */
+
+.VPDoc {
+    background-color: #F3F4F4 !important;
+    min-height: 100vh;
+}
+
+.VPDoc .container,
+.VPDoc .content,
+.VPDocContent {
+    background-color: #F3F4F4 !important;
+}
+
+/* Content typography */
+.vp-doc {
+    color: #3C3C3C;
+}
+
+.vp-doc h1 {
+    font-weight: 500;
+    letter-spacing: -0.06em;
+    line-height: 1em;
+    color: #000000;
+}
+
+.vp-doc h2 {
+    font-weight: 500;
+    letter-spacing: -0.05em;
+    color: #000000;
+    border-top: 1px solid #DAE4E7;
+}
+
+.vp-doc h3 {
+    font-weight: 500;
+    letter-spacing: -0.04em;
+    color: #000000;
+}
+
+.vp-doc h4 {
+    font-weight: 500;
+    letter-spacing: -0.04em;
+    color: #000000;
+}
+
+/* Links */
+.vp-doc a {
+    text-decoration: underline;
+    text-underline-offset: 4px;
+    color: #000000;
+    transition: color 0.15s ease;
+}
+
+.vp-doc a:hover {
+    color: #B8A6FF;
+}
+
+/* Strong */
+.vp-doc strong {
+    font-weight: 600;
+    color: #000000;
+}
+
+/* Lists */
+.vp-doc ul,
+.vp-doc ol {
+    color: #3C3C3C;
+}
+
+/* Blockquotes */
+.vp-doc blockquote {
+    border-left: 4px solid rgba(0, 0, 0, 0.2) !important;
+    color: #3C3C3C;
+    font-style: italic;
+}
+
+/* Tables */
+.vp-doc table {
+    border-collapse: collapse;
+    border-radius: 16px;
+    overflow: hidden;
+}
+
+.vp-doc th {
+    background-color: rgba(0, 0, 0, 0.05) !important;
+    font-weight: 600;
+    color: #000000;
+}
+
+.vp-doc tr {
+    border-color: rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Horizontal rules */
+.vp-doc hr {
+    border-color: #DAE4E7;
+}
+
+/**
+ * Gas calculator layout
  * -------------------------------------------------------------------------- */
 
 .gas-calculator .VPDoc .container,
@@ -169,253 +531,34 @@ body {
     max-width: 100% !important;
 }
 
-.dark body {
-    background-color: #000000;
-}
+/**
+ * Footer
+ * -------------------------------------------------------------------------- */
 
-/* Adjust grid opacity for light/dark modes with thicker lines */
-body {
-    background-image:
-        linear-gradient(rgba(255, 0, 51, 0.12) 3px, transparent 3px),
-        linear-gradient(90deg, rgba(255, 0, 51, 0.12) 3px, transparent 3px);
-}
-
-.dark body {
-    background-image:
-        linear-gradient(rgba(255, 0, 51, 0.15) 3px, transparent 3px),
-        linear-gradient(90deg, rgba(255, 0, 51, 0.15) 3px, transparent 3px);
-}
-
-/* Style the hero image (logo) */
-.VPHero .VPImage {
-    display: block;
-    margin: 0 auto;
-}
-
-/* Make the hero logo bigger */
-.VPHero .VPImage img {
-    height: 120px !important;
-    width: auto !important;
-    max-width: none !important;
-}
-
-/* Make all layout components transparent to show body background */
-.Layout,
-.VPContent,
-.VPDoc,
-.VPHome {
-    background-color: transparent !important;
-}
-
-/* Make content areas transparent by default to show body grid background */
-.VPContent,
-.VPHome,
-.Layout > * {
-    background-color: transparent !important;
-    background: transparent !important;
-}
-
-/* Documentation pages - solid background for readability */
-.VPDoc {
-    background-color: #ffffff !important;
-    min-height: 100vh;
-}
-
-.dark .VPDoc {
-    background-color: #0a0a0a !important;
-}
-
-/* Documentation content area */
-.VPDoc .container,
-.VPDoc .content,
-.VPDocContent {
-    background-color: #ffffff !important;
-}
-
-.dark .VPDoc .container,
-.dark .VPDoc .content,
-.dark .VPDocContent {
-    background-color: #0a0a0a !important;
-}
-
-/* Add padding to doc content for better readability */
-.VPDoc .VPDocOutlineDropdown,
-.VPDoc .content-container {
-    padding: 1rem;
-}
-
-/* Sidebar background for documentation pages */
-.VPSidebar {
-    background-color: rgba(255, 255, 255, 0.95) !important;
-    backdrop-filter: blur(8px);
-}
-
-.dark .VPSidebar {
-    background-color: rgba(10, 10, 10, 0.95) !important;
-    backdrop-filter: blur(8px);
-}
-
-/* Feature boxes - ensure proper backgrounds in light/dark modes */
-.VPFeature {
-    background-color: #ffffff !important;
-    border-color: #e5e5e5 !important;
-}
-
-.dark .VPFeature {
-    background-color: #0a0a0a !important;
-    border-color: #2a2a2a !important;
-}
-
-/* Ensure all VitePress components respect light/dark backgrounds */
-:root {
-    --vp-c-bg: #ffffff;
-    --vp-c-bg-soft: #f6f6f6;
-    --vp-c-bg-mute: #f0f0f0;
-}
-
-/* Fix navbar backgrounds - more specific targeting including scroll states */
-.VPNav,
-.VPNav .VPNavBar,
-.VPNavBar,
-header.VPNav,
-.VPNav.scrolled,
-.VPNavBar.scrolled,
-.VPNav.filled,
-.VPNavBar.filled {
-    background-color: rgba(255, 255, 255, 0.8) !important;
-    backdrop-filter: blur(12px);
-    border-bottom: 1px solid rgba(0, 0, 0, 0.1) !important;
-}
-
-.dark .VPNav,
-.dark .VPNav .VPNavBar,
-.dark .VPNavBar,
-.dark header.VPNav,
-.dark .VPNav.scrolled,
-.dark .VPNavBar.scrolled,
-.dark .VPNav.filled,
-.dark .VPNavBar.filled {
-    background-color: rgba(0, 0, 0, 0.8) !important;
-    backdrop-filter: blur(12px);
-    border-bottom: 1px solid rgba(255, 0, 51, 0.2) !important;
-}
-
-/* Target the main nav container */
-.VPNavBar.has-sidebar,
-.VPNavBar.no-sidebar {
-    background-color: inherit !important;
-}
-
-.VPLocalNav {
-    background-color: rgba(255, 255, 255, 0.8) !important;
-    backdrop-filter: blur(12px);
-    border-bottom: 1px solid rgba(0, 0, 0, 0.1) !important;
-}
-
-.dark .VPLocalNav {
-    background-color: rgba(0, 0, 0, 0.8) !important;
-    backdrop-filter: blur(12px);
-    border-bottom: 1px solid rgba(255, 0, 51, 0.2) !important;
-}
-
-/* Footer styling with grid background */
 .VPFooter {
-    background-color: #ffffff !important;
-    border-top: 1px solid rgba(0, 0, 0, 0.1) !important;
-    position: relative;
-}
-
-.dark .VPFooter {
-    background-color: #000000 !important;
-    border-top: 1px solid rgba(255, 0, 51, 0.2) !important;
-}
-
-/* Footer also transparent to show body grid background */
-.VPFooter .VPFooterCopyright {
-    background-color: transparent;
-    padding: 8px 16px;
-}
-
-/* Ensure nav screen (mobile menu) also has correct background */
-.VPNavScreen {
-    background-color: #ffffff !important;
-}
-
-.dark .VPNavScreen {
-    background-color: #000000 !important;
-}
-
-/* Override VitePress default nav styles completely */
-html.dark {
-    --vp-nav-bg-color: rgba(0, 0, 0, 0.8) !important;
-    --vp-c-bg: #000000 !important;
-    --vp-c-bg-soft: #000000 !important;
-}
-
-html:not(.dark) {
-    --vp-nav-bg-color: rgba(255, 255, 255, 0.8) !important;
-    --vp-c-bg: #ffffff !important;
-    --vp-c-bg-soft: #ffffff !important;
-}
-
-/* Force nav background using CSS variables */
-:root {
-    --vp-nav-bg-color: rgba(255, 255, 255, 0.8);
-    --vp-nav-height: 55px;
-}
-
-.dark {
-    --vp-nav-bg-color: rgba(0, 0, 0, 0.8);
-}
-
-/* Apply the variable to nav elements (excluding children to preserve theme toggle) */
-.VPNav,
-.VPNavBar,
-html .VPNav,
-html .VPNavBar,
-html.dark .VPNav,
-html.dark .VPNavBar {
-    background: var(--vp-nav-bg-color) !important;
-}
-
-/* Ensure nav stays consistent during scroll transitions */
-.VPNav[data-scrolled="true"],
-.VPNavBar[data-scrolled="true"] {
-    background: var(--vp-nav-bg-color) !important;
+    background-color: #F3F4F4 !important;
+    border-top: 1px solid #DAE4E7 !important;
 }
 
 /**
- * Custom Logo Styling
+ * Outline / TOC
  * -------------------------------------------------------------------------- */
 
-/* Make the logo bigger */
-.VPNavBarTitle .VPImage {
-    height: 55px !important;
-    width: auto !important;
+.VPDocAsideOutline {
+    border-left: 1px solid #DAE4E7 !important;
 }
 
-/* Adjust logo container */
-.VPNavBarTitle {
-    display: flex;
-    align-items: center;
+.VPDocAsideOutline .outline-link.active {
+    color: #B8A6FF !important;
+    border-left-color: #B8A6FF !important;
 }
 
-/* Remove any max width constraints on the logo */
-.VPNavBarTitle .logo {
-    max-width: none !important;
-    height: 55px !important;
+/**
+ * Badge
+ * -------------------------------------------------------------------------- */
+
+.VPBadge.tip {
+    background-color: rgba(184, 166, 255, 0.14);
+    color: #6d5cbf;
 }
 
-/* Ensure the logo link takes full height */
-.VPNavBarTitle a {
-    display: flex;
-    align-items: center;
-    height: 100%;
-}
-
-/* Make sure the image inside logo takes full size */
-.VPNavBarTitle img {
-    height: 55px !important;
-    width: auto !important;
-    max-height: 55px !important;
-}
