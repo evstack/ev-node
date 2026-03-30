@@ -7,10 +7,6 @@ import (
 )
 
 const (
-	// DefaultBadgerBlockCacheSize bounds Badger's block cache off-heap usage.
-	// This node is primarily append/sync-oriented, so prefer a conservative
-	// default over maximizing read cache hit rate.
-	DefaultBadgerBlockCacheSize int64 = 128 << 20 // 128 MiB
 	// DefaultBadgerIndexCacheSize bounds Badger's table index and bloom filter
 	// cache to avoid growth with chain length.
 	DefaultBadgerIndexCacheSize int64 = 256 << 20 // 256 MiB
@@ -23,7 +19,6 @@ func BadgerOptions() *badger4.Options {
 
 	// Bound Badger-owned caches explicitly instead of inheriting a large block
 	// cache and an unbounded index cache from the upstream defaults.
-	opts.Options = opts.WithBlockCacheSize(DefaultBadgerBlockCacheSize)
 	opts.Options = opts.WithIndexCacheSize(DefaultBadgerIndexCacheSize)
 	// Disable conflict detection to reduce write overhead; ev-node does not rely
 	// on Badger's multi-writer conflict checks for correctness.
