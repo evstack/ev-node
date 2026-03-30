@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ipfs/go-datastore"
@@ -28,13 +29,18 @@ import (
 	rollhash "github.com/evstack/ev-node/pkg/hash"
 )
 
-// TODO(tzdybal): refactor to configuration parameters
 const (
 	// reAdvertisePeriod defines a period after which P2P client re-attempt advertising namespace in DHT.
 	reAdvertisePeriod = 1 * time.Hour
 
 	// peerLimit defines limit of number of peers returned during active peer discovery.
 	peerLimit = 60
+
+	// peerDiscoveryInterval is how often the background loop re-runs peer discovery.
+	peerDiscoveryInterval = 5 * time.Minute
+
+	// reconnectCooldown is the minimum time between reconnect attempts for the same seed peer.
+	reconnectCooldown = 5 * time.Second
 )
 
 // Client is a P2P client, implemented with libp2p.
@@ -55,6 +61,12 @@ type Client struct {
 	gater   *conngater.BasicConnectionGater
 	ps      *pubsub.PubSub
 	started bool
+
+	seedPeers []peer.AddrInfo
+
+	maintenanceCancel context.CancelFunc
+	maintenanceWg     sync.WaitGroup
+	reconnectCh       chan peer.ID
 
 	metrics *Metrics
 }
@@ -170,11 +182,21 @@ func (c *Client) startWithHost(ctx context.Context, h host.Host) error {
 	}
 
 	c.started = true
+
+	c.reconnectCh = make(chan peer.ID, 32)
+	c.host.Network().Notify(c.newDisconnectNotifee())
+	c.startConnectionMaintenance(ctx)
+
 	return nil
 }
 
 // Close gently stops Client.
 func (c *Client) Close() error {
+	if c.maintenanceCancel != nil {
+		c.maintenanceCancel()
+	}
+	c.maintenanceWg.Wait()
+
 	var err error
 	if c.dht != nil {
 		err = errors.Join(err, c.dht.Close())
@@ -245,6 +267,109 @@ func (c *Client) Peers() []PeerConnection {
 	return res
 }
 
+// disconnectNotifee is a network.Notifee that triggers seed peer reconnection
+// when a configured seed peer disconnects.
+type disconnectNotifee struct {
+	c *Client
+}
+
+func (n disconnectNotifee) Connected(_ network.Network, _ network.Conn)          {}
+func (n disconnectNotifee) OpenedStream(_ network.Network, _ network.Stream)     {}
+func (n disconnectNotifee) ClosedStream(_ network.Network, _ network.Stream)     {}
+func (n disconnectNotifee) Listen(_ network.Network, _ multiaddr.Multiaddr)      {}
+func (n disconnectNotifee) ListenClose(_ network.Network, _ multiaddr.Multiaddr) {}
+
+func (n disconnectNotifee) Disconnected(_ network.Network, conn network.Conn) {
+	p := conn.RemotePeer()
+	for _, sp := range n.c.seedPeers {
+		if sp.ID == p {
+			select {
+			case n.c.reconnectCh <- p:
+			default:
+			}
+			return
+		}
+	}
+}
+
+func (c *Client) newDisconnectNotifee() disconnectNotifee {
+	return disconnectNotifee{c: c}
+}
+
+// startConnectionMaintenance launches a background goroutine that reconnects
+// to seed peers on disconnect (driven by network.Notifee events) and
+// periodically refreshes peer discovery. This ensures P2P connectivity
+// recovers after transient network failures without requiring a full node restart.
+func (c *Client) startConnectionMaintenance(parentCtx context.Context) {
+	ctx, cancel := context.WithCancel(parentCtx)
+	c.maintenanceCancel = cancel
+
+	c.maintenanceWg.Go(func() {
+
+		discoveryTicker := time.NewTicker(peerDiscoveryInterval)
+		defer discoveryTicker.Stop()
+
+		lastReconnect := make(map[peer.ID]time.Time)
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case pid := <-c.reconnectCh:
+				if until := lastReconnect[pid].Add(reconnectCooldown); time.Now().Before(until) {
+					continue
+				}
+				lastReconnect[pid] = time.Now()
+
+				for _, sp := range c.seedPeers {
+					if sp.ID != pid {
+						continue
+					}
+					if c.isConnected(sp.ID) {
+						break
+					}
+					c.logger.Info().Str("peer", sp.ID.String()).Msg("reconnecting to disconnected seed peer")
+					if err := c.host.Connect(ctx, sp); err != nil && ctx.Err() == nil {
+						c.logger.Warn().Str("peer", sp.ID.String()).Err(err).Msg("failed to reconnect to seed peer")
+					}
+					break
+				}
+			case <-discoveryTicker.C:
+				c.refreshPeerDiscovery(ctx)
+			}
+		}
+	})
+}
+
+// refreshPeerDiscovery re-advertises and re-runs peer discovery via DHT.
+func (c *Client) refreshPeerDiscovery(ctx context.Context) {
+	if c.disc == nil {
+		return
+	}
+
+	c.logger.Debug().Msg("refreshing peer discovery")
+
+	_ = c.advertise(ctx)
+
+	peerCh, err := c.disc.FindPeers(ctx, c.getNamespace(), cdiscovery.Limit(peerLimit))
+	if err != nil {
+		c.logger.Warn().Err(err).Msg("peer discovery refresh failed")
+		return
+	}
+
+	for p := range peerCh {
+		if p.ID == c.host.ID() || c.isConnected(p.ID) {
+			continue
+		}
+		go c.tryConnect(ctx, p)
+	}
+}
+
+// isConnected returns true if there is an active connection to the given peer.
+func (c *Client) isConnected(id peer.ID) bool {
+	return c.host.Network().Connectedness(id) == network.Connected
+}
+
 func (c *Client) listen() (host.Host, error) {
 	maddr, err := multiaddr.NewMultiaddr(c.conf.ListenAddress)
 	if err != nil {
@@ -256,6 +381,7 @@ func (c *Client) listen() (host.Host, error) {
 
 func (c *Client) setupDHT(ctx context.Context) error {
 	peers := c.parseAddrInfoList(c.conf.Peers)
+	c.seedPeers = peers
 	if len(peers) == 0 {
 		c.logger.Info().Msg("no peers - only listening for connections")
 	}
