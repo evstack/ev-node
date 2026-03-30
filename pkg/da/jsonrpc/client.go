@@ -77,7 +77,7 @@ func NewClient(ctx context.Context, addr, token string, authHeaderName string) (
 func NewWSClient(ctx context.Context, logger zerolog.Logger, addr, token string, authHeaderName string) (*Client, error) {
 	client, err := NewClient(ctx, httpToWS(addr), token, authHeaderName)
 	if err != nil {
-		logger.Warn().Msg("connection to websocket failed, failling back to DA polling")
+		logger.Warn().Err(err).Msg("DA websocket connection failed, falling back to DA polling")
 		return NewClient(ctx, addr, token, authHeaderName)
 	}
 
