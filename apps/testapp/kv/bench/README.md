@@ -1,62 +1,50 @@
-# KV Executor Benchmark Client
+# KV Executor Stress Test
 
-This is a command-line client primarily used for benchmarking the KV executor HTTP server by sending transactions. It can also list the current state of the store.
+Stress test for the KV executor HTTP server. Sends transactions via raw TCP connections to maximize throughput, targeting 10M req/s.
 
 ## Building
 
 ```bash
-go build -o txclient
+go build -o stress-test ./kv/bench/
 ```
 
 ## Usage
 
-The client runs a transaction benchmark by default.
-
-### Running the Benchmark
+Run the testapp first, then the stress test alongside it:
 
 ```bash
-./txclient [flags]
+# Terminal 1: start the testapp with KV endpoint
+./build/testapp start --kv-endpoint localhost:9090
+
+# Terminal 2: run the stress test
+./stress-test --addr localhost:9090 --duration 10s --workers 1000
 ```
 
-By default, the benchmark runs for 30 seconds, sending 10 random key-value transactions every second to `http://localhost:40042`.
+## Flags
 
-**Benchmark Flags:**
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-addr` | `localhost:9090` | Server host:port |
+| `-duration` | `10s` | Test duration |
+| `-workers` | `1000` | Number of concurrent TCP workers |
 
-* `-duration <duration>`: Total duration for the benchmark (e.g., `1m`, `30s`). Default: `30s`.
-* `-interval <duration>`: Interval between sending batches of transactions (e.g., `1s`, `500ms`). Default: `1s`.
-* `-tx-per-interval <int>`: Number of transactions to send in each interval. Default: `10`.
-* `-addr <url>`: Specify a different server address. Default: `http://localhost:40042`.
+## Output
 
-**Transaction Data for Benchmark:**
+The tool prints live progress (req/s) during the run, then a summary table with:
 
-* **Random Data (Default):** If no transaction data flags are provided, the client sends random `key=value` transactions, where keys are 8 characters and values are 16 characters long.
-* **Fixed Key/Value:** Use `-key mykey -value myvalue` to send the *same* transaction `mykey=myvalue` repeatedly during the benchmark.
-* **Fixed Raw Data:** Use `-raw "myrawdata"` to send the *same* raw transaction data repeatedly during the benchmark.
+- Avg req/s and peak req/s
+- Total requests, successes, and failures
+- Server-side stats: blocks produced, txs executed, avg txs per block
+- Whether the 10M req/s goal was reached (displays `SUCCESS` if so)
 
-### List all key-value pairs in the store
+## /stats Endpoint
 
-```bash
-./txclient -list [-addr <url>]
-```
+The KV executor HTTP server exposes a `/stats` endpoint (GET) returning:
 
-This will fetch and display all key-value pairs currently in the KV executor's store. It does not run the benchmark.
-
-## Examples
-
-Run a 1-minute benchmark sending 20 random transactions every 500ms:
-
-```bash
-./txclient -duration 1m -interval 500ms -tx-per-interval 20
-```
-
-Run a 30-second benchmark repeatedly sending the transaction `user1=alice`:
-
-```bash
-./txclient -duration 30s -key user1 -value alice
-```
-
-List all values from a specific server:
-
-```bash
-./txclient -list -addr http://192.168.1.100:40042
+```json
+{
+  "injected_txs": 52345678,
+  "executed_txs": 1234567,
+  "blocks_produced": 1000
+}
 ```

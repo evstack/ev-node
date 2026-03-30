@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	ds "github.com/ipfs/go-datastore"
@@ -35,8 +36,22 @@ var (
 // for testing purposes. It uses a buffered channel as a mempool for transactions.
 // It also includes fields to track genesis initialization persisted in the datastore.
 type KVExecutor struct {
-	db     ds.Batching
-	txChan chan []byte // Buffered channel for transactions
+	db               ds.Batching
+	txChan           chan []byte
+	blocksProduced   atomic.Uint64
+	totalExecutedTxs atomic.Uint64
+}
+
+type ExecutorStats struct {
+	BlocksProduced   uint64
+	TotalExecutedTxs uint64
+}
+
+func (k *KVExecutor) GetStats() ExecutorStats {
+	return ExecutorStats{
+		BlocksProduced:   k.blocksProduced.Load(),
+		TotalExecutedTxs: k.totalExecutedTxs.Load(),
+	}
 }
 
 // NewKVExecutor creates a new instance of KVExecutor with initialized store and mempool channel.
@@ -76,9 +91,9 @@ func (k *KVExecutor) GetStoreValue(ctx context.Context, key string) (string, boo
 
 		resultKey := result.Key
 		// Check if this is a height-prefixed key that matches our target key
-		if strings.HasPrefix(resultKey, heightPrefix+"/") {
+		if after, ok := strings.CutPrefix(resultKey, heightPrefix+"/"); ok {
 			// Extract height and actual key: /height/{height}/{actual_key}
-			parts := strings.Split(strings.TrimPrefix(resultKey, heightPrefix+"/"), "/")
+			parts := strings.Split(after, "/")
 			if len(parts) >= 2 {
 				var keyHeight uint64
 				if _, err := fmt.Sscanf(parts[0], "%d", &keyHeight); err == nil {
@@ -292,6 +307,9 @@ func (k *KVExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight u
 		return nil, fmt.Errorf("failed to commit transaction batch: %w", err)
 	}
 
+	k.blocksProduced.Add(1)
+	k.totalExecutedTxs.Add(uint64(validTxCount))
+
 	// Compute the new state root *after* successful commit
 	stateRoot, err := k.computeStateRoot(ctx)
 	if err != nil {
@@ -316,7 +334,7 @@ func (k *KVExecutor) SetFinal(ctx context.Context, blockHeight uint64) error {
 		return errors.New("invalid blockHeight: cannot be zero")
 	}
 
-	return k.db.Put(ctx, finalizedHeightKey, []byte(fmt.Sprintf("%d", blockHeight)))
+	return k.db.Put(ctx, finalizedHeightKey, fmt.Appendf(nil, "%d", blockHeight))
 }
 
 // InjectTx adds a transaction to the mempool channel.
@@ -369,9 +387,9 @@ func (k *KVExecutor) Rollback(ctx context.Context, height uint64) error {
 
 		key := result.Key
 		// Check if this is a height-prefixed key
-		if strings.HasPrefix(key, heightPrefix+"/") {
+		if after, ok := strings.CutPrefix(key, heightPrefix+"/"); ok {
 			// Extract height from key: /height/{height}/{actual_key} (see getTxKey)
-			parts := strings.Split(strings.TrimPrefix(key, heightPrefix+"/"), "/")
+			parts := strings.Split(after, "/")
 			if len(parts) > 0 {
 				var keyHeight uint64
 				if _, err := fmt.Sscanf(parts[0], "%d", &keyHeight); err == nil {
