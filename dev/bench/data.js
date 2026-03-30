@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774858307194,
+  "lastUpdate": 1774873773639,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -286,6 +286,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 165447,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "julien@rbrt.fr",
+            "name": "julienrbrt",
+            "username": "julienrbrt"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "a4484f5a3d803a1cfd2597e65272b0cef427ad26",
+          "message": "chore(syncing): avoid sending duplicate events to channel (#3207)\n\n* chore(syncing): avoid sending duplicate events to channel\n\n* add comment\n\n* improve comment",
+          "timestamp": "2026-03-30T12:08:02Z",
+          "tree_id": "61052d7c4b3ab80d29fd866424b0d4bfc2d72a27",
+          "url": "https://github.com/evstack/ev-node/commit/a4484f5a3d803a1cfd2597e65272b0cef427ad26"
+        },
+        "date": 1774873769935,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 919033660,
+            "unit": "ns/op\t33468204 B/op\t  191357 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 919033660,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 33468204,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 191357,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
