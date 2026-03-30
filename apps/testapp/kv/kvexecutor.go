@@ -22,7 +22,7 @@ var (
 	heightKeyPrefix       = ds.NewKey("/height")
 	finalizedHeightKey    = ds.NewKey("/finalizedHeight")
 	// Define a buffer size for the transaction channel
-	txChannelBufferSize = 100_000
+	txChannelBufferSize = 100_000_000
 	// reservedKeys defines the set of keys that should be excluded from state root calculation
 	// and protected from transaction modifications
 	reservedKeys = map[ds.Key]bool{
