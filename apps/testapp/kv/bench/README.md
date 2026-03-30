@@ -27,6 +27,7 @@ Run the testapp first, then the stress test alongside it:
 | `-addr` | `localhost:9090` | Server host:port |
 | `-duration` | `10s` | Test duration |
 | `-workers` | `1000` | Number of concurrent TCP workers |
+| `-target-rps` | `10000000` | Target requests per second (goal) |
 
 ## Output
 

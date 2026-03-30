@@ -15,8 +15,6 @@ import (
 	"time"
 )
 
-const targetRPS = 10_000_000
-
 type serverStats struct {
 	InjectedTxs    uint64 `json:"injected_txs"`
 	ExecutedTxs    uint64 `json:"executed_txs"`
@@ -27,13 +25,14 @@ func main() {
 	addr := flag.String("addr", "localhost:9090", "server host:port")
 	duration := flag.Duration("duration", 10*time.Second, "test duration")
 	workers := flag.Int("workers", 1000, "concurrent workers")
+	targetRPS := flag.Uint64("target-rps", 10_000_000, "target requests per second")
 	flag.Parse()
 
 	fmt.Printf("Stress Test Configuration\n")
 	fmt.Printf("  Server:    %s\n", *addr)
 	fmt.Printf("  Duration:  %s\n", *duration)
 	fmt.Printf("  Workers:   %d\n", *workers)
-	fmt.Printf("  Goal:      %d req/s\n\n", targetRPS)
+	fmt.Printf("  Goal:      %d req/s\n\n", *targetRPS)
 
 	if err := checkServer(*addr); err != nil {
 		fmt.Fprintf(os.Stderr, "Server check failed: %v\n", err)
@@ -101,12 +100,12 @@ loop:
 		txsPerBlock = float64(deltaTxs) / float64(deltaBlocks)
 	}
 
-	reached := avgRPS >= float64(targetRPS)
+	reached := avgRPS >= float64(*targetRPS)
 
 	fmt.Println()
 	fmt.Println()
 	printResults(elapsed, uint64(*workers), total, success.Load(), failures.Load(),
-		avgRPS, float64(peakRPS), deltaBlocks, deltaTxs, txsPerBlock, reached)
+		avgRPS, float64(peakRPS), deltaBlocks, deltaTxs, txsPerBlock, reached, *targetRPS)
 }
 
 func worker(ctx context.Context, addr string, rawReq []byte, success, failures *atomic.Uint64, done chan struct{}) {
@@ -198,8 +197,9 @@ func formatNum(n uint64) string {
 }
 
 func printResults(elapsed time.Duration, workers, total, success, failures uint64,
-	avgRPS, peakRPS float64, blocks, executedTxs uint64, txsPerBlock float64, reached bool) {
+	avgRPS, peakRPS float64, blocks, executedTxs uint64, txsPerBlock float64, reached bool, targetRPS uint64) {
 
+	goalLabel := fmt.Sprintf("Goal (%s req/s)", formatNum(targetRPS))
 	sep := "+----------------------------------------+----------------------------------------+"
 	rowFmt := "| %-38s | %-38s |"
 
@@ -222,14 +222,14 @@ func printResults(elapsed time.Duration, workers, total, success, failures uint6
 	fmt.Println(sep)
 
 	if reached {
-		fmt.Printf(rowFmt+"\n", "Goal (10M req/s)", "REACHED")
+		fmt.Printf(rowFmt+"\n", goalLabel, "REACHED")
 		fmt.Println(sep)
 		fmt.Println()
 		fmt.Println("  ====================================================")
-		fmt.Println("      S U C C E S S !   1 0 M  R E A C H E D !")
+		fmt.Printf("      S U C C E S S !   %s  R E A C H E D !\n", formatNum(targetRPS))
 		fmt.Println("  ====================================================")
 	} else {
-		fmt.Printf(rowFmt+"\n", "Goal (10M req/s)", "NOT REACHED")
+		fmt.Printf(rowFmt+"\n", goalLabel, "NOT REACHED")
 		fmt.Println(sep)
 		fmt.Printf("\n  Achieved %.2f%% of target (%.1fx away)\n",
 			avgRPS/float64(targetRPS)*100, float64(targetRPS)/avgRPS)
