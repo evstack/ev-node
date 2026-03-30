@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774880579727,
+  "lastUpdate": 1774883654433,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -382,6 +382,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 176897,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "github.qpeyb@simplelogin.fr",
+            "name": "Cian Hatton",
+            "username": "chatton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "5e3db23fb2fdc090312bbc39abd831c07a1a2ceb",
+          "message": "feat: structured benchmark result output via BENCH_RESULT_OUTPUT (#3195)\n\n* feat(benchmarking): add structured result output via BENCH_RESULT_OUTPUT\n\nemit full benchmark run metadata (config, tags, metrics, block range,\nspamoor stats) as JSON when BENCH_RESULT_OUTPUT is set. consumed by\nexternal matrix runner for table generation.\n\n* fix: address PR review feedback for structured benchmark output\n\n- Deduplicate overhead/reth-rate computation: move stats-based helpers\n  to helpers.go, make span-based wrappers delegate to them\n- Fix sub-millisecond precision loss in engine span timings by using\n  microsecond-based float division instead of integer truncation\n- Add spamoor stats to TestGasBurner for consistency with other tests\n\n* refactor: make spamoor config fully configurable via BENCH_* env vars\n\n- Add MaxPending, Rebroadcast, BaseFee, TipFee to benchConfig\n- Fix ERC20 test hardcoding max_wallets=200 instead of using cfg\n- Replace all hardcoded spamoor params with cfg fields across tests\n\n* feat: extract host metadata from OTEL resource attributes in trace spans\n\n- Add resourceAttrs struct with host, OS, and service fields\n- Extract attributes from VictoriaTraces LogsQL span data via\n  resourceAttrCollector interface\n- Include host metadata in structured benchmark result JSON\n\n* fix: defer emitRunResult so results are written even on test failure\n\nMove emitRunResult into a deferred closure in all three test functions.\nIf the test fails after metrics are collected, the structured JSON is\nstill written. If it fails before result data exists, the defer is a\nno-op.\n\n* fix: state pressure benchmark CI failure and align with other tests\n\nRemove the 3-second sleep before requireSpammersRunning that caused all\ntransactions to be mined before the measurement window started, leaving\nSteadyState at 0s. Also add deferred emitRunResult, configurable spamoor\nparams, and spamoorStats collection to match the other benchmark tests.\n\n* fix: use deployment-level service names for trace queries in external mode\n\nIn external mode the sequencer reports spans as \"ev-node\" (not the\ntest-specific name like \"ev-node-erc20\"), so trace queries returned\nzero spans. Store service names on env: local mode uses the\ntest-specific name, external mode defaults to \"ev-node\"/\"ev-reth\"\nwith BENCH_EVNODE_SERVICE_NAME/BENCH_EVRETH_SERVICE_NAME overrides.\n\n* perf: use limit=1 for resource attribute trace queries\n\nfetchResourceAttrs only needs one span but was streaming the full\nresult set from VictoriaTraces. Add limit=1 to the LogsQL query to\navoid wasting bandwidth on long-lived instances with many spans.\n\n* docs: add missing doc comments to run_result.go functions",
+          "timestamp": "2026-03-30T14:54:13Z",
+          "tree_id": "55b09c16e7fe1a5e662b08495fdda99c8122bd5b",
+          "url": "https://github.com/evstack/ev-node/commit/5e3db23fb2fdc090312bbc39abd831c07a1a2ceb"
+        },
+        "date": 1774883650981,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 898740693,
+            "unit": "ns/op\t31855596 B/op\t  175757 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 898740693,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 31855596,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 175757,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
