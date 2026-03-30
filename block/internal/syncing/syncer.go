@@ -42,6 +42,8 @@ const (
 	fullnessThreshold = 0.8
 )
 
+var p2pWaitLogInterval = 5 * time.Second
+
 // Syncer handles block synchronization from DA and P2P sources.
 type Syncer struct {
 	// Core components
@@ -476,7 +478,7 @@ func (s *Syncer) p2pWorkerLoop(ctx context.Context) {
 		waitCtx, cancel := context.WithCancel(ctx)
 		s.setP2PWaitState(targetHeight, cancel)
 
-		err = s.p2pHandler.ProcessHeight(waitCtx, targetHeight, s.heightInCh)
+		err = s.processP2PHeight(waitCtx, targetHeight, logger)
 		s.cancelP2PWait(targetHeight)
 
 		if err != nil {
@@ -499,6 +501,54 @@ func (s *Syncer) p2pWorkerLoop(ctx context.Context) {
 				return
 			}
 			logger.Error().Err(err).Uint64("height", targetHeight).Msg("failed waiting for height commit")
+		}
+	}
+}
+
+func (s *Syncer) processP2PHeight(ctx context.Context, targetHeight uint64, logger zerolog.Logger) error {
+	doneCh := make(chan error, 1)
+	startedAt := time.Now()
+	loggedWait := false
+
+	go func() {
+		doneCh <- s.p2pHandler.ProcessHeight(ctx, targetHeight, s.heightInCh)
+	}()
+
+	ticker := time.NewTicker(p2pWaitLogInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case err := <-doneCh:
+			if loggedWait && err == nil {
+				logger.Info().
+					Uint64("height", targetHeight).
+					Dur("waited", time.Since(startedAt)).
+					Msg("P2P height became available")
+			}
+			return err
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			loggedWait = true
+
+			event := logger.Warn().
+				Uint64("target_height", targetHeight).
+				Uint64("header_store_height", storeHeightOf(s.headerStore)).
+				Uint64("data_store_height", storeHeightOf(s.dataStore)).
+				Int("height_events_buffered", len(s.heightInCh)).
+				Int64("in_flight_events", s.inFlight.Load()).
+				Int("pending_events", s.cache.PendingEventsCount()).
+				Int("total_pending", s.PendingCount()).
+				Dur("waited", time.Since(startedAt))
+
+			if localHeight, err := s.store.Height(ctx); err != nil {
+				event = event.Str("local_height_err", err.Error())
+			} else {
+				event = event.Uint64("local_height", localHeight)
+			}
+
+			event.Msg("waiting for P2P height to become available")
 		}
 	}
 }
@@ -1108,6 +1158,17 @@ func (s *Syncer) sleepOrDone(ctx context.Context, duration time.Duration) bool {
 	case <-timer.C:
 		return true
 	}
+}
+
+type storeHeightReader interface {
+	Height() uint64
+}
+
+func storeHeightOf(store storeHeightReader) uint64 {
+	if store == nil {
+		return 0
+	}
+	return store.Height()
 }
 
 type p2pWaitState struct {

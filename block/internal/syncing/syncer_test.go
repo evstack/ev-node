@@ -1,11 +1,13 @@
 package syncing
 
 import (
+	"bytes"
 	"context"
 	crand "crypto/rand"
 	"crypto/sha512"
 	"errors"
 	"math"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -33,6 +35,16 @@ import (
 	extmocks "github.com/evstack/ev-node/test/mocks/external"
 	"github.com/evstack/ev-node/types"
 )
+
+type stubP2PHandler struct {
+	processHeight func(ctx context.Context, height uint64, heightInCh chan<- common.DAHeightEvent) error
+}
+
+func (s *stubP2PHandler) ProcessHeight(ctx context.Context, height uint64, heightInCh chan<- common.DAHeightEvent) error {
+	return s.processHeight(ctx, height, heightInCh)
+}
+
+func (s *stubP2PHandler) SetProcessedHeight(uint64) {}
 
 // helper to create a signer, pubkey and address for tests
 func buildSyncTestSigner(tb testing.TB) (addr []byte, pub crypto.PubKey, signer signerpkg.Signer) {
@@ -163,6 +175,65 @@ func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 	_, header = makeSignedHeaderBytes(t, gen.ChainID, 2, addr, pub, signer, nil, nil, nil)
 	err = s.ValidateBlock(t.Context(), s.getLastState(), data, header)
 	require.Error(t, err)
+}
+
+func TestSyncer_processP2PHeight_LogsWhenBlocked(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+
+	batch, err := st.NewBatch(t.Context())
+	require.NoError(t, err)
+	require.NoError(t, batch.SetHeight(7))
+	require.NoError(t, batch.Commit())
+
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	require.NoError(t, err)
+	cm.SetPendingEvent(10, &common.DAHeightEvent{})
+
+	headerStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
+	headerStore.EXPECT().Height().Return(uint64(11)).Maybe()
+	dataStore := extmocks.NewMockStore[*types.P2PData](t)
+	dataStore.EXPECT().Height().Return(uint64(12)).Maybe()
+
+	var logBuf bytes.Buffer
+	logger := zerolog.New(&logBuf)
+
+	originalInterval := p2pWaitLogInterval
+	p2pWaitLogInterval = 10 * time.Millisecond
+	t.Cleanup(func() {
+		p2pWaitLogInterval = originalInterval
+	})
+
+	s := &Syncer{
+		store:       st,
+		cache:       cm,
+		headerStore: headerStore,
+		dataStore:   dataStore,
+		heightInCh:  make(chan common.DAHeightEvent, 2),
+		logger:      logger,
+		p2pHandler: &stubP2PHandler{
+			processHeight: func(ctx context.Context, _ uint64, _ chan<- common.DAHeightEvent) error {
+				select {
+				case <-time.After(35 * time.Millisecond):
+					return nil
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			},
+		},
+	}
+
+	err = s.processP2PHeight(t.Context(), 8, logger)
+	require.NoError(t, err)
+
+	logs := logBuf.String()
+	require.Contains(t, logs, "waiting for P2P height to become available")
+	require.Contains(t, logs, "\"target_height\":8")
+	require.Contains(t, logs, "\"local_height\":7")
+	require.Contains(t, logs, "\"header_store_height\":11")
+	require.Contains(t, logs, "\"data_store_height\":12")
+	require.Contains(t, logs, "\"pending_events\":1")
+	require.True(t, strings.Contains(logs, "P2P height became available"))
 }
 
 func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
