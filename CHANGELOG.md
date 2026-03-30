@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Avoid evicting yet to be processed heights [#3204](https://github.com/evstack/ev-node/pull/3204)
+- Bound Badger index cache memory to prevent growth with chain length [3209](https://github.com/evstack/ev-node/pull/3209)
 - Refetch latest da height instead of da height +1 when P2P is offline [#3201](https://github.com/evstack/ev-node/pull/3201)
 - Fix race on startup sync. [#3162](https://github.com/evstack/ev-node/pull/3162)
 - Strict raft state. [#3167](https://github.com/evstack/ev-node/pull/3167)
