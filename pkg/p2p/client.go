@@ -36,11 +36,19 @@ const (
 	// peerLimit defines limit of number of peers returned during active peer discovery.
 	peerLimit = 60
 
-	// peerDiscoveryInterval is how often the background loop re-runs peer discovery.
+	// peerDiscoveryInterval is how often the background loop re-advertises and
+	// re-runs peer discovery via DHT.
 	peerDiscoveryInterval = 5 * time.Minute
 
-	// reconnectCooldown is the minimum time between reconnect attempts for the same seed peer.
+	// reconnectCooldown is the base cooldown between reconnect attempts for the same seed peer.
 	reconnectCooldown = 5 * time.Second
+
+	// maxReconnectCooldown caps the exponential backoff for seed peer reconnection.
+	maxReconnectCooldown = 5 * time.Minute
+
+	// connectWorkers limits the number of concurrent connection attempts during
+	// periodic peer discovery refresh.
+	connectWorkers = 16
 )
 
 // Client is a P2P client, implemented with libp2p.
@@ -67,6 +75,7 @@ type Client struct {
 	maintenanceCancel context.CancelFunc
 	maintenanceWg     sync.WaitGroup
 	reconnectCh       chan peer.ID
+	connectSem        chan struct{}
 
 	metrics *Metrics
 }
@@ -176,6 +185,9 @@ func (c *Client) startWithHost(ctx context.Context, h host.Host) error {
 		return err
 	}
 
+	c.reconnectCh = make(chan peer.ID, 32)
+	c.connectSem = make(chan struct{}, connectWorkers)
+
 	c.logger.Debug().Msg("setting up active peer discovery")
 	if err := c.peerDiscovery(ctx); err != nil {
 		return err
@@ -183,7 +195,6 @@ func (c *Client) startWithHost(ctx context.Context, h host.Host) error {
 
 	c.started = true
 
-	c.reconnectCh = make(chan peer.ID, 32)
 	c.host.Network().Notify(c.newDisconnectNotifee())
 	c.startConnectionMaintenance(ctx)
 
@@ -281,6 +292,9 @@ func (n disconnectNotifee) ListenClose(_ network.Network, _ multiaddr.Multiaddr)
 
 func (n disconnectNotifee) Disconnected(_ network.Network, conn network.Conn) {
 	p := conn.RemotePeer()
+	if n.c.reconnectCh == nil {
+		return
+	}
 	for _, sp := range n.c.seedPeers {
 		if sp.ID == p {
 			select {
@@ -309,29 +323,51 @@ func (c *Client) startConnectionMaintenance(parentCtx context.Context) {
 		discoveryTicker := time.NewTicker(peerDiscoveryInterval)
 		defer discoveryTicker.Stop()
 
-		lastReconnect := make(map[peer.ID]time.Time)
+		type reconnectState struct {
+			lastAttempt time.Time
+			attempts    int
+		}
+		states := make(map[peer.ID]*reconnectState)
 
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case pid := <-c.reconnectCh:
-				if until := lastReconnect[pid].Add(reconnectCooldown); time.Now().Before(until) {
+				st := states[pid]
+				if st == nil {
+					st = &reconnectState{}
+					states[pid] = st
+				}
+
+				if time.Since(st.lastAttempt) > maxReconnectCooldown {
+					st.attempts = 0
+				}
+
+				backoff := reconnectCooldown * time.Duration(1<<min(st.attempts, 6))
+				if backoff > maxReconnectCooldown {
+					backoff = maxReconnectCooldown
+				}
+				if time.Now().Before(st.lastAttempt.Add(backoff)) {
 					continue
 				}
-				lastReconnect[pid] = time.Now()
+				st.lastAttempt = time.Now()
 
 				for _, sp := range c.seedPeers {
 					if sp.ID != pid {
 						continue
 					}
 					if c.isConnected(sp.ID) {
+						st.attempts = 0
 						break
 					}
+					st.attempts++
 					c.logger.Info().Str("peer", sp.ID.String()).Msg("reconnecting to disconnected seed peer")
-					if err := c.host.Connect(ctx, sp); err != nil && ctx.Err() == nil {
-						c.logger.Warn().Str("peer", sp.ID.String()).Err(err).Msg("failed to reconnect to seed peer")
-					}
+					go func(info peer.AddrInfo) {
+						if err := c.host.Connect(ctx, info); err != nil && ctx.Err() == nil {
+							c.logger.Warn().Str("peer", info.ID.String()).Err(err).Msg("failed to reconnect to seed peer")
+						}
+					}(sp)
 					break
 				}
 			case <-discoveryTicker.C:
@@ -361,7 +397,15 @@ func (c *Client) refreshPeerDiscovery(ctx context.Context) {
 		if p.ID == c.host.ID() || c.isConnected(p.ID) {
 			continue
 		}
-		go c.tryConnect(ctx, p)
+		select {
+		case c.connectSem <- struct{}{}:
+			go func(peer peer.AddrInfo) {
+				defer func() { <-c.connectSem }()
+				c.tryConnect(ctx, peer)
+			}(p)
+		case <-ctx.Done():
+			return
+		}
 	}
 }
 
