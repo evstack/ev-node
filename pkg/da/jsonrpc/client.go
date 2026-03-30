@@ -73,7 +73,7 @@ func NewClient(ctx context.Context, addr, token string, authHeaderName string) (
 // Automatically converts http:// to ws:// (and https:// to wss://).
 // Supports channel-based subscriptions (e.g. Subscribe).
 // Note: WebSocket connections are eager — they connect at creation time
-// if it fails, we fallback to non websocket connection for the whole runtime process.
+// if the initial WS dial fails, falls back to HTTP polling for the entire session.
 func NewWSClient(ctx context.Context, logger zerolog.Logger, addr, token string, authHeaderName string) (*Client, error) {
 	client, err := NewClient(ctx, httpToWS(addr), token, authHeaderName)
 	if err != nil {
