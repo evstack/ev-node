@@ -517,6 +517,7 @@ func (s *Syncer) waitForGenesis() bool {
 }
 
 func (s *Syncer) PipeEvent(ctx context.Context, event common.DAHeightEvent) error {
+	// Avoid sending already seen events to channel
 	if s.cache.IsHeaderSeen(event.Header.Hash().String()) {
 		return nil
 	}
