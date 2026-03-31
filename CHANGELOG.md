@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## v1.1.0-rc.1
+
 ### Added
 
 - Add AWS & GCP KMS signer backend [#3171](https://github.com/evstack/ev-node/pull/3171)
