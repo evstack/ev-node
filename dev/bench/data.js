@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774965666472,
+  "lastUpdate": 1774966220459,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -766,6 +766,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 171182,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "julien@rbrt.fr",
+            "name": "julienrbrt",
+            "username": "julienrbrt"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "4a70e0b63805814787f5782b9a8434a00568e690",
+          "message": "chore: prep app for v1.1.0-rc.1 (#3220)",
+          "timestamp": "2026-03-31T16:07:37+02:00",
+          "tree_id": "4ba7929010fcf4603425fe54e550430226116dab",
+          "url": "https://github.com/evstack/ev-node/commit/4a70e0b63805814787f5782b9a8434a00568e690"
+        },
+        "date": 1774966217532,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 913553912,
+            "unit": "ns/op\t31432968 B/op\t  171465 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 913553912,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 31432968,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 171465,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
