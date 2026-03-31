@@ -102,7 +102,7 @@ func (h *P2PHandler) ProcessHeight(ctx context.Context, height uint64, heightInC
 
 	// Memoize hash before the header enters the event pipeline so that downstream
 	// callers (processHeightEvent, TrySyncNextBlock) get cache hits.
-	p2pHeader.SignedHeader.MemoizeHash()
+	p2pHeader.MemoizeHash()
 
 	// further header validation (signature) is done in validateBlock.
 	// we need to be sure that the previous block n-1 was executed before validating block n
