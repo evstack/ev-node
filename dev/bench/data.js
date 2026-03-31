@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774959673786,
+  "lastUpdate": 1774959701494,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -670,6 +670,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 172045,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "8b3f4735f183d753f58430ce0440ac693c789398",
+          "message": "build(deps): Bump the all-go group across 7 directories with 6 updates (#3218)\n\n* build(deps): Bump the all-go group across 7 directories with 6 updates\n\nBumps the all-go group with 5 updates in the / directory:\n\n| Package | From | To |\n| --- | --- | --- |\n| [github.com/aws/aws-sdk-go-v2](https://github.com/aws/aws-sdk-go-v2) | `1.41.4` | `1.41.5` |\n| [github.com/aws/aws-sdk-go-v2/config](https://github.com/aws/aws-sdk-go-v2) | `1.32.12` | `1.32.13` |\n| [github.com/aws/aws-sdk-go-v2/service/kms](https://github.com/aws/aws-sdk-go-v2) | `1.50.3` | `1.50.4` |\n| [github.com/rs/zerolog](https://github.com/rs/zerolog) | `1.34.0` | `1.35.0` |\n| [google.golang.org/api](https://github.com/googleapis/google-api-go-client) | `0.272.0` | `0.273.0` |\n\nBumps the all-go group with 2 updates in the /apps/evm directory: [github.com/rs/zerolog](https://github.com/rs/zerolog) and [github.com/ethereum/go-ethereum](https://github.com/ethereum/go-ethereum).\nBumps the all-go group with 1 update in the /apps/grpc directory: [github.com/rs/zerolog](https://github.com/rs/zerolog).\nBumps the all-go group with 1 update in the /apps/testapp directory: [github.com/rs/zerolog](https://github.com/rs/zerolog).\nBumps the all-go group with 2 updates in the /execution/evm directory: [github.com/rs/zerolog](https://github.com/rs/zerolog) and [github.com/ethereum/go-ethereum](https://github.com/ethereum/go-ethereum).\nBumps the all-go group with 1 update in the /test/docker-e2e directory: [github.com/ethereum/go-ethereum](https://github.com/ethereum/go-ethereum).\nBumps the all-go group with 2 updates in the /test/e2e directory: [github.com/rs/zerolog](https://github.com/rs/zerolog) and [github.com/ethereum/go-ethereum](https://github.com/ethereum/go-ethereum).\n\n\nUpdates `github.com/aws/aws-sdk-go-v2` from 1.41.4 to 1.41.5\n- [Release notes](https://github.com/aws/aws-sdk-go-v2/releases)\n- [Commits](https://github.com/aws/aws-sdk-go-v2/compare/v1.41.4...v1.41.5)\n\nUpdates `github.com/aws/aws-sdk-go-v2/config` from 1.32.12 to 1.32.13\n- [Release notes](https://github.com/aws/aws-sdk-go-v2/releases)\n- [Commits](https://github.com/aws/aws-sdk-go-v2/compare/config/v1.32.12...config/v1.32.13)\n\nUpdates `github.com/aws/aws-sdk-go-v2/service/kms` from 1.50.3 to 1.50.4\n- [Release notes](https://github.com/aws/aws-sdk-go-v2/releases)\n- [Commits](https://github.com/aws/aws-sdk-go-v2/compare/service/s3/v1.50.3...service/ssm/v1.50.4)\n\nUpdates `github.com/rs/zerolog` from 1.34.0 to 1.35.0\n- [Commits](https://github.com/rs/zerolog/compare/v1.34.0...v1.35.0)\n\nUpdates `google.golang.org/api` from 0.272.0 to 0.273.0\n- [Release notes](https://github.com/googleapis/google-api-go-client/releases)\n- [Changelog](https://github.com/googleapis/google-api-go-client/blob/main/CHANGES.md)\n- [Commits](https://github.com/googleapis/google-api-go-client/compare/v0.272.0...v0.273.0)\n\nUpdates `github.com/rs/zerolog` from 1.34.0 to 1.35.0\n- [Commits](https://github.com/rs/zerolog/compare/v1.34.0...v1.35.0)\n\nUpdates `github.com/ethereum/go-ethereum` from 1.17.1 to 1.17.2\n- [Release notes](https://github.com/ethereum/go-ethereum/releases)\n- [Commits](https://github.com/ethereum/go-ethereum/compare/v1.17.1...v1.17.2)\n\nUpdates `github.com/rs/zerolog` from 1.34.0 to 1.35.0\n- [Commits](https://github.com/rs/zerolog/compare/v1.34.0...v1.35.0)\n\nUpdates `github.com/rs/zerolog` from 1.34.0 to 1.35.0\n- [Commits](https://github.com/rs/zerolog/compare/v1.34.0...v1.35.0)\n\nUpdates `github.com/rs/zerolog` from 1.34.0 to 1.35.0\n- [Commits](https://github.com/rs/zerolog/compare/v1.34.0...v1.35.0)\n\nUpdates `github.com/ethereum/go-ethereum` from 1.17.1 to 1.17.2\n- [Release notes](https://github.com/ethereum/go-ethereum/releases)\n- [Commits](https://github.com/ethereum/go-ethereum/compare/v1.17.1...v1.17.2)\n\nUpdates `github.com/ethereum/go-ethereum` from 1.17.1 to 1.17.2\n- [Release notes](https://github.com/ethereum/go-ethereum/releases)\n- [Commits](https://github.com/ethereum/go-ethereum/compare/v1.17.1...v1.17.2)\n\nUpdates `github.com/rs/zerolog` from 1.34.0 to 1.35.0\n- [Commits](https://github.com/rs/zerolog/compare/v1.34.0...v1.35.0)\n\nUpdates `github.com/ethereum/go-ethereum` from 1.17.1 to 1.17.2\n- [Release notes](https://github.com/ethereum/go-ethereum/releases)\n- [Commits](https://github.com/ethereum/go-ethereum/compare/v1.17.1...v1.17.2)\n\n---\nupdated-dependencies:\n- dependency-name: github.com/aws/aws-sdk-go-v2\n  dependency-version: 1.41.5\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/aws/aws-sdk-go-v2/config\n  dependency-version: 1.32.13\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/aws/aws-sdk-go-v2/service/kms\n  dependency-version: 1.50.4\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/rs/zerolog\n  dependency-version: 1.35.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: google.golang.org/api\n  dependency-version: 0.273.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: github.com/rs/zerolog\n  dependency-version: 1.35.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: github.com/ethereum/go-ethereum\n  dependency-version: 1.17.2\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/rs/zerolog\n  dependency-version: 1.35.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: github.com/rs/zerolog\n  dependency-version: 1.35.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: github.com/rs/zerolog\n  dependency-version: 1.35.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: github.com/ethereum/go-ethereum\n  dependency-version: 1.17.2\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/ethereum/go-ethereum\n  dependency-version: 1.17.2\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/rs/zerolog\n  dependency-version: 1.35.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: github.com/ethereum/go-ethereum\n  dependency-version: 1.17.2\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\n\n* chore: run just deps after Dependabot update\n\n---------\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\nCo-authored-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>\nCo-authored-by: julienrbrt <julien@rbrt.fr>",
+          "timestamp": "2026-03-31T14:15:08+02:00",
+          "tree_id": "22a499d95977b96e7d17906d653d1a75db1c9aad",
+          "url": "https://github.com/evstack/ev-node/commit/8b3f4735f183d753f58430ce0440ac693c789398"
+        },
+        "date": 1774959698113,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 897710641,
+            "unit": "ns/op\t31827124 B/op\t  175610 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 897710641,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 31827124,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 175610,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
