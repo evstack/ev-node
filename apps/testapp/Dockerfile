@@ -1,4 +1,4 @@
-FROM golang:1.25 AS base
+FROM golang:1.26 AS base
 
 #hadolint ignore=DL3018
 RUN apt-get update && \
