@@ -73,18 +73,16 @@ func (h *Header) MemoizeHash() Hash {
 }
 
 func (h *Header) computeHash() Hash {
-	slimHash, err := h.HashSlim()
-	if err != nil {
-		return nil
-	}
-
 	if h.Legacy != nil && !h.Legacy.IsZero() {
-		legacyHash, err := h.HashLegacy()
-		if err == nil {
+		if legacyHash, err := h.HashLegacy(); err == nil {
 			return legacyHash
 		}
 	}
 
+	slimHash, err := h.HashSlim()
+	if err != nil {
+		return nil
+	}
 	return slimHash
 }
 
