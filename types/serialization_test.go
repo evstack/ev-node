@@ -356,6 +356,27 @@ func TestHeader_HashFields_NilAndEmpty(t *testing.T) {
 	assert.Nil(t, h2.ValidatorHash)
 }
 
+func TestHeaderFromProtoClearsCachedHash(t *testing.T) {
+	t.Parallel()
+
+	header := &Header{
+		BaseHeader: BaseHeader{Height: 1, Time: 1234567890},
+		DataHash:   []byte("datahash"),
+	}
+	header.MemoizeHash()
+	require.NotNil(t, header.cachedHash)
+
+	protoMsg := (&Header{
+		BaseHeader: BaseHeader{Height: 2, Time: 1234567891},
+		DataHash:   []byte("otherhash"),
+	}).ToProto()
+
+	require.NoError(t, header.FromProto(protoMsg))
+	assert.Nil(t, header.cachedHash)
+	assert.Equal(t, uint64(2), header.Height())
+	assert.Equal(t, Hash([]byte("otherhash")), header.DataHash)
+}
+
 func TestHeaderMarshalBinary_PreservesLegacyFields(t *testing.T) {
 	t.Parallel()
 

@@ -34,7 +34,7 @@ func TestNoopSigner(t *testing.T) {
 		require.NoError(t, err)
 
 		message := []byte("test message")
-		signature, err := signer.Sign(message)
+		signature, err := signer.Sign(t.Context(), message)
 		require.NoError(t, err)
 		require.NotNil(t, signature)
 
@@ -82,7 +82,7 @@ func TestNoopSigner(t *testing.T) {
 		message := []byte("test message")
 		wrongMessage := []byte("wrong message")
 
-		signature, err := signer.Sign(message)
+		signature, err := signer.Sign(t.Context(), message)
 		require.NoError(t, err)
 
 		pubKey, err := signer.GetPublic()

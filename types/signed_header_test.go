@@ -1,6 +1,7 @@
 package types
 
 import (
+	"context"
 	"crypto/rand"
 	"fmt"
 	"testing"
@@ -22,7 +23,7 @@ func TestSignedHeader(t *testing.T) {
 	signer, err := noop.NewNoopSigner(privKey)
 	require.NoError(t, err)
 	// Get the next random header
-	untrustedAdj, err := GetRandomNextSignedHeader(trusted, signer, chainID)
+	untrustedAdj, err := GetRandomNextSignedHeader(context.Background(), trusted, signer, chainID)
 	require.NoError(t, err)
 	t.Run("Test Verify", func(t *testing.T) {
 		testVerify(t, trusted, untrustedAdj, privKey)
@@ -106,7 +107,7 @@ func testVerify(t *testing.T, trusted *SignedHeader, untrustedAdj *SignedHeader,
 			require.NoError(t, err)
 
 			if shouldRecomputeCommit {
-				signature, err := GetSignature(preparedHeader.Header, noopSigner)
+				signature, err := GetSignature(context.Background(), preparedHeader.Header, noopSigner)
 				require.NoError(t, err)
 				preparedHeader.Signature = signature
 			}
@@ -223,7 +224,7 @@ func testValidateBasic(t *testing.T, untrustedAdj *SignedHeader, privKey crypto.
 			require.NoError(t, err)
 
 			if shouldRecomputeCommit {
-				signature, err := GetSignature(preparedHeader.Header, noopSigner)
+				signature, err := GetSignature(context.Background(), preparedHeader.Header, noopSigner)
 				require.NoError(t, err)
 				preparedHeader.Signature = signature
 			}

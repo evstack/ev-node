@@ -58,6 +58,7 @@ type CacheManager interface {
 	// Pending events syncing coordination
 	GetNextPendingEvent(blockHeight uint64) *common.DAHeightEvent
 	SetPendingEvent(blockHeight uint64, event *common.DAHeightEvent)
+	PendingEventsCount() int
 
 	// Store operations
 	SaveToStore() error
@@ -88,24 +89,24 @@ type Manager interface {
 var _ Manager = (*implementation)(nil)
 
 type implementation struct {
-	headerCache        *Cache[types.SignedHeader]
-	dataCache          *Cache[types.Data]
-	txCache            *Cache[struct{}]
-	txTimestamps       *sync.Map // map[string]time.Time
-	pendingEventsCache *Cache[common.DAHeightEvent]
-	pendingHeaders     *PendingHeaders
-	pendingData        *PendingData
-	store              store.Store
-	config             config.Config
-	logger             zerolog.Logger
+	headerCache    *Cache
+	dataCache      *Cache
+	txCache        *Cache
+	txTimestamps   *sync.Map // map[string]time.Time
+	pendingEvents  map[uint64]*common.DAHeightEvent
+	pendingMu      sync.Mutex
+	pendingHeaders *PendingHeaders
+	pendingData    *PendingData
+	store          store.Store
+	config         config.Config
+	logger         zerolog.Logger
 }
 
 // NewManager creates a new Manager, restoring or clearing persisted state as configured.
 func NewManager(cfg config.Config, st store.Store, logger zerolog.Logger) (Manager, error) {
-	headerCache := NewCache[types.SignedHeader](st, HeaderDAIncludedPrefix)
-	dataCache := NewCache[types.Data](st, DataDAIncludedPrefix)
-	txCache := NewCache[struct{}](nil, "")
-	pendingEventsCache := NewCache[common.DAHeightEvent](nil, "")
+	headerCache := NewCache(st, HeaderDAIncludedPrefix)
+	dataCache := NewCache(st, DataDAIncludedPrefix)
+	txCache := NewCache(nil, "")
 
 	pendingHeaders, err := NewPendingHeaders(st, logger)
 	if err != nil {
@@ -118,16 +119,16 @@ func NewManager(cfg config.Config, st store.Store, logger zerolog.Logger) (Manag
 	}
 
 	impl := &implementation{
-		headerCache:        headerCache,
-		dataCache:          dataCache,
-		txCache:            txCache,
-		txTimestamps:       new(sync.Map),
-		pendingEventsCache: pendingEventsCache,
-		pendingHeaders:     pendingHeaders,
-		pendingData:        pendingData,
-		store:              st,
-		config:             cfg,
-		logger:             logger,
+		headerCache:    headerCache,
+		dataCache:      dataCache,
+		txCache:        txCache,
+		txTimestamps:   new(sync.Map),
+		pendingEvents:  make(map[uint64]*common.DAHeightEvent),
+		pendingHeaders: pendingHeaders,
+		pendingData:    pendingData,
+		store:          st,
+		config:         cfg,
+		logger:         logger,
 	}
 
 	if cfg.ClearCache {
@@ -251,7 +252,9 @@ func (m *implementation) CleanupOldTxs(olderThan time.Duration) int {
 func (m *implementation) DeleteHeight(blockHeight uint64) {
 	m.headerCache.deleteAllForHeight(blockHeight)
 	m.dataCache.deleteAllForHeight(blockHeight)
-	m.pendingEventsCache.deleteAllForHeight(blockHeight)
+	m.pendingMu.Lock()
+	delete(m.pendingEvents, blockHeight)
+	m.pendingMu.Unlock()
 
 	// Note: txCache is intentionally NOT deleted here because:
 	// 1. Transactions are tracked by hash, not by block height (they use height 0)
@@ -318,13 +321,27 @@ func (m *implementation) NumPendingData() uint64 {
 
 // SetPendingEvent sets the event at the specified height.
 func (m *implementation) SetPendingEvent(height uint64, event *common.DAHeightEvent) {
-	m.pendingEventsCache.setItem(height, event)
+	m.pendingMu.Lock()
+	m.pendingEvents[height] = event
+	m.pendingMu.Unlock()
+}
+
+func (m *implementation) PendingEventsCount() int {
+	m.pendingMu.Lock()
+	defer m.pendingMu.Unlock()
+	return len(m.pendingEvents)
 }
 
 // GetNextPendingEvent efficiently retrieves and removes the event at the specified height.
 // Returns nil if no event exists at that height.
 func (m *implementation) GetNextPendingEvent(height uint64) *common.DAHeightEvent {
-	return m.pendingEventsCache.getNextItem(height)
+	m.pendingMu.Lock()
+	item, ok := m.pendingEvents[height]
+	if ok {
+		delete(m.pendingEvents, height)
+	}
+	m.pendingMu.Unlock()
+	return item
 }
 
 // SaveToStore flushes the DA inclusion snapshot to the store.
@@ -359,8 +376,8 @@ func (m *implementation) RestoreFromStore() error {
 	m.initDAHeightFromStore(ctx)
 
 	m.logger.Info().
-		Int("header_entries", m.headerCache.daIncluded.Len()).
-		Int("data_entries", m.dataCache.daIncluded.Len()).
+		Int("header_entries", m.headerCache.daIncludedLen()).
+		Int("data_entries", m.dataCache.daIncludedLen()).
 		Uint64("da_height", m.DaHeight()).
 		Msg("restored DA inclusion cache from store")
 
@@ -379,10 +396,10 @@ func (m *implementation) ClearFromStore() error {
 		return fmt.Errorf("failed to clear data cache from store: %w", err)
 	}
 
-	m.headerCache = NewCache[types.SignedHeader](m.store, HeaderDAIncludedPrefix)
-	m.dataCache = NewCache[types.Data](m.store, DataDAIncludedPrefix)
-	m.txCache = NewCache[struct{}](nil, "")
-	m.pendingEventsCache = NewCache[common.DAHeightEvent](nil, "")
+	m.headerCache = NewCache(m.store, HeaderDAIncludedPrefix)
+	m.dataCache = NewCache(m.store, DataDAIncludedPrefix)
+	m.txCache = NewCache(nil, "")
+	m.pendingEvents = make(map[uint64]*common.DAHeightEvent)
 
 	// Initialize DA height from store metadata to ensure DaHeight() is never 0.
 	m.initDAHeightFromStore(ctx)

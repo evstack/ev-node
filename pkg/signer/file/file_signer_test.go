@@ -174,7 +174,7 @@ func TestSign(t *testing.T) {
 
 		// Sign a message
 		message := []byte("Hello, Evolve!")
-		signature, err := signer.Sign(message)
+		signature, err := signer.Sign(t.Context(), message)
 		require.NoError(t, err)
 		require.NotNil(t, signature)
 
@@ -208,7 +208,7 @@ func TestSign(t *testing.T) {
 
 		for _, msg := range messages {
 			message := []byte(msg)
-			signature, err := signer.Sign(message)
+			signature, err := signer.Sign(t.Context(), message)
 			require.NoError(t, err)
 
 			valid, err := pubKey.Verify(message, signature)
@@ -237,7 +237,7 @@ func TestKeyPersistence(t *testing.T) {
 	signer1, err := CreateFileSystemSigner(keyPath, passphrase)
 	require.NoError(t, err)
 
-	privateKey1 := signer1.(*FileSystemSigner).privateKey
+	privateKey1 := signer1.privateKey
 	require.NotNil(t, privateKey1)
 
 	// Get public key for later comparison
@@ -248,7 +248,7 @@ func TestKeyPersistence(t *testing.T) {
 
 	// Sign a test message
 	message := []byte("Test message")
-	signature, err := signer1.Sign(message)
+	signature, err := signer1.Sign(t.Context(), message)
 	require.NoError(t, err)
 
 	// Verify signature works with this key
@@ -262,7 +262,7 @@ func TestKeyPersistence(t *testing.T) {
 	signer2, err := LoadFileSystemSigner(keyPath, newPassphrase)
 	require.NoError(t, err)
 
-	privateKey3 := signer2.(*FileSystemSigner).privateKey
+	privateKey3 := signer2.privateKey
 	require.NotNil(t, privateKey3)
 	require.Equal(t, privateKey1, privateKey3)
 
@@ -405,7 +405,7 @@ func TestConcurrentAccess(t *testing.T) {
 				}
 
 				// Sign message
-				signature, err := signer.Sign(message)
+				signature, err := signer.Sign(t.Context(), message)
 				if err != nil {
 					errChan <- err
 					continue
@@ -462,8 +462,7 @@ func TestImportExportPrivateKey(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, signer)
 
-	fsSigner := signer.(*FileSystemSigner)
-	originalPrivKeyBytes, err := fsSigner.privateKey.Raw()
+	originalPrivKeyBytes, err := signer.privateKey.Raw()
 	require.NoError(t, err)
 
 	// 2. Export the private key
@@ -487,8 +486,7 @@ func TestImportExportPrivateKey(t *testing.T) {
 	loadedSigner, err := LoadFileSystemSigner(importKeyPath, importPassphrase)
 	require.NoError(t, err)
 
-	loadedFsSigner := loadedSigner.(*FileSystemSigner)
-	loadedPrivKeyBytes, err := loadedFsSigner.privateKey.Raw()
+	loadedPrivKeyBytes, err := loadedSigner.privateKey.Raw()
 	require.NoError(t, err)
 
 	// 6. Verify the loaded key from the imported file matches the original
@@ -604,7 +602,7 @@ func TestSign_NilPrivateKey(t *testing.T) {
 	}
 
 	message := []byte("test message")
-	_, err := signer.Sign(message)
+	_, err := signer.Sign(t.Context(), message)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "private key not loaded")
 }
@@ -658,11 +656,9 @@ func TestSaveAndLoadKeys_ErrorCases(t *testing.T) {
 		require.NoError(t, err)
 
 		// Try to save to an invalid location
-		fs := signer.(*FileSystemSigner)
-		fs.keyFile = filepath.Join(readOnlyDir, "invalid.json")
-
+		signer.keyFile = filepath.Join(readOnlyDir, "invalid.json")
 		newPassphrase := []byte("new-passphrase")
-		err = fs.saveKeys(newPassphrase)
+		err = signer.saveKeys(newPassphrase)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to write key file")
 	})

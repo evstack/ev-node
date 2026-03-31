@@ -71,7 +71,7 @@ func makeSignedDataBytesWithTime(t *testing.T, chainID string, height uint64, pr
 
 	// For DA SignedData, sign the Data payload bytes (matches DA submission logic)
 	payload, _ := d.MarshalBinary()
-	sig, err := signer.Sign(payload)
+	sig, err := signer.Sign(t.Context(), payload)
 	require.NoError(t, err)
 	sd := &types.SignedData{Data: *d, Signature: sig, Signer: types.Signer{PubKey: pub, Address: proposer}}
 	bin, err := sd.MarshalBinary()
@@ -85,8 +85,8 @@ func TestDARetriever_RetrieveFromDA_Invalid(t *testing.T) {
 	client.On("GetDataNamespace").Return([]byte("test-data-ns")).Maybe()
 	client.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(false).Maybe()
-	client.On("Retrieve", mock.Anything, uint64(42), []byte("test-ns")).Return(datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess}}).Once()
-	client.On("Retrieve", mock.Anything, uint64(42), []byte("test-data-ns")).Return(datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusError, Message: "just invalid"}}).Once()
+	client.On("RetrieveBlobs", mock.Anything, uint64(42), []byte("test-ns")).Return(datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess}}).Once()
+	client.On("RetrieveBlobs", mock.Anything, uint64(42), []byte("test-data-ns")).Return(datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusError, Message: "just invalid"}}).Once()
 
 	r := newTestDARetriever(t, client, config.DefaultConfig(), genesis.Genesis{})
 	events, err := r.RetrieveFromDA(context.Background(), 42)
@@ -100,8 +100,8 @@ func TestDARetriever_RetrieveFromDA_NotFound(t *testing.T) {
 	client.On("GetDataNamespace").Return([]byte("test-data-ns")).Maybe()
 	client.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(false).Maybe()
-	client.On("Retrieve", mock.Anything, uint64(42), []byte("test-ns")).Return(datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess}}).Once()
-	client.On("Retrieve", mock.Anything, uint64(42), []byte("test-data-ns")).Return(datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Message: fmt.Sprintf("%s: whatever", datypes.ErrBlobNotFound.Error())}}).Once()
+	client.On("RetrieveBlobs", mock.Anything, uint64(42), []byte("test-ns")).Return(datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess}}).Once()
+	client.On("RetrieveBlobs", mock.Anything, uint64(42), []byte("test-data-ns")).Return(datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Message: fmt.Sprintf("%s: whatever", datypes.ErrBlobNotFound.Error())}}).Once()
 
 	r := newTestDARetriever(t, client, config.DefaultConfig(), genesis.Genesis{})
 	events, err := r.RetrieveFromDA(context.Background(), 42)
@@ -115,8 +115,8 @@ func TestDARetriever_RetrieveFromDA_HeightFromFuture(t *testing.T) {
 	client.On("GetDataNamespace").Return([]byte("test-data-ns")).Maybe()
 	client.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(false).Maybe()
-	client.On("Retrieve", mock.Anything, uint64(1000), []byte("test-ns")).Return(datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess}}).Once()
-	client.On("Retrieve", mock.Anything, uint64(1000), []byte("test-data-ns")).Return(datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture, Message: fmt.Sprintf("%s: later", datypes.ErrHeightFromFuture.Error())}}).Once()
+	client.On("RetrieveBlobs", mock.Anything, uint64(1000), []byte("test-ns")).Return(datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess}}).Once()
+	client.On("RetrieveBlobs", mock.Anything, uint64(1000), []byte("test-data-ns")).Return(datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture, Message: fmt.Sprintf("%s: later", datypes.ErrHeightFromFuture.Error())}}).Once()
 
 	r := newTestDARetriever(t, client, config.DefaultConfig(), genesis.Genesis{})
 	events, derr := r.RetrieveFromDA(context.Background(), 1000)
@@ -131,8 +131,8 @@ func TestDARetriever_RetrieveFromDA_TimeoutFast(t *testing.T) {
 	client.On("GetDataNamespace").Return([]byte("test-data-ns")).Maybe()
 	client.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(false).Maybe()
-	client.On("Retrieve", mock.Anything, uint64(42), []byte("test-ns")).Return(datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusError, Message: context.DeadlineExceeded.Error()}}).Once()
-	client.On("Retrieve", mock.Anything, uint64(42), []byte("test-data-ns")).Return(datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusContextDeadline, Message: context.DeadlineExceeded.Error()}}).Once()
+	client.On("RetrieveBlobs", mock.Anything, uint64(42), []byte("test-ns")).Return(datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusError, Message: context.DeadlineExceeded.Error()}}).Once()
+	client.On("RetrieveBlobs", mock.Anything, uint64(42), []byte("test-data-ns")).Return(datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusContextDeadline, Message: context.DeadlineExceeded.Error()}}).Once()
 
 	r := newTestDARetriever(t, client, config.DefaultConfig(), genesis.Genesis{})
 
@@ -259,11 +259,11 @@ func TestDARetriever_RetrieveFromDA_TwoNamespaces_Success(t *testing.T) {
 	client.On("GetDataNamespace").Return([]byte("nsData")).Maybe()
 	client.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(false).Maybe()
-	client.On("Retrieve", mock.Anything, uint64(1234), []byte("nsHdr")).Return(datypes.ResultRetrieve{
+	client.On("RetrieveBlobs", mock.Anything, uint64(1234), []byte("nsHdr")).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: [][]byte{[]byte("h1")}, Timestamp: time.Now()},
 		Data:       [][]byte{hdrBin},
 	}).Once()
-	client.On("Retrieve", mock.Anything, uint64(1234), []byte("nsData")).Return(datypes.ResultRetrieve{
+	client.On("RetrieveBlobs", mock.Anything, uint64(1234), []byte("nsData")).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: [][]byte{[]byte("d1")}, Timestamp: time.Now()},
 		Data:       [][]byte{dataBin},
 	}).Once()

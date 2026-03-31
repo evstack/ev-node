@@ -263,8 +263,9 @@ func (e *Executor) initializeState() error {
 				if err != nil {
 					return fmt.Errorf("failed to get header at %d for sync check: %w", state.LastBlockHeight, err)
 				}
-				if !bytes.Equal(header.Hash(), raftState.Hash) {
-					return fmt.Errorf("invalid state: block hash mismatch at height %d: raft=%x local=%x", state.LastBlockHeight, raftState.Hash, header.Hash())
+				headerHash := header.MemoizeHash()
+				if !bytes.Equal(headerHash, raftState.Hash) {
+					return fmt.Errorf("invalid state: block hash mismatch at height %d: raft=%x local=%x", state.LastBlockHeight, raftState.Hash, headerHash)
 				}
 			}
 		}
@@ -358,8 +359,9 @@ func (e *Executor) initializeState() error {
 			if err != nil {
 				return fmt.Errorf("get header at %d: %w", newState.LastBlockHeight, err)
 			}
-			if !bytes.Equal(header.Hash(), raftState.Hash) {
-				return fmt.Errorf("CRITICAL: content mismatch after replay! local=%x raft=%x. This indicates a 'Dual-Store Conflict' where data diverged from Raft", header.Hash(), raftState.Hash)
+			headerHash := header.MemoizeHash()
+			if !bytes.Equal(headerHash, raftState.Hash) {
+				return fmt.Errorf("CRITICAL: content mismatch after replay! local=%x raft=%x. This indicates a 'Dual-Store Conflict' where data diverged from Raft", headerHash, raftState.Hash)
 			}
 		}
 	}
@@ -542,7 +544,7 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 	// signing the header is done after applying the block
 	// as for signing, the state of the block may be required by the signature payload provider.
 	// For based sequencer, this will return an empty signature.
-	signature, _, err := e.signHeader(&header.Header)
+	signature, _, err := e.signHeader(ctx, &header.Header)
 	if err != nil {
 		return fmt.Errorf("failed to sign header: %w", err)
 	}
@@ -821,7 +823,7 @@ func (e *Executor) ApplyBlock(ctx context.Context, header types.Header, data *ty
 // signHeader signs the block header and returns both the signature and the
 // serialized header bytes (signing payload). The caller can reuse headerBytes
 // in SaveBlockDataFromBytes to avoid a redundant MarshalBinary call.
-func (e *Executor) signHeader(header *types.Header) (types.Signature, []byte, error) {
+func (e *Executor) signHeader(ctx context.Context, header *types.Header) (types.Signature, []byte, error) {
 	// For based sequencer, return empty signature as there is no signer
 	if e.signer == nil {
 		return types.Signature{}, nil, nil
@@ -832,7 +834,7 @@ func (e *Executor) signHeader(header *types.Header) (types.Signature, []byte, er
 		return nil, nil, fmt.Errorf("failed to get signature payload: %w", err)
 	}
 
-	sig, err := e.signer.Sign(bz)
+	sig, err := e.signer.Sign(ctx, bz)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -917,8 +919,9 @@ func (e *Executor) IsSyncedWithRaft(raftState *raft.RaftBlockState) (int, error)
 		return 0, fmt.Errorf("get header for sync check at height %d: %w", raftState.Height, err)
 	}
 
-	if !bytes.Equal(header.Hash(), raftState.Hash) {
-		return 0, fmt.Errorf("block hash mismatch: %s != %s", header.Hash(), raftState.Hash)
+	headerHash := header.MemoizeHash()
+	if !bytes.Equal(headerHash, raftState.Hash) {
+		return 0, fmt.Errorf("block hash mismatch: %s != %s", headerHash, raftState.Hash)
 	}
 
 	return 0, nil

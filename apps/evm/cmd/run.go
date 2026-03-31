@@ -23,7 +23,6 @@ import (
 	"github.com/evstack/ev-node/pkg/config"
 	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 	da "github.com/evstack/ev-node/pkg/da/types"
-	"github.com/evstack/ev-node/pkg/genesis"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/sequencers/based"
@@ -60,7 +59,7 @@ var RunCmd = &cobra.Command{
 			return err
 		}
 
-		blobClient, err := blobrpc.NewWSClient(cmd.Context(), nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
+		blobClient, err := blobrpc.NewWSClient(cmd.Context(), logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
 		if err != nil {
 			return fmt.Errorf("failed to create blob client: %w", err)
 		}
@@ -84,7 +83,7 @@ var RunCmd = &cobra.Command{
 		}
 
 		// Create sequencer based on configuration
-		sequencer, err := createSequencer(logger, datastore, nodeConfig, genesis, daClient, executor)
+		sequencer, err := createSequencer(cmd.Context(), logger, datastore, nodeConfig, genesis, daClient, executor)
 		if err != nil {
 			return err
 		}
@@ -145,10 +144,11 @@ func init() {
 // If BasedSequencer is enabled, it creates a based sequencer that fetches transactions from DA.
 // Otherwise, it creates a single (traditional) sequencer.
 func createSequencer(
+	ctx context.Context,
 	logger zerolog.Logger,
 	datastore datastore.Batching,
 	nodeConfig config.Config,
-	genesis genesis.Genesis,
+	genesis genesispkg.Genesis,
 	daClient block.FullDAClient,
 	executor execution.Executor,
 ) (coresequencer.Sequencer, error) {
@@ -158,7 +158,7 @@ func createSequencer(
 			return nil, fmt.Errorf("based sequencer mode requires aggregator mode to be enabled")
 		}
 
-		basedSeq, err := based.NewBasedSequencer(daClient, nodeConfig, datastore, genesis, logger, executor)
+		basedSeq, err := based.NewBasedSequencer(ctx, daClient, nodeConfig, datastore, genesis, logger, executor)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create based sequencer: %w", err)
 		}

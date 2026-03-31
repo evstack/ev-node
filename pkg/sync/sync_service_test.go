@@ -73,7 +73,7 @@ func TestHeaderSyncServiceRestart(t *testing.T) {
 		AppHash:  bytesN(rnd, 32),
 		Signer:   noopSigner,
 	}
-	signedHeader, err := types.GetRandomSignedHeaderCustom(&headerConfig, genesisDoc.ChainID)
+	signedHeader, err := types.GetRandomSignedHeaderCustom(ctx, &headerConfig, genesisDoc.ChainID)
 	require.NoError(t, err)
 	require.NoError(t, signedHeader.Validate())
 	require.NoError(t, svc.WriteToStoreAndBroadcast(ctx, &types.P2PSignedHeader{SignedHeader: signedHeader}))
@@ -164,7 +164,7 @@ func TestHeaderSyncServiceInitFromHigherHeight(t *testing.T) {
 		AppHash:  bytesN(rnd, 32),
 		Signer:   noopSigner,
 	}
-	signedHeader, err := types.GetRandomSignedHeaderCustom(&headerConfig, genesisDoc.ChainID)
+	signedHeader, err := types.GetRandomSignedHeaderCustom(ctx, &headerConfig, genesisDoc.ChainID)
 	require.NoError(t, err)
 	require.NoError(t, signedHeader.Validate())
 
@@ -216,7 +216,7 @@ func TestDAHintStorageHeader(t *testing.T) {
 		AppHash:  bytesN(rnd, 32),
 		Signer:   noopSigner,
 	}
-	signedHeader, err := types.GetRandomSignedHeaderCustom(&headerConfig, genesisDoc.ChainID)
+	signedHeader, err := types.GetRandomSignedHeaderCustom(ctx, &headerConfig, genesisDoc.ChainID)
 	require.NoError(t, err)
 	require.NoError(t, signedHeader.Validate())
 
@@ -311,7 +311,7 @@ func TestDAHintStorageData(t *testing.T) {
 		AppHash:  bytesN(rnd, 32),
 		Signer:   noopSigner,
 	}
-	signedHeader, err := types.GetRandomSignedHeaderCustom(&headerConfig, genesisDoc.ChainID)
+	signedHeader, err := types.GetRandomSignedHeaderCustom(ctx, &headerConfig, genesisDoc.ChainID)
 	require.NoError(t, err)
 
 	data := types.Data{
@@ -372,7 +372,7 @@ func nextHeader(t *testing.T, previousHeader *types.SignedHeader, chainID string
 	}
 	b, err := newSignedHeader.Header.MarshalBinary()
 	require.NoError(t, err)
-	signature, err := noopSigner.Sign(b)
+	signature, err := noopSigner.Sign(t.Context(), b)
 	require.NoError(t, err)
 	newSignedHeader.Signature = signature
 	require.NoError(t, newSignedHeader.Validate())

@@ -13,7 +13,18 @@ import (
 
 	"github.com/celestiaorg/tastora/framework/docker/evstack/spamoor"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	e2e "github.com/evstack/ev-node/test/e2e"
+)
+
+// span name constants used for trace-based metrics extraction.
+const (
+	spanProduceBlock = "BlockExecutor.ProduceBlock"
+	spanExecuteTxs   = "Executor.ExecuteTxs"
+	spanGetPayload   = "Engine.GetPayload"
+	spanNewPayload   = "Engine.NewPayload"
 )
 
 // blockMetrics holds aggregated gas and transaction data across a range of blocks.
@@ -180,6 +191,23 @@ func waitForSpamoorDone(ctx context.Context, log func(string, ...any), api *spam
 			}
 		}
 	}
+}
+
+// requireSpammersRunning polls spammers until all report a running status (> 0),
+// or fails the test after 5 seconds. spamoor uses status=0 for "stopped/failed"
+// and status>0 for running states.
+func requireSpammersRunning(t testing.TB, api *spamoor.API, ids []int) {
+	t.Helper()
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		for _, id := range ids {
+			sp, err := api.GetSpammer(id)
+			if !assert.NoError(collect, err, "failed to get spammer %d", id) {
+				return
+			}
+			assert.Greater(collect, sp.Status, 0,
+				"spammer %d (%s) failed (status=0); check spamoor container logs", id, sp.Name)
+		}
+	}, 5*time.Second, 100*time.Millisecond)
 }
 
 // deleteAllSpammers removes any pre-existing spammers from the daemon.
@@ -354,23 +382,16 @@ func (s *blockMetricsSummary) entries(prefix string) []entry {
 	}
 }
 
-// evNodeOverhead computes the fraction of block production time spent outside
-// EVM execution. It looks up the average durations of BlockExecutor.ProduceBlock
-// (the outer span covering the full block lifecycle) and Executor.ExecuteTxs
-// (the inner span covering only EVM tx execution), then returns:
+// overheadFromStats computes ev-node overhead from pre-aggregated span stats.
 //
 //	overhead% = (avgProduce - avgExecute) / avgProduce * 100
-//
-// This captures time spent on sequencing, DA submission, header construction,
-// and other ev-node orchestration work. Returns false if either span is missing.
-func evNodeOverhead(spans []e2e.TraceSpan) (float64, bool) {
-	stats := e2e.AggregateSpanStats(spans)
-	produce, ok := stats["BlockExecutor.ProduceBlock"]
-	if !ok {
+func overheadFromStats(stats map[string]*e2e.SpanStats) (float64, bool) {
+	produce, ok := stats[spanProduceBlock]
+	if !ok || produce.Count == 0 {
 		return 0, false
 	}
-	execute, ok := stats["Executor.ExecuteTxs"]
-	if !ok {
+	execute, ok := stats[spanExecuteTxs]
+	if !ok || execute.Count == 0 {
 		return 0, false
 	}
 	produceAvg := float64(produce.Total.Microseconds()) / float64(produce.Count)
@@ -381,20 +402,83 @@ func evNodeOverhead(spans []e2e.TraceSpan) (float64, bool) {
 	return (produceAvg - executeAvg) / produceAvg * 100, true
 }
 
+// evNodeOverhead aggregates spans then computes overhead.
+func evNodeOverhead(spans []e2e.TraceSpan) (float64, bool) {
+	return overheadFromStats(e2e.AggregateSpanStats(spans))
+}
+
+// rethRateFromStats computes ev-reth GGas/s from pre-aggregated span stats.
+func rethRateFromStats(stats map[string]*e2e.SpanStats, totalGasUsed uint64) (float64, bool) {
+	np, ok := stats[spanNewPayload]
+	if !ok || np.Total <= 0 || totalGasUsed == 0 {
+		return 0, false
+	}
+	return float64(totalGasUsed) / np.Total.Seconds() / 1e9, true
+}
+
+// rethExecutionRate aggregates spans then computes GGas/s.
+func rethExecutionRate(spans []e2e.TraceSpan, totalGasUsed uint64) (float64, bool) {
+	return rethRateFromStats(e2e.AggregateSpanStats(spans), totalGasUsed)
+}
+
+// engineSpanEntries extracts ProduceBlock, Engine.GetPayload, and
+// Engine.NewPayload timing stats from ev-node spans and returns them as
+// result writer entries. these are the key metrics for answering "does block
+// production fit within block_time?"
+func engineSpanEntries(prefix string, spans []e2e.TraceSpan) []entry {
+	stats := e2e.AggregateSpanStats(spans)
+	keys := []struct {
+		span  string
+		label string
+	}{
+		{spanProduceBlock, "ProduceBlock"},
+		{spanGetPayload, "GetPayload"},
+		{spanNewPayload, "NewPayload"},
+	}
+	var entries []entry
+	for _, k := range keys {
+		s, ok := stats[k.span]
+		if !ok || s.Count == 0 {
+			continue
+		}
+		avg := float64(s.Total.Microseconds()) / float64(s.Count) / 1000.0
+		min := float64(s.Min.Microseconds()) / 1000.0
+		max := float64(s.Max.Microseconds()) / 1000.0
+		entries = append(entries,
+			entry{Name: prefix + " - " + k.label + " avg", Unit: "ms", Value: avg},
+			entry{Name: prefix + " - " + k.label + " min", Unit: "ms", Value: min},
+			entry{Name: prefix + " - " + k.label + " max", Unit: "ms", Value: max},
+		)
+	}
+	return entries
+}
+
 // waitForMetricTarget polls a metric getter function every 2s until the
 // returned value >= target, or fails the test on timeout.
 func waitForMetricTarget(t testing.TB, name string, poll func() (float64, error), target float64, timeout time.Duration) {
 	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
+	ctx := t.Context()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
 		v, err := poll()
 		if err == nil && v >= target {
 			t.Logf("metric %s reached %.0f (target %.0f)", name, v, target)
 			return
 		}
-		time.Sleep(2 * time.Second)
+		select {
+		case <-ctx.Done():
+			t.Logf("metric %s: context cancelled (target %.0f)", name, target)
+			return
+		case <-timer.C:
+			t.Logf("metric %s did not reach target %.0f within %v", name, target, timeout)
+			return
+		case <-ticker.C:
+		}
 	}
-	t.Fatalf("metric %s did not reach target %.0f within %v", name, target, timeout)
 }
 
 // collectBlockMetrics iterates all headers in [startBlock, endBlock] to collect

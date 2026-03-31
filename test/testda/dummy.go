@@ -54,7 +54,7 @@ type DummyDA struct {
 // Subscribe returns a channel that emits a SubscriptionEvent for every new DA
 // height produced by Submit or StartHeightTicker. The channel is closed when
 // ctx is cancelled or Reset is called.
-func (d *DummyDA) Subscribe(ctx context.Context, _ []byte) (<-chan datypes.SubscriptionEvent, error) {
+func (d *DummyDA) Subscribe(ctx context.Context, _ []byte, _ bool) (<-chan datypes.SubscriptionEvent, error) {
 	ch := make(chan datypes.SubscriptionEvent, 64)
 	sub := &subscriber{ch: ch, ctx: ctx}
 
@@ -222,6 +222,13 @@ func (d *DummyDA) Retrieve(_ context.Context, height uint64, namespace []byte) d
 		},
 		Data: blobs,
 	}
+}
+
+// RetrieveBlobs returns blobs stored at the given height and namespace without
+// requiring a timestamp lookup. DummyDA already serves timestamps from memory,
+// so this shares the same implementation.
+func (d *DummyDA) RetrieveBlobs(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
+	return d.Retrieve(ctx, height, namespace)
 }
 
 // GetHeaderNamespace returns the header namespace.

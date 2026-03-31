@@ -14,13 +14,19 @@ type Client interface {
 	// Retrieve retrieves blobs from the DA layer at the specified height and namespace.
 	Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve
 
+	// RetrieveBlobs retrieves blobs from the DA layer at the specified height and namespace
+	// without requiring a DA header timestamp. Callers that need deterministic DA time should
+	// use Retrieve instead.
+	RetrieveBlobs(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve
+
 	// Get retrieves blobs by their IDs. Used for visualization and fetching specific blobs.
 	Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error)
 
 	// Subscribe returns a channel that emits one SubscriptionEvent per DA block
 	// that contains a blob in the given namespace. The channel is closed when ctx
 	// is cancelled. Callers MUST drain the channel after cancellation.
-	Subscribe(ctx context.Context, namespace []byte) (<-chan datypes.SubscriptionEvent, error)
+	// The fetchTimestamp param is going to be removed with https://github.com/evstack/ev-node/issues/3142 as the timestamp is going to be included by default
+	Subscribe(ctx context.Context, namespace []byte, fetchTimestamp bool) (<-chan datypes.SubscriptionEvent, error)
 
 	// GetLatestDAHeight returns the latest height available on the DA layer.
 	GetLatestDAHeight(ctx context.Context) (uint64, error)

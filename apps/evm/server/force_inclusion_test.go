@@ -34,6 +34,10 @@ func (m *mockDA) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 	return da.ResultRetrieve{}
 }
 
+func (m *mockDA) RetrieveBlobs(ctx context.Context, height uint64, namespace []byte) da.ResultRetrieve {
+	return da.ResultRetrieve{}
+}
+
 func (m *mockDA) RetrieveHeaders(ctx context.Context, height uint64) da.ResultRetrieve {
 	return da.ResultRetrieve{}
 }
@@ -50,7 +54,7 @@ func (m *mockDA) Get(ctx context.Context, ids []da.ID, namespace []byte) ([]da.B
 	return nil, nil
 }
 
-func (m *mockDA) Subscribe(_ context.Context, _ []byte) (<-chan da.SubscriptionEvent, error) {
+func (m *mockDA) Subscribe(_ context.Context, _ []byte, _ bool) (<-chan da.SubscriptionEvent, error) {
 	// Not needed in these tests; return a closed channel.
 	ch := make(chan da.SubscriptionEvent)
 	close(ch)

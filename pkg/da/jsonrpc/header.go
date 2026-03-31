@@ -20,13 +20,13 @@ type Header struct {
 // RawHeader contains the raw tendermint header fields.
 type RawHeader struct {
 	ChainID string    `json:"chain_id"`
-	Height  string    `json:"height"`
+	Height  uint64    `json:"height"`
 	Time    time.Time `json:"time"`
 }
 
 // Commit contains commit information.
 type Commit struct {
-	Height string `json:"height"`
+	Height uint64 `json:"height"`
 }
 
 // DAHeader contains the Data Availability header.

@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	mocks "github.com/evstack/ev-node/test/mocks"
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
@@ -21,7 +20,7 @@ func TestAsyncBlockRetriever_GetCachedBlock_NoNamespace(t *testing.T) {
 	client := &mocks.MockClient{}
 
 	logger := zerolog.Nop()
-	fetcher := NewAsyncBlockRetriever(client, logger, nil, config.DefaultConfig(), 100, 10)
+	fetcher := NewAsyncBlockRetriever(client, logger, nil, 100*time.Millisecond, 100, 10)
 
 	ctx := context.Background()
 	block, err := fetcher.GetCachedBlock(ctx, 100)
@@ -34,7 +33,7 @@ func TestAsyncBlockRetriever_GetCachedBlock_CacheMiss(t *testing.T) {
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 
 	logger := zerolog.Nop()
-	fetcher := NewAsyncBlockRetriever(client, logger, fiNs, config.DefaultConfig(), 100, 10)
+	fetcher := NewAsyncBlockRetriever(client, logger, fiNs, 100*time.Millisecond, 100, 10)
 
 	ctx := context.Background()
 
@@ -44,51 +43,99 @@ func TestAsyncBlockRetriever_GetCachedBlock_CacheMiss(t *testing.T) {
 	assert.Nil(t, block) // Cache miss
 }
 
-func TestAsyncBlockRetriever_FetchAndCache(t *testing.T) {
+func TestAsyncBlockRetriever_SubscriptionDrivenCaching(t *testing.T) {
+	// Test that blobs arriving via subscription are cached inline.
 	testBlobs := [][]byte{
 		[]byte("tx1"),
 		[]byte("tx2"),
-		[]byte("tx3"),
 	}
 
 	client := &mocks.MockClient{}
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 
-	// Mock Retrieve call for height 100
-	client.On("Retrieve", mock.Anything, uint64(100), fiNs).Return(datypes.ResultRetrieve{
-		BaseResult: datypes.BaseResult{
-			Code:      datypes.StatusSuccess,
-			Timestamp: time.Unix(1000, 0),
-		},
-		Data: testBlobs,
-	}).Once()
-
-	// Mock other heights that will be prefetched
-	for height := uint64(101); height <= 109; height++ {
-		client.On("Retrieve", mock.Anything, height, fiNs).Return(datypes.ResultRetrieve{
-			BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound},
-		}).Maybe()
+	// Create a subscription channel that delivers one event then blocks.
+	subCh := make(chan datypes.SubscriptionEvent, 1)
+	subCh <- datypes.SubscriptionEvent{
+		Height: 100,
+		Blobs:  testBlobs,
 	}
 
+	client.On("Subscribe", mock.Anything, fiNs, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(subCh), nil).Once()
+	// Catchup loop may call Retrieve for heights beyond 100 — stub those.
+	client.On("Retrieve", mock.Anything, mock.Anything, fiNs).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture},
+	}).Maybe()
+
+	// On second subscribe (after watchdog timeout) just block forever.
+	blockCh := make(chan datypes.SubscriptionEvent)
+	client.On("Subscribe", mock.Anything, fiNs, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(blockCh), nil).Maybe()
+
 	logger := zerolog.Nop()
-	// Use a short poll interval for faster test execution
-	cfg := config.DefaultConfig()
-	cfg.DA.BlockTime.Duration = 100 * time.Millisecond
-	fetcher := NewAsyncBlockRetriever(client, logger, fiNs, cfg, 100, 10)
-	fetcher.Start()
+	fetcher := NewAsyncBlockRetriever(client, logger, fiNs, 200*time.Millisecond, 100, 5)
+
+	ctx := t.Context()
+	fetcher.Start(ctx)
 	defer fetcher.Stop()
 
-	// Update current height to trigger prefetch
-	fetcher.UpdateCurrentHeight(100)
-
-	// Wait for the background fetch to complete by polling the cache
-	ctx := context.Background()
+	// Wait for the subscription event to be processed.
 	var block *BlockData
 	var err error
-
-	// Poll for up to 2 seconds for the block to be cached
 	for range 40 {
 		block, err = fetcher.GetCachedBlock(ctx, 100)
+		require.NoError(t, err)
+		if block != nil {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	require.NotNil(t, block, "block should be cached after subscription event")
+	assert.Equal(t, uint64(100), block.Height)
+	assert.Equal(t, 2, len(block.Blobs))
+	assert.Equal(t, []byte("tx1"), block.Blobs[0])
+	assert.Equal(t, []byte("tx2"), block.Blobs[1])
+}
+
+func TestAsyncBlockRetriever_CatchupFillsGaps(t *testing.T) {
+	// When subscription reports height 105 but current is 100,
+	// catchup loop should Retrieve heights 100-114 (100 + prefetch window).
+	testBlobs := [][]byte{[]byte("gap-tx")}
+
+	client := &mocks.MockClient{}
+	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
+
+	// Subscription delivers height 105 (no blobs — just a signal).
+	subCh := make(chan datypes.SubscriptionEvent, 1)
+	subCh <- datypes.SubscriptionEvent{Height: 105}
+
+	client.On("Subscribe", mock.Anything, fiNs, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(subCh), nil).Once()
+	blockCh := make(chan datypes.SubscriptionEvent)
+	client.On("Subscribe", mock.Anything, fiNs, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(blockCh), nil).Maybe()
+
+	// Height 102 has blobs; rest return not found or future.
+	client.On("Retrieve", mock.Anything, uint64(102), fiNs).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{
+			Code:      datypes.StatusSuccess,
+			Timestamp: time.Unix(2000, 0),
+		},
+		Data: testBlobs,
+	}).Maybe()
+	client.On("Retrieve", mock.Anything, mock.Anything, fiNs).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound},
+	}).Maybe()
+
+	logger := zerolog.Nop()
+	fetcher := NewAsyncBlockRetriever(client, logger, fiNs, 100*time.Millisecond, 100, 10)
+
+	ctx := t.Context()
+	fetcher.Start(ctx)
+	defer fetcher.Stop()
+
+	// Wait for catchup to fill the gap.
+	var block *BlockData
+	var err error
+	for range 40 {
+		block, err = fetcher.GetCachedBlock(ctx, 102)
 		require.NoError(t, err)
 		if block != nil {
 			break
@@ -96,89 +143,41 @@ func TestAsyncBlockRetriever_FetchAndCache(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	require.NotNil(t, block, "block should be cached after background fetch")
-	assert.Equal(t, uint64(100), block.Height)
-	assert.Equal(t, 3, len(block.Blobs))
-	for i, tb := range testBlobs {
-		assert.Equal(t, tb, block.Blobs[i])
-	}
-}
-
-func TestAsyncBlockRetriever_BackgroundPrefetch(t *testing.T) {
-	testBlobs := [][]byte{
-		[]byte("tx1"),
-		[]byte("tx2"),
-	}
-
-	client := &mocks.MockClient{}
-	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
-
-	// Mock for heights 100-110 (current + prefetch window)
-	for height := uint64(100); height <= 110; height++ {
-		if height == 105 {
-			client.On("Retrieve", mock.Anything, height, fiNs).Return(datypes.ResultRetrieve{
-				BaseResult: datypes.BaseResult{
-					Code:      datypes.StatusSuccess,
-					Timestamp: time.Unix(2000, 0),
-				},
-				Data: testBlobs,
-			}).Maybe()
-		} else {
-			client.On("Retrieve", mock.Anything, height, fiNs).Return(datypes.ResultRetrieve{
-				BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound},
-			}).Maybe()
-		}
-	}
-
-	logger := zerolog.Nop()
-	cfg := config.DefaultConfig()
-	cfg.DA.BlockTime.Duration = 100 * time.Millisecond
-	fetcher := NewAsyncBlockRetriever(client, logger, fiNs, cfg, 100, 10)
-
-	fetcher.Start()
-	defer fetcher.Stop()
-
-	// Update current height to trigger prefetch
-	fetcher.UpdateCurrentHeight(100)
-
-	// Wait for background prefetch to happen (wait for at least one poll cycle)
-	time.Sleep(250 * time.Millisecond)
-
-	// Check if block was prefetched
-	ctx := context.Background()
-	block, err := fetcher.GetCachedBlock(ctx, 105)
-	require.NoError(t, err)
-	assert.NotNil(t, block)
-	assert.Equal(t, uint64(105), block.Height)
-	assert.Equal(t, 2, len(block.Blobs))
-
+	require.NotNil(t, block, "block at 102 should be cached via catchup")
+	assert.Equal(t, uint64(102), block.Height)
+	assert.Equal(t, 1, len(block.Blobs))
+	assert.Equal(t, []byte("gap-tx"), block.Blobs[0])
 }
 
 func TestAsyncBlockRetriever_HeightFromFuture(t *testing.T) {
 	client := &mocks.MockClient{}
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 
-	// All heights in prefetch window not available yet
-	for height := uint64(100); height <= 109; height++ {
-		client.On("Retrieve", mock.Anything, height, fiNs).Return(datypes.ResultRetrieve{
-			BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture},
-		}).Maybe()
-	}
+	// Subscription delivers height 100 with no blobs.
+	subCh := make(chan datypes.SubscriptionEvent)
+	client.On("Subscribe", mock.Anything, fiNs, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(subCh), nil).Once()
+	blockCh := make(chan datypes.SubscriptionEvent)
+	client.On("Subscribe", mock.Anything, fiNs, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(blockCh), nil).Maybe()
+
+	// All Retrieve calls return HeightFromFuture.
+	client.On("Retrieve", mock.Anything, mock.Anything, fiNs).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture},
+	}).Maybe()
 
 	logger := zerolog.Nop()
-	cfg := config.DefaultConfig()
-	cfg.DA.BlockTime.Duration = 100 * time.Millisecond
-	fetcher := NewAsyncBlockRetriever(client, logger, fiNs, cfg, 100, 10)
-	fetcher.Start()
+	fetcher := NewAsyncBlockRetriever(client, logger, fiNs, time.Millisecond, 100, 10)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	fetcher.Start(ctx)
 	defer fetcher.Stop()
 
-	fetcher.UpdateCurrentHeight(100)
+	// Wait a bit for catchup to attempt fetches.
+	require.Eventually(t, func() bool {
+		return fetcher.(*asyncBlockRetriever).subscriber.HasReachedHead()
+	}, time.Second, time.Millisecond)
 
-	// Wait for at least one poll cycle
-	time.Sleep(250 * time.Millisecond)
-
-	// Cache should be empty
-	ctx := context.Background()
+	// Cache should be empty since all heights are from the future.
 	block, err := fetcher.GetCachedBlock(ctx, 100)
 	require.NoError(t, err)
 	assert.Nil(t, block)
@@ -188,14 +187,122 @@ func TestAsyncBlockRetriever_StopGracefully(t *testing.T) {
 	client := &mocks.MockClient{}
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 
-	logger := zerolog.Nop()
-	fetcher := NewAsyncBlockRetriever(client, logger, fiNs, config.DefaultConfig(), 100, 10)
+	blockCh := make(chan datypes.SubscriptionEvent)
+	client.On("Subscribe", mock.Anything, fiNs, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(blockCh), nil).Maybe()
+	client.On("Retrieve", mock.Anything, mock.Anything, fiNs).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture},
+	}).Maybe()
 
-	fetcher.Start()
+	logger := zerolog.Nop()
+	fetcher := NewAsyncBlockRetriever(client, logger, fiNs, 100*time.Millisecond, 100, 10)
+
+	ctx := t.Context()
+	fetcher.Start(ctx)
 	time.Sleep(100 * time.Millisecond)
 
 	// Should stop gracefully without panic
 	fetcher.Stop()
+}
+
+func TestAsyncBlockRetriever_ReconnectOnSubscriptionError(t *testing.T) {
+	// Verify that the follow loop reconnects after a subscription channel closes.
+	testBlobs := [][]byte{[]byte("reconnect-tx")}
+
+	client := &mocks.MockClient{}
+	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
+
+	// First subscription closes immediately (simulating error).
+	closedCh := make(chan datypes.SubscriptionEvent)
+	close(closedCh)
+	client.On("Subscribe", mock.Anything, fiNs, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(closedCh), nil).Once()
+
+	// Second subscription delivers a blob.
+	subCh := make(chan datypes.SubscriptionEvent, 1)
+	subCh <- datypes.SubscriptionEvent{
+		Height: 100,
+		Blobs:  testBlobs,
+	}
+	client.On("Subscribe", mock.Anything, fiNs, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(subCh), nil).Once()
+
+	// Third+ subscribe returns a blocking channel so it doesn't loop forever.
+	blockCh := make(chan datypes.SubscriptionEvent)
+	client.On("Subscribe", mock.Anything, fiNs, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(blockCh), nil).Maybe()
+
+	// Stub Retrieve for catchup.
+	client.On("Retrieve", mock.Anything, mock.Anything, fiNs).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture},
+	}).Maybe()
+
+	logger := zerolog.Nop()
+	// Very short backoff so reconnect is fast in tests.
+	fetcher := NewAsyncBlockRetriever(client, logger, fiNs, 50*time.Millisecond, 100, 5)
+
+	ctx := t.Context()
+	fetcher.Start(ctx)
+	defer fetcher.Stop()
+
+	// Wait for reconnect + event processing.
+	var block *BlockData
+	var err error
+	for range 60 {
+		block, err = fetcher.GetCachedBlock(ctx, 100)
+		require.NoError(t, err)
+		if block != nil {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	require.NotNil(t, block, "block should be cached after reconnect")
+	assert.Equal(t, 1, len(block.Blobs))
+	assert.Equal(t, []byte("reconnect-tx"), block.Blobs[0])
+}
+
+func TestAsyncBlockRetriever_FetchAndCacheBlock_ErrorResponse(t *testing.T) {
+	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
+	specs := map[string]struct {
+		code    datypes.StatusCode
+		message string
+		wantErr string
+	}{
+		"status_error": {
+			code:    datypes.StatusError,
+			message: "rpc failure",
+			wantErr: "retrieve block at height 123: rpc failure",
+		},
+		"status_context_deadline": {
+			code:    datypes.StatusContextDeadline,
+			message: "timeout",
+			wantErr: "retrieve block at height 123: timeout",
+		},
+	}
+
+	for name, spec := range specs {
+		t.Run(name, func(t *testing.T) {
+			client := &mocks.MockClient{}
+			client.
+				On("Retrieve", mock.Anything, uint64(123), fiNs).
+				Return(datypes.ResultRetrieve{
+					BaseResult: datypes.BaseResult{
+						Code:    spec.code,
+						Message: spec.message,
+					},
+				}).
+				Once()
+
+			logger := zerolog.Nop()
+			fetcher := NewAsyncBlockRetriever(client, logger, fiNs, 100*time.Millisecond, 100, 10).(*asyncBlockRetriever)
+
+			err := fetcher.fetchAndCacheBlock(t.Context(), 123)
+			require.EqualError(t, err, spec.wantErr)
+
+			block, getErr := fetcher.GetCachedBlock(t.Context(), 123)
+			require.NoError(t, getErr)
+			assert.Nil(t, block)
+
+			client.AssertExpectations(t)
+		})
+	}
 }
 
 func TestBlockData_Serialization(t *testing.T) {

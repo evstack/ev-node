@@ -14,7 +14,7 @@ The keys are stored in a file in the local filesystem.
 
 	// Sign a message
 	message := []byte("Message to sign")
-	signature, err := signer.Sign(message)
+	signature, err := signer.Sign(context.Background(), message)
 	if err != nil {
 		panic(err)
 	}

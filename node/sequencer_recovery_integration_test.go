@@ -80,7 +80,7 @@ func TestSequencerRecoveryFromDA(t *testing.T) {
 	recoveryConfig := getTestConfig(t, 2)
 	recoveryConfig.Node.BlockTime = evconfig.DurationWrapper{Duration: 100 * time.Millisecond}
 	recoveryConfig.DA.BlockTime = evconfig.DurationWrapper{Duration: 200 * time.Millisecond}
-	recoveryConfig.Node.CatchupTimeout = evconfig.DurationWrapper{Duration: 500 * time.Millisecond}
+	recoveryConfig.Node.CatchupTimeout = evconfig.DurationWrapper{Duration: 1 * time.Second}
 	recoveryConfig.P2P.Peers = ""
 
 	recoveryNode, recNodeCleanup := setupRecoveryNode(t, recoveryConfig, genesis, genesisValidatorKey, testLogger(t))

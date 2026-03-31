@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -34,6 +35,7 @@ func InitCmd() *cobra.Command {
 			// we use load in order to parse all the flags
 			cfg, _ := rollconf.Load(cmd)
 			cfg.Node.Aggregator = aggregator
+			cfg.Node.BlockTime = rollconf.DurationWrapper{Duration: 10 * time.Millisecond}
 			if err := cfg.Validate(); err != nil {
 				return fmt.Errorf("error validating config: %w", err)
 			}
@@ -58,7 +60,7 @@ func InitCmd() *cobra.Command {
 				}
 			}
 
-			proposerAddress, err := rollcmd.CreateSigner(&cfg, homePath, passphrase)
+			proposerAddress, err := rollcmd.CreateSigner(cmd.Context(), &cfg, homePath, passphrase)
 			if err != nil {
 				return err
 			}
@@ -102,7 +104,7 @@ func InitCmd() *cobra.Command {
 
 	// Add flags to the command
 	rollconf.AddFlags(initCmd)
-	initCmd.Flags().String(rollgenesis.ChainIDFlag, "rollkit-test", "chain ID")
+	initCmd.Flags().String(rollgenesis.ChainIDFlag, "ev-test", "chain ID")
 
 	return initCmd
 }

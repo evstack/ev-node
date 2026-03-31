@@ -8,6 +8,7 @@ import (
 
 	libshare "github.com/celestiaorg/go-square/v3/share"
 	"github.com/filecoin-project/go-jsonrpc"
+	"github.com/rs/zerolog"
 )
 
 // Client dials the celestia-node RPC "blob" and "header" namespaces.
@@ -72,9 +73,15 @@ func NewClient(ctx context.Context, addr, token string, authHeaderName string) (
 // Automatically converts http:// to ws:// (and https:// to wss://).
 // Supports channel-based subscriptions (e.g. Subscribe).
 // Note: WebSocket connections are eager — they connect at creation time
-// and will fail immediately if the server is unavailable.
-func NewWSClient(ctx context.Context, addr, token string, authHeaderName string) (*Client, error) {
-	return NewClient(ctx, httpToWS(addr), token, authHeaderName)
+// if the initial WS dial fails, falls back to HTTP polling for the entire session.
+func NewWSClient(ctx context.Context, logger zerolog.Logger, addr, token string, authHeaderName string) (*Client, error) {
+	client, err := NewClient(ctx, httpToWS(addr), token, authHeaderName)
+	if err != nil {
+		logger.Warn().Err(err).Msg("DA websocket connection failed, falling back to DA polling")
+		return NewClient(ctx, addr, token, authHeaderName)
+	}
+
+	return client, nil
 }
 
 // BlobAPI mirrors celestia-node's blob module (nodebuilder/blob/blob.go).

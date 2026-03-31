@@ -139,7 +139,7 @@ func TestHandleKV_Get(t *testing.T) {
 			// Set up initial data if needed
 			if tt.key != "" && tt.value != "" {
 				// Create and execute the transaction directly
-				tx := []byte(fmt.Sprintf("%s=%s", tt.key, tt.value))
+				tx := fmt.Appendf(nil, "%s=%s", tt.key, tt.value)
 				ctx := context.Background()
 				_, err := exec.ExecuteTxs(ctx, [][]byte{tx}, 1, time.Now(), []byte(""))
 				if err != nil {

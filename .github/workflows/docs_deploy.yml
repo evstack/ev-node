@@ -19,6 +19,9 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
+permissions:
+  contents: write
+
 jobs:
   # Build job
   build:
@@ -36,7 +39,7 @@ jobs:
           cache: yarn # or pnpm / npm
           cache-dependency-path: docs/yarn.lock
       - name: Setup Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
       - name: Install dependencies
         run: yarn install # or pnpm install / npm ci
         working-directory: docs
@@ -46,6 +49,6 @@ jobs:
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
-          github_token: ${{ secrets.PAT_DOCS }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./docs/.vitepress/dist
           cname: ev.xyz

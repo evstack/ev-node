@@ -175,7 +175,7 @@ func TestDASubmitter_SubmitHeaders_Success(t *testing.T) {
 	for _, header := range []*types.SignedHeader{header1, header2} {
 		bz, err := types.DefaultAggregatorNodeSignatureBytesProvider(&header.Header)
 		require.NoError(t, err)
-		sig, err := signer.Sign(bz)
+		sig, err := signer.Sign(t.Context(), bz)
 		require.NoError(t, err)
 		header.Signature = sig
 	}
@@ -503,7 +503,7 @@ func TestDASubmitter_SignData(t *testing.T) {
 	}
 
 	// Create signed data
-	resultData, resultDataBz, err := submitter.signData(dataList, dataListBz, signer, gen)
+	resultData, resultDataBz, err := submitter.signData(t.Context(), dataList, dataListBz, signer, gen)
 	require.NoError(t, err)
 
 	// Should have 2 items (empty data skipped)
@@ -542,7 +542,7 @@ func TestDASubmitter_SignData_NilSigner(t *testing.T) {
 	}
 
 	// Create signed data with nil signer - should fail
-	_, _, err := submitter.signData(dataList, dataListBz, nil, gen)
+	_, _, err := submitter.signData(t.Context(), dataList, dataListBz, nil, gen)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "signer is nil")
 }

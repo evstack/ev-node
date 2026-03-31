@@ -74,18 +74,26 @@ func newForcedInclusionSyncer(t *testing.T, daStart, epochSize uint64) (*Syncer,
 	client.On("GetDataNamespace").Return([]byte(cfg.DA.DataNamespace)).Maybe()
 	client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	subCh := make(chan datypes.SubscriptionEvent)
+	client.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(subCh), nil).Maybe()
 
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), cfg, gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), cfg.DA.BlockTime.Duration, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
 	t.Cleanup(fiRetriever.Stop)
 
+	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
+	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
+	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
+	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
 	s := NewSyncer(
 		st, mockExec, client, cm, common.NopMetrics(), cfg, gen,
-		extmocks.NewMockStore[*types.P2PSignedHeader](t),
-		extmocks.NewMockStore[*types.P2PData](t),
+		mockHeaderStore, mockDataStore,
 		zerolog.Nop(), common.DefaultBlockOptions(), make(chan error, 1), nil,
 	)
 	s.daRetriever = daRetriever
+	if s.fiRetriever != nil {
+		s.fiRetriever.Stop()
+	}
 	s.fiRetriever = fiRetriever
 
 	require.NoError(t, s.initializeState())
@@ -145,16 +153,24 @@ func TestVerifyForcedInclusionTxs_NamespaceNotConfigured(t *testing.T) {
 	client.On("GetDataNamespace").Return([]byte(cfg.DA.DataNamespace)).Maybe()
 	client.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(false).Maybe()
+	subCh := make(chan datypes.SubscriptionEvent)
+	client.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(subCh), nil).Maybe()
 
-	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), cfg, gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), cfg.DA.BlockTime.Duration, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
 	t.Cleanup(fiRetriever.Stop)
 
+	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
+	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
+	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
+	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
 	s := NewSyncer(
 		st, mockExec, client, cm, common.NopMetrics(), cfg, gen,
-		extmocks.NewMockStore[*types.P2PSignedHeader](t),
-		extmocks.NewMockStore[*types.P2PData](t),
+		mockHeaderStore, mockDataStore,
 		zerolog.Nop(), common.DefaultBlockOptions(), make(chan error, 1), nil,
 	)
+	if s.fiRetriever != nil {
+		s.fiRetriever.Stop()
+	}
 	s.fiRetriever = fiRetriever
 	require.NoError(t, s.initializeState())
 	s.ctx = t.Context()

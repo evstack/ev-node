@@ -4,9 +4,7 @@ package benchmark
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
-	"sort"
 	"testing"
 
 	e2e "github.com/evstack/ev-node/test/e2e"
@@ -34,26 +32,7 @@ func newResultWriter(t testing.TB, label string) *resultWriter {
 
 // addSpans aggregates trace spans into per-operation avg duration entries.
 func (w *resultWriter) addSpans(spans []e2e.TraceSpan) {
-	m := e2e.AggregateSpanStats(spans)
-	if len(m) == 0 {
-		return
-	}
-
-	names := make([]string, 0, len(m))
-	for name := range m {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-
-	for _, name := range names {
-		s := m[name]
-		avg := float64(s.Total.Microseconds()) / float64(s.Count)
-		w.entries = append(w.entries, entry{
-			Name:  fmt.Sprintf("%s - %s (avg)", w.label, name),
-			Unit:  "us",
-			Value: avg,
-		})
-	}
+	w.entries = append(w.entries, spanAvgEntries(w.label, spans)...)
 }
 
 // addEntry appends a custom entry to the results.

@@ -5,9 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"sync"
-	"sync/atomic"
 
 	"github.com/rs/zerolog"
 	"google.golang.org/protobuf/proto"
@@ -28,11 +26,6 @@ type DARetriever interface {
 	// ProcessBlobs parses raw blob bytes at a given DA height into height events.
 	// Used by the DAFollower to process subscription blobs inline without re-fetching.
 	ProcessBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent
-	// QueuePriorityHeight queues a DA height for priority retrieval (from P2P hints).
-	// These heights take precedence over sequential fetching.
-	QueuePriorityHeight(daHeight uint64)
-	// PopPriorityHeight returns the next priority height to fetch, or 0 if none.
-	PopPriorityHeight() uint64
 }
 
 // daRetriever handles DA retrieval operations for syncing
@@ -42,21 +35,15 @@ type daRetriever struct {
 	genesis genesis.Genesis
 	logger  zerolog.Logger
 
+	mu sync.Mutex
 	// transient cache, only full event need to be passed to the syncer
 	// on restart, will be refetch as da height is updated by syncer
-	pendingMu      sync.Mutex
 	pendingHeaders map[uint64]*types.SignedHeader
 	pendingData    map[uint64]*types.Data
 
 	// strictMode indicates if the node has seen a valid DAHeaderEnvelope
 	// and should now reject all legacy/unsigned headers.
-	strictMode atomic.Bool
-
-	// priorityMu protects priorityHeights from concurrent access
-	priorityMu sync.Mutex
-	// priorityHeights holds DA heights from P2P hints that should be fetched
-	// before continuing sequential retrieval. Sorted in ascending order.
-	priorityHeights []uint64
+	strictMode bool
 }
 
 // NewDARetriever creates a new DA retriever
@@ -67,42 +54,14 @@ func NewDARetriever(
 	logger zerolog.Logger,
 ) *daRetriever {
 	return &daRetriever{
-		client:          client,
-		cache:           cache,
-		genesis:         genesis,
-		logger:          logger.With().Str("component", "da_retriever").Logger(),
-		pendingHeaders:  make(map[uint64]*types.SignedHeader),
-		pendingData:     make(map[uint64]*types.Data),
-		priorityHeights: make([]uint64, 0),
+		client:         client,
+		cache:          cache,
+		genesis:        genesis,
+		logger:         logger.With().Str("component", "da_retriever").Logger(),
+		pendingHeaders: make(map[uint64]*types.SignedHeader),
+		pendingData:    make(map[uint64]*types.Data),
+		strictMode:     false,
 	}
-}
-
-// QueuePriorityHeight queues a DA height for priority retrieval.
-// Heights from P2P hints take precedence over sequential fetching.
-func (r *daRetriever) QueuePriorityHeight(daHeight uint64) {
-	r.priorityMu.Lock()
-	defer r.priorityMu.Unlock()
-
-	idx, found := slices.BinarySearch(r.priorityHeights, daHeight)
-	if found {
-		return // Already queued
-	}
-	r.priorityHeights = slices.Insert(r.priorityHeights, idx, daHeight)
-}
-
-// PopPriorityHeight returns the next priority height to fetch, or 0 if none.
-func (r *daRetriever) PopPriorityHeight() uint64 {
-	r.priorityMu.Lock()
-	defer r.priorityMu.Unlock()
-
-	if len(r.priorityHeights) == 0 {
-		return 0
-	}
-
-	height := r.priorityHeights[0]
-	r.priorityHeights = r.priorityHeights[1:]
-
-	return height
 }
 
 // RetrieveFromDA retrieves blocks from the specified DA height and returns height events
@@ -125,14 +84,14 @@ func (r *daRetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]co
 // fetchBlobs retrieves blobs from both header and data namespaces
 func (r *daRetriever) fetchBlobs(ctx context.Context, daHeight uint64) (datypes.ResultRetrieve, error) {
 	// Retrieve from both namespaces using the DA client
-	headerRes := r.client.Retrieve(ctx, daHeight, r.client.GetHeaderNamespace())
+	headerRes := r.client.RetrieveBlobs(ctx, daHeight, r.client.GetHeaderNamespace())
 
 	// If namespaces are the same, return header result
 	if bytes.Equal(r.client.GetHeaderNamespace(), r.client.GetDataNamespace()) {
 		return headerRes, r.validateBlobResponse(headerRes, daHeight)
 	}
 
-	dataRes := r.client.Retrieve(ctx, daHeight, r.client.GetDataNamespace())
+	dataRes := r.client.RetrieveBlobs(ctx, daHeight, r.client.GetDataNamespace())
 
 	// Validate responses
 	headerErr := r.validateBlobResponse(headerRes, daHeight)
@@ -197,57 +156,43 @@ func (r *daRetriever) validateBlobResponse(res datypes.ResultRetrieve, daHeight 
 
 // ProcessBlobs processes raw blob bytes to extract headers and data and returns height events.
 // This is the public interface used by the DAFollower for inline subscription processing.
-//
-// NOT thread-safe: the caller (DAFollower) must ensure exclusive access via CAS
-// on localNextDAHeight before calling this method.
 func (r *daRetriever) ProcessBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent {
 	return r.processBlobs(ctx, blobs, daHeight)
 }
 
 // processBlobs processes retrieved blobs to extract headers and data and returns height events
 func (r *daRetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent {
-	var decodedHeaders []*types.SignedHeader
-	var decodedData []*types.Data
+	r.mu.Lock()
+	defer r.mu.Unlock()
 
-	// Decode all blobs first without holding the lock
+	// Decode all blobs
 	for _, bz := range blobs {
 		if len(bz) == 0 {
 			continue
 		}
 
 		if header := r.tryDecodeHeader(bz, daHeight); header != nil {
-			decodedHeaders = append(decodedHeaders, header)
+			if _, ok := r.pendingHeaders[header.Height()]; ok {
+				// a (malicious) node may have re-published valid header to another da height (should never happen)
+				// we can already discard it, only the first one is valid
+				r.logger.Debug().Uint64("height", header.Height()).Uint64("da_height", daHeight).Msg("header blob already exists for height, discarding")
+				continue
+			}
+
+			r.pendingHeaders[header.Height()] = header
 			continue
 		}
 
 		if data := r.tryDecodeData(bz, daHeight); data != nil {
-			decodedData = append(decodedData, data)
+			if _, ok := r.pendingData[data.Height()]; ok {
+				// a (malicious) node may have re-published valid data to another da height (should never happen)
+				// we can already discard it, only the first one is valid
+				r.logger.Debug().Uint64("height", data.Height()).Uint64("da_height", daHeight).Msg("data blob already exists for height, discarding")
+				continue
+			}
+
+			r.pendingData[data.Height()] = data
 		}
-	}
-
-	r.pendingMu.Lock()
-	defer r.pendingMu.Unlock()
-
-	for _, header := range decodedHeaders {
-		if _, ok := r.pendingHeaders[header.Height()]; ok {
-			// a (malicious) node may have re-published valid header to another da height (should never happen)
-			// we can already discard it, only the first one is valid
-			r.logger.Debug().Uint64("height", header.Height()).Uint64("da_height", daHeight).Msg("header blob already exists for height, discarding")
-			continue
-		}
-
-		r.pendingHeaders[header.Height()] = header
-	}
-
-	for _, data := range decodedData {
-		if _, ok := r.pendingData[data.Height()]; ok {
-			// a (malicious) node may have re-published valid data to another da height (should never happen)
-			// we can already discard it, only the first one is valid
-			r.logger.Debug().Uint64("height", data.Height()).Uint64("da_height", daHeight).Msg("data blob already exists for height, discarding")
-			continue
-		}
-
-		r.pendingData[data.Height()] = data
 	}
 
 	var events []common.DAHeightEvent
@@ -309,7 +254,7 @@ func (r *daRetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedH
 	// Attempt to unmarshal as DAHeaderEnvelope and get the envelope signature
 	if envelopeSignature, err := header.UnmarshalDAEnvelope(bz); err != nil {
 		// If in strict mode, we REQUIRE an envelope.
-		if r.strictMode.Load() {
+		if r.strictMode {
 			r.logger.Warn().Err(err).Msg("strict mode is enabled, rejecting non-envelope blob")
 			return nil
 		}
@@ -343,35 +288,31 @@ func (r *daRetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedH
 			isValidEnvelope = true
 		}
 	}
-	if r.strictMode.Load() && !isValidEnvelope {
-		r.logger.Warn().Msg("strict mode: rejecting block that is not a fully valid envelope")
+	if r.strictMode && !isValidEnvelope {
+		// no need to print warnings, as tryDecodeHeader could try to decode data first, which will show this warning.
+		r.logger.Debug().Msg("strict mode: rejecting block that is not a fully valid envelope")
 		return nil
 	}
-	// Mode Switch Logic
-	if isValidEnvelope && !r.strictMode.Load() {
-		r.logger.Info().Uint64("height", header.Height()).Msg("valid DA envelope detected, switching to STRICT MODE")
-		r.strictMode.Store(true)
-	}
 
-	// Legacy blob support implies: strictMode == false AND (!isValidEnvelope).
-	// We fall through here.
-
-	// Basic validation
 	if err := header.Header.ValidateBasic(); err != nil {
 		r.logger.Debug().Err(err).Msg("invalid header structure")
 		return nil
 	}
 
-	// Check proposer
 	if err := r.assertExpectedProposer(header.ProposerAddress); err != nil {
 		r.logger.Debug().Err(err).Msg("unexpected proposer")
 		return nil
 	}
 
+	if isValidEnvelope && !r.strictMode {
+		r.logger.Info().Uint64("height", header.Height()).Msg("valid DA envelope detected, switching to STRICT MODE")
+		r.strictMode = true
+	}
+
 	// Optimistically mark as DA included
 	// This has to be done for all fetched DA headers prior to validation because P2P does not confirm
 	// da inclusion. This is not an issue, as an invalid header will be rejected. There cannot be hash collisions.
-	headerHash := header.Hash().String()
+	headerHash := header.MemoizeHash().String()
 	r.cache.SetHeaderDAIncluded(headerHash, daHeight, header.Height())
 
 	r.logger.Debug().

@@ -72,6 +72,7 @@ type Syncer struct {
 	// Channels for coordination
 	heightInCh chan common.DAHeightEvent
 	errorCh    chan<- error // Channel to report critical execution client failures
+	inFlight   atomic.Int64
 
 	// Handlers
 	daRetriever   DARetriever
@@ -143,7 +144,7 @@ func NewSyncer(
 	}
 	s.blockSyncer = s
 	if raftNode != nil && !reflect.ValueOf(raftNode).IsNil() {
-		s.raftRetriever = newRaftRetriever(raftNode, genesis, logger, eventProcessorFn(s.pipeEvent),
+		s.raftRetriever = newRaftRetriever(raftNode, genesis, logger, s,
 			func(ctx context.Context, state *raft.RaftBlockState) error {
 				s.logger.Debug().Uint64("header_height", state.LastSubmittedDaHeaderHeight).Uint64("data_height", state.LastSubmittedDaDataHeight).Msg("received raft block state")
 				cache.SetLastSubmittedHeaderHeight(ctx, state.LastSubmittedDaHeaderHeight)
@@ -181,7 +182,8 @@ func (s *Syncer) Start(ctx context.Context) (err error) {
 		s.daRetriever = WithTracingDARetriever(s.daRetriever)
 	}
 
-	s.fiRetriever = da.NewForcedInclusionRetriever(s.daClient, s.logger, s.config, s.genesis.DAStartHeight, s.genesis.DAEpochForcedInclusion)
+	s.fiRetriever = da.NewForcedInclusionRetriever(s.daClient, s.logger, s.config.DA.BlockTime.Duration, s.config.Instrumentation.IsTracingEnabled(), s.genesis.DAStartHeight, s.genesis.DAEpochForcedInclusion)
+	s.fiRetriever.Start(ctx)
 	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.cache, s.genesis, s.logger)
 
 	currentHeight, initErr := s.store.Height(ctx)
@@ -209,7 +211,7 @@ func (s *Syncer) Start(ctx context.Context) (err error) {
 		Client:        s.daClient,
 		Retriever:     s.daRetriever,
 		Logger:        s.logger,
-		PipeEvent:     s.pipeEvent,
+		EventSink:     s,
 		Namespace:     s.daClient.GetHeaderNamespace(),
 		DataNamespace: s.daClient.GetDataNamespace(),
 		StartDAHeight: s.daRetrieverHeight.Load(),
@@ -234,11 +236,13 @@ func (s *Syncer) Stop(ctx context.Context) error {
 	s.cancel()
 	s.cancelP2PWait(0)
 
-	// Stop the DA follower first (it owns its own goroutines).
+	if s.fiRetriever != nil {
+		s.fiRetriever.Stop()
+	}
+
 	if s.daFollower != nil {
 		s.daFollower.Stop()
 	}
-
 	s.wg.Wait()
 
 	// Skip draining if we're shutting down due to a critical error (e.g. execution
@@ -351,7 +355,25 @@ func (s *Syncer) initializeState() error {
 
 	// Set DA height to the maximum of the genesis start height, the state's DA height, and the cached DA height.
 	// The cache's DaHeight() is initialized from store metadata, so it's always correct even after cache clear.
-	s.daRetrieverHeight.Store(max(s.genesis.DAStartHeight, s.cache.DaHeight(), state.DAHeight))
+	// Only use cache.DaHeight() when P2P is actively syncing (headerStore has higher height than current state).
+	daHeight := s.genesis.DAStartHeight
+	if state.DAHeight > s.genesis.DAStartHeight {
+		daHeight = max(daHeight, state.DAHeight-1)
+	}
+	if s.headerStore != nil && s.headerStore.Height() > state.LastBlockHeight {
+		daHeight = max(daHeight, s.cache.DaHeight())
+	}
+
+	// dev mode for da start height
+	if startHeight := s.config.DA.StartHeight; startHeight > 0 {
+		s.logger.Info().
+			Uint64("previous_da_start_height", daHeight).
+			Uint64("override_da_start_height", s.config.DA.StartHeight).
+			Msg("DA start height overridden by flag")
+		daHeight = startHeight
+	}
+
+	s.daRetrieverHeight.Store(daHeight)
 
 	s.logger.Info().
 		Uint64("height", state.LastBlockHeight).
@@ -379,7 +401,9 @@ func (s *Syncer) processLoop(ctx context.Context) {
 			return
 		case heightEvent, ok := <-s.heightInCh:
 			if ok {
+				s.inFlight.Add(1)
 				s.processHeightEvent(ctx, &heightEvent)
+				s.inFlight.Add(-1)
 			}
 		}
 	}
@@ -403,7 +427,7 @@ func (s *Syncer) HasReachedDAHead() bool {
 
 // PendingCount returns the number of unprocessed height events in the pipeline.
 func (s *Syncer) PendingCount() int {
-	return len(s.heightInCh)
+	return len(s.heightInCh) + int(s.inFlight.Load()) + s.cache.PendingEventsCount()
 }
 
 func (s *Syncer) pendingWorkerLoop(ctx context.Context) {
@@ -492,7 +516,12 @@ func (s *Syncer) waitForGenesis() bool {
 	return true
 }
 
-func (s *Syncer) pipeEvent(ctx context.Context, event common.DAHeightEvent) error {
+func (s *Syncer) PipeEvent(ctx context.Context, event common.DAHeightEvent) error {
+	// Avoid sending already seen events to channel (would have been skipped in processHeightEvent anyway)
+	if s.cache.IsHeaderSeen(event.Header.Hash().String()) {
+		return nil
+	}
+
 	select {
 	case s.heightInCh <- event:
 		return nil
@@ -513,6 +542,7 @@ func (s *Syncer) processHeightEvent(ctx context.Context, event *common.DAHeightE
 		Uint64("height", height).
 		Uint64("da_height", event.DaHeight).
 		Str("hash", headerHash).
+		Str("source", string(event.Source)).
 		Msg("processing height event")
 
 	currentHeight, err := s.store.Height(ctx)
@@ -523,7 +553,10 @@ func (s *Syncer) processHeightEvent(ctx context.Context, event *common.DAHeightE
 
 	// Skip if already processed
 	if height <= currentHeight || s.cache.IsHeaderSeen(headerHash) {
-		s.logger.Debug().Uint64("height", height).Msg("height already processed")
+		s.logger.Debug().
+			Uint64("height", height).
+			Str("source", string(event.Source)).
+			Msg("height already processed")
 		return
 	}
 
@@ -608,7 +641,7 @@ func (s *Syncer) processHeightEvent(ctx context.Context, event *common.DAHeightE
 					Msg("P2P event with DA height hint, queuing priority DA retrieval")
 
 				// Queue priority DA retrieval - will be processed in fetchDAUntilCaughtUp
-				s.daRetriever.QueuePriorityHeight(daHeightHint)
+				s.daFollower.QueuePriorityHeight(daHeightHint)
 			}
 		}
 	}
@@ -632,6 +665,7 @@ func (s *Syncer) processHeightEvent(ctx context.Context, event *common.DAHeightE
 		s.logger.Error().Err(err).
 			Uint64("event-height", event.Header.Height()).
 			Uint64("state-height", s.getLastState().LastBlockHeight).
+			Str("source", string(event.Source)).
 			Msg("failed to sync next block")
 		// If the error is not due to a validation error, re-store the event as pending
 		switch {
@@ -672,7 +706,7 @@ func (s *Syncer) TrySyncNextBlock(ctx context.Context, event *common.DAHeightEve
 	currentState := s.getLastState()
 	headerHash := header.Hash().String()
 
-	s.logger.Info().Uint64("height", nextHeight).Msg("syncing block")
+	s.logger.Info().Uint64("height", nextHeight).Str("source", string(event.Source)).Msg("syncing block")
 
 	// Compared to the executor logic where the current block needs to be applied first,
 	// here only the previous block needs to be applied to proceed to the verification.
@@ -1132,8 +1166,9 @@ func (s *Syncer) IsSyncedWithRaft(raftState *raft.RaftBlockState) (int, error) {
 		s.logger.Error().Err(err).Uint64("height", raftState.Height).Msg("failed to get header for sync check")
 		return 0, fmt.Errorf("get header for sync check at height %d: %w", raftState.Height, err)
 	}
-	if !bytes.Equal(header.Hash(), raftState.Hash) {
-		return 0, fmt.Errorf("header hash mismatch: %x vs %x", header.Hash(), raftState.Hash)
+	headerHash := header.Hash()
+	if !bytes.Equal(headerHash, raftState.Hash) {
+		return 0, fmt.Errorf("header hash mismatch: %x vs %x", headerHash, raftState.Hash)
 	}
 
 	return 0, nil

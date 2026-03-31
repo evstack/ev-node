@@ -31,7 +31,7 @@ func TestDARetriever_StrictEnvelopeMode_Switch(t *testing.T) {
 	// Sign it
 	bz, err := types.DefaultAggregatorNodeSignatureBytesProvider(&legacyHeader.Header)
 	require.NoError(t, err)
-	sig, err := signer.Sign(bz)
+	sig, err := signer.Sign(t.Context(), bz)
 	require.NoError(t, err)
 	legacyHeader.Signature = sig
 
@@ -50,7 +50,7 @@ func TestDARetriever_StrictEnvelopeMode_Switch(t *testing.T) {
 	// Sign content
 	bz2, err := types.DefaultAggregatorNodeSignatureBytesProvider(&envelopeHeader.Header)
 	require.NoError(t, err)
-	sig2, err := signer.Sign(bz2)
+	sig2, err := signer.Sign(t.Context(), bz2)
 	require.NoError(t, err)
 	envelopeHeader.Signature = sig2
 
@@ -61,7 +61,7 @@ func TestDARetriever_StrictEnvelopeMode_Switch(t *testing.T) {
 	contentBytes, err := envelopeHeader.MarshalBinary()
 	require.NoError(t, err)
 	// Sign envelope
-	envSig, err := signer.Sign(contentBytes)
+	envSig, err := signer.Sign(t.Context(), contentBytes)
 	require.NoError(t, err)
 	// Marshal to envelope
 	envelopeBlob, err := envelopeHeader.MarshalDAEnvelope(envSig)
@@ -70,21 +70,21 @@ func TestDARetriever_StrictEnvelopeMode_Switch(t *testing.T) {
 	// --- Test Scenario ---
 
 	// A. Initial State: StrictMode is false. Legacy blob should be accepted.
-	assert.False(t, r.strictMode.Load())
+	assert.False(t, r.strictMode)
 
 	decodedLegacy := r.tryDecodeHeader(legacyBlob, 100)
 	require.NotNil(t, decodedLegacy)
 	assert.Equal(t, uint64(1), decodedLegacy.Height())
 
 	// StrictMode should still be false because it was a legacy blob
-	assert.False(t, r.strictMode.Load())
+	assert.False(t, r.strictMode)
 
 	// B. Receiving Envelope: Should be accepted and Switch StrictMode to true.
 	decodedEnvelope := r.tryDecodeHeader(envelopeBlob, 101)
 	require.NotNil(t, decodedEnvelope)
 	assert.Equal(t, uint64(2), decodedEnvelope.Height())
 
-	assert.True(t, r.strictMode.Load(), "retriever should have switched to strict mode")
+	assert.True(t, r.strictMode, "retriever should have switched to strict mode")
 
 	// C. Receiving Legacy again: Should be REJECTED now.
 	// We reuse the same legacyBlob (or a new one, doesn't matter, structure is legacy).

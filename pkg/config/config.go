@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/celestiaorg/go-square/v3/share"
-	"github.com/mitchellh/mapstructure"
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -89,6 +89,8 @@ const (
 	FlagDABatchMaxDelay = FlagPrefixEvnode + "da.batch_max_delay"
 	// FlagDABatchMinItems is a flag for specifying the minimum batch items
 	FlagDABatchMinItems = FlagPrefixEvnode + "da.batch_min_items"
+	// FlagDAStartHeight is a flag for forcing the DA retrieval height to start from a specific height
+	FlagDAStartHeight = FlagPrefixEvnode + "da.start_height"
 
 	// P2P configuration flags
 
@@ -140,6 +142,26 @@ const (
 	FlagSignerType = FlagPrefixEvnode + "signer.signer_type"
 	// FlagSignerPath is a flag for specifying the signer path
 	FlagSignerPath = FlagPrefixEvnode + "signer.signer_path"
+	// FlagSignerKmsProvider is a flag for specifying the signer KMS provider
+	FlagSignerKmsProvider = FlagPrefixEvnode + "signer.kms.provider"
+	// FlagSignerKmsAwsKeyID is a flag for specifying the AWS KMS key ID
+	FlagSignerKmsAwsKeyID = FlagPrefixEvnode + "signer.kms.aws.key_id"
+	// FlagSignerKmsAwsRegion is a flag for specifying the AWS KMS region
+	FlagSignerKmsAwsRegion = FlagPrefixEvnode + "signer.kms.aws.region"
+	// FlagSignerKmsAwsProfile is a flag for specifying the AWS profile
+	FlagSignerKmsAwsProfile = FlagPrefixEvnode + "signer.kms.aws.profile"
+	// FlagSignerKmsAwsTimeout is a flag for specifying the AWS KMS sign timeout
+	FlagSignerKmsAwsTimeout = FlagPrefixEvnode + "signer.kms.aws.timeout"
+	// FlagSignerKmsAwsMaxRetries is a flag for specifying the AWS KMS sign max retries
+	FlagSignerKmsAwsMaxRetries = FlagPrefixEvnode + "signer.kms.aws.max_retries"
+	// FlagSignerKmsGcpKeyName is a flag for specifying the GCP KMS key version resource name
+	FlagSignerKmsGcpKeyName = FlagPrefixEvnode + "signer.kms.gcp.key_name"
+	// FlagSignerKmsGcpCredentialsFile is a flag for specifying GCP credentials JSON file
+	FlagSignerKmsGcpCredentialsFile = FlagPrefixEvnode + "signer.kms.gcp.credentials_file"
+	// FlagSignerKmsGcpTimeout is a flag for specifying the GCP KMS sign timeout
+	FlagSignerKmsGcpTimeout = FlagPrefixEvnode + "signer.kms.gcp.timeout"
+	// FlagSignerKmsGcpMaxRetries is a flag for specifying the GCP KMS sign max retries
+	FlagSignerKmsGcpMaxRetries = FlagPrefixEvnode + "signer.kms.gcp.max_retries"
 
 	// FlagSignerPassphraseFile is a flag for specifying the file containing the signer passphrase
 	FlagSignerPassphraseFile = FlagPrefixEvnode + "signer.passphrase_file"
@@ -217,6 +239,8 @@ type Config struct {
 
 // DAConfig contains all Data Availability configuration parameters
 type DAConfig struct {
+	StartHeight uint64 `mapstructure:"start_height" yaml:"-" comment:"Force DA retrieval to start from a specific height (0 for default)"`
+
 	Address                  string          `mapstructure:"address" yaml:"address" comment:"Address of the data availability layer service (host:port). This is the endpoint where Rollkit will connect to submit and retrieve data."`
 	AuthToken                string          `mapstructure:"auth_token" yaml:"auth_token" comment:"Authentication token for the data availability layer service. Required if the DA service needs authentication."` //nolint:gosec // this is ok.
 	SubmitOptions            string          `mapstructure:"submit_options" yaml:"submit_options" comment:"Additional options passed to the DA layer when submitting data. Format depends on the specific DA implementation being used."`
@@ -292,8 +316,33 @@ type P2PConfig struct {
 
 // SignerConfig contains all signer configuration parameters
 type SignerConfig struct {
-	SignerType string `mapstructure:"signer_type" yaml:"signer_type" comment:"Type of remote signer to use (file, grpc)"`
-	SignerPath string `mapstructure:"signer_path" yaml:"signer_path" comment:"Path to the signer file or address"`
+	SignerType string          `mapstructure:"signer_type" yaml:"signer_type" comment:"Type of remote signer to use (file, kms)"`
+	SignerPath string          `mapstructure:"signer_path" yaml:"signer_path" comment:"Path to the signer file or address"`
+	KMS        SignerKMSConfig `mapstructure:"kms" yaml:"kms"`
+}
+
+// SignerKMSConfig contains cloud-KMS signer configuration.
+type SignerKMSConfig struct {
+	Provider string             `mapstructure:"provider" yaml:"provider" comment:"KMS provider for signer type 'kms' (aws, gcp)"`
+	AWS      SignerAWSKMSConfig `mapstructure:"aws" yaml:"aws"`
+	GCP      SignerGCPKMSConfig `mapstructure:"gcp" yaml:"gcp"`
+}
+
+// SignerAWSKMSConfig contains AWS KMS signer configuration.
+type SignerAWSKMSConfig struct {
+	KeyID      string          `mapstructure:"key_id" yaml:"key_id" comment:"AWS KMS Key ID or ARN"`
+	Region     string          `mapstructure:"region" yaml:"region" comment:"AWS region"`
+	Profile    string          `mapstructure:"profile" yaml:"profile" comment:"AWS profile"`
+	Timeout    DurationWrapper `mapstructure:"timeout" yaml:"timeout" comment:"Timeout for individual AWS KMS Sign requests"`
+	MaxRetries int             `mapstructure:"max_retries" yaml:"max_retries" comment:"Maximum number of retries for transient AWS KMS failures"`
+}
+
+// SignerGCPKMSConfig contains GCP KMS signer configuration.
+type SignerGCPKMSConfig struct {
+	KeyName         string          `mapstructure:"key_name" yaml:"key_name" comment:"GCP KMS CryptoKeyVersion resource name"`
+	CredentialsFile string          `mapstructure:"credentials_file" yaml:"credentials_file" comment:"Path to Google credentials JSON (optional; defaults to ADC)"`
+	Timeout         DurationWrapper `mapstructure:"timeout" yaml:"timeout" comment:"Timeout for individual GCP KMS Sign requests"`
+	MaxRetries      int             `mapstructure:"max_retries" yaml:"max_retries" comment:"Maximum number of retries for transient GCP KMS failures"`
 }
 
 // RPCConfig contains all RPC server configuration parameters
@@ -392,6 +441,32 @@ func (c RaftConfig) Validate() error {
 // Validate validates the config and ensures that the root directory exists.
 // It creates the directory if it does not exist.
 func (c *Config) Validate() error {
+	if c.Signer.SignerType == "kms" {
+		switch c.Signer.KMS.Provider {
+		case "aws":
+			if c.Signer.KMS.AWS.KeyID == "" {
+				return errors.New("evnode.signer.kms.aws.key_id is required when signer.signer_type is kms and signer.kms.provider is aws")
+			}
+			if c.Signer.KMS.AWS.Timeout.Duration <= 0 {
+				return errors.New("evnode.signer.kms.aws.timeout must be positive")
+			}
+			if c.Signer.KMS.AWS.MaxRetries < 0 {
+				return errors.New("evnode.signer.kms.aws.max_retries must be non-negative")
+			}
+		case "gcp":
+			if c.Signer.KMS.GCP.KeyName == "" {
+				return errors.New("evnode.signer.kms.gcp.key_name is required when signer.signer_type is kms and signer.kms.provider is gcp")
+			}
+			if c.Signer.KMS.GCP.Timeout.Duration <= 0 {
+				return errors.New("evnode.signer.kms.gcp.timeout must be positive")
+			}
+			if c.Signer.KMS.GCP.MaxRetries < 0 {
+				return errors.New("evnode.signer.kms.gcp.max_retries must be non-negative")
+			}
+		default:
+			return errors.New("evnode.signer.kms.provider must be one of: aws, gcp when signer.signer_type is kms")
+		}
+	}
 	if c.RootDir == "" {
 		return fmt.Errorf("root directory cannot be empty")
 	}
@@ -492,7 +567,7 @@ func AddFlags(cmd *cobra.Command) {
 	})
 
 	// Add base flags
-	cmd.Flags().String(FlagDBPath, def.DBPath, "path for the node database")
+	cmd.Flags().String(FlagDBPath, def.DBPath, "path for node database")
 	cmd.Flags().Bool(FlagClearCache, def.ClearCache, "clear the cache")
 
 	// Node configuration flags
@@ -524,6 +599,8 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().Float64(FlagDABatchSizeThreshold, def.DA.BatchSizeThreshold, "batch size threshold as fraction of max blob size (0.0-1.0)")
 	cmd.Flags().Duration(FlagDABatchMaxDelay, def.DA.BatchMaxDelay.Duration, "maximum time to wait before submitting a batch")
 	cmd.Flags().Uint64(FlagDABatchMinItems, def.DA.BatchMinItems, "minimum number of items to accumulate before submission")
+	cmd.Flags().Uint64(FlagDAStartHeight, def.DA.StartHeight, "force DA retrieval to start from a specific height (0 for disabled)")
+	cmd.Flags().MarkHidden(FlagDAStartHeight)
 
 	// P2P configuration flags
 	cmd.Flags().String(FlagP2PListenAddress, def.P2P.ListenAddress, "P2P listen address (host:port)")
@@ -548,8 +625,18 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().Float64(FlagTracingSampleRate, instrDef.TracingSampleRate, "trace sampling rate (0.0-1.0)")
 
 	// Signer configuration flags
-	cmd.Flags().String(FlagSignerType, def.Signer.SignerType, "type of signer to use (file, grpc)")
+	cmd.Flags().String(FlagSignerType, def.Signer.SignerType, "type of signer to use (file, grpc, kms)")
 	cmd.Flags().String(FlagSignerPath, def.Signer.SignerPath, "path to the signer file or address")
+	cmd.Flags().String(FlagSignerKmsProvider, def.Signer.KMS.Provider, "KMS provider for signer type kms (aws, gcp)")
+	cmd.Flags().String(FlagSignerKmsAwsKeyID, def.Signer.KMS.AWS.KeyID, "AWS KMS Key ID or ARN for signer.kms.provider=aws")
+	cmd.Flags().String(FlagSignerKmsAwsRegion, def.Signer.KMS.AWS.Region, "AWS region for signer.kms.provider=aws")
+	cmd.Flags().String(FlagSignerKmsAwsProfile, def.Signer.KMS.AWS.Profile, "AWS profile for signer.kms.provider=aws")
+	cmd.Flags().Duration(FlagSignerKmsAwsTimeout, def.Signer.KMS.AWS.Timeout.Duration, "Timeout for individual AWS KMS Sign requests")
+	cmd.Flags().Int(FlagSignerKmsAwsMaxRetries, def.Signer.KMS.AWS.MaxRetries, "Maximum number of retries for transient AWS KMS failures")
+	cmd.Flags().String(FlagSignerKmsGcpKeyName, def.Signer.KMS.GCP.KeyName, "GCP KMS CryptoKeyVersion resource name for signer.kms.provider=gcp")
+	cmd.Flags().String(FlagSignerKmsGcpCredentialsFile, def.Signer.KMS.GCP.CredentialsFile, "Path to Google credentials JSON for signer.kms.provider=gcp (optional)")
+	cmd.Flags().Duration(FlagSignerKmsGcpTimeout, def.Signer.KMS.GCP.Timeout.Duration, "Timeout for individual GCP KMS Sign requests")
+	cmd.Flags().Int(FlagSignerKmsGcpMaxRetries, def.Signer.KMS.GCP.MaxRetries, "Maximum number of retries for transient GCP KMS failures")
 	cmd.Flags().String(FlagSignerPassphraseFile, "", "path to file containing the signer passphrase (required for file signer and if aggregator is enabled)")
 
 	cmd.MarkFlagsMutuallyExclusive(FlagLight, FlagAggregator)
