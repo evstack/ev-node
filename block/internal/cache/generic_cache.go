@@ -61,6 +61,10 @@ func (c *Cache) isSeen(hash string) bool {
 func (c *Cache) setSeen(hash string, height uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if existing, ok := c.hashByHeight[height]; ok && existing == hash {
+		c.hashes[existing] = true
+		return
+	}
 	c.hashes[hash] = true
 	c.hashByHeight[height] = hash
 }
