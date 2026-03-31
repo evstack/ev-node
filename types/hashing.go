@@ -57,6 +57,10 @@ func (h *Header) Hash() Hash {
 // MemoizeHash computes the header hash and stores it on the header for future
 // Hash() calls. Call this before publishing the header to shared goroutines or
 // caches.
+//
+// If a Header struct is reused (e.g. overwritten via FromProto or field
+// assignment), call InvalidateHash() first to clear the cached value before
+// calling MemoizeHash again. Failure to do so will return the stale cached hash.
 func (h *Header) MemoizeHash() Hash {
 	if h == nil {
 		return nil
@@ -73,6 +77,8 @@ func (h *Header) MemoizeHash() Hash {
 }
 
 func (h *Header) computeHash() Hash {
+	// Legacy hash takes precedence when legacy fields are present (backwards
+	// compatibility). Slim hash is the canonical hash for all other headers.
 	if h.Legacy != nil && !h.Legacy.IsZero() {
 		if legacyHash, err := h.HashLegacy(); err == nil {
 			return legacyHash

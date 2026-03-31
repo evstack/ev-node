@@ -23,6 +23,10 @@ func HeaderFromContext(ctx context.Context) (Header, bool) {
 		return Header{}, false
 	}
 
+	// Clear the memoized hash on the returned copy. The caller may mutate
+	// fields and call Hash() without knowing to call InvalidateHash() first,
+	// which would return a stale cached value.
+	h.InvalidateHash()
 	return h, true
 }
 
