@@ -26,6 +26,7 @@ import (
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/raft"
 	signerpkg "github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/signer/noop"
 	"github.com/evstack/ev-node/pkg/store"
@@ -304,6 +305,121 @@ func TestSequentialBlockSync(t *testing.T) {
 	_, ok = cm.GetDataDAIncludedByHash(data2.DACommitment().String())
 	assert.True(t, ok)
 	requireEmptyChan(t, errChan)
+}
+
+func TestSyncer_RecoverFromRaft_BootstrapsStateWhenUninitialized(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	require.NoError(t, err)
+
+	addr, pub, signer := buildSyncTestSigner(t)
+	gen := genesis.Genesis{
+		ChainID:         "1234",
+		InitialHeight:   1,
+		StartTime:       time.Now().Add(-time.Second),
+		ProposerAddress: addr,
+	}
+
+	mockExec := testmocks.NewMockExecutor(t)
+	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
+	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
+	s := NewSyncer(
+		st,
+		mockExec,
+		nil,
+		cm,
+		common.NopMetrics(),
+		config.DefaultConfig(),
+		gen,
+		mockHeaderStore,
+		mockDataStore,
+		zerolog.Nop(),
+		common.DefaultBlockOptions(),
+		make(chan error, 1),
+		nil,
+	)
+
+	// lastState intentionally not initialized to simulate recovery-before-start path.
+	data := makeData(gen.ChainID, 1, 0)
+	headerBz, hdr := makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, []byte("app0"), data, nil)
+	dataBz, err := data.MarshalBinary()
+	require.NoError(t, err)
+
+	mockExec.EXPECT().
+		ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.Anything, mock.Anything).
+		Return([]byte("app1"), nil).
+		Once()
+
+	err = s.RecoverFromRaft(t.Context(), &raft.RaftBlockState{
+		Height: 1,
+		Hash:   hdr.Hash(),
+		Header: headerBz,
+		Data:   dataBz,
+	})
+	require.NoError(t, err)
+
+	state, err := st.GetState(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, gen.ChainID, state.ChainID)
+	require.Equal(t, uint64(1), state.LastBlockHeight)
+}
+
+func TestSyncer_RecoverFromRaft_KeepsStrictValidationAfterStateExists(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	require.NoError(t, err)
+
+	addr, pub, signer := buildSyncTestSigner(t)
+	gen := genesis.Genesis{
+		ChainID:         "1234",
+		InitialHeight:   1,
+		StartTime:       time.Now().Add(-time.Second),
+		ProposerAddress: addr,
+	}
+
+	mockExec := testmocks.NewMockExecutor(t)
+	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
+	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
+	s := NewSyncer(
+		st,
+		mockExec,
+		nil,
+		cm,
+		common.NopMetrics(),
+		config.DefaultConfig(),
+		gen,
+		mockHeaderStore,
+		mockDataStore,
+		zerolog.Nop(),
+		common.DefaultBlockOptions(),
+		make(chan error, 1),
+		nil,
+	)
+
+	// Non-empty state must remain strictly validated.
+	s.SetLastState(types.State{
+		ChainID:         "wrong-chain",
+		InitialHeight:   1,
+		LastBlockHeight: 0,
+	})
+
+	data := makeData(gen.ChainID, 1, 0)
+	headerBz, hdr := makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, []byte("app0"), data, nil)
+	dataBz, err := data.MarshalBinary()
+	require.NoError(t, err)
+
+	err = s.RecoverFromRaft(t.Context(), &raft.RaftBlockState{
+		Height: 1,
+		Hash:   hdr.Hash(),
+		Header: headerBz,
+		Data:   dataBz,
+	})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "invalid chain ID")
 }
 
 func TestSyncer_processPendingEvents(t *testing.T) {

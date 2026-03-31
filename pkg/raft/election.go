@@ -64,6 +64,7 @@ func (d *DynamicLeaderElection) Run(ctx context.Context) error {
 		close(errCh)
 	}()
 
+	var runnable Runnable
 	startWorker := func(name string, workerFunc func(ctx context.Context) error) {
 		workerCancel()
 		wg.Wait() // Ensure previous worker is fully stopped
@@ -83,11 +84,26 @@ func (d *DynamicLeaderElection) Run(ctx context.Context) error {
 			}
 		}(workerCtx)
 	}
+	startFollower := func() error {
+		var err error
+		if runnable, err = d.followerFactory(); err != nil {
+			return err
+		}
+		// avoids validating against stale raft state.
+		if err = d.node.waitForMsgsLanded(d.node.Config().SendTimeout); err != nil {
+			// this wait can legitimately time out
+			d.logger.Debug().Err(err).Msg("timed out waiting for raft messages before follower verification; continuing")
+		}
+		if err = d.verifyState(ctx, runnable); err != nil {
+			return err
+		}
+		startWorker("follower", runnable.Run)
+		return nil
+	}
 	ticker := time.NewTicker(300 * time.Millisecond)
 	defer ticker.Stop()
 	d.running.Store(true)
 	defer d.running.Store(false)
-	var runnable Runnable
 	for {
 		select {
 		case becameLeader := <-d.node.leaderCh():
@@ -144,15 +160,9 @@ func (d *DynamicLeaderElection) Run(ctx context.Context) error {
 			} else if !becameLeader && !isCurrentlyLeader && !isStarted { // start as a follower
 				d.logger.Info().Msg("starting follower operations")
 				isStarted = true
-				var err error
-				if runnable, err = d.followerFactory(); err != nil {
+				if err := startFollower(); err != nil {
 					return err
 				}
-
-				if err = d.verifyState(ctx, runnable); err != nil {
-					return err
-				}
-				startWorker("follower", runnable.Run)
 			}
 			// LeaderCh fires only when leader changes not on initial election
 		case <-ticker.C:
@@ -171,11 +181,9 @@ func (d *DynamicLeaderElection) Run(ctx context.Context) error {
 
 			d.logger.Info().Msg("starting follower operations")
 			isStarted = true
-			var err error
-			if runnable, err = d.followerFactory(); err != nil {
+			if err := startFollower(); err != nil {
 				return err
 			}
-			startWorker("follower", runnable.Run)
 		case err := <-errCh:
 			return err
 		case <-ctx.Done():
@@ -189,14 +197,32 @@ func (d *DynamicLeaderElection) verifyState(ctx context.Context, runnable Runnab
 	// Verify sync state before starting follower operations
 	raftState := d.node.GetState()
 	if raftState == nil || raftState.Height == 0 {
-		// Initial/empty raft state - skip recovery and let normal sync handle it.
-		// This can happen during rolling restarts when the Raft FSM hasn't replayed logs yet.
-		d.logger.Info().Msg("raft state at height 0, skipping recovery to allow normal sync")
-		return nil
+		waitTimeout := d.node.Config().SendTimeout
+		deadline := time.NewTimer(waitTimeout)
+		defer deadline.Stop()
+		ticker := time.NewTicker(min(50*time.Millisecond, max(waitTimeout/4, time.Millisecond)))
+		defer ticker.Stop()
+
+		for raftState == nil || raftState.Height == 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-deadline.C:
+				d.logger.Info().Msg("raft state still at height 0 after wait; skipping recovery to allow normal sync")
+				return nil
+			case <-ticker.C:
+				raftState = d.node.GetState()
+			}
+		}
 	}
 	diff, err := runnable.IsSynced(raftState)
 	if err != nil {
-		return err
+		d.logger.Warn().Err(err).Uint64("raft_height", raftState.Height).Msg("sync check failed, attempting recovery from raft canonical state")
+		if recErr := runnable.Recover(ctx, raftState); recErr != nil {
+			return errors.Join(err, fmt.Errorf("recovery after sync-check failure: %w", recErr))
+		}
+		d.logger.Info().Msg("recovery successful after sync-check failure")
+		return nil
 	}
 	if diff == 0 {
 		return nil

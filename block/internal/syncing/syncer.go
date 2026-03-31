@@ -694,6 +694,12 @@ var (
 // TrySyncNextBlock attempts to sync the next available block
 // the event is always the next block in sequence as processHeightEvent ensures it.
 func (s *Syncer) TrySyncNextBlock(ctx context.Context, event *common.DAHeightEvent) error {
+	return s.trySyncNextBlockWithState(ctx, event, s.getLastState())
+}
+
+// trySyncNextBlockWithState attempts to sync the next available block using
+// the provided current state as the validation/apply baseline.
+func (s *Syncer) trySyncNextBlockWithState(ctx context.Context, event *common.DAHeightEvent, currentState types.State) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -703,7 +709,6 @@ func (s *Syncer) TrySyncNextBlock(ctx context.Context, event *common.DAHeightEve
 	header := event.Header
 	data := event.Data
 	nextHeight := event.Header.Height()
-	currentState := s.getLastState()
 	headerHash := header.Hash().String()
 
 	s.logger.Info().Uint64("height", nextHeight).Str("source", string(event.Source)).Msg("syncing block")
@@ -1189,6 +1194,7 @@ func (s *Syncer) RecoverFromRaft(ctx context.Context, raftState *raft.RaftBlockS
 	}
 
 	currentState := s.getLastState()
+	stateBootstrapped := false
 
 	// Defensive: if lastState is not yet initialized (e.g., RecoverFromRaft called before Start),
 	// load it from the store to ensure we have valid state for validation.
@@ -1201,8 +1207,10 @@ func (s *Syncer) RecoverFromRaft(ctx context.Context, raftState *raft.RaftBlockS
 			s.logger.Debug().Err(err).Msg("no state in store, using genesis defaults for recovery")
 			currentState = types.State{
 				ChainID:         s.genesis.ChainID,
+				InitialHeight:   s.genesis.InitialHeight,
 				LastBlockHeight: s.genesis.InitialHeight - 1,
 			}
+			stateBootstrapped = true
 		}
 	}
 
@@ -1214,11 +1222,18 @@ func (s *Syncer) RecoverFromRaft(ctx context.Context, raftState *raft.RaftBlockS
 		return nil
 	} else if currentState.LastBlockHeight+1 == raftState.Height { // raft is 1 block ahead
 		// apply block
-		err := s.TrySyncNextBlock(ctx, &common.DAHeightEvent{
+		event := &common.DAHeightEvent{
 			Header: &header,
 			Data:   &data,
 			Source: "",
-		})
+		}
+		err := s.trySyncNextBlockWithState(ctx, event, currentState)
+		if err != nil && stateBootstrapped && errors.Is(err, errInvalidState) {
+			s.logger.Debug().Err(err).Msg("raft recovery failed after bootstrap state init, retrying once")
+			// Keep strict validation semantics; this retry only guards startup ordering races.
+			s.SetLastState(currentState)
+			err = s.trySyncNextBlockWithState(ctx, event, currentState)
+		}
 		if err != nil {
 			return err
 		}
