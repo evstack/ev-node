@@ -1,182 +1,244 @@
 package main
 
 import (
-	"bytes"
+	"bufio"
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
-	"math/rand"
+	"io"
+	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 )
 
-const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-
-func randomString(n int) string {
-	b := make([]byte, n)
-	for i := range b {
-		b[i] = letterBytes[rand.Intn(len(letterBytes))]
-	}
-	return string(b)
-}
-
-// checkServerStatus attempts to connect to the server's /store endpoint.
-func checkServerStatus(serverAddr string) error {
-	checkURL := serverAddr + "/store"
-	resp, err := http.Get(checkURL)
-	if err != nil {
-		return fmt.Errorf("server not reachable at %s: %w", checkURL, err)
-	}
-	defer resp.Body.Close()
-	// We expect OK for the store endpoint, even if empty
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("server returned non-OK status (%d) at %s", resp.StatusCode, checkURL)
-	}
-	fmt.Printf("Server check successful at %s\n", checkURL)
-	return nil
+type serverStats struct {
+	InjectedTxs    uint64 `json:"injected_txs"`
+	ExecutedTxs    uint64 `json:"executed_txs"`
+	BlocksProduced uint64 `json:"blocks_produced"`
 }
 
 func main() {
-	serverAddr := flag.String("addr", "http://localhost:9090", "KV executor HTTP server address")
-	listStore := flag.Bool("list", false, "List all key-value pairs in the store")
-
-	// Benchmarking parameters
-	duration := flag.Duration("duration", 30*time.Second, "Total duration for the benchmark")
-	interval := flag.Duration("interval", 1*time.Second, "Interval between batches of transactions")
-	txPerInterval := flag.Int("tx-per-interval", 10, "Number of transactions to send in each interval")
-
+	addr := flag.String("addr", "localhost:9090", "server host:port")
+	duration := flag.Duration("duration", 10*time.Second, "test duration")
+	workers := flag.Int("workers", 1000, "concurrent workers")
+	targetRPS := flag.Uint64("target-rps", 10_000_000, "target requests per second")
 	flag.Parse()
 
-	// Seed random number generator
-	rand.Seed(time.Now().UnixNano())
+	fmt.Printf("Stress Test Configuration\n")
+	fmt.Printf("  Server:    %s\n", *addr)
+	fmt.Printf("  Duration:  %s\n", *duration)
+	fmt.Printf("  Workers:   %d\n", *workers)
+	fmt.Printf("  Goal:      %d req/s\n\n", *targetRPS)
 
-	// Validate the server URL format first
-	parsedBaseURL, err := url.Parse(*serverAddr)
-	if err != nil || (parsedBaseURL.Scheme != "http" && parsedBaseURL.Scheme != "https") {
-		fmt.Fprintf(os.Stderr, "Invalid server base URL format: %s\n", *serverAddr)
+	if err := checkServer(*addr); err != nil {
+		fmt.Fprintf(os.Stderr, "Server check failed: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Check if the server is reachable before proceeding
-	if err := checkServerStatus(*serverAddr); err != nil {
-		fmt.Fprintf(os.Stderr, "Server status check failed: %v\n", err)
-		os.Exit(1)
-	}
+	before := fetchStats(*addr)
 
-	// List store contents
-	if *listStore {
-		resp, err := http.Get(*serverAddr + "/store")
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error connecting to server: %v\n", err)
-			os.Exit(1)
-		}
-		defer func() {
-			if err := resp.Body.Close(); err != nil {
-				fmt.Fprintf(os.Stderr, "Error closing response body: %v\n", err)
-			}
-		}()
-
-		buffer := new(bytes.Buffer)
-		_, err = buffer.ReadFrom(resp.Body)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error reading response: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println(buffer.String())
-		return
-	}
-
-	// No need to re-parse, but create the final URL object
-	safeURL := url.URL{
-		Scheme: parsedBaseURL.Scheme,
-		Host:   parsedBaseURL.Host,
-		Path:   "/tx",
-	}
-
-	// Run benchmark
-	runBenchmark(safeURL.String(), *duration, *interval, *txPerInterval)
-}
-
-// runBenchmark sends transactions to the server at the specified interval
-func runBenchmark(url string, duration, interval time.Duration, txPerInterval int) {
-	ctx, cancel := context.WithTimeout(context.Background(), duration)
-	defer cancel()
-
-	var (
-		successCount uint64
-		failureCount uint64
-		wg           sync.WaitGroup
+	rawReq := fmt.Appendf(nil,
+		"POST /tx HTTP/1.1\r\nHost: %s\r\nContent-Type: text/plain\r\nContent-Length: 3\r\n\r\ns=v",
+		*addr,
 	)
 
-	startTime := time.Now()
-	ticker := time.NewTicker(interval)
+	var success atomic.Uint64
+	var failures atomic.Uint64
+
+	ctx, cancel := context.WithTimeout(context.Background(), *duration)
+	defer cancel()
+
+	done := make(chan struct{}, *workers)
+	for i := 0; i < *workers; i++ {
+		go worker(ctx, *addr, rawReq, &success, &failures, done)
+	}
+
+	start := time.Now()
+	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
-	fmt.Printf("Starting benchmark for %s with %d tx every %s\n",
-		duration.String(), txPerInterval, interval.String())
+	var lastCount uint64
+	var peakRPS uint64
+
+loop:
+	for {
+		select {
+		case <-ctx.Done():
+			break loop
+		case <-ticker.C:
+			cur := success.Load() + failures.Load()
+			rps := cur - lastCount
+			lastCount = cur
+			if rps > peakRPS {
+				peakRPS = rps
+			}
+			elapsed := time.Since(start).Truncate(time.Second)
+			fmt.Printf("\r[%6s] Total: %12d | Success: %12d | Fail: %8d | RPS: %12d   ",
+				elapsed, cur, success.Load(), failures.Load(), rps)
+		}
+	}
+
+	elapsed := time.Since(start)
+
+	for i := 0; i < *workers; i++ {
+		<-done
+	}
+
+	after := fetchStats(*addr)
+
+	total := success.Load() + failures.Load()
+	avgRPS := float64(total) / elapsed.Seconds()
+
+	var txsPerBlock float64
+	deltaBlocks := after.BlocksProduced - before.BlocksProduced
+	deltaTxs := after.ExecutedTxs - before.ExecutedTxs
+	if deltaBlocks > 0 {
+		txsPerBlock = float64(deltaTxs) / float64(deltaBlocks)
+	}
+
+	reached := avgRPS >= float64(*targetRPS)
+
+	fmt.Println()
+	fmt.Println()
+	printResults(elapsed, uint64(*workers), total, success.Load(), failures.Load(),
+		avgRPS, float64(peakRPS), deltaBlocks, deltaTxs, txsPerBlock, reached, *targetRPS)
+}
+
+func worker(ctx context.Context, addr string, rawReq []byte, success, failures *atomic.Uint64, done chan struct{}) {
+	defer func() { done <- struct{}{} }()
 
 	for {
 		select {
 		case <-ctx.Done():
-			wg.Wait() // Wait for any in-progress transactions to complete
-			endTime := time.Now()
-			elapsed := endTime.Sub(startTime)
-			totalTx := successCount + failureCount
-
-			fmt.Println("\nBenchmark complete")
-			fmt.Printf("Duration: %s\n", elapsed.String())
-			fmt.Printf("Total transactions: %d\n", totalTx)
-			fmt.Printf("Successful transactions: %d\n", successCount)
-			fmt.Printf("Failed transactions: %d\n", failureCount)
-
-			if elapsed.Seconds() > 0 {
-				txPerSec := float64(totalTx) / elapsed.Seconds()
-				fmt.Printf("Throughput: %.2f tx/sec\n", txPerSec)
-			}
-
 			return
+		default:
+		}
 
-		case <-ticker.C:
-			// Send a batch of transactions
-			for i := 0; i < txPerInterval; i++ {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					var currentTxData string
-					// Generate random key-value pair
-					key := randomString(8)
-					value := randomString(16)
-					currentTxData = fmt.Sprintf("%s=%s", key, value)
-					success := sendTransaction(url, currentTxData)
-					if success {
-						atomic.AddUint64(&successCount, 1)
-					} else {
-						atomic.AddUint64(&failureCount, 1)
-					}
-				}()
+		conn, err := net.DialTimeout("tcp", addr, time.Second)
+		if err != nil {
+			failures.Add(1)
+			continue
+		}
+
+		br := bufio.NewReaderSize(conn, 512)
+
+		for {
+			select {
+			case <-ctx.Done():
+				conn.Close()
+				return
+			default:
 			}
 
-			// Print progress
-			current := atomic.LoadUint64(&successCount) + atomic.LoadUint64(&failureCount)
-			fmt.Printf("\rTransactions sent: %d (success: %d, failed: %d)",
-				current, atomic.LoadUint64(&successCount), atomic.LoadUint64(&failureCount))
+			if _, err := conn.Write(rawReq); err != nil {
+				failures.Add(1)
+				conn.Close()
+				break
+			}
+
+			resp, err := http.ReadResponse(br, nil)
+			if err != nil {
+				failures.Add(1)
+				conn.Close()
+				break
+			}
+			io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+
+			if resp.StatusCode == http.StatusAccepted {
+				success.Add(1)
+			} else {
+				failures.Add(1)
+			}
 		}
 	}
 }
 
-// sendTransaction sends a single transaction and returns true if successful
-func sendTransaction(url, txData string) bool {
-	resp, err := http.Post(url, "text/plain", strings.NewReader(txData))
+func checkServer(addr string) error {
+	resp, err := http.Get("http://" + addr + "/store")
 	if err != nil {
-		fmt.Printf("Error sending transaction: %v\n", err)
-		return false
+		return fmt.Errorf("cannot connect to %s: %w", addr, err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("server returned %d", resp.StatusCode)
+	}
+	return nil
+}
+
+func fetchStats(addr string) serverStats {
+	resp, err := http.Get("http://" + addr + "/stats")
+	if err != nil {
+		return serverStats{}
 	}
 	defer resp.Body.Close()
+	var s serverStats
+	json.NewDecoder(resp.Body).Decode(&s)
+	return s
+}
 
-	return resp.StatusCode == http.StatusAccepted
+func formatNum(n uint64) string {
+	s := fmt.Sprintf("%d", n)
+	if len(s) <= 3 {
+		return s
+	}
+	var result strings.Builder
+	for i, c := range s {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			result.WriteString(",")
+		}
+		result.WriteString(string(c))
+	}
+	return result.String()
+}
+
+func printResults(elapsed time.Duration, workers, total, success, failures uint64,
+	avgRPS, peakRPS float64, blocks, executedTxs uint64, txsPerBlock float64, reached bool, targetRPS uint64) {
+
+	goalLabel := fmt.Sprintf("Goal (%s req/s)", formatNum(targetRPS))
+	sep := "+----------------------------------------+----------------------------------------+"
+	rowFmt := "| %-38s | %-38s |"
+
+	fmt.Println(sep)
+	fmt.Printf(rowFmt+"\n", "STRESS TEST RESULTS", "")
+	fmt.Println(sep)
+	fmt.Printf(rowFmt+"\n", "Duration", elapsed.Truncate(time.Millisecond).String())
+	fmt.Printf(rowFmt+"\n", "Workers", fmt.Sprintf("%d", workers))
+	fmt.Println(sep)
+	fmt.Printf(rowFmt+"\n", "Total Requests", formatNum(total))
+	fmt.Printf(rowFmt+"\n", "Successful (202)", formatNum(success))
+	fmt.Printf(rowFmt+"\n", "Failed", formatNum(failures))
+	fmt.Println(sep)
+	fmt.Printf(rowFmt+"\n", "Avg req/s", formatFloat(avgRPS))
+	fmt.Printf(rowFmt+"\n", "Peak req/s (1s window)", formatFloat(peakRPS))
+	fmt.Println(sep)
+	fmt.Printf(rowFmt+"\n", "Server Blocks Produced", formatNum(blocks))
+	fmt.Printf(rowFmt+"\n", "Server Txs Executed", formatNum(executedTxs))
+	fmt.Printf(rowFmt+"\n", "Avg Txs per Block", fmt.Sprintf("%.2f", txsPerBlock))
+	fmt.Println(sep)
+
+	if reached {
+		fmt.Printf(rowFmt+"\n", goalLabel, "REACHED")
+		fmt.Println(sep)
+		fmt.Println()
+		fmt.Println("  ====================================================")
+		fmt.Printf("      S U C C E S S !   %s  R E A C H E D !\n", formatNum(targetRPS))
+		fmt.Println("  ====================================================")
+	} else {
+		fmt.Printf(rowFmt+"\n", goalLabel, "NOT REACHED")
+		fmt.Println(sep)
+		fmt.Printf("\n  Achieved %.2f%% of target (%.1fx away)\n",
+			avgRPS/float64(targetRPS)*100, float64(targetRPS)/avgRPS)
+	}
+}
+
+func formatFloat(f float64) string {
+	if f >= 1_000_000 {
+		return fmt.Sprintf("%.0f", f)
+	}
+	return fmt.Sprintf("%.2f", f)
 }

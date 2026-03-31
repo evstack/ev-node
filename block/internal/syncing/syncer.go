@@ -1166,8 +1166,9 @@ func (s *Syncer) IsSyncedWithRaft(raftState *raft.RaftBlockState) (int, error) {
 		s.logger.Error().Err(err).Uint64("height", raftState.Height).Msg("failed to get header for sync check")
 		return 0, fmt.Errorf("get header for sync check at height %d: %w", raftState.Height, err)
 	}
-	if !bytes.Equal(header.Hash(), raftState.Hash) {
-		return 0, fmt.Errorf("header hash mismatch: %x vs %x", header.Hash(), raftState.Hash)
+	headerHash := header.Hash()
+	if !bytes.Equal(headerHash, raftState.Hash) {
+		return 0, fmt.Errorf("header hash mismatch: %x vs %x", headerHash, raftState.Hash)
 	}
 
 	return 0, nil

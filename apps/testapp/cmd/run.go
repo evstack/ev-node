@@ -143,7 +143,7 @@ func createSequencer(
 		daClient,
 		nodeConfig,
 		[]byte(genesis.ChainID),
-		1000,
+		1_000_000,
 		genesis,
 		executor,
 	)

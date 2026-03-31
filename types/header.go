@@ -23,6 +23,10 @@ func HeaderFromContext(ctx context.Context) (Header, bool) {
 		return Header{}, false
 	}
 
+	// Clear the memoized hash on the returned copy. The caller may mutate
+	// fields and call Hash() without knowing to call InvalidateHash() first,
+	// which would return a stale cached value.
+	h.InvalidateHash()
 	return h, true
 }
 
@@ -82,6 +86,10 @@ type Header struct {
 	// representation but may still be required for backwards compatible binary
 	// serialization (e.g. legacy signing payloads).
 	Legacy *LegacyHeaderFields
+
+	// cachedHash holds the memoized result of MemoizeHash(). nil means cold.
+	// Any caller that mutates header fields must call InvalidateHash() to clear it.
+	cachedHash Hash
 }
 
 // New creates a new Header.
@@ -250,6 +258,7 @@ func (h *Header) ApplyLegacyDefaults() {
 		h.Legacy = &LegacyHeaderFields{}
 	}
 	h.Legacy.EnsureDefaults()
+	h.InvalidateHash()
 }
 
 // Clone creates a deep copy of the header, ensuring all mutable slices are
@@ -262,6 +271,7 @@ func (h Header) Clone() Header {
 	clone.ValidatorHash = cloneBytes(h.ValidatorHash)
 	clone.ProposerAddress = cloneBytes(h.ProposerAddress)
 	clone.Legacy = h.Legacy.Clone()
+	clone.cachedHash = nil
 
 	return clone
 }

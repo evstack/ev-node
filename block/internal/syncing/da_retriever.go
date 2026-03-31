@@ -312,7 +312,7 @@ func (r *daRetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedH
 	// Optimistically mark as DA included
 	// This has to be done for all fetched DA headers prior to validation because P2P does not confirm
 	// da inclusion. This is not an issue, as an invalid header will be rejected. There cannot be hash collisions.
-	headerHash := header.Hash().String()
+	headerHash := header.MemoizeHash().String()
 	r.cache.SetHeaderDAIncluded(headerHash, daHeight, header.Height())
 
 	r.logger.Debug().
