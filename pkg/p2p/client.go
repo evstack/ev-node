@@ -196,7 +196,7 @@ func (c *Client) startWithHost(ctx context.Context, h host.Host) error {
 	c.started = true
 
 	c.host.Network().Notify(c.newDisconnectNotifee())
-	c.startConnectionMaintenance(ctx)
+	c.startConnectionMaintenance()
 
 	return nil
 }
@@ -314,8 +314,8 @@ func (c *Client) newDisconnectNotifee() disconnectNotifee {
 // to seed peers on disconnect (driven by network.Notifee events) and
 // periodically refreshes peer discovery. This ensures P2P connectivity
 // recovers after transient network failures without requiring a full node restart.
-func (c *Client) startConnectionMaintenance(parentCtx context.Context) {
-	ctx, cancel := context.WithCancel(parentCtx)
+func (c *Client) startConnectionMaintenance() {
+	ctx, cancel := context.WithCancel(context.Background())
 	c.maintenanceCancel = cancel
 
 	c.maintenanceWg.Go(func() {
