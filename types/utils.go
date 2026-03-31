@@ -126,6 +126,7 @@ func GetRandomNextHeader(header Header, chainID string) Header {
 	nextHeader.LastHeaderHash = header.Hash()
 	nextHeader.ProposerAddress = header.ProposerAddress
 	nextHeader.ValidatorHash = header.ValidatorHash
+	nextHeader.InvalidateHash()
 	return nextHeader
 }
 

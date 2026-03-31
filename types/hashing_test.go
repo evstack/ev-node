@@ -21,6 +21,11 @@ func TestHeaderHash(t *testing.T) {
 	}
 
 	hash1 := header.Hash()
+	assert.Nil(t, header.cachedHash, "Hash() should not memoize")
+
+	memoizedHash := header.MemoizeHash()
+	assert.Equal(t, hash1, memoizedHash)
+	assert.NotNil(t, header.cachedHash, "MemoizeHash() should store the computed value")
 
 	headerBytes, err := header.MarshalBinary()
 	require.NoError(t, err)
@@ -31,6 +36,8 @@ func TestHeaderHash(t *testing.T) {
 	assert.Equal(t, Hash(expectedHash[:]), hash1, "Header hash should match manual calculation")
 
 	header.BaseHeader.Height = 2
+	header.InvalidateHash()
+	assert.Nil(t, header.cachedHash)
 	hash2 := header.Hash()
 	assert.NotEqual(t, hash1, hash2, "Different headers should have different hashes")
 }
@@ -142,4 +149,18 @@ func TestHeaderHashWithBytes(t *testing.T) {
 	var targetHeader Header
 	require.NoError(t, targetHeader.UnmarshalBinary(headerBytes))
 	assert.Equal(t, hash1, targetHeader.Hash(), "HeaderHash should produce same result as Header.Hash()")
+}
+
+func TestHeaderCloneDropsCachedHash(t *testing.T) {
+	header := &Header{
+		BaseHeader: BaseHeader{Height: 1, Time: 1234567890},
+		DataHash:   []byte("datahash"),
+	}
+
+	header.MemoizeHash()
+	require.NotNil(t, header.cachedHash)
+
+	clone := header.Clone()
+	assert.Nil(t, clone.cachedHash, "Clone should not copy memoized hash state")
+	assert.Equal(t, header.Hash(), clone.Hash())
 }

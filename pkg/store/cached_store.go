@@ -97,6 +97,8 @@ func (cs *CachedStore) GetHeader(ctx context.Context, height uint64) (*types.Sig
 		return nil, err
 	}
 
+	header.MemoizeHash()
+
 	// Add to cache
 	cs.headerCache.Add(height, header)
 
@@ -115,6 +117,8 @@ func (cs *CachedStore) GetBlockData(ctx context.Context, height uint64) (*types.
 	if err != nil {
 		return nil, nil, err
 	}
+
+	header.MemoizeHash()
 
 	// Add to cache
 	cs.blockDataCache.Add(height, &blockDataEntry{header: header, data: data})

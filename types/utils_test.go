@@ -2,6 +2,7 @@ package types_test
 
 import (
 	// Import bytes package
+	"crypto/sha256"
 	"testing"
 	"time" // Used for time.Time comparison
 
@@ -54,6 +55,20 @@ func TestGetRandomHeader(t *testing.T) {
 		}
 		headerSet[headerHash] = true
 	}
+}
+
+func TestGetRandomNextHeader_InvalidatesCachedHash(t *testing.T) {
+	header := types.GetRandomHeader("TestGetRandomNextHeader", types.GetRandomBytes(32))
+	header.MemoizeHash()
+
+	nextHeader := types.GetRandomNextHeader(header, "TestGetRandomNextHeader")
+	gotHash := nextHeader.Hash()
+
+	headerBytes, err := nextHeader.MarshalBinary()
+	assert.NoError(t, err)
+	expected := sha256.Sum256(headerBytes)
+
+	assert.Equal(t, types.Hash(expected[:]), gotHash)
 }
 
 func TestGetFirstSignedHeader(t *testing.T) {
