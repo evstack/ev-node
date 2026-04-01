@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1775051504947,
+  "lastUpdate": 1775073344913,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -910,6 +910,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 176027,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "alpe@users.noreply.github.com",
+            "name": "Alexander Peters",
+            "username": "alpe"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "022b565777443bc8548e4e9a0e6afca39faea794",
+          "message": "chore: Better check for stored meta not stale (#3221)\n\n* Better check for store meta not stale\n\n* Changelog\n\n* cl\n\n---------\n\nCo-authored-by: julienrbrt <julien@rbrt.fr>",
+          "timestamp": "2026-04-01T19:36:59Z",
+          "tree_id": "f042898b242157247103bd1663e283a201d56020",
+          "url": "https://github.com/evstack/ev-node/commit/022b565777443bc8548e4e9a0e6afca39faea794"
+        },
+        "date": 1775073341405,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 897014487,
+            "unit": "ns/op\t29725556 B/op\t  156411 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 897014487,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 29725556,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 156411,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
