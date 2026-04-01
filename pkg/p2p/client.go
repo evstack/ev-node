@@ -64,6 +64,8 @@ type Client struct {
 	ps      *pubsub.PubSub
 	started bool
 
+	seedPeers []peer.AddrInfo
+
 	maintenanceCancel context.CancelFunc
 	maintenanceWg     sync.WaitGroup
 	connectSem        chan struct{}
@@ -185,6 +187,7 @@ func (c *Client) startWithHost(ctx context.Context, h host.Host) error {
 
 	c.started = true
 
+	c.host.Network().Notify(c.newDisconnectNotifee())
 	c.startConnectionMaintenance()
 
 	return nil
@@ -267,6 +270,38 @@ func (c *Client) Peers() []PeerConnection {
 	return res
 }
 
+type disconnectNotifee struct {
+	c *Client
+}
+
+func (n disconnectNotifee) Connected(_ network.Network, conn network.Conn) {
+	p := conn.RemotePeer()
+	for _, sp := range n.c.seedPeers {
+		if sp.ID == p {
+			n.c.logger.Info().Str("peer", p.String()).Msg("connected to seed peer")
+			return
+		}
+	}
+}
+func (n disconnectNotifee) OpenedStream(_ network.Network, _ network.Stream)     {}
+func (n disconnectNotifee) ClosedStream(_ network.Network, _ network.Stream)     {}
+func (n disconnectNotifee) Listen(_ network.Network, _ multiaddr.Multiaddr)      {}
+func (n disconnectNotifee) ListenClose(_ network.Network, _ multiaddr.Multiaddr) {}
+
+func (n disconnectNotifee) Disconnected(_ network.Network, conn network.Conn) {
+	p := conn.RemotePeer()
+	for _, sp := range n.c.seedPeers {
+		if sp.ID == p {
+			n.c.logger.Info().Str("peer", p.String()).Msg("disconnected from seed peer")
+			return
+		}
+	}
+}
+
+func (c *Client) newDisconnectNotifee() disconnectNotifee {
+	return disconnectNotifee{c: c}
+}
+
 // startConnectionMaintenance launches a background goroutine that periodically
 // refreshes peer discovery via DHT. This ensures P2P connectivity recovers after
 // transient network failures and discovers new peers without requiring a full node restart.
@@ -337,6 +372,7 @@ func (c *Client) listen() (host.Host, error) {
 
 func (c *Client) setupDHT(ctx context.Context) error {
 	peers := c.parseAddrInfoList(c.conf.Peers)
+	c.seedPeers = peers
 	if len(peers) == 0 {
 		c.logger.Info().Msg("no peers - only listening for connections")
 	}
