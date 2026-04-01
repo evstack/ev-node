@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/ipfs/go-datastore"
@@ -29,20 +28,13 @@ import (
 	rollhash "github.com/evstack/ev-node/pkg/hash"
 )
 
+// TODO(tzdybal): refactor to configuration parameters
 const (
 	// reAdvertisePeriod defines a period after which P2P client re-attempt advertising namespace in DHT.
 	reAdvertisePeriod = 1 * time.Hour
 
 	// peerLimit defines limit of number of peers returned during active peer discovery.
 	peerLimit = 60
-
-	// peerDiscoveryInterval is how often the background loop re-advertises and
-	// re-runs peer discovery via DHT.
-	peerDiscoveryInterval = 5 * time.Minute
-
-	// connectWorkers limits the number of concurrent connection attempts during
-	// periodic peer discovery refresh.
-	connectWorkers = 16
 )
 
 // Client is a P2P client, implemented with libp2p.
@@ -65,10 +57,6 @@ type Client struct {
 	started bool
 
 	seedPeers []peer.AddrInfo
-
-	maintenanceCancel context.CancelFunc
-	maintenanceWg     sync.WaitGroup
-	connectSem        chan struct{}
 
 	metrics *Metrics
 }
@@ -178,8 +166,6 @@ func (c *Client) startWithHost(ctx context.Context, h host.Host) error {
 		return err
 	}
 
-	c.connectSem = make(chan struct{}, connectWorkers)
-
 	c.logger.Debug().Msg("setting up active peer discovery")
 	if err := c.peerDiscovery(ctx); err != nil {
 		return err
@@ -188,18 +174,12 @@ func (c *Client) startWithHost(ctx context.Context, h host.Host) error {
 	c.started = true
 
 	c.host.Network().Notify(c.newDisconnectNotifee())
-	c.startConnectionMaintenance()
 
 	return nil
 }
 
 // Close gently stops Client.
 func (c *Client) Close() error {
-	if c.maintenanceCancel != nil {
-		c.maintenanceCancel()
-	}
-	c.maintenanceWg.Wait()
-
 	var err error
 	if c.dht != nil {
 		err = errors.Join(err, c.dht.Close())
@@ -300,60 +280,6 @@ func (n disconnectNotifee) Disconnected(_ network.Network, conn network.Conn) {
 
 func (c *Client) newDisconnectNotifee() disconnectNotifee {
 	return disconnectNotifee{c: c}
-}
-
-// startConnectionMaintenance launches a background goroutine that periodically
-// refreshes peer discovery via DHT. This ensures P2P connectivity recovers after
-// transient network failures and discovers new peers without requiring a full node restart.
-func (c *Client) startConnectionMaintenance() {
-	ctx, cancel := context.WithCancel(context.Background())
-	c.maintenanceCancel = cancel
-
-	c.maintenanceWg.Go(func() {
-		discoveryTicker := time.NewTicker(peerDiscoveryInterval)
-		defer discoveryTicker.Stop()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-discoveryTicker.C:
-				c.refreshPeerDiscovery(ctx)
-			}
-		}
-	})
-}
-
-// refreshPeerDiscovery re-advertises and re-runs peer discovery via DHT.
-func (c *Client) refreshPeerDiscovery(ctx context.Context) {
-	if c.disc == nil {
-		return
-	}
-
-	c.logger.Debug().Msg("refreshing peer discovery")
-
-	_ = c.advertise(ctx)
-
-	peerCh, err := c.disc.FindPeers(ctx, c.getNamespace(), cdiscovery.Limit(peerLimit))
-	if err != nil {
-		c.logger.Warn().Err(err).Msg("peer discovery refresh failed")
-		return
-	}
-
-	for p := range peerCh {
-		if p.ID == c.host.ID() || c.isConnected(p.ID) {
-			continue
-		}
-		select {
-		case c.connectSem <- struct{}{}:
-			go func(peer peer.AddrInfo) {
-				defer func() { <-c.connectSem }()
-				c.tryConnect(ctx, peer)
-			}(p)
-		case <-ctx.Done():
-			return
-		}
-	}
 }
 
 // isConnected returns true if there is an active connection to the given peer.
