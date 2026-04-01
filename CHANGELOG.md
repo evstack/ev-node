@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changes
 
-- Add logging on P2P transient network failure [#3212](https://github.com/evstack/ev-node/pull/3212)
+- Improve P2P transient network failure [#3212](https://github.com/evstack/ev-node/pull/3212)
 
 ## v1.1.0-rc.1
 
