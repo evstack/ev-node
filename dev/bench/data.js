@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1775025929979,
+  "lastUpdate": 1775051503487,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -862,6 +862,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 175746,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "github.qpeyb@simplelogin.fr",
+            "name": "Cian Hatton",
+            "username": "chatton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "4840f50d8c381bfc8c6381ac046d156def821946",
+          "message": "chore: mixed benchmark test (#3223)\n\n* feat(benchmarking): add structured result output via BENCH_RESULT_OUTPUT\n\nemit full benchmark run metadata (config, tags, metrics, block range,\nspamoor stats) as JSON when BENCH_RESULT_OUTPUT is set. consumed by\nexternal matrix runner for table generation.\n\n* fix: address PR review feedback for structured benchmark output\n\n- Deduplicate overhead/reth-rate computation: move stats-based helpers\n  to helpers.go, make span-based wrappers delegate to them\n- Fix sub-millisecond precision loss in engine span timings by using\n  microsecond-based float division instead of integer truncation\n- Add spamoor stats to TestGasBurner for consistency with other tests\n\n* refactor: make spamoor config fully configurable via BENCH_* env vars\n\n- Add MaxPending, Rebroadcast, BaseFee, TipFee to benchConfig\n- Fix ERC20 test hardcoding max_wallets=200 instead of using cfg\n- Replace all hardcoded spamoor params with cfg fields across tests\n\n* feat: extract host metadata from OTEL resource attributes in trace spans\n\n- Add resourceAttrs struct with host, OS, and service fields\n- Extract attributes from VictoriaTraces LogsQL span data via\n  resourceAttrCollector interface\n- Include host metadata in structured benchmark result JSON\n\n* fix: defer emitRunResult so results are written even on test failure\n\nMove emitRunResult into a deferred closure in all three test functions.\nIf the test fails after metrics are collected, the structured JSON is\nstill written. If it fails before result data exists, the defer is a\nno-op.\n\n* fix: state pressure benchmark CI failure and align with other tests\n\nRemove the 3-second sleep before requireSpammersRunning that caused all\ntransactions to be mined before the measurement window started, leaving\nSteadyState at 0s. Also add deferred emitRunResult, configurable spamoor\nparams, and spamoorStats collection to match the other benchmark tests.\n\n* fix: use deployment-level service names for trace queries in external mode\n\nIn external mode the sequencer reports spans as \"ev-node\" (not the\ntest-specific name like \"ev-node-erc20\"), so trace queries returned\nzero spans. Store service names on env: local mode uses the\ntest-specific name, external mode defaults to \"ev-node\"/\"ev-reth\"\nwith BENCH_EVNODE_SERVICE_NAME/BENCH_EVRETH_SERVICE_NAME overrides.\n\n* perf: use limit=1 for resource attribute trace queries\n\nfetchResourceAttrs only needs one span but was streaming the full\nresult set from VictoriaTraces. Add limit=1 to the LogsQL query to\navoid wasting bandwidth on long-lived instances with many spans.\n\n* docs: add missing doc comments to run_result.go functions\n\n* feat: adding mixed benchmarking test\n\n* fix: address review feedback on mixed benchmark test\n\n- fail test on waitForMetricTarget timeout instead of silently continuing\n- bump default NumSpammers from 2 to 4 to satisfy mixed workload minimum\n- replace time.Sleep with metric polling for contract deployment readiness\n- add panic guard to distributeSpammers for total < 4\n- add table-driven unit tests for distributeSpammers",
+          "timestamp": "2026-04-01T13:30:40Z",
+          "tree_id": "4f649dbcda9c970d14721d6a8a29bc03b112c2e9",
+          "url": "https://github.com/evstack/ev-node/commit/4840f50d8c381bfc8c6381ac046d156def821946"
+        },
+        "date": 1775051500413,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 894330362,
+            "unit": "ns/op\t31709160 B/op\t  176027 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 894330362,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 31709160,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 176027,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
