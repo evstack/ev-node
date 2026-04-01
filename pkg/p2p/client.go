@@ -349,6 +349,13 @@ func (c *Client) startConnectionMaintenance() {
 					backoff = maxReconnectCooldown
 				}
 				if time.Now().Before(st.lastAttempt.Add(backoff)) {
+					remaining := time.Until(st.lastAttempt.Add(backoff))
+					time.AfterFunc(remaining, func() {
+						select {
+						case c.reconnectCh <- pid:
+						default:
+						}
+					})
 					continue
 				}
 				st.lastAttempt = time.Now()
@@ -366,6 +373,10 @@ func (c *Client) startConnectionMaintenance() {
 					go func(info peer.AddrInfo) {
 						if err := c.host.Connect(ctx, info); err != nil && ctx.Err() == nil {
 							c.logger.Warn().Str("peer", info.ID.String()).Err(err).Msg("failed to reconnect to seed peer")
+							select {
+							case c.reconnectCh <- info.ID:
+							default:
+							}
 						}
 					}(sp)
 					break
