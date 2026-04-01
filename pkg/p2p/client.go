@@ -40,12 +40,6 @@ const (
 	// re-runs peer discovery via DHT.
 	peerDiscoveryInterval = 5 * time.Minute
 
-	// reconnectCooldown is the base cooldown between reconnect attempts for the same seed peer.
-	reconnectCooldown = 5 * time.Second
-
-	// maxReconnectCooldown caps the exponential backoff for seed peer reconnection.
-	maxReconnectCooldown = 5 * time.Minute
-
 	// connectWorkers limits the number of concurrent connection attempts during
 	// periodic peer discovery refresh.
 	connectWorkers = 16
@@ -70,11 +64,8 @@ type Client struct {
 	ps      *pubsub.PubSub
 	started bool
 
-	seedPeers []peer.AddrInfo
-
 	maintenanceCancel context.CancelFunc
 	maintenanceWg     sync.WaitGroup
-	reconnectCh       chan peer.ID
 	connectSem        chan struct{}
 
 	metrics *Metrics
@@ -185,7 +176,6 @@ func (c *Client) startWithHost(ctx context.Context, h host.Host) error {
 		return err
 	}
 
-	c.reconnectCh = make(chan peer.ID, 32)
 	c.connectSem = make(chan struct{}, connectWorkers)
 
 	c.logger.Debug().Msg("setting up active peer discovery")
@@ -195,7 +185,6 @@ func (c *Client) startWithHost(ctx context.Context, h host.Host) error {
 
 	c.started = true
 
-	c.host.Network().Notify(c.newDisconnectNotifee())
 	c.startConnectionMaintenance()
 
 	return nil
@@ -278,109 +267,21 @@ func (c *Client) Peers() []PeerConnection {
 	return res
 }
 
-// disconnectNotifee is a network.Notifee that triggers seed peer reconnection
-// when a configured seed peer disconnects.
-type disconnectNotifee struct {
-	c *Client
-}
-
-func (n disconnectNotifee) Connected(_ network.Network, _ network.Conn)          {}
-func (n disconnectNotifee) OpenedStream(_ network.Network, _ network.Stream)     {}
-func (n disconnectNotifee) ClosedStream(_ network.Network, _ network.Stream)     {}
-func (n disconnectNotifee) Listen(_ network.Network, _ multiaddr.Multiaddr)      {}
-func (n disconnectNotifee) ListenClose(_ network.Network, _ multiaddr.Multiaddr) {}
-
-func (n disconnectNotifee) Disconnected(_ network.Network, conn network.Conn) {
-	p := conn.RemotePeer()
-	if n.c.reconnectCh == nil {
-		return
-	}
-	for _, sp := range n.c.seedPeers {
-		if sp.ID == p {
-			select {
-			case n.c.reconnectCh <- p:
-			default:
-			}
-			return
-		}
-	}
-}
-
-func (c *Client) newDisconnectNotifee() disconnectNotifee {
-	return disconnectNotifee{c: c}
-}
-
-// startConnectionMaintenance launches a background goroutine that reconnects
-// to seed peers on disconnect (driven by network.Notifee events) and
-// periodically refreshes peer discovery. This ensures P2P connectivity
-// recovers after transient network failures without requiring a full node restart.
+// startConnectionMaintenance launches a background goroutine that periodically
+// refreshes peer discovery via DHT. This ensures P2P connectivity recovers after
+// transient network failures and discovers new peers without requiring a full node restart.
 func (c *Client) startConnectionMaintenance() {
 	ctx, cancel := context.WithCancel(context.Background())
 	c.maintenanceCancel = cancel
 
 	c.maintenanceWg.Go(func() {
-
 		discoveryTicker := time.NewTicker(peerDiscoveryInterval)
 		defer discoveryTicker.Stop()
-
-		type reconnectState struct {
-			lastAttempt time.Time
-			attempts    int
-		}
-		states := make(map[peer.ID]*reconnectState)
 
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case pid := <-c.reconnectCh:
-				st := states[pid]
-				if st == nil {
-					st = &reconnectState{}
-					states[pid] = st
-				}
-
-				if time.Since(st.lastAttempt) > maxReconnectCooldown {
-					st.attempts = 0
-				}
-
-				backoff := reconnectCooldown * time.Duration(1<<min(st.attempts, 6))
-				if backoff > maxReconnectCooldown {
-					backoff = maxReconnectCooldown
-				}
-				if time.Now().Before(st.lastAttempt.Add(backoff)) {
-					remaining := time.Until(st.lastAttempt.Add(backoff))
-					time.AfterFunc(remaining, func() {
-						select {
-						case c.reconnectCh <- pid:
-						default:
-						}
-					})
-					continue
-				}
-				st.lastAttempt = time.Now()
-
-				for _, sp := range c.seedPeers {
-					if sp.ID != pid {
-						continue
-					}
-					if c.isConnected(sp.ID) {
-						st.attempts = 0
-						break
-					}
-					st.attempts++
-					c.logger.Info().Str("peer", sp.ID.String()).Msg("reconnecting to disconnected seed peer")
-					go func(info peer.AddrInfo) {
-						if err := c.host.Connect(ctx, info); err != nil && ctx.Err() == nil {
-							c.logger.Warn().Str("peer", info.ID.String()).Err(err).Msg("failed to reconnect to seed peer")
-							select {
-							case c.reconnectCh <- info.ID:
-							default:
-							}
-						}
-					}(sp)
-					break
-				}
 			case <-discoveryTicker.C:
 				c.refreshPeerDiscovery(ctx)
 			}
@@ -436,7 +337,6 @@ func (c *Client) listen() (host.Host, error) {
 
 func (c *Client) setupDHT(ctx context.Context) error {
 	peers := c.parseAddrInfoList(c.conf.Peers)
-	c.seedPeers = peers
 	if len(peers) == 0 {
 		c.logger.Info().Msg("no peers - only listening for connections")
 	}
