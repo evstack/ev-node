@@ -150,8 +150,6 @@ func (s *SpamoorSuite) TestMixedWorkload() {
 		}
 	}
 
-	// allow time for contract deployments (uniswap, gasburner, storage)
-	time.Sleep(5 * time.Second)
 	requireSpammersRunning(t, e.spamoorAPI, spammerIDs)
 
 	pollSentTotal := func() (float64, error) {
@@ -161,6 +159,9 @@ func (s *SpamoorSuite) TestMixedWorkload() {
 		}
 		return sumCounter(metrics["spamoor_transactions_sent_total"]), nil
 	}
+
+	// wait for at least one tx per spammer to confirm contract deployments are done
+	waitForMetricTarget(t, "spamoor_transactions_sent_total (deploy)", pollSentTotal, float64(len(spammerIDs)), cfg.WaitTimeout)
 	waitForMetricTarget(t, "spamoor_transactions_sent_total (warmup)", pollSentTotal, float64(cfg.WarmupTxs), cfg.WaitTimeout)
 
 	e.traces.resetStartTime()
@@ -209,12 +210,15 @@ func (s *SpamoorSuite) TestMixedWorkload() {
 // proportionally to pcts using the largest-remainder method. Each type
 // gets at least 1 spammer. total must be >= 4.
 func distributeSpammers(total int, pcts [4]int) [4]int {
+	if total < 4 {
+		panic(fmt.Sprintf("distributeSpammers: total must be >= 4, got %d", total))
+	}
 	var counts [4]int
 	for i := range counts {
 		counts[i] = 1
 	}
 	remaining := total - 4
-	if remaining <= 0 {
+	if remaining == 0 {
 		return counts
 	}
 
