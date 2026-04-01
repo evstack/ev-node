@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
+### Changes
 
-* chore: Better check for stored meta not stale [#3221](https://github.com/evstack/ev-node/pull/3221)
+* Improve execution/evm check for stored meta not stale [#3221](https://github.com/evstack/ev-node/pull/3221)
 
 ## v1.1.0-rc.1
 
