@@ -756,24 +756,33 @@ func (c *EngineClient) reconcileExecutionAtHeight(ctx context.Context, height ui
 		// If we have a started execution with a payloadID, validate it still exists before resuming.
 		// After node restart, the EL's payload cache is ephemeral and the payloadID may be stale.
 		if execMeta.Stage == ExecStageStarted && len(execMeta.PayloadID) == 8 {
-			var pid engine.PayloadID
-			copy(pid[:], execMeta.PayloadID)
-
-			// Validate payload still exists by attempting to retrieve it
-			if _, err = c.engineClient.GetPayload(ctx, pid); err == nil {
-				c.logger.Info().
+			requestedTxHash := hashTxs(txs)
+			if execMeta.Timestamp != timestamp.Unix() || !bytes.Equal(execMeta.TxHash, requestedTxHash) {
+				c.logger.Debug().
 					Uint64("height", height).
-					Str("stage", execMeta.Stage).
-					Msg("ExecuteTxs: found in-progress execution with payloadID, returning payloadID for resume")
-				return nil, &pid, true, nil
+					Int64("execmeta_timestamp", execMeta.Timestamp).
+					Int64("requested_timestamp", timestamp.Unix()).
+					Msg("ExecuteTxs: ignoring stale in-progress execution for different block inputs")
+			} else {
+				var pid engine.PayloadID
+				copy(pid[:], execMeta.PayloadID)
+
+				// Validate payload still exists by attempting to retrieve it
+				if _, err = c.engineClient.GetPayload(ctx, pid); err == nil {
+					c.logger.Info().
+						Uint64("height", height).
+						Str("stage", execMeta.Stage).
+						Msg("ExecuteTxs: found in-progress execution with payloadID, returning payloadID for resume")
+					return nil, &pid, true, nil
+				}
+				// Payload is stale (expired or node restarted) - proceed with fresh execution
+				c.logger.Debug().
+					Uint64("height", height).
+					Str("payloadID", pid.String()).
+					Err(err).
+					Msg("ExecuteTxs: stale ExecMeta payloadID no longer valid in EL, will re-execute")
+				// Don't return - fall through to fresh execution
 			}
-			// Payload is stale (expired or node restarted) - proceed with fresh execution
-			c.logger.Debug().
-				Uint64("height", height).
-				Str("payloadID", pid.String()).
-				Err(err).
-				Msg("ExecuteTxs: stale ExecMeta payloadID no longer valid in EL, will re-execute")
-			// Don't return - fall through to fresh execution
 		}
 	}
 
@@ -1023,13 +1032,7 @@ func (c *EngineClient) saveExecMeta(ctx context.Context, height uint64, timestam
 	}
 
 	// Compute tx hash for sanity checks on retry
-	if len(txs) > 0 {
-		h := sha256.New()
-		for _, tx := range txs {
-			h.Write(tx)
-		}
-		execMeta.TxHash = h.Sum(nil)
-	}
+	execMeta.TxHash = hashTxs(txs)
 
 	if err := c.store.SaveExecMeta(ctx, execMeta); err != nil {
 		c.logger.Warn().Err(err).Uint64("height", height).Msg("saveExecMeta: failed to save exec meta")
@@ -1040,6 +1043,19 @@ func (c *EngineClient) saveExecMeta(ctx context.Context, height uint64, timestam
 		Uint64("height", height).
 		Str("stage", stage).
 		Msg("saveExecMeta: saved execution metadata")
+}
+
+func hashTxs(txs [][]byte) []byte {
+	if len(txs) == 0 {
+		return nil
+	}
+
+	h := sha256.New()
+	for _, tx := range txs {
+		h.Write(tx)
+	}
+
+	return h.Sum(nil)
 }
 
 // GetLatestHeight returns the current block height of the execution layer
