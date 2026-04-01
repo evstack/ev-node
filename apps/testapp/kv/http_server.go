@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	ds "github.com/ipfs/go-datastore"
@@ -15,8 +16,9 @@ import (
 
 // HTTPServer wraps a KVExecutor and provides an HTTP interface for it
 type HTTPServer struct {
-	executor *KVExecutor
-	server   *http.Server
+	executor    *KVExecutor
+	server      *http.Server
+	injectedTxs atomic.Uint64
 }
 
 // NewHTTPServer creates a new HTTP server for the KVExecutor
@@ -29,6 +31,7 @@ func NewHTTPServer(executor *KVExecutor, listenAddr string) *HTTPServer {
 	mux.HandleFunc("/tx", hs.handleTx)
 	mux.HandleFunc("/kv", hs.handleKV)
 	mux.HandleFunc("/store", hs.handleStore)
+	mux.HandleFunc("/stats", hs.handleStats)
 
 	hs.server = &http.Server{
 		Addr:              listenAddr,
@@ -106,6 +109,7 @@ func (hs *HTTPServer) handleTx(w http.ResponseWriter, r *http.Request) {
 	}
 
 	hs.executor.InjectTx(body)
+	hs.injectedTxs.Add(1)
 	w.WriteHeader(http.StatusAccepted)
 	_, err = w.Write([]byte("Transaction accepted"))
 	if err != nil {
@@ -187,7 +191,29 @@ func (hs *HTTPServer) handleStore(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(store); err != nil {
-		// Error already sent potentially, just log
 		fmt.Printf("Error encoding JSON response: %v\n", err)
+	}
+}
+
+func (hs *HTTPServer) handleStats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	execStats := hs.executor.GetStats()
+	stats := struct {
+		InjectedTxs    uint64 `json:"injected_txs"`
+		ExecutedTxs    uint64 `json:"executed_txs"`
+		BlocksProduced uint64 `json:"blocks_produced"`
+	}{
+		InjectedTxs:    hs.injectedTxs.Load(),
+		ExecutedTxs:    execStats.TotalExecutedTxs,
+		BlocksProduced: execStats.BlocksProduced,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(stats); err != nil {
+		fmt.Printf("Error encoding stats response: %v\n", err)
 	}
 }

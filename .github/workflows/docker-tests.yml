@@ -24,9 +24,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6.0.2
       - name: set up go
-        uses: actions/setup-go@v6.3.0
+        uses: actions/setup-go@v6.4.0
         with:
           go-version-file: ./test/docker-e2e/go.mod
+          cache-dependency-path: "**/go.sum"
       - name: Install just
         uses: extractions/setup-just@v3
       - name: Run Docker E2E Tests
@@ -43,9 +44,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6.0.2
       - name: set up go
-        uses: actions/setup-go@v6.3.0
+        uses: actions/setup-go@v6.4.0
         with:
           go-version-file: ./test/docker-e2e/go.mod
+          cache-dependency-path: "**/go.sum"
       - name: Install just
         uses: extractions/setup-just@v3
       - name: Run Docker Upgrade E2E Tests
@@ -62,9 +64,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6.0.2
       - name: set up go
-        uses: actions/setup-go@v6.3.0
+        uses: actions/setup-go@v6.4.0
         with:
           go-version-file: ./test/docker-e2e/go.mod
+          cache-dependency-path: "**/go.sum"
       - name: Install just
         uses: extractions/setup-just@v3
       - name: Run Docker Compat E2E Tests

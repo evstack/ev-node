@@ -14,9 +14,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6.0.2
       - name: set up go
-        uses: actions/setup-go@v6.3.0
+        uses: actions/setup-go@v6.4.0
         with:
           go-version-file: ./go.mod
+          cache-dependency-path: "**/go.sum"
       - name: Install just
         uses: extractions/setup-just@v3
       - name: Build all ev-node binaries
@@ -27,9 +28,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
-      - uses: actions/setup-go@v6.3.0
+      - uses: actions/setup-go@v6.4.0
         with:
           go-version-file: ./go.mod
+          cache-dependency-path: "**/go.sum"
       - uses: extractions/setup-just@v3
       - run: just deps
       - name: check for diff
@@ -44,9 +46,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6.0.2
       - name: set up go
-        uses: actions/setup-go@v6.3.0
+        uses: actions/setup-go@v6.4.0
         with:
           go-version-file: ./go.mod
+          cache-dependency-path: "**/go.sum"
       - name: Install just
         uses: extractions/setup-just@v3
       - name: Run unit test
@@ -63,9 +66,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6.0.2
       - name: set up go
-        uses: actions/setup-go@v6.3.0
+        uses: actions/setup-go@v6.4.0
         with:
           go-version-file: ./go.mod
+          cache-dependency-path: "**/go.sum"
       - name: Install just
         uses: extractions/setup-just@v3
       - name: Run integration test
@@ -86,9 +90,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6.0.2
       - name: set up go
-        uses: actions/setup-go@v6.3.0
+        uses: actions/setup-go@v6.4.0
         with:
           go-version-file: ./go.mod
+          cache-dependency-path: "**/go.sum"
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
       - name: Build evstack:local-dev (cached)
@@ -98,8 +103,8 @@ jobs:
           file: apps/testapp/Dockerfile
           load: true
           tags: evstack:local-dev
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=ev-node-testapp
+          cache-to: type=gha,mode=max,scope=ev-node-testapp
       - name: Install just
         uses: extractions/setup-just@v3
       - name: E2E Tests
@@ -112,9 +117,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6.0.2
       - name: set up go
-        uses: actions/setup-go@v6.3.0
+        uses: actions/setup-go@v6.4.0
         with:
           go-version-file: ./go.mod
+          cache-dependency-path: "**/go.sum"
       - name: Install just
         uses: extractions/setup-just@v3
       - name: EVM Tests
@@ -139,7 +145,7 @@ jobs:
           name: integration-test-coverage-report-${{ github.sha }}
           path: ./integration-coverage
       - name: Upload combined coverage report
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./unit-coverage/coverage.txt,./integration-coverage/coverage.txt
