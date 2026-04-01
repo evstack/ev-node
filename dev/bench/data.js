@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1775025928530,
+  "lastUpdate": 1775025929979,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -2498,6 +2498,102 @@ window.BENCHMARK_DATA = {
             "value": 81,
             "unit": "allocs/op",
             "extra": "24478 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "marko@baricevic.me",
+            "name": "Marko",
+            "username": "tac0turtle"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "cc9f965e362670979546f2227616bb9c26e19922",
+          "message": "ci: optimize Go and Docker layer caching (#3213)\n\n* ci: optimize Go and Docker layer caching across CI workflows\n\n- Fix apps/testapp/Dockerfile: copy go.mod/go.sum before source so\n  the go mod download layer is stable across code-only changes\n- Add cache-from/cache-to GHA cache to docker-build-push.yml with\n  per-app scopes to prevent cache eviction between parallel builds\n- Add cache-dependency-path: \"**/go.sum\" to all actions/setup-go\n  steps in test.yml, docker-tests.yml, and lint.yml so the module\n  cache key covers all go.sum files in the multi-module repo\n- Add explicit scope to the e2e Docker build cache in test.yml to\n  align with the docker-build-push.yml scope naming\n\nCloses #3196\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n* fix(ci): copy testapp go.mod/go.sum before download, fix hadolint warnings\n\nAlso copy apps/testapp/go.mod and apps/testapp/go.sum before running\ngo mod download so the testapp's own dependencies are cached in their\nown layer (separate from the root module).\n\nReplace RUN cd ... && go install with WORKDIR + go build to resolve\nhadolint DL3003 and DL3062.\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n* bump docker go versions\n\n---------\n\nCo-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>",
+          "timestamp": "2026-04-01T08:41:48+02:00",
+          "tree_id": "fbe2fde3dfc9064cb0ce7c22076156793bf00e21",
+          "url": "https://github.com/evstack/ev-node/commit/cc9f965e362670979546f2227616bb9c26e19922"
+        },
+        "date": 1775025929615,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 37837,
+            "unit": "ns/op\t    7070 B/op\t      71 allocs/op",
+            "extra": "32186 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 37837,
+            "unit": "ns/op",
+            "extra": "32186 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 7070,
+            "unit": "B/op",
+            "extra": "32186 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 71,
+            "unit": "allocs/op",
+            "extra": "32186 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 38394,
+            "unit": "ns/op\t    7511 B/op\t      81 allocs/op",
+            "extra": "32118 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 38394,
+            "unit": "ns/op",
+            "extra": "32118 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 7511,
+            "unit": "B/op",
+            "extra": "32118 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 81,
+            "unit": "allocs/op",
+            "extra": "32118 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 47724,
+            "unit": "ns/op\t   26190 B/op\t      81 allocs/op",
+            "extra": "25844 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 47724,
+            "unit": "ns/op",
+            "extra": "25844 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 26190,
+            "unit": "B/op",
+            "extra": "25844 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 81,
+            "unit": "allocs/op",
+            "extra": "25844 times\n4 procs"
           }
         ]
       }
