@@ -471,11 +471,9 @@ func waitForMetricTarget(t testing.TB, name string, poll func() (float64, error)
 		}
 		select {
 		case <-ctx.Done():
-			t.Logf("metric %s: context cancelled (target %.0f)", name, target)
-			return
+			t.Fatalf("metric %s: context cancelled (target %.0f)", name, target)
 		case <-timer.C:
-			t.Logf("metric %s did not reach target %.0f within %v", name, target, timeout)
-			return
+			t.Fatalf("metric %s did not reach target %.0f within %v", name, target, timeout)
 		case <-ticker.C:
 		}
 	}
