@@ -9,16 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-<<<<<<< HEAD
 ### Changes
 
 * Added publisher-mode synchronization option for failover scenarios with early P2P infrastructure readiness [#3222](https://github.com/evstack/ev-node/pull/3222)
 * Improve execution/evm check for stored meta not stale [#3221](https://github.com/evstack/ev-node/pull/3221)
-=======
-### Added
-
-* Added publisher-mode synchronization option for failover scenarios with early P2P infrastructure readiness [#3222](https://github.com/evstack/ev-node/pull/3222)
->>>>>>> a2b0ff76 (Changelog)
 
 ## v1.1.0-rc.1
 

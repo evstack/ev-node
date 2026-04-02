@@ -1194,7 +1194,6 @@ func (s *Syncer) RecoverFromRaft(ctx context.Context, raftState *raft.RaftBlockS
 	}
 
 	currentState := s.getLastState()
-	stateBootstrapped := false
 
 	// Defensive: if lastState is not yet initialized (e.g., RecoverFromRaft called before Start),
 	// load it from the store to ensure we have valid state for validation.
@@ -1210,7 +1209,6 @@ func (s *Syncer) RecoverFromRaft(ctx context.Context, raftState *raft.RaftBlockS
 				InitialHeight:   s.genesis.InitialHeight,
 				LastBlockHeight: s.genesis.InitialHeight - 1,
 			}
-			stateBootstrapped = true
 		}
 	}
 
@@ -1228,12 +1226,6 @@ func (s *Syncer) RecoverFromRaft(ctx context.Context, raftState *raft.RaftBlockS
 			Source: "",
 		}
 		err := s.trySyncNextBlockWithState(ctx, event, currentState)
-		if err != nil && stateBootstrapped && errors.Is(err, errInvalidState) {
-			s.logger.Debug().Err(err).Msg("raft recovery failed after bootstrap state init, retrying once")
-			// Keep strict validation semantics; this retry only guards startup ordering races.
-			s.SetLastState(currentState)
-			err = s.trySyncNextBlockWithState(ctx, event, currentState)
-		}
 		if err != nil {
 			return err
 		}
