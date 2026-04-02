@@ -22,7 +22,7 @@ This guide details the Raft consensus implementation in `ev-node`, used for High
 
 ## Configuration
 
-Raft is configured via CLI flags or the `config.toml` file under the `[raft]` (or `[rollkit.raft]`) section.
+Raft is configured via CLI flags or the `config.toml` file under the `[raft]` (or `[evnode.raft]`) section.
 
 ### Essential Flags
 
@@ -90,13 +90,13 @@ Monitor the following metrics (propagated via Prometheus if enabled):
 
 ```bash
 ./ev-node start \
-  --rollkit.node.aggregator=true \
+  --evnode.node.aggregator=true \
   --evnode.raft.enable=true \
   --evnode.raft.node_id="node-1" \
   --evnode.raft.raft_addr="0.0.0.0:5001" \
   --evnode.raft.raft_dir="/var/lib/ev-node/raft" \
   --evnode.raft.bootstrap=true \
   --evnode.raft.peers="node-1@10.0.1.1:5001,node-2@10.0.1.2:5001,node-3@10.0.1.3:5001" \
-  --rollkit.p2p.listen_address="/ip4/0.0.0.0/tcp/26656" \
+  --evnode.p2p.listen_address="/ip4/0.0.0.0/tcp/26656" \
   ...other flags
 ```
