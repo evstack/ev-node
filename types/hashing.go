@@ -5,6 +5,11 @@ import (
 	"errors"
 	"hash"
 	"sync"
+	"unsafe"
+
+	"google.golang.org/protobuf/proto"
+
+	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
 
 var (
@@ -120,13 +125,15 @@ func (d *Data) Hash() Hash {
 	return leafHashOpt(s, dBytes)
 }
 
-// DACommitment returns the DA commitment of the Data excluding the Metadata
+// DACommitment returns the DA commitment of the Data excluding the Metadata.
+// Avoids allocating a pruned Data struct and the [][]byte intermediate slice
+// by serializing only the txs field directly to a protobuf message.
 func (d *Data) DACommitment() Hash {
-	// Prune the Data to only include the Txs
-	prunedData := &Data{
-		Txs: d.Txs,
-	}
-	dBytes, _ := prunedData.MarshalBinary()
+	// pb.Data{Metadata: nil, Txs: ...} produces the same wire format as
+	// Data{Txs: d.Txs}.MarshalBinary() but without the intermediate Data
+	// wrapper allocation or the txsToByteSlices [][]byte copy.
+	pbData := pb.Data{Txs: unsafe.Slice((*[]byte)(unsafe.SliceData(d.Txs)), len(d.Txs))}
+	dBytes, _ := proto.Marshal(&pbData)
 	s := sha256Pool.Get().(hash.Hash)
 	defer sha256Pool.Put(s)
 	return leafHashOpt(s, dBytes)
