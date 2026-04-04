@@ -1,0 +1,1 @@
+{"type":"config","name":"Block package performance and allocation reduction","metricName":"allocs_per_op","metricUnit":"allocs","bestDirection":"lower"}
