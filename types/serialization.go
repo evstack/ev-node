@@ -218,12 +218,69 @@ func (sh *SignedHeader) FromProto(other *pb.SignedHeader) error {
 }
 
 // MarshalBinary encodes SignedHeader into binary form and returns it.
+// Uses pooled protobuf messages to avoid per-block allocation.
 func (sh *SignedHeader) MarshalBinary() ([]byte, error) {
-	hp, err := sh.ToProto()
+	psh := pbSignedHeaderPool.Get().(*pb.SignedHeader)
+	psh.Reset()
+	
+	// Reuse pooled pb.Header + pb.Version for the nested header.
+	ph := pbHeaderPool.Get().(*pb.Header)
+	ph.Reset()
+	pv := pbVersionPool.Get().(*pb.Version)
+	pv.Block, pv.App = sh.Header.Version.Block, sh.Header.Version.App
+	ph.Version = pv
+	ph.Height = sh.Header.BaseHeader.Height
+	ph.Time = sh.Header.BaseHeader.Time
+	ph.ChainId = sh.Header.BaseHeader.ChainID
+	ph.LastHeaderHash = sh.Header.LastHeaderHash
+	ph.DataHash = sh.Header.DataHash
+	ph.AppHash = sh.Header.AppHash
+	ph.ProposerAddress = sh.Header.ProposerAddress
+	ph.ValidatorHash = sh.Header.ValidatorHash
+	if unknown := encodeLegacyUnknownFields(sh.Header.Legacy); len(unknown) > 0 {
+		ph.ProtoReflect().SetUnknown(unknown)
+	}
+	psh.Header = ph
+	psh.Signature = sh.Signature
+
+	if sh.Signer.PubKey == nil {
+		psh.Signer = &pb.Signer{}
+		bz, err := proto.Marshal(psh)
+		ph.Reset()
+		pbHeaderPool.Put(ph)
+		pv.Reset()
+		pbVersionPool.Put(pv)
+		psh.Reset()
+		pbSignedHeaderPool.Put(psh)
+		return bz, err
+	}
+
+	pubKey, err := sh.Signer.MarshalledPubKey()
 	if err != nil {
+		ph.Reset()
+		pbHeaderPool.Put(ph)
+		pv.Reset()
+		pbVersionPool.Put(pv)
+		psh.Reset()
+		pbSignedHeaderPool.Put(psh)
 		return nil, err
 	}
-	return proto.Marshal(hp)
+	psi := pbSignerPool.Get().(*pb.Signer)
+	psi.Reset()
+	psi.Address = sh.Signer.Address
+	psi.PubKey = pubKey
+	psh.Signer = psi
+	bz, err := proto.Marshal(psh)
+
+	ph.Reset()
+	pbHeaderPool.Put(ph)
+	pv.Reset()
+	pbVersionPool.Put(pv)
+	psi.Reset()
+	pbSignerPool.Put(psi)
+	psh.Reset()
+	pbSignedHeaderPool.Put(psh)
+	return bz, err
 }
 
 // UnmarshalBinary decodes binary form of SignedHeader into object.
