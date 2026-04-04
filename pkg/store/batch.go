@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	ds "github.com/ipfs/go-datastore"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/evstack/ev-node/types"
 )
@@ -84,18 +83,14 @@ func (b *DefaultBatch) SaveBlockDataFromBytes(header *types.SignedHeader, header
 	return nil
 }
 
-// UpdateState updates the state in the batch
+// UpdateState updates the state in the batch.
+// Uses pooled State.MarshalBinary to reduce per-block allocations.
 func (b *DefaultBatch) UpdateState(state types.State) error {
-	// Save the state at the height specified in the state itself
 	height := state.LastBlockHeight
 
-	pbState, err := state.ToProto()
+	data, err := state.MarshalBinary()
 	if err != nil {
-		return fmt.Errorf("failed to convert type state to protobuf type: %w", err)
-	}
-	data, err := proto.Marshal(pbState)
-	if err != nil {
-		return fmt.Errorf("failed to marshal state to protobuf: %w", err)
+		return fmt.Errorf("failed to marshal state: %w", err)
 	}
 
 	return b.batch.Put(b.ctx, ds.RawKey(getStateAtHeightKey(height)), data)

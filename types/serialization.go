@@ -528,6 +528,38 @@ func (d *Data) FromProto(other *pb.Data) error {
 	return nil
 }
 
+// MarshalBinary encodes State into binary form using pooled protobuf messages
+// to reduce per-block allocations in the UpdateState hot path.
+func (s *State) MarshalBinary() ([]byte, error) {
+	ps := pbStatePool.Get().(*pb.State)
+	ps.Reset()
+
+	pv := pbVersionPool.Get().(*pb.Version)
+	pv.Block, pv.App = s.Version.Block, s.Version.App
+
+	pts := &timestamppb.Timestamp{
+		Seconds: s.LastBlockTime.Unix(),
+		Nanos:   int32(s.LastBlockTime.Nanosecond()),
+	}
+
+	ps.Version = pv
+	ps.ChainId = s.ChainID
+	ps.InitialHeight = s.InitialHeight
+	ps.LastBlockHeight = s.LastBlockHeight
+	ps.LastBlockTime = pts
+	ps.DaHeight = s.DAHeight
+	ps.AppHash = s.AppHash
+	ps.LastHeaderHash = s.LastHeaderHash
+
+	bz, err := proto.Marshal(ps)
+
+	ps.Reset()
+	pbStatePool.Put(ps)
+	pv.Reset()
+	pbVersionPool.Put(pv)
+	return bz, err
+}
+
 // ToProto converts State into protobuf representation and returns it.
 func (s *State) ToProto() (*pb.State, error) {
 	// Avoid timestamppb.New allocation by constructing inline.
