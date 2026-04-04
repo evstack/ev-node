@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	"unsafe"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"google.golang.org/protobuf/encoding/protowire"
@@ -335,11 +336,27 @@ func (m *Metadata) FromProto(other *pb.Metadata) error {
 func (d *Data) ToProto() *pb.Data {
 	var mProto *pb.Metadata
 	if d.Metadata != nil {
-		mProto = d.Metadata.ToProto()
+		// Inline Metadata.ToProto() to keep pb.Metadata allocation on the
+		// stack for small structs, and avoid the intermediate method frame.
+		mProto = &pb.Metadata{
+			ChainId:      d.Metadata.ChainID,
+			Height:       d.Metadata.Height,
+			Time:         d.Metadata.Time,
+			LastDataHash: d.Metadata.LastDataHash[:],
+		}
 	}
+	// Reinterpret Txs ([]Tx) as [][]byte without allocation.
+	// types.Tx = []byte, so []Tx and [][]byte share identical memory layout.
+	if d.Txs == nil {
+		return &pb.Data{
+			Metadata: mProto,
+			Txs:      nil,
+		}
+	}
+	txBytes := unsafe.Slice((*[]byte)(unsafe.SliceData(d.Txs)), len(d.Txs))
 	return &pb.Data{
 		Metadata: mProto,
-		Txs:      txsToByteSlices(d.Txs),
+		Txs:      txBytes,
 	}
 }
 
