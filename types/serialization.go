@@ -130,7 +130,7 @@ func (d *Data) MarshalBinary() ([]byte, error) {
 		pm.ChainId = d.Metadata.ChainID
 		pm.Height = d.Metadata.Height
 		pm.Time = d.Metadata.Time
-		pm.LastDataHash = d.Metadata.LastDataHash
+		pm.LastDataHash = d.LastDataHash
 		pd.Metadata = pm
 		defer func() {
 			pm.Reset()
@@ -222,22 +222,22 @@ func (sh *SignedHeader) FromProto(other *pb.SignedHeader) error {
 func (sh *SignedHeader) MarshalBinary() ([]byte, error) {
 	psh := pbSignedHeaderPool.Get().(*pb.SignedHeader)
 	psh.Reset()
-	
+
 	// Reuse pooled pb.Header + pb.Version for the nested header.
 	ph := pbHeaderPool.Get().(*pb.Header)
 	ph.Reset()
 	pv := pbVersionPool.Get().(*pb.Version)
-	pv.Block, pv.App = sh.Header.Version.Block, sh.Header.Version.App
+	pv.Block, pv.App = sh.Version.Block, sh.Version.App
 	ph.Version = pv
-	ph.Height = sh.Header.BaseHeader.Height
-	ph.Time = sh.Header.BaseHeader.Time
-	ph.ChainId = sh.Header.BaseHeader.ChainID
-	ph.LastHeaderHash = sh.Header.LastHeaderHash
-	ph.DataHash = sh.Header.DataHash
-	ph.AppHash = sh.Header.AppHash
-	ph.ProposerAddress = sh.Header.ProposerAddress
-	ph.ValidatorHash = sh.Header.ValidatorHash
-	if unknown := encodeLegacyUnknownFields(sh.Header.Legacy); len(unknown) > 0 {
+	ph.Height = sh.BaseHeader.Height
+	ph.Time = sh.BaseHeader.Time
+	ph.ChainId = sh.BaseHeader.ChainID
+	ph.LastHeaderHash = sh.LastHeaderHash
+	ph.DataHash = sh.DataHash
+	ph.AppHash = sh.AppHash
+	ph.ProposerAddress = sh.ProposerAddress
+	ph.ValidatorHash = sh.ValidatorHash
+	if unknown := encodeLegacyUnknownFields(sh.Legacy); len(unknown) > 0 {
 		ph.ProtoReflect().SetUnknown(unknown)
 	}
 	psh.Header = ph
@@ -491,7 +491,7 @@ func (d *Data) ToProto() *pb.Data {
 			ChainId:      d.Metadata.ChainID,
 			Height:       d.Metadata.Height,
 			Time:         d.Metadata.Time,
-			LastDataHash: d.Metadata.LastDataHash[:],
+			LastDataHash: d.LastDataHash[:],
 		}
 	}
 	// Reinterpret Txs ([]Tx) as [][]byte without allocation.
