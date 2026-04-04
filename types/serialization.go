@@ -3,6 +3,7 @@ package types
 import (
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 	"unsafe"
 
@@ -12,6 +13,46 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
+)
+
+// Proto object pools — avoid heap allocation of short-lived protobuf message
+// structs in hot serialization paths (marshal → discard → repeat per block).
+var (
+	pbHeaderPool = sync.Pool{
+		New: func() interface{} {
+			return &pb.Header{}
+		},
+	}
+	pbVersionPool = sync.Pool{
+		New: func() interface{} {
+			return &pb.Version{}
+		},
+	}
+	pbDataPool = sync.Pool{
+		New: func() interface{} {
+			return &pb.Data{}
+		},
+	}
+	pbMetadataPool = sync.Pool{
+		New: func() interface{} {
+			return &pb.Metadata{}
+		},
+	}
+	pbSignerPool = sync.Pool{
+		New: func() interface{} {
+			return &pb.Signer{}
+		},
+	}
+	pbSignedHeaderPool = sync.Pool{
+		New: func() interface{} {
+			return &pb.SignedHeader{}
+		},
+	}
+	pbStatePool = sync.Pool{
+		New: func() interface{} {
+			return &pb.State{}
+		},
+	}
 )
 
 // MarshalBinary encodes Metadata into binary form and returns it.
@@ -30,8 +71,34 @@ func (m *Metadata) UnmarshalBinary(metadata []byte) error {
 }
 
 // MarshalBinary encodes Header into binary form and returns it.
+// Uses a pooled pb.Header proto message to avoid allocation.
 func (h *Header) MarshalBinary() ([]byte, error) {
-	return proto.Marshal(h.ToProto())
+	ph := pbHeaderPool.Get().(*pb.Header)
+
+	pv := pbVersionPool.Get().(*pb.Version)
+	pv.Block, pv.App = h.Version.Block, h.Version.App
+
+	ph.Reset()
+	ph.Version = pv
+	ph.Height = h.BaseHeader.Height
+	ph.Time = h.BaseHeader.Time
+	ph.ChainId = h.BaseHeader.ChainID
+	ph.LastHeaderHash = h.LastHeaderHash
+	ph.DataHash = h.DataHash
+	ph.AppHash = h.AppHash
+	ph.ProposerAddress = h.ProposerAddress
+	ph.ValidatorHash = h.ValidatorHash
+	if unknown := encodeLegacyUnknownFields(h.Legacy); len(unknown) > 0 {
+		ph.ProtoReflect().SetUnknown(unknown)
+	}
+
+	bz, err := proto.Marshal(ph)
+
+	ph.Reset()
+	pbHeaderPool.Put(ph)
+	pv.Reset()
+	pbVersionPool.Put(pv)
+	return bz, err
 }
 
 // MarshalBinaryLegacy returns the legacy header encoding that includes the
@@ -52,8 +119,33 @@ func (h *Header) UnmarshalBinary(data []byte) error {
 }
 
 // MarshalBinary encodes Data into binary form and returns it.
+// Uses pooled protobuf messages to avoid per-block allocation.
 func (d *Data) MarshalBinary() ([]byte, error) {
-	return proto.Marshal(d.ToProto())
+	pd := pbDataPool.Get().(*pb.Data)
+	pd.Reset()
+
+	if d.Metadata != nil {
+		pm := pbMetadataPool.Get().(*pb.Metadata)
+		pm.Reset()
+		pm.ChainId = d.Metadata.ChainID
+		pm.Height = d.Metadata.Height
+		pm.Time = d.Metadata.Time
+		pm.LastDataHash = d.Metadata.LastDataHash
+		pd.Metadata = pm
+		defer func() {
+			pm.Reset()
+			pbMetadataPool.Put(pm)
+		}()
+	}
+
+	if d.Txs != nil {
+		pd.Txs = unsafe.Slice((*[]byte)(unsafe.SliceData(d.Txs)), len(d.Txs))
+	}
+
+	bz, err := proto.Marshal(pd)
+	pd.Reset()
+	pbDataPool.Put(pd)
+	return bz, err
 }
 
 // UnmarshalBinary decodes binary form of Data into object.
