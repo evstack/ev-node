@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/ipfs/go-datastore"
 	"github.com/libp2p/go-libp2p/core/crypto"
@@ -792,14 +793,12 @@ func (e *Executor) CreateBlock(ctx context.Context, height uint64, batchData *Ba
 func (e *Executor) ApplyBlock(ctx context.Context, header types.Header, data *types.Data) (types.State, error) {
 	currentState := e.getLastState()
 
-	// Convert Txs to [][]byte for the execution client.
-	// types.Tx is []byte, so this is a type conversion, not a copy.
+	// Reinterpret Txs ([][]byte via type aliases) as [][]byte without allocation.
+	// types.Tx = []byte, so types.Txs = []Tx has identical memory layout to [][]byte.
+	// Using unsafe.Slice/unsafe.SliceData avoids the heap allocation of make([][]byte, n).
 	var rawTxs [][]byte
 	if n := len(data.Txs); n > 0 {
-		rawTxs = make([][]byte, n)
-		for i, tx := range data.Txs {
-			rawTxs[i] = []byte(tx)
-		}
+		rawTxs = unsafe.Slice((*[]byte)(unsafe.SliceData(data.Txs)), n)
 	}
 
 	// Execute transactions
