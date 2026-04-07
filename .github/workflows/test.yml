@@ -17,8 +17,9 @@ jobs:
         uses: actions/setup-go@v6.4.0
         with:
           go-version-file: ./go.mod
+          cache-dependency-path: "**/go.sum"
       - name: Install just
-        uses: extractions/setup-just@v3
+        uses: extractions/setup-just@v4
       - name: Build all ev-node binaries
         run: just build-all
 
@@ -30,7 +31,8 @@ jobs:
       - uses: actions/setup-go@v6.4.0
         with:
           go-version-file: ./go.mod
-      - uses: extractions/setup-just@v3
+          cache-dependency-path: "**/go.sum"
+      - uses: extractions/setup-just@v4
       - run: just deps
       - name: check for diff
         run: git diff --exit-code
@@ -47,8 +49,9 @@ jobs:
         uses: actions/setup-go@v6.4.0
         with:
           go-version-file: ./go.mod
+          cache-dependency-path: "**/go.sum"
       - name: Install just
-        uses: extractions/setup-just@v3
+        uses: extractions/setup-just@v4
       - name: Run unit test
         run: just test-cover
       - name: Upload unit test coverage report
@@ -66,8 +69,9 @@ jobs:
         uses: actions/setup-go@v6.4.0
         with:
           go-version-file: ./go.mod
+          cache-dependency-path: "**/go.sum"
       - name: Install just
-        uses: extractions/setup-just@v3
+        uses: extractions/setup-just@v4
       - name: Run integration test
         run: just test-integration-cover
       - name: Upload integration test coverage report
@@ -89,6 +93,7 @@ jobs:
         uses: actions/setup-go@v6.4.0
         with:
           go-version-file: ./go.mod
+          cache-dependency-path: "**/go.sum"
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
       - name: Build evstack:local-dev (cached)
@@ -98,10 +103,10 @@ jobs:
           file: apps/testapp/Dockerfile
           load: true
           tags: evstack:local-dev
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=ev-node-testapp
+          cache-to: type=gha,mode=max,scope=ev-node-testapp
       - name: Install just
-        uses: extractions/setup-just@v3
+        uses: extractions/setup-just@v4
       - name: E2E Tests
         run: just test-e2e
 
@@ -115,8 +120,9 @@ jobs:
         uses: actions/setup-go@v6.4.0
         with:
           go-version-file: ./go.mod
+          cache-dependency-path: "**/go.sum"
       - name: Install just
-        uses: extractions/setup-just@v3
+        uses: extractions/setup-just@v4
       - name: EVM Tests
         run: just test-evm
 

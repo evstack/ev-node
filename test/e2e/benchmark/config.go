@@ -41,7 +41,7 @@ func newBenchConfig(serviceName string) benchConfig {
 		SlotDuration:    envOrDefault("BENCH_SLOT_DURATION", "250ms"),
 		GasLimit:        envOrDefault("BENCH_GAS_LIMIT", ""),
 		ScrapeInterval:  envOrDefault("BENCH_SCRAPE_INTERVAL", "1s"),
-		NumSpammers:     envInt("BENCH_NUM_SPAMMERS", 2),
+		NumSpammers:     envInt("BENCH_NUM_SPAMMERS", 4),
 		CountPerSpammer: envInt("BENCH_COUNT_PER_SPAMMER", 5000),
 		Throughput:      envInt("BENCH_THROUGHPUT", 200),
 		WarmupTxs:       envInt("BENCH_WARMUP_TXS", 200),
