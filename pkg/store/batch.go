@@ -84,7 +84,6 @@ func (b *DefaultBatch) SaveBlockDataFromBytes(header *types.SignedHeader, header
 }
 
 // UpdateState updates the state in the batch.
-// Uses pooled State.MarshalBinary to reduce per-block allocations.
 func (b *DefaultBatch) UpdateState(state types.State) error {
 	height := state.LastBlockHeight
 
