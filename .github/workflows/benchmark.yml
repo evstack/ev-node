@@ -164,7 +164,7 @@ jobs:
       # only update the benchmark baseline on push/dispatch, not on PRs
       - name: Store EVM Contract Roundtrip result
         if: always()
-        uses: benchmark-action/github-action-benchmark@a7bc2366eda11037936ea57d811a43b3418d3073 # v1.21.0
+        uses: benchmark-action/github-action-benchmark@a60cea5bc7b49e15c1f58f411161f99e0df48372 # v1.22.0
         with:
           name: EVM Contract Roundtrip
           tool: 'go'
@@ -183,7 +183,7 @@ jobs:
 
       - name: Store Block Executor result
         if: always()
-        uses: benchmark-action/github-action-benchmark@a7bc2366eda11037936ea57d811a43b3418d3073 # v1.21.0
+        uses: benchmark-action/github-action-benchmark@a60cea5bc7b49e15c1f58f411161f99e0df48372 # v1.22.0
         with:
           name: Block Executor Benchmark
           tool: 'go'
