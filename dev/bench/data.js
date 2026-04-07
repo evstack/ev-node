@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1775559327161,
+  "lastUpdate": 1775559363827,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -94,6 +94,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 167172,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "3d5591dbf51f4944b4402653ea22f41c64ed2b4a",
+          "message": "build(deps): Bump defu from 6.1.4 to 6.1.6 in /docs in the npm_and_yarn group across 1 directory (#3224)\n\nbuild(deps): Bump defu\n\nBumps the npm_and_yarn group with 1 update in the /docs directory: [defu](https://github.com/unjs/defu).\n\n\nUpdates `defu` from 6.1.4 to 6.1.6\n- [Release notes](https://github.com/unjs/defu/releases)\n- [Changelog](https://github.com/unjs/defu/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/unjs/defu/compare/v6.1.4...v6.1.6)\n\n---\nupdated-dependencies:\n- dependency-name: defu\n  dependency-version: 6.1.6\n  dependency-type: indirect\n  dependency-group: npm_and_yarn\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-04-07T12:46:39+02:00",
+          "tree_id": "d2774f31fc85526367097bb56449c0ad283ac974",
+          "url": "https://github.com/evstack/ev-node/commit/3d5591dbf51f4944b4402653ea22f41c64ed2b4a"
+        },
+        "date": 1775559360559,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 889541600,
+            "unit": "ns/op\t31713636 B/op\t  175471 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 889541600,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 31713636,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 175471,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
