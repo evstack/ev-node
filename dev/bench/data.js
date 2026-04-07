@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1775581762338,
+  "lastUpdate": 1775581764182,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -48,6 +48,104 @@ window.BENCHMARK_DATA = {
             "value": 156557,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
+          }
+        ]
+      }
+    ],
+    "Block Executor Benchmark": [
+      {
+        "commit": {
+          "author": {
+            "email": "alpe@users.noreply.github.com",
+            "name": "Alexander Peters",
+            "username": "alpe"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "d163059fa575d9397eadb087ace737f828b84407",
+          "message": "fix: Publisher-mode synchronization option for failover scenario (#3222)\n\n* Publisher-mode synchronization option for failover scenario\n\n* Changelog\n\n* Review feedback\n\n* Doc update\n\n* just tidy all\n\n---------\n\nCo-authored-by: julienrbrt <julien@rbrt.fr>",
+          "timestamp": "2026-04-07T19:06:56+02:00",
+          "tree_id": "f3b3558c56af0d01f8253e67e92dcea222cb7369",
+          "url": "https://github.com/evstack/ev-node/commit/d163059fa575d9397eadb087ace737f828b84407"
+        },
+        "date": 1775581763643,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 46983,
+            "unit": "ns/op\t   26188 B/op\t      81 allocs/op",
+            "extra": "25876 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 46983,
+            "unit": "ns/op",
+            "extra": "25876 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 26188,
+            "unit": "B/op",
+            "extra": "25876 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 81,
+            "unit": "allocs/op",
+            "extra": "25876 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 37110,
+            "unit": "ns/op\t    7063 B/op\t      71 allocs/op",
+            "extra": "32460 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 37110,
+            "unit": "ns/op",
+            "extra": "32460 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 7063,
+            "unit": "B/op",
+            "extra": "32460 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 71,
+            "unit": "allocs/op",
+            "extra": "32460 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 37547,
+            "unit": "ns/op\t    7510 B/op\t      81 allocs/op",
+            "extra": "32161 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 37547,
+            "unit": "ns/op",
+            "extra": "32161 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 7510,
+            "unit": "B/op",
+            "extra": "32161 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 81,
+            "unit": "allocs/op",
+            "extra": "32161 times\n4 procs"
           }
         ]
       }
