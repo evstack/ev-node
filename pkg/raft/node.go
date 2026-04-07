@@ -159,7 +159,7 @@ func (n *Node) waitForMsgsLanded(timeout time.Duration) error {
 	for {
 		select {
 		case <-ticker.C:
-			if n.raft.AppliedIndex() >= n.raft.LastIndex() {
+			if n.raft.AppliedIndex() >= n.raft.CommitIndex() {
 				return nil
 			}
 		case <-timeoutTicker.C:

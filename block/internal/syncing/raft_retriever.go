@@ -74,6 +74,7 @@ func (r *raftRetriever) Stop() {
 	r.mtx.Unlock()
 
 	r.wg.Wait()
+	r.raftNode.SetApplyCallback(nil)
 }
 
 // raftApplyLoop processes blocks received from raft
