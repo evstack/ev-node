@@ -278,6 +278,104 @@ func waitForCondition(timeout time.Duration, conditionFunc func() bool) error {
 	}
 }
 
+func TestSeedPeerReconnect(t *testing.T) {
+	require := require.New(t)
+	assert := assert.New(t)
+	logger := zerolog.Nop()
+
+	mn := mocknet.New()
+	defer mn.Close()
+
+	seedKey, err := key.GenerateNodeKey()
+	require.NoError(err)
+	seedAddr, err := getAddr(seedKey.PrivKey)
+	require.NoError(err)
+	seedHost, err := mn.AddPeer(seedKey.PrivKey, seedAddr)
+	require.NoError(err)
+
+	clientKey, err := key.GenerateNodeKey()
+	require.NoError(err)
+	clientAddr, err := getAddr(clientKey.PrivKey)
+	require.NoError(err)
+	clientHost, err := mn.AddPeer(clientKey.PrivKey, clientAddr)
+	require.NoError(err)
+
+	seedAddrStr := seedHost.Addrs()[0].String() + "/p2p/" + seedHost.ID().String()
+	conf := config.P2PConfig{Peers: seedAddrStr}
+
+	client, err := NewClient(conf, clientKey.PrivKey, dssync.MutexWrap(datastore.NewMapDatastore()), "test-chain", logger, NopMetrics())
+	require.NoError(err)
+	require.NotNil(client)
+
+	err = mn.LinkAll()
+	require.NoError(err)
+	err = mn.ConnectAllButSelf()
+	require.NoError(err)
+
+	ctx := t.Context()
+	err = client.startWithHost(ctx, clientHost)
+	require.NoError(err)
+	defer client.Close()
+
+	err = waitForCondition(2*time.Second, func() bool {
+		return client.isConnected(seedHost.ID())
+	})
+	require.NoError(err, "client should connect to seed peer on start")
+
+	conns := client.host.Network().ConnsToPeer(seedHost.ID())
+	for _, conn := range conns {
+		conn.Close()
+	}
+	client.host.Network().ClosePeer(seedHost.ID())
+
+	assert.False(client.isConnected(seedHost.ID()), "seed peer should be disconnected")
+
+	err = waitForCondition(5*time.Second, func() bool {
+		return client.isConnected(seedHost.ID())
+	})
+	require.NoError(err, "client should reconnect to seed peer after disconnect")
+}
+
+func TestSeedPeerReconnectStopsOnClose(t *testing.T) {
+	require := require.New(t)
+
+	mn := mocknet.New()
+	defer mn.Close()
+
+	seedKey, err := key.GenerateNodeKey()
+	require.NoError(err)
+	seedAddr, err := getAddr(seedKey.PrivKey)
+	require.NoError(err)
+	seedHost, err := mn.AddPeer(seedKey.PrivKey, seedAddr)
+	require.NoError(err)
+
+	clientKey, err := key.GenerateNodeKey()
+	require.NoError(err)
+	clientAddr, err := getAddr(clientKey.PrivKey)
+	require.NoError(err)
+	clientHost, err := mn.AddPeer(clientKey.PrivKey, clientAddr)
+	require.NoError(err)
+
+	seedAddrStr := seedHost.Addrs()[0].String() + "/p2p/" + seedHost.ID().String()
+	conf := config.P2PConfig{Peers: seedAddrStr}
+
+	client, err := NewClient(conf, clientKey.PrivKey, dssync.MutexWrap(datastore.NewMapDatastore()), "test-chain", zerolog.Nop(), NopMetrics())
+	require.NoError(err)
+
+	err = mn.LinkAll()
+	require.NoError(err)
+	err = mn.ConnectAllButSelf()
+	require.NoError(err)
+
+	ctx := t.Context()
+	err = client.startWithHost(ctx, clientHost)
+	require.NoError(err)
+
+	require.NoError(client.Close())
+
+	require.Error(client.ctx.Err(), "client context should be cancelled after Close")
+}
+
 func TestClientInfoMethods(t *testing.T) {
 	require := require.New(t)
 	assert := assert.New(t)
