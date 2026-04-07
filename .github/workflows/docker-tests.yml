@@ -29,7 +29,7 @@ jobs:
           go-version-file: ./test/docker-e2e/go.mod
           cache-dependency-path: "**/go.sum"
       - name: Install just
-        uses: extractions/setup-just@v3
+        uses: extractions/setup-just@v4
       - name: Run Docker E2E Tests
         run: just test-docker-e2e
         env:
@@ -49,7 +49,7 @@ jobs:
           go-version-file: ./test/docker-e2e/go.mod
           cache-dependency-path: "**/go.sum"
       - name: Install just
-        uses: extractions/setup-just@v3
+        uses: extractions/setup-just@v4
       - name: Run Docker Upgrade E2E Tests
         run: just test-docker-upgrade-e2e
         env:
@@ -69,7 +69,7 @@ jobs:
           go-version-file: ./test/docker-e2e/go.mod
           cache-dependency-path: "**/go.sum"
       - name: Install just
-        uses: extractions/setup-just@v3
+        uses: extractions/setup-just@v4
       - name: Run Docker Compat E2E Tests
         run: just test-docker-compat
         env:
