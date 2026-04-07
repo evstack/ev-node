@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1775562178816,
+  "lastUpdate": 1775569884534,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -190,6 +190,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 171263,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "julien@rbrt.fr",
+            "name": "julienrbrt",
+            "username": "julienrbrt"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "04c9cadb4837642ff0affd943e712363fbe3508d",
+          "message": "feat(pkg/p2p): reconnect on disconnected peers (#3212)",
+          "timestamp": "2026-04-07T15:44:25+02:00",
+          "tree_id": "8c743ca52412e3a6389c5b6b1965be11e61f148d",
+          "url": "https://github.com/evstack/ev-node/commit/04c9cadb4837642ff0affd943e712363fbe3508d"
+        },
+        "date": 1775569880991,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 850597433,
+            "unit": "ns/op\t26903980 B/op\t  138571 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 850597433,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 26903980,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 138571,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
