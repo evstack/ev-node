@@ -323,6 +323,20 @@ func TestData_ToProtoFromProto_NilMetadataAndTxs(t *testing.T) {
 	assert.Empty(t, protoMsg.Txs)
 }
 
+func TestDataToProtoCopiesOuterTxSlice(t *testing.T) {
+	d := &Data{
+		Metadata: &Metadata{ChainID: "c"},
+		Txs:      Txs{[]byte("tx1"), []byte("tx2")},
+	}
+
+	protoMsg := d.ToProto()
+	require.Len(t, protoMsg.Txs, 2)
+
+	d.Txs[0] = []byte("updated")
+	assert.Equal(t, []byte("tx1"), protoMsg.Txs[0])
+	assert.Equal(t, []byte("tx2"), protoMsg.Txs[1])
+}
+
 // TestState_ToProtoFromProto_ZeroFields checks State ToProto/FromProto with all fields zeroed.
 func TestState_ToProtoFromProto_ZeroFields(t *testing.T) {
 	s := &State{}
@@ -333,6 +347,32 @@ func TestState_ToProtoFromProto_ZeroFields(t *testing.T) {
 	s2 := &State{}
 	assert.NoError(t, s2.FromProto(protoMsg))
 	assert.Equal(t, s, s2)
+}
+
+func TestStateMarshalBinaryRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	state := State{
+		Version:         Version{Block: 11, App: 22},
+		ChainID:         "marshal-state",
+		InitialHeight:   3,
+		LastBlockHeight: 7,
+		LastBlockTime:   time.Date(2024, 7, 8, 9, 10, 11, 12, time.UTC),
+		DAHeight:        13,
+		AppHash:         []byte{1, 2, 3, 4},
+		LastHeaderHash:  []byte{5, 6, 7, 8},
+	}
+
+	bz, err := state.MarshalBinary()
+	require.NoError(t, err)
+	require.NotEmpty(t, bz)
+
+	var pState pb.State
+	require.NoError(t, proto.Unmarshal(bz, &pState))
+
+	var decoded State
+	require.NoError(t, decoded.FromProto(&pState))
+	assert.Equal(t, state, decoded)
 }
 
 // TestHeader_HashFields_NilAndEmpty checks Header ToProto/FromProto with nil and empty hash/byte slice fields.

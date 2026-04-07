@@ -76,6 +76,7 @@ func (h *Header) MarshalBinary() ([]byte, error) {
 	ph := pbHeaderPool.Get().(*pb.Header)
 
 	pv := pbVersionPool.Get().(*pb.Version)
+	pv.Reset()
 	pv.Block, pv.App = h.Version.Block, h.Version.App
 
 	ph.Reset()
@@ -227,6 +228,7 @@ func (sh *SignedHeader) MarshalBinary() ([]byte, error) {
 	ph := pbHeaderPool.Get().(*pb.Header)
 	ph.Reset()
 	pv := pbVersionPool.Get().(*pb.Version)
+	pv.Reset()
 	pv.Block, pv.App = sh.Version.Block, sh.Version.App
 	ph.Version = pv
 	ph.Height = sh.BaseHeader.Height
@@ -243,13 +245,18 @@ func (sh *SignedHeader) MarshalBinary() ([]byte, error) {
 	psh.Header = ph
 	psh.Signature = sh.Signature
 
+	psi := pbSignerPool.Get().(*pb.Signer)
+	psi.Reset()
+	psh.Signer = psi
+
 	if sh.Signer.PubKey == nil {
-		psh.Signer = &pb.Signer{}
 		bz, err := proto.Marshal(psh)
 		ph.Reset()
 		pbHeaderPool.Put(ph)
 		pv.Reset()
 		pbVersionPool.Put(pv)
+		psi.Reset()
+		pbSignerPool.Put(psi)
 		psh.Reset()
 		pbSignedHeaderPool.Put(psh)
 		return bz, err
@@ -261,12 +268,12 @@ func (sh *SignedHeader) MarshalBinary() ([]byte, error) {
 		pbHeaderPool.Put(ph)
 		pv.Reset()
 		pbVersionPool.Put(pv)
+		psi.Reset()
+		pbSignerPool.Put(psi)
 		psh.Reset()
 		pbSignedHeaderPool.Put(psh)
 		return nil, err
 	}
-	psi := pbSignerPool.Get().(*pb.Signer)
-	psi.Reset()
 	psi.Address = sh.Signer.Address
 	psi.PubKey = pubKey
 	psh.Signer = psi
@@ -494,18 +501,9 @@ func (d *Data) ToProto() *pb.Data {
 			LastDataHash: d.LastDataHash[:],
 		}
 	}
-	// Reinterpret Txs ([]Tx) as [][]byte without allocation.
-	// types.Tx = []byte, so []Tx and [][]byte share identical memory layout.
-	if d.Txs == nil {
-		return &pb.Data{
-			Metadata: mProto,
-			Txs:      nil,
-		}
-	}
-	txBytes := unsafe.Slice((*[]byte)(unsafe.SliceData(d.Txs)), len(d.Txs))
 	return &pb.Data{
 		Metadata: mProto,
-		Txs:      txBytes,
+		Txs:      txsToByteSlices(d.Txs),
 	}
 }
 
@@ -535,6 +533,7 @@ func (s *State) MarshalBinary() ([]byte, error) {
 	ps.Reset()
 
 	pv := pbVersionPool.Get().(*pb.Version)
+	pv.Reset()
 	pv.Block, pv.App = s.Version.Block, s.Version.App
 
 	pts := &timestamppb.Timestamp{

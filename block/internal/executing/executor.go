@@ -793,8 +793,8 @@ func (e *Executor) CreateBlock(ctx context.Context, height uint64, batchData *Ba
 func (e *Executor) ApplyBlock(ctx context.Context, header types.Header, data *types.Data) (types.State, error) {
 	currentState := e.getLastState()
 
-	// Reinterpret Txs ([][]byte via type aliases) as [][]byte without allocation.
-	// types.Tx = []byte, so types.Txs = []Tx has identical memory layout to [][]byte.
+	// Reinterpret []Tx as [][]byte without allocation.
+	// types.Tx is defined as []byte and has the same slice-header layout.
 	// Using unsafe.Slice/unsafe.SliceData avoids the heap allocation of make([][]byte, n).
 	var rawTxs [][]byte
 	if n := len(data.Txs); n > 0 {
