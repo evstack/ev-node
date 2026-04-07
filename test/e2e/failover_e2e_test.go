@@ -26,6 +26,7 @@ import (
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -34,6 +35,7 @@ import (
 	evmtest "github.com/evstack/ev-node/execution/evm/test"
 	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 	coreda "github.com/evstack/ev-node/pkg/da/types"
+	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/rpc/client"
 	rpcclient "github.com/evstack/ev-node/pkg/rpc/client"
 	"github.com/evstack/ev-node/types"
@@ -82,38 +84,41 @@ func TestLeaseFailoverE2E(t *testing.T) {
 	clusterNodes := &raftClusterNodes{
 		nodes: make(map[string]*nodeDetails),
 	}
-	node1P2PAddr := env.Endpoints.GetRollkitP2PAddress()
-	node2P2PAddr := env.Endpoints.GetFullNodeP2PAddress()
-	node3P2PAddr := fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", mustGetAvailablePort(t))
+	node1P2PListen := env.Endpoints.GetRollkitP2PAddress()
+	node2P2PListen := env.Endpoints.GetFullNodeP2PAddress()
+	node3P2PListen := fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", mustGetAvailablePort(t))
+	node1P2PAddr := mustNodeP2PMultiAddr(t, workDir, "node1", node1P2PListen)
+	node2P2PAddr := mustNodeP2PMultiAddr(t, workDir, "node2", node2P2PListen)
+	node3P2PAddr := mustNodeP2PMultiAddr(t, workDir, "node3", node3P2PListen)
 
 	// Start node1 (bootstrap mode)
 	go func() {
 		p2pPeers := node2P2PAddr + "," + node3P2PAddr
 		proc := setupRaftSequencerNode(t, sut, workDir, "node1", node1RaftAddr, env.SequencerJWT, env.GenesisHash, env.Endpoints.GetDAAddress(),
-			bootstrapDir, raftCluster, p2pPeers, env.Endpoints.GetRollkitRPCListen(), env.Endpoints.GetRollkitP2PAddress(),
+			bootstrapDir, raftCluster, p2pPeers, env.Endpoints.GetRollkitRPCListen(), node1P2PListen,
 			env.Endpoints.GetSequencerEngineURL(), env.Endpoints.GetSequencerEthURL(), true, passphraseFile)
-		clusterNodes.Set("node1", env.Endpoints.GetRollkitRPCAddress(), proc, env.Endpoints.GetSequencerEthURL(), node1RaftAddr, env.Endpoints.GetRollkitP2PAddress(), env.Endpoints.GetSequencerEngineURL(), env.Endpoints.GetSequencerEthURL())
+		clusterNodes.Set("node1", env.Endpoints.GetRollkitRPCAddress(), proc, env.Endpoints.GetSequencerEthURL(), node1RaftAddr, node1P2PListen, node1P2PAddr, env.Endpoints.GetSequencerEngineURL(), env.Endpoints.GetSequencerEthURL())
 		t.Log("Node1 is up")
 	}()
 
-	// Start node2 (bootstrap node)
+	// Start node2
 	go func() {
 		t.Log("Starting Node2")
 		p2pPeers := node1P2PAddr + "," + node3P2PAddr
-		proc := setupRaftSequencerNode(t, sut, workDir, "node2", node2RaftAddr, env.FullNodeJWT, env.GenesisHash, env.Endpoints.GetDAAddress(), bootstrapDir, raftCluster, p2pPeers, env.Endpoints.GetFullNodeRPCListen(), env.Endpoints.GetFullNodeP2PAddress(), env.Endpoints.GetFullNodeEngineURL(), env.Endpoints.GetFullNodeEthURL(), true, passphraseFile)
-		clusterNodes.Set("node2", env.Endpoints.GetFullNodeRPCAddress(), proc, env.Endpoints.GetFullNodeEthURL(), node2RaftAddr, env.Endpoints.GetFullNodeP2PAddress(), env.Endpoints.GetFullNodeEngineURL(), env.Endpoints.GetFullNodeEthURL())
+		proc := setupRaftSequencerNode(t, sut, workDir, "node2", node2RaftAddr, env.FullNodeJWT, env.GenesisHash, env.Endpoints.GetDAAddress(), bootstrapDir, raftCluster, p2pPeers, env.Endpoints.GetFullNodeRPCListen(), node2P2PListen, env.Endpoints.GetFullNodeEngineURL(), env.Endpoints.GetFullNodeEthURL(), true, passphraseFile)
+		clusterNodes.Set("node2", env.Endpoints.GetFullNodeRPCAddress(), proc, env.Endpoints.GetFullNodeEthURL(), node2RaftAddr, node2P2PListen, node2P2PAddr, env.Endpoints.GetFullNodeEngineURL(), env.Endpoints.GetFullNodeEthURL())
 		t.Log("Node2 is up")
 	}()
 
-	// Start node3 (bootstrap node)
+	// Start node3
 	node3EthAddr := fmt.Sprintf("http://127.0.0.1:%s", fullNode3EthPort)
 	go func() {
 		t.Log("Starting Node3")
 		p2pPeers := node1P2PAddr + "," + node2P2PAddr
 		node3RPCListen := fmt.Sprintf("127.0.0.1:%d", mustGetAvailablePort(t))
 		ethEngineURL := fmt.Sprintf("http://127.0.0.1:%s", fullNode3EnginePort)
-		proc := setupRaftSequencerNode(t, sut, workDir, "node3", node3RaftAddr, jwtSecret3, env.GenesisHash, env.Endpoints.GetDAAddress(), bootstrapDir, raftCluster, p2pPeers, node3RPCListen, node3P2PAddr, ethEngineURL, node3EthAddr, true, passphraseFile)
-		clusterNodes.Set("node3", "http://"+node3RPCListen, proc, node3EthAddr, node3RaftAddr, node3P2PAddr, ethEngineURL, node3EthAddr)
+		proc := setupRaftSequencerNode(t, sut, workDir, "node3", node3RaftAddr, jwtSecret3, env.GenesisHash, env.Endpoints.GetDAAddress(), bootstrapDir, raftCluster, p2pPeers, node3RPCListen, node3P2PListen, ethEngineURL, node3EthAddr, true, passphraseFile)
+		clusterNodes.Set("node3", "http://"+node3RPCListen, proc, node3EthAddr, node3RaftAddr, node3P2PListen, node3P2PAddr, ethEngineURL, node3EthAddr)
 		t.Log("Node3 is up")
 	}()
 
@@ -172,11 +177,11 @@ func TestLeaseFailoverE2E(t *testing.T) {
 		}
 	}
 	oldDetails := clusterNodes.Details(oldLeader)
-	restartedNodeProcess := setupRaftSequencerNode(t, sut, workDir, oldLeader, oldDetails.raftAddr, env.SequencerJWT, env.GenesisHash, env.Endpoints.GetDAAddress(), "", raftCluster, clusterNodes.Details(newLeader).p2pAddr, oldDetails.rpcAddr, oldDetails.p2pAddr, oldDetails.engineURL, oldDetails.ethAddr, false, passphraseFile)
+	restartedNodeProcess := setupRaftSequencerNode(t, sut, workDir, oldLeader, oldDetails.raftAddr, env.SequencerJWT, env.GenesisHash, env.Endpoints.GetDAAddress(), "", raftCluster, clusterNodes.Details(newLeader).p2pPeerAddr, oldDetails.rpcAddr, oldDetails.p2pAddr, oldDetails.engineURL, oldDetails.ethAddr, false, passphraseFile)
 	t.Log("Restarted old leader to sync with cluster: " + oldLeader)
 
 	if IsNodeUp(t, oldDetails.rpcAddr, NodeStartupTimeout) {
-		clusterNodes.Set(oldLeader, oldDetails.rpcAddr, restartedNodeProcess, oldDetails.ethAddr, oldDetails.raftAddr, "", oldDetails.engineURL, oldDetails.ethAddr)
+		clusterNodes.Set(oldLeader, oldDetails.rpcAddr, restartedNodeProcess, oldDetails.ethAddr, oldDetails.raftAddr, oldDetails.p2pAddr, oldDetails.p2pPeerAddr, oldDetails.engineURL, oldDetails.ethAddr)
 	} else {
 		t.Log("+++ old leader did not recover on restart. Skipping node verification")
 	}
@@ -276,38 +281,41 @@ func TestHASequencerRollingRestartE2E(t *testing.T) {
 	clusterNodes := &raftClusterNodes{
 		nodes: make(map[string]*nodeDetails),
 	}
-	node1P2PAddr := env.Endpoints.GetRollkitP2PAddress()
-	node2P2PAddr := env.Endpoints.GetFullNodeP2PAddress()
-	node3P2PAddr := fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", mustGetAvailablePort(t))
+	node1P2PListen := env.Endpoints.GetRollkitP2PAddress()
+	node2P2PListen := env.Endpoints.GetFullNodeP2PAddress()
+	node3P2PListen := fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", mustGetAvailablePort(t))
+	node1P2PAddr := mustNodeP2PMultiAddr(t, workDir, "node1", node1P2PListen)
+	node2P2PAddr := mustNodeP2PMultiAddr(t, workDir, "node2", node2P2PListen)
+	node3P2PAddr := mustNodeP2PMultiAddr(t, workDir, "node3", node3P2PListen)
 
 	// Start node1 (bootstrap mode)
 	go func() {
 		p2pPeers := node2P2PAddr + "," + node3P2PAddr
 		proc := setupRaftSequencerNode(t, sut, workDir, "node1", node1RaftAddr, env.SequencerJWT, env.GenesisHash, env.Endpoints.GetDAAddress(),
-			bootstrapDir, raftCluster, p2pPeers, env.Endpoints.GetRollkitRPCListen(), env.Endpoints.GetRollkitP2PAddress(),
+			bootstrapDir, raftCluster, p2pPeers, env.Endpoints.GetRollkitRPCListen(), node1P2PListen,
 			env.Endpoints.GetSequencerEngineURL(), env.Endpoints.GetSequencerEthURL(), true, passphraseFile)
-		clusterNodes.Set("node1", env.Endpoints.GetRollkitRPCAddress(), proc, env.Endpoints.GetSequencerEthURL(), node1RaftAddr, env.Endpoints.GetRollkitP2PAddress(), env.Endpoints.GetSequencerEngineURL(), env.Endpoints.GetSequencerEthURL())
+		clusterNodes.Set("node1", env.Endpoints.GetRollkitRPCAddress(), proc, env.Endpoints.GetSequencerEthURL(), node1RaftAddr, node1P2PListen, node1P2PAddr, env.Endpoints.GetSequencerEngineURL(), env.Endpoints.GetSequencerEthURL())
 		t.Log("Node1 is up")
 	}()
 
-	// Start node2 (bootstrap node)
+	// Start node2
 	go func() {
 		t.Log("Starting Node2")
 		p2pPeers := node1P2PAddr + "," + node3P2PAddr
-		proc := setupRaftSequencerNode(t, sut, workDir, "node2", node2RaftAddr, env.FullNodeJWT, env.GenesisHash, env.Endpoints.GetDAAddress(), bootstrapDir, raftCluster, p2pPeers, env.Endpoints.GetFullNodeRPCListen(), env.Endpoints.GetFullNodeP2PAddress(), env.Endpoints.GetFullNodeEngineURL(), env.Endpoints.GetFullNodeEthURL(), true, passphraseFile)
-		clusterNodes.Set("node2", env.Endpoints.GetFullNodeRPCAddress(), proc, env.Endpoints.GetFullNodeEthURL(), node2RaftAddr, env.Endpoints.GetFullNodeP2PAddress(), env.Endpoints.GetFullNodeEngineURL(), env.Endpoints.GetFullNodeEthURL())
+		proc := setupRaftSequencerNode(t, sut, workDir, "node2", node2RaftAddr, env.FullNodeJWT, env.GenesisHash, env.Endpoints.GetDAAddress(), bootstrapDir, raftCluster, p2pPeers, env.Endpoints.GetFullNodeRPCListen(), node2P2PListen, env.Endpoints.GetFullNodeEngineURL(), env.Endpoints.GetFullNodeEthURL(), true, passphraseFile)
+		clusterNodes.Set("node2", env.Endpoints.GetFullNodeRPCAddress(), proc, env.Endpoints.GetFullNodeEthURL(), node2RaftAddr, node2P2PListen, node2P2PAddr, env.Endpoints.GetFullNodeEngineURL(), env.Endpoints.GetFullNodeEthURL())
 		t.Log("Node2 is up")
 	}()
 
-	// Start node3 (bootstrap node)
+	// Start node3
 	node3EthAddr := fmt.Sprintf("http://127.0.0.1:%s", fullNode3EthPort)
 	go func() {
 		t.Log("Starting Node3")
 		p2pPeers := node1P2PAddr + "," + node2P2PAddr
 		node3RPCListen := fmt.Sprintf("127.0.0.1:%d", mustGetAvailablePort(t))
 		ethEngineURL := fmt.Sprintf("http://127.0.0.1:%s", fullNode3EnginePort)
-		proc := setupRaftSequencerNode(t, sut, workDir, "node3", node3RaftAddr, jwtSecret3, env.GenesisHash, env.Endpoints.GetDAAddress(), bootstrapDir, raftCluster, p2pPeers, node3RPCListen, node3P2PAddr, ethEngineURL, node3EthAddr, true, passphraseFile)
-		clusterNodes.Set("node3", "http://"+node3RPCListen, proc, node3EthAddr, node3RaftAddr, node3P2PAddr, ethEngineURL, node3EthAddr)
+		proc := setupRaftSequencerNode(t, sut, workDir, "node3", node3RaftAddr, jwtSecret3, env.GenesisHash, env.Endpoints.GetDAAddress(), bootstrapDir, raftCluster, p2pPeers, node3RPCListen, node3P2PListen, ethEngineURL, node3EthAddr, true, passphraseFile)
+		clusterNodes.Set("node3", "http://"+node3RPCListen, proc, node3EthAddr, node3RaftAddr, node3P2PListen, node3P2PAddr, ethEngineURL, node3EthAddr)
 		t.Log("Node3 is up")
 	}()
 
@@ -393,7 +401,7 @@ func TestHASequencerRollingRestartE2E(t *testing.T) {
 			nodeDetails.engineURL, nodeDetails.ethAddr, false, passphraseFile)
 
 		clusterNodes.Set(nodeName, nodeDetails.rpcAddr, restartedProc, nodeDetails.ethAddr,
-			nodeDetails.raftAddr, nodeDetails.p2pAddr, nodeDetails.engineURL, nodeDetails.ethAddr)
+			nodeDetails.raftAddr, nodeDetails.p2pAddr, nodeDetails.p2pPeerAddr, nodeDetails.engineURL, nodeDetails.ethAddr)
 	}
 
 	// Initial restart of all nodes
@@ -721,13 +729,23 @@ func initChain(t *testing.T, sut *SystemUnderTest, workDir string) string {
 	require.NoError(t, err, "failed to init node", output)
 	return passphraseFile
 }
+
+func mustNodeP2PMultiAddr(t *testing.T, workDir, nodeID, listenAddr string) string {
+	t.Helper()
+	nodeKey, err := key.LoadOrGenNodeKey(filepath.Join(workDir, nodeID, "config"))
+	require.NoError(t, err)
+	peerID, err := peer.IDFromPrivateKey(nodeKey.PrivKey)
+	require.NoError(t, err)
+	return fmt.Sprintf("%s/p2p/%s", listenAddr, peerID.String())
+}
+
 func setupRaftSequencerNode(
 	t *testing.T,
 	sut *SystemUnderTest,
 	workDir, nodeID, raftAddr, jwtSecret, genesisHash, daAddress, bootstrapDir string,
 	allRaftClusterMembers []string,
 	p2pPeers, rpcAddr, p2pAddr, engineURL, ethURL string,
-	bootstrap bool,
+	raftBootstrap bool,
 	passphraseFile string,
 ) *os.Process {
 	t.Helper()
@@ -735,7 +753,7 @@ func setupRaftSequencerNode(
 	raftDir := filepath.Join(nodeHome, "raft")
 
 	jwtSecretFile := filepath.Join(nodeHome, "jwt-secret.hex")
-	if bootstrap {
+	if bootstrapDir != "" {
 		initChain(t, sut, nodeHome)
 		jwtSecretFile = createJWTSecretFile(t, nodeHome, jwtSecret)
 
@@ -770,7 +788,7 @@ func setupRaftSequencerNode(
 		"--evnode.raft.node_id="+nodeID,
 		"--evnode.raft.raft_addr="+raftAddr,
 		"--evnode.raft.raft_dir="+raftDir,
-		"--evnode.raft.bootstrap=true",
+		fmt.Sprintf("--evnode.raft.bootstrap=%t", raftBootstrap),
 		"--evnode.raft.peers="+strings.Join(raftPeers, ","),
 		"--evnode.raft.snap_count=10",
 		"--evnode.raft.send_timeout=100ms",
@@ -843,6 +861,7 @@ type nodeDetails struct {
 	xRPCClient    atomic.Pointer[rpcclient.Client]
 	running       atomic.Bool
 	p2pAddr       string
+	p2pPeerAddr   string
 	engineURL     string
 	ethURL        string
 }
@@ -895,10 +914,10 @@ type raftClusterNodes struct {
 	nodes map[string]*nodeDetails
 }
 
-func (c *raftClusterNodes) Set(node string, listen string, proc *os.Process, eth string, raftAddr string, p2pAddr string, engineURL string, ethURL string) {
+func (c *raftClusterNodes) Set(node string, listen string, proc *os.Process, eth string, raftAddr string, p2pAddr string, p2pPeerAddr string, engineURL string, ethURL string) {
 	c.mx.Lock()
 	defer c.mx.Unlock()
-	d := &nodeDetails{raftAddr: raftAddr, rpcAddr: listen, process: proc, ethAddr: eth, p2pAddr: p2pAddr, engineURL: engineURL, ethURL: ethURL}
+	d := &nodeDetails{raftAddr: raftAddr, rpcAddr: listen, process: proc, ethAddr: eth, p2pAddr: p2pAddr, p2pPeerAddr: p2pPeerAddr, engineURL: engineURL, ethURL: ethURL}
 	d.running.Store(true)
 	c.nodes[node] = d
 }
@@ -945,13 +964,27 @@ func leader(t require.TestingT, nodes map[string]*nodeDetails) (string, *nodeDet
 			continue
 		}
 		resp, err := client.Get(details.rpcAddr + "/raft/node")
-		require.NoError(t, err)
-		defer resp.Body.Close()
+		if err != nil {
+			continue
+		}
 
-		var status nodeStatus
-		require.NoError(t, json.NewDecoder(resp.Body).Decode(&status))
+		isLeader := false
+		func() {
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				return
+			}
 
-		if status.IsLeader {
+			var status nodeStatus
+			if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {
+				return
+			}
+
+			if status.IsLeader {
+				isLeader = true
+			}
+		}()
+		if isLeader {
 			return node, details
 		}
 	}
@@ -973,16 +1006,17 @@ func must[T any](r T, err error) T {
 func IsNodeUp(t *testing.T, rpcAddr string, timeout time.Duration) bool {
 	t.Helper()
 	t.Logf("Query node is up: %s", rpcAddr)
-	ctx, done := context.WithTimeout(context.Background(), timeout)
+	ctx, done := context.WithTimeout(t.Context(), timeout)
 	defer done()
 
-	ticker := time.Tick(min(timeout/10, 200*time.Millisecond))
+	ticker := time.NewTicker(min(timeout/10, 200*time.Millisecond))
+	defer ticker.Stop()
 	c := client.NewClient(rpcAddr)
 	require.NotNil(t, c)
 	var lastBlock uint64
 	for {
 		select {
-		case <-ticker:
+		case <-ticker.C:
 			switch s, err := c.GetState(ctx); {
 			case err != nil: // ignore
 			case lastBlock == 0:

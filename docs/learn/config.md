@@ -1321,7 +1321,7 @@ _Constant:_ `FlagRaftDir`
 ### Raft Bootstrap
 
 **Description:**
-If true, bootstraps a new Raft cluster. Only set this on the very first node when initializing a new cluster.
+Legacy compatibility flag. Startup mode is now auto-selected from persisted raft configuration state, so this flag is not used to choose bootstrap vs rejoin.
 
 **YAML:**
 
@@ -1351,6 +1351,16 @@ raft:
 `--evnode.raft.peers <string>`
 _Default:_ `""` (empty)
 _Constant:_ `FlagRaftPeers`
+
+### Raft Startup Mode
+
+Raft startup mode is selected automatically from local raft configuration state:
+
+* If the node already has persisted raft configuration in `raft.raft_dir`, it starts in rejoin mode.
+* If no raft configuration exists yet, it bootstraps a cluster from configured peers.
+* `raft.bootstrap` is retained for compatibility but does not control mode selection.
+
+`--evnode.raft.rejoin` has been removed.
 
 ### Raft Snap Count
 
