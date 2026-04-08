@@ -5,7 +5,7 @@ go 1.25.7
 // replace github.com/evstack/ev-node => ../../.
 
 require (
-	github.com/evstack/ev-node v1.1.0-rc.1
+	github.com/evstack/ev-node v1.1.0-rc.2
 	github.com/evstack/ev-node/core v1.0.0
 	github.com/ipfs/go-datastore v0.9.1
 	github.com/rs/zerolog v1.35.0
@@ -79,7 +79,7 @@ require (
 	github.com/googleapis/gax-go/v2 v2.20.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0 // indirect
-	github.com/hashicorp/go-hclog v1.6.2 // indirect
+	github.com/hashicorp/go-hclog v1.6.3 // indirect
 	github.com/hashicorp/go-immutable-radix v1.3.1 // indirect
 	github.com/hashicorp/go-metrics v0.5.4 // indirect
 	github.com/hashicorp/go-msgpack v0.5.5 // indirect

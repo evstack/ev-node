@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -107,4 +108,9 @@ func TestDeduplicateServers(t *testing.T) {
 			assert.Equal(t, spec.exp, got)
 		})
 	}
+}
+
+func TestNodeStartNilNoop(t *testing.T) {
+	var node *Node
+	require.NoError(t, node.Start(context.Background()))
 }

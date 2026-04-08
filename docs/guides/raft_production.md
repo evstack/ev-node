@@ -22,7 +22,7 @@ This guide details the Raft consensus implementation in `ev-node`, used for High
 
 ## Configuration
 
-Raft is configured via CLI flags or the `config.toml` file under the `[raft]` (or `[rollkit.raft]`) section.
+Raft is configured via CLI flags or the `config.toml` file under the `[raft]` (or `[evnode.raft]`) section.
 
 ### Essential Flags
 
@@ -33,7 +33,7 @@ Raft is configured via CLI flags or the `config.toml` file under the `[raft]` (o
 | `--evnode.raft.raft_addr` | `raft.raft_addr` | TCP address for Raft transport. | `0.0.0.0:5001` (Bind to private IP) |
 | `--evnode.raft.raft_dir` | `raft.raft_dir` | Directory for Raft data. | `/data/raft` (Must be persistent) |
 | `--evnode.raft.peers` | `raft.peers` | Comma-separated list of peer addresses in format `nodeID@host:port`. | `node-1@10.0.0.1:5001,node-2@10.0.0.2:5001,node-3@10.0.0.3:5001` |
-| `--evnode.raft.bootstrap` | `raft.bootstrap` | Bootstrap the cluster. **Required** for initial setup. | `true` (See Limitations) |
+| `--evnode.raft.bootstrap` | `raft.bootstrap` | Compatibility flag. Startup mode is selected automatically from persisted raft configuration state. | optional |
 
 ### Timeout Tuning
 
@@ -55,11 +55,15 @@ Ideally, a failover should complete within `2 * BlockTime` to minimize user impa
 
 ## Production Deployment Principles
 
-### 1. Static Peering & Bootstrap
-Current implementation requires **Bootstrap Mode** (`--evnode.raft.bootstrap=true`) for all nodes participating in the cluster initialization.
-*   **All nodes** should list the full set of peers in `--evnode.raft.peers`.
+### 1. Static Peering & Automatic Startup Mode
+Use static peering with automatic mode selection from local raft configuration:
+*   If local raft configuration already exists in `--evnode.raft.raft_dir`, the node starts in rejoin mode.
+*   If no local raft configuration exists yet, the node bootstraps from configured peers.
+*   `--evnode.raft.bootstrap` is retained for compatibility but does not control mode selection.
+*   **All configured cluster members** should list the full set of peers in `--evnode.raft.peers`.
 *   The `peers` list format is strict: `NodeID@Host:Port`.
-*   **Limitation**: Dynamic addition of peers (Run-time Membership Changes) via RPC/CLI is not currently exposed. The cluster membership is static based on the initial bootstrap configuration.
+*   **Limitation**: Dynamic addition of peers (run-time membership changes) via RPC/CLI is not currently exposed.
+*   **Not supported**: Joining an existing cluster as a brand-new node that was not part of the initial static membership.
 
 ### 2. Infrastructure Requirements
 *   **Encrypted Network (CRITICAL)**: Raft traffic is **unencrypted** (plain TCP). You **MUST** run the cluster inside a private network, VPN, or encrypted mesh (e.g., WireGuard, Tailscale). **Never expose Raft ports to the public internet**; doing so allows attackers to hijack the cluster consensus.
@@ -86,13 +90,13 @@ Monitor the following metrics (propagated via Prometheus if enabled):
 
 ```bash
 ./ev-node start \
-  --node.aggregator \
-  --raft.enable \
-  --raft.node_id="node-1" \
-  --raft.raft_addr="0.0.0.0:5001" \
-  --raft.raft_dir="/var/lib/ev-node/raft" \
-  --raft.bootstrap=true \
-  --raft.peers="node-1@10.0.1.1:5001,node-2@10.0.1.2:5001,node-3@10.0.1.3:5001" \
-  --p2p.listen_address="/ip4/0.0.0.0/tcp/26656" \
+  --evnode.node.aggregator=true \
+  --evnode.raft.enable=true \
+  --evnode.raft.node_id="node-1" \
+  --evnode.raft.raft_addr="0.0.0.0:5001" \
+  --evnode.raft.raft_dir="/var/lib/ev-node/raft" \
+  --evnode.raft.bootstrap=true \
+  --evnode.raft.peers="node-1@10.0.1.1:5001,node-2@10.0.1.2:5001,node-3@10.0.1.3:5001" \
+  --evnode.p2p.listen_address="/ip4/0.0.0.0/tcp/26656" \
   ...other flags
 ```

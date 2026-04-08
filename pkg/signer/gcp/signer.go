@@ -189,7 +189,7 @@ func (s *KmsSigner) Sign(ctx context.Context, message []byte) ([]byte, error) {
 	timeout := s.opts.timeout()
 	maxAttempts := maxRetries + 1
 
-	for attempt := 0; attempt < maxAttempts; attempt++ {
+	for attempt := range maxAttempts {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}

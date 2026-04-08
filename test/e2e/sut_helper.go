@@ -162,8 +162,12 @@ func (s *SystemUnderTest) awaitProcessCleanup(cmd *exec.Cmd) {
 	s.cmdToPids[cmdKey] = append(s.cmdToPids[cmdKey], pid)
 	s.pidsLock.Unlock()
 	go func() {
-		_ = cmd.Wait() // blocks until shutdown
-		s.logf("Process stopped, pid: %d\n", pid)
+		waitErr := cmd.Wait() // blocks until shutdown
+		if waitErr != nil {
+			s.logf("Process stopped, pid: %d, err: %v\n", pid, waitErr)
+		} else {
+			s.logf("Process stopped, pid: %d\n", pid)
+		}
 		s.pidsLock.Lock()
 		defer s.pidsLock.Unlock()
 		delete(s.pids, pid)
@@ -182,11 +186,9 @@ func (s *SystemUnderTest) watchLogs(prefix string, cmd *exec.Cmd) {
 	outReader, err := cmd.StdoutPipe()
 	require.NoError(s.t, err)
 
-	if s.debug {
-		logDir := filepath.Join(WorkDir, "testnet")
+	if logDir := s.processLogDir(); logDir != "" {
 		require.NoError(s.t, os.MkdirAll(logDir, 0o750))
-		testName := strings.ReplaceAll(s.t.Name(), "/", "-")
-		logfileName := filepath.Join(logDir, prefix+fmt.Sprintf("exec-%s-%s-%d.out", filepath.Base(cmd.Args[0]), testName, time.Now().UnixNano()))
+		logfileName := filepath.Join(logDir, prefix+fmt.Sprintf("exec-%s-%d.out", filepath.Base(cmd.Args[0]), time.Now().UnixNano()))
 		logfile, err := os.Create(logfileName)
 		require.NoError(s.t, err)
 		errReader = io.NopCloser(io.TeeReader(errReader, logfile))
@@ -200,6 +202,19 @@ func (s *SystemUnderTest) watchLogs(prefix string, cmd *exec.Cmd) {
 	s.t.Cleanup(func() {
 		close(stopRingBuffer)
 	})
+}
+
+func (s *SystemUnderTest) processLogDir() string {
+	logRoot := strings.TrimSpace(os.Getenv("EV_E2E_LOG_DIR"))
+	if logRoot == "" && s.debug {
+		logRoot = filepath.Join(WorkDir, "testnet")
+	}
+	if logRoot == "" {
+		return ""
+	}
+
+	testName := strings.ReplaceAll(s.t.Name(), "/", "-")
+	return filepath.Join(logRoot, testName)
 }
 
 // PrintBuffer outputs the contents of outBuff and errBuff to stdout, prefixing each entry with "out>" or "err>", respectively.
