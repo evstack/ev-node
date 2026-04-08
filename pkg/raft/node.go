@@ -146,9 +146,13 @@ func (n *Node) waitForMsgsLanded(timeout time.Duration) error {
 	if n == nil {
 		return nil
 	}
-	timeoutTicker := time.NewTicker(timeout)
-	defer timeoutTicker.Stop()
-	ticker := time.NewTicker(min(n.config.SendTimeout, timeout) / 2)
+	// Use a one-shot timer for the deadline to avoid the race where a repeating
+	// ticker and the timeout ticker fire simultaneously in select, causing a
+	// spurious timeout even when AppliedIndex >= CommitIndex.
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	pollInterval := min(50*time.Millisecond, timeout/4)
+	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
 	for {
@@ -157,7 +161,11 @@ func (n *Node) waitForMsgsLanded(timeout time.Duration) error {
 			if n.raft.AppliedIndex() >= n.raft.CommitIndex() {
 				return nil
 			}
-		case <-timeoutTicker.C:
+		case <-deadline.C:
+			// Final check after deadline before giving up.
+			if n.raft.AppliedIndex() >= n.raft.CommitIndex() {
+				return nil
+			}
 			return errors.New("max wait time reached")
 		}
 	}
