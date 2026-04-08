@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -43,6 +44,7 @@ type Config struct {
 type FSM struct {
 	logger  zerolog.Logger
 	state   *atomic.Pointer[RaftBlockState]
+	applyMu sync.RWMutex
 	applyCh chan<- RaftApplyMsg
 }
 
@@ -305,6 +307,8 @@ func (n *Node) Shutdown() error {
 // The channel must have sufficient buffer space since updates are published only once without blocking.
 // If the channel is full, state updates will be skipped to prevent blocking the raft cluster.
 func (n *Node) SetApplyCallback(ch chan<- RaftApplyMsg) {
+	n.fsm.applyMu.Lock()
+	defer n.fsm.applyMu.Unlock()
 	n.fsm.applyCh = ch
 }
 
@@ -327,9 +331,12 @@ func (f *FSM) Apply(log *raft.Log) any {
 		Int("data_bytes", len(state.Data)).
 		Msg("applied raft block state")
 
-	if f.applyCh != nil {
+	f.applyMu.RLock()
+	ch := f.applyCh
+	f.applyMu.RUnlock()
+	if ch != nil {
 		select {
-		case f.applyCh <- RaftApplyMsg{Index: log.Index, State: &state}:
+		case ch <- RaftApplyMsg{Index: log.Index, State: &state}:
 		default:
 			// on a slow consumer, the raft cluster should not be blocked. Followers can sync from DA or other peers, too.
 			f.logger.Warn().Msg("apply channel full, dropping message")
