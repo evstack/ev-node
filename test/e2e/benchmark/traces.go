@@ -35,7 +35,7 @@ type traceProvider interface {
 	collectSpans(ctx context.Context, serviceName string) ([]e2e.TraceSpan, error)
 	tryCollectSpans(ctx context.Context, serviceName string) []e2e.TraceSpan
 	// uiURL returns a link to view traces for the given service, or empty string if not available.
-	uiURL(serviceName string) string
+	uiURL(serviceName string, end time.Time) string
 	// resetStartTime sets the trace collection window start to now.
 	resetStartTime()
 }
@@ -64,13 +64,15 @@ func (v *victoriaTraceProvider) resetStartTime() {
 	v.startTime = time.Now()
 }
 
-func (v *victoriaTraceProvider) uiURL(serviceName string) string {
+func (v *victoriaTraceProvider) uiURL(serviceName string, end time.Time) string {
 	query := fmt.Sprintf(`_stream:{resource_attr:service.name="%s"}`, serviceName)
-	return fmt.Sprintf("%s/select/vmui/#/query?query=%s&start=%s&end=%s",
+	rangeInput := end.Sub(v.startTime).Round(time.Second).String()
+	endInput := end.UTC().Format("2006-01-02T15:04:05")
+	return fmt.Sprintf("%s/select/vmui/?#/?g0.expr=%s&g0.range_input=%s&g0.end_input=%s",
 		strings.TrimRight(v.queryURL, "/"),
 		neturl.QueryEscape(query),
-		v.startTime.Format(time.RFC3339),
-		time.Now().Format(time.RFC3339))
+		rangeInput,
+		endInput)
 }
 
 func (v *victoriaTraceProvider) collectSpans(ctx context.Context, serviceName string) ([]e2e.TraceSpan, error) {

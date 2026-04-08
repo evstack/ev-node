@@ -230,8 +230,9 @@ func (s *SpamoorSuite) collectTraces(e *env) *traceResult {
 		evReth: e.traces.tryCollectSpans(ctx, e.evRethServiceName),
 	}
 
-	if link := e.traces.uiURL(e.evNodeServiceName); link != "" {
+	if link := e.traces.uiURL(e.evNodeServiceName, time.Now()); link != "" {
 		t.Logf("traces UI: %s", link)
+		tr.tracesURL = link
 	}
 
 	if rc, ok := e.traces.(richSpanCollector); ok {
