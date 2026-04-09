@@ -195,6 +195,12 @@ const (
 	FlagRaftHeartbeatTimeout = FlagPrefixEvnode + "raft.heartbeat_timeout"
 	// FlagRaftLeaderLeaseTimeout is a flag for specifying leader lease timeout
 	FlagRaftLeaderLeaseTimeout = FlagPrefixEvnode + "raft.leader_lease_timeout"
+	// FlagRaftElectionTimeout is the flag for the raft election timeout.
+	FlagRaftElectionTimeout = FlagPrefixEvnode + "raft.election_timeout"
+	// FlagRaftSnapshotThreshold is the flag for the raft snapshot threshold.
+	FlagRaftSnapshotThreshold = FlagPrefixEvnode + "raft.snapshot_threshold"
+	// FlagRaftTrailingLogs is the flag for the number of trailing logs after a snapshot.
+	FlagRaftTrailingLogs = FlagPrefixEvnode + "raft.trailing_logs"
 
 	// Pruning configuration flags
 	FlagPruningMode       = FlagPrefixEvnode + "pruning.pruning_mode"
@@ -406,6 +412,9 @@ type RaftConfig struct {
 	SendTimeout        time.Duration `mapstructure:"send_timeout" yaml:"send_timeout" comment:"Max duration to wait for a message to be sent to a peer"`
 	HeartbeatTimeout   time.Duration `mapstructure:"heartbeat_timeout" yaml:"heartbeat_timeout" comment:"Time between leader heartbeats to followers"`
 	LeaderLeaseTimeout time.Duration `mapstructure:"leader_lease_timeout" yaml:"leader_lease_timeout" comment:"Duration of the leader lease"`
+	ElectionTimeout    time.Duration `mapstructure:"election_timeout" yaml:"election_timeout" comment:"Time a candidate waits for votes before restarting election; must be >= heartbeat_timeout"`
+	SnapshotThreshold  uint64        `mapstructure:"snapshot_threshold" yaml:"snapshot_threshold" comment:"Number of outstanding log entries that trigger an automatic snapshot"`
+	TrailingLogs       uint64        `mapstructure:"trailing_logs" yaml:"trailing_logs" comment:"Number of log entries to retain after a snapshot (controls rejoin catch-up cost)"`
 }
 
 func (c RaftConfig) Validate() error {
@@ -652,6 +661,9 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().Duration(FlagRaftSendTimeout, def.Raft.SendTimeout, "max duration to wait for a message to be sent to a peer")
 	cmd.Flags().Duration(FlagRaftHeartbeatTimeout, def.Raft.HeartbeatTimeout, "time between leader heartbeats to followers")
 	cmd.Flags().Duration(FlagRaftLeaderLeaseTimeout, def.Raft.LeaderLeaseTimeout, "duration of the leader lease")
+	cmd.Flags().Duration(FlagRaftElectionTimeout, def.Raft.ElectionTimeout, "time a candidate waits for votes before restarting election")
+	cmd.Flags().Uint64(FlagRaftSnapshotThreshold, def.Raft.SnapshotThreshold, "number of outstanding log entries that trigger an automatic snapshot")
+	cmd.Flags().Uint64(FlagRaftTrailingLogs, def.Raft.TrailingLogs, "number of log entries to retain after a snapshot")
 	cmd.MarkFlagsMutuallyExclusive(FlagCatchupTimeout, FlagRaftEnable)
 
 	// Pruning configuration flags
