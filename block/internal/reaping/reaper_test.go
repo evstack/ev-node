@@ -105,7 +105,6 @@ func TestReaper_AllSeen_NoSubmit(t *testing.T) {
 	env.cache.SetTxSeen(hashTx(tx2))
 
 	env.execMock.EXPECT().GetTxs(mock.Anything).Return([][]byte{tx1, tx2}, nil).Once()
-	env.execMock.EXPECT().GetTxs(mock.Anything).Return(nil, nil).Once()
 
 	submitted, err := env.reaper.drainMempool()
 	assert.NoError(t, err)
@@ -231,4 +230,23 @@ func TestReaper_NilCallback_NoPanic(t *testing.T) {
 	submitted, err := r.drainMempool()
 	assert.NoError(t, err)
 	assert.True(t, submitted)
+}
+
+func TestReaper_StopTerminates(t *testing.T) {
+	env := newTestEnv(t)
+	env.execMock.EXPECT().GetTxs(mock.Anything).Return(nil, nil).Maybe()
+
+	require.NoError(t, env.reaper.Start(context.Background()))
+
+	done := make(chan struct{})
+	go func() {
+		env.reaper.Stop()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Stop() did not return in time")
+	}
 }

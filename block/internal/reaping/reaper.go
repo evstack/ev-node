@@ -96,7 +96,9 @@ func (r *Reaper) reaperLoop() {
 				Int("consecutive_failures", consecutiveFailures).
 				Dur("backoff", backoff).
 				Msg("reaper error, backing off")
-			r.wait(backoff, cleanupTicker.C)
+			if r.wait(backoff, nil) {
+				return
+			}
 			continue
 		}
 
@@ -109,21 +111,28 @@ func (r *Reaper) reaperLoop() {
 			continue
 		}
 
-		r.wait(r.interval, cleanupTicker.C)
+		if r.wait(r.interval, cleanupTicker.C) {
+			return
+		}
 	}
 }
 
-func (r *Reaper) wait(d time.Duration, cleanupCh <-chan time.Time) {
+// wait blocks for the given duration. Returns true if the context was cancelled.
+// When cleanupCh is non-nil, processes cache cleanup if that channel fires first.
+func (r *Reaper) wait(d time.Duration, cleanupCh <-chan time.Time) bool {
 	timer := time.NewTimer(d)
 	defer timer.Stop()
 	select {
 	case <-r.ctx.Done():
+		return true
 	case <-cleanupCh:
 		removed := r.cache.CleanupOldTxs(cache.DefaultTxCacheRetention)
 		if removed > 0 {
 			r.logger.Info().Int("removed", removed).Msg("cleaned up old transaction hashes")
 		}
+		return false
 	case <-timer.C:
+		return false
 	}
 }
 
@@ -156,7 +165,7 @@ func (r *Reaper) drainMempool() (bool, error) {
 
 		filtered := r.filterNewTxs(txs)
 		if len(filtered) == 0 {
-			continue
+			break
 		}
 
 		n, err := r.submitFiltered(filtered)
