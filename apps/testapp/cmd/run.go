@@ -118,8 +118,7 @@ func createSequencer(
 			return nil, fmt.Errorf("solo sequencer cannot be used with based")
 		}
 
-		logger.Info().Msg("using solo sequencer")
-		return solo.NewSoloSequencer(logger, nodeConfig, []byte(genesis.ChainID), executor), nil
+		return solo.NewSoloSequencer(logger, []byte(genesis.ChainID), executor), nil
 	}
 
 	blobClient, err := blobrpc.NewWSClient(ctx, logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")

@@ -22,7 +22,7 @@ func init() {
 
 	// add more flags to RunCmd
 	RunCmd.Flags().String(flagKVEndpoint, "", "Address and port for the KV executor HTTP server")
-	RunCmd.Flags().Bool(flagSoloSequencer, true, "Enable Solo sequencer (instead of based sequencer or single sequencer)")
+	RunCmd.Flags().Bool(flagSoloSequencer, false, "Enable Solo sequencer (instead of based sequencer or single sequencer)")
 }
 
 // RootCmd is the root command for Evolve
