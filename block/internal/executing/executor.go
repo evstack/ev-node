@@ -163,6 +163,9 @@ func (e *Executor) SetBlockProducer(bp BlockProducer) {
 
 // Start begins the execution component
 func (e *Executor) Start(ctx context.Context) error {
+	if e.cancel != nil {
+		return errors.New("executor already started")
+	}
 	e.ctx, e.cancel = context.WithCancel(ctx)
 
 	// Initialize state

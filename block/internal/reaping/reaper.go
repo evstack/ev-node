@@ -69,9 +69,11 @@ func NewReaper(
 
 // Start begins the execution component
 func (r *Reaper) Start(ctx context.Context) error {
+	if r.cancel != nil {
+		return errors.New("reaper already started")
+	}
 	r.ctx, r.cancel = context.WithCancel(ctx)
 
-	// Start reaper loop
 	r.wg.Go(r.reaperLoop)
 
 	r.logger.Info().Dur("idle_interval", r.interval).Msg("reaper started")

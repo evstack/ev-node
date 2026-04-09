@@ -52,6 +52,9 @@ func New(
 
 // Start begins the pruning loop.
 func (p *Pruner) Start(ctx context.Context) error {
+	if p.cancel != nil {
+		return errors.New("pruner already started")
+	}
 	if !p.cfg.IsPruningEnabled() {
 		p.logger.Info().Msg("pruning is disabled, not starting pruner")
 		return nil

@@ -246,13 +246,6 @@ func (m *implementation) CleanupOldTxs(olderThan time.Duration) int {
 		return true
 	})
 
-	if removed > 0 {
-		m.logger.Debug().
-			Int("removed", removed).
-			Dur("older_than", olderThan).
-			Msg("cleaned up old transaction hashes from cache")
-	}
-
 	return removed
 }
 

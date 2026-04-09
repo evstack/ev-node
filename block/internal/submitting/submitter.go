@@ -119,6 +119,9 @@ func NewSubmitter(
 
 // Start begins the submitting component
 func (s *Submitter) Start(ctx context.Context) error {
+	if s.cancel != nil {
+		return errors.New("submitter already started")
+	}
 	s.ctx, s.cancel = context.WithCancel(ctx)
 
 	// Initialize DA included height
