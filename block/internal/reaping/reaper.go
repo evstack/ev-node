@@ -155,6 +155,13 @@ type pendingTx struct {
 
 func (r *Reaper) drainMempool() (bool, error) {
 	var totalSubmitted int
+	submitted := false
+
+	defer func() {
+		if submitted && r.onTxsSubmitted != nil {
+			r.onTxsSubmitted()
+		}
+	}()
 
 	for {
 		txs, err := r.exec.GetTxs(r.ctx)
@@ -172,20 +179,14 @@ func (r *Reaper) drainMempool() (bool, error) {
 
 		n, err := r.submitFiltered(filtered)
 		if err != nil {
-			// partial drain, still submit
-			if totalSubmitted > 0 && r.onTxsSubmitted != nil {
-				r.onTxsSubmitted()
-			}
 			return totalSubmitted > 0, err
 		}
 		totalSubmitted += n
+		submitted = true
 	}
 
 	if totalSubmitted > 0 {
 		r.logger.Debug().Int("total_txs", totalSubmitted).Msg("drained mempool")
-		if r.onTxsSubmitted != nil {
-			r.onTxsSubmitted()
-		}
 	}
 
 	return totalSubmitted > 0, nil
