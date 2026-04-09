@@ -23,5 +23,6 @@ func assertValid(s *RaftBlockState, next *RaftBlockState) error {
 // RaftApplyMsg is sent when raft applies a log entry
 type RaftApplyMsg struct {
 	Index uint64
+	Term  uint64 // raft term in which this entry was committed
 	State *RaftBlockState
 }

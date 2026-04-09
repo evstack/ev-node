@@ -348,6 +348,8 @@ func (f *FSM) Apply(log *raft.Log) any {
 	f.state.Store(&state)
 	f.logger.Debug().
 		Uint64("height", state.Height).
+		Uint64("raft_term", log.Term).
+		Uint64("raft_index", log.Index).
 		Hex("hash", state.Hash).
 		Uint64("timestamp", state.Timestamp).
 		Int("header_bytes", len(state.Header)).
@@ -359,7 +361,7 @@ func (f *FSM) Apply(log *raft.Log) any {
 	f.applyMu.RUnlock()
 	if ch != nil {
 		select {
-		case ch <- RaftApplyMsg{Index: log.Index, State: &state}:
+		case ch <- RaftApplyMsg{Index: log.Index, Term: log.Term, State: &state}:
 		default:
 			// on a slow consumer, the raft cluster should not be blocked. Followers can sync from DA or other peers, too.
 			f.logger.Warn().Msg("apply channel full, dropping message")
