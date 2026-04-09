@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1775739033626,
+  "lastUpdate": 1775740115330,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -238,6 +238,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 186327,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "julien@rbrt.fr",
+            "name": "julienrbrt",
+            "username": "julienrbrt"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "3abebca8c321e13ce909f868bd542dd5c950441b",
+          "message": "chore: re-add development replaces (#3232)",
+          "timestamp": "2026-04-09T14:50:18+02:00",
+          "tree_id": "f2e0ed2aa299a44f394f1df9da9c85ef44c74ca1",
+          "url": "https://github.com/evstack/ev-node/commit/3abebca8c321e13ce909f868bd542dd5c950441b"
+        },
+        "date": 1775740111379,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 913448652,
+            "unit": "ns/op\t32502228 B/op\t  181248 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 913448652,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 32502228,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 181248,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
