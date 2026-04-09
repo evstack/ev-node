@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"runtime"
 	"sync"
 	"time"
 
@@ -96,7 +97,7 @@ func (r *Reaper) reaperLoop() {
 			r.logger.Warn().
 				Err(err).
 				Int("consecutive_failures", consecutiveFailures).
-				Dur("backoff", backoff).
+				Dur("next_retry_in", backoff).
 				Msg("reaper error, backing off")
 			if r.wait(backoff, nil) {
 				return
@@ -110,9 +111,13 @@ func (r *Reaper) reaperLoop() {
 		}
 
 		if submitted {
+			runtime.Gosched()
 			continue
 		}
 
+		// Note: if the cleanup ticker fires before the idle interval elapses,
+		// the remaining idle duration is discarded. drainMempool() is called
+		// immediately and a fresh idle wait starts from scratch.
 		if r.wait(r.interval, cleanupTicker.C) {
 			return
 		}
