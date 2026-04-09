@@ -16,12 +16,11 @@ flowchart LR
 
 ## Design Decisions
 
-| Decision                 | Rationale                                                            |
-| ------------------------ | -------------------------------------------------------------------- |
-| In-memory queue          | No persistence overhead; suitable for trusted single-operator setups |
-| No forced inclusion      | Avoids DA epoch tracking, checkpoint storage, and catch-up logic     |
-| No DA client dependency  | `VerifyBatch` returns true unconditionally                           |
-| Configurable queue limit | Provides backpressure when blocks can't be produced fast enough      |
+| Decision                | Rationale                                                            |
+| ----------------------- | -------------------------------------------------------------------- |
+| In-memory queue         | No persistence overhead; suitable for trusted single-operator setups |
+| No forced inclusion     | Avoids DA epoch tracking, checkpoint storage, and catch-up logic     |
+| No DA client dependency | `VerifyBatch` returns true unconditionally                           |
 
 ## Flow
 
