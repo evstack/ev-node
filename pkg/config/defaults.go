@@ -119,9 +119,9 @@ func DefaultConfig() Config {
 			HeartbeatTimeout:   350 * time.Millisecond,
 			LeaderLeaseTimeout: 175 * time.Millisecond,
 			ElectionTimeout:    1000 * time.Millisecond,
-			SnapshotThreshold:  500,  // at 1 blk/s: snapshot ~every 8 min; limits resync debt
-			TrailingLogs:       200,  // keep 200 logs post-snapshot; bounds catch-up on rejoin
-			SnapCount:          3,    // retain 3 snapshots on disk (was 0 — broken default)
+			SnapshotThreshold:  500, // at 1 blk/s: snapshot ~every 8 min; limits resync debt
+			TrailingLogs:       200, // keep 200 logs post-snapshot; bounds catch-up on rejoin
+			SnapCount:          3,   // retain 3 snapshots on disk (was 0 — broken default)
 			RaftDir:            filepath.Join(DefaultRootDir, "raft"),
 		},
 		Pruning: PruningConfig{
