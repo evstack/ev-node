@@ -155,10 +155,9 @@ type pendingTx struct {
 
 func (r *Reaper) drainMempool() (bool, error) {
 	var totalSubmitted int
-	submitted := false
 
 	defer func() {
-		if submitted && r.onTxsSubmitted != nil {
+		if totalSubmitted > 0 && r.onTxsSubmitted != nil {
 			r.onTxsSubmitted()
 		}
 	}()
@@ -182,7 +181,6 @@ func (r *Reaper) drainMempool() (bool, error) {
 			return totalSubmitted > 0, err
 		}
 		totalSubmitted += n
-		submitted = true
 	}
 
 	if totalSubmitted > 0 {
