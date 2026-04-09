@@ -89,7 +89,7 @@ func (r *Reaper) reaperLoop() {
 	for {
 		submitted, err := r.drainMempool()
 
-		if err != nil {
+		if err != nil && !errors.Is(err, context.Canceled) {
 			consecutiveFailures++
 			backoff := r.interval * time.Duration(1<<min(consecutiveFailures, 5))
 			backoff = min(backoff, MaxBackoffInterval)
