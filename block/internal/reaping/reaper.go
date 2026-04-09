@@ -170,6 +170,10 @@ func (r *Reaper) drainMempool() (bool, error) {
 
 		n, err := r.submitFiltered(filtered)
 		if err != nil {
+			// partial drain, still submit
+			if totalSubmitted > 0 && r.onTxsSubmitted != nil {
+				r.onTxsSubmitted()
+			}
 			return totalSubmitted > 0, err
 		}
 		totalSubmitted += n
