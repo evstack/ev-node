@@ -12,7 +12,6 @@ import (
 
 	"github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
-	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/test/mocks"
 )
 
@@ -42,7 +41,6 @@ func createDefaultMockExecutor(t *testing.T) *mocks.MockExecutor {
 func newTestSequencer(t *testing.T) *SoloSequencer {
 	return NewSoloSequencer(
 		zerolog.Nop(),
-		config.DefaultConfig(),
 		[]byte("test"),
 		createDefaultMockExecutor(t),
 	)
@@ -152,7 +150,6 @@ func TestSoloSequencer_GetNextBatch_PostponedTxsRequeued(t *testing.T) {
 
 	seq := NewSoloSequencer(
 		zerolog.Nop(),
-		config.DefaultConfig(),
 		[]byte("test"),
 		mockExec,
 	)

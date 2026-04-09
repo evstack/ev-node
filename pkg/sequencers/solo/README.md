@@ -51,31 +51,6 @@ flowchart TD
     H --> I["Return valid txs"]
 ```
 
-## Usage
-
-```go
-seq := solo.NewSoloSequencer(
-    logger,
-    cfg,
-    []byte("chain-id"),
-    1000,              // maxQueueSize (0 = unlimited)
-    genesis,
-    executor,
-)
-
-// Submit transactions from the mempool
-seq.SubmitBatchTxs(ctx, coresequencer.SubmitBatchTxsRequest{
-    Id:    []byte("chain-id"),
-    Batch: &coresequencer.Batch{Transactions: txs},
-})
-
-// Produce the next block
-resp, err := seq.GetNextBatch(ctx, coresequencer.GetNextBatchRequest{
-    Id:       []byte("chain-id"),
-    MaxBytes: 500_000,
-})
-```
-
 ## Comparison with Other Sequencers
 
 | Aspect               | Solo            | Single                        | Based            |

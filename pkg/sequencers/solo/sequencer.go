@@ -12,7 +12,6 @@ import (
 
 	"github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
-	"github.com/evstack/ev-node/pkg/config"
 )
 
 var ErrInvalidID = errors.New("invalid chain id")
@@ -35,7 +34,6 @@ type SoloSequencer struct {
 
 func NewSoloSequencer(
 	logger zerolog.Logger,
-	cfg config.Config,
 	id []byte,
 	executor execution.Executor,
 ) *SoloSequencer {
@@ -128,6 +126,10 @@ func (s *SoloSequencer) GetNextBatch(ctx context.Context, req coresequencer.GetN
 }
 
 func (s *SoloSequencer) VerifyBatch(ctx context.Context, req coresequencer.VerifyBatchRequest) (*coresequencer.VerifyBatchResponse, error) {
+	if !s.isValid(req.Id) {
+		return nil, ErrInvalidID
+	}
+
 	return &coresequencer.VerifyBatchResponse{Status: true}, nil
 }
 
