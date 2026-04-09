@@ -224,6 +224,16 @@ func StartNode(
 	select {
 	case <-quit:
 		logger.Info().Msg("shutting down node...")
+		// Proactively resign Raft leadership before cancelling the worker context.
+		// This gives the cluster a chance to elect a new leader before this node
+		// stops producing blocks, shrinking the unconfirmed-block window.
+		if resigner, ok := rollnode.(node.LeaderResigner); ok {
+			if err := resigner.ResignLeader(); err != nil {
+				logger.Warn().Err(err).Msg("leadership resign on shutdown failed")
+			} else {
+				logger.Info().Msg("leadership resigned before shutdown")
+			}
+		}
 		cancel()
 	case err := <-errCh:
 		if err != nil && !errors.Is(err, context.Canceled) {
