@@ -47,10 +47,7 @@ var RunCmd = &cobra.Command{
 		}
 
 		// Create test implementations
-		executor, err := kvexecutor.NewKVExecutor(nodeConfig.RootDir, nodeConfig.DBPath)
-		if err != nil {
-			return err
-		}
+		executor := kvexecutor.NewKVExecutor()
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()

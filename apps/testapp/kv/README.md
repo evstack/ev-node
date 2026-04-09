@@ -30,41 +30,6 @@ The HTTP server provides the following endpoints:
 - `GET /store`: Get all key-value pairs in the store.
   - Returns a JSON object with all key-value pairs.
 
-## CLI Client
-
-A simple CLI client is provided to interact with the KV executor HTTP server. To build the client:
-
-```bash
-cd test/executors/kv/cmd/txclient
-go build -o txclient
-```
-
-### Usage
-
-Submit a transaction with key and value:
-
-```bash
-./txclient -key mykey -value myvalue
-```
-
-Submit a raw transaction:
-
-```bash
-./txclient -raw "mykey=myvalue"
-```
-
-List all key-value pairs in the store:
-
-```bash
-./txclient -list
-```
-
-Specify a different server address:
-
-```bash
-./txclient -addr http://localhost:40042 -key mykey -value myvalue
-```
-
 ## Transaction Format
 
 The KV executor expects transactions in the format `key=value`. For example:

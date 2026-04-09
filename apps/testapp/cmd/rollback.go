@@ -56,10 +56,7 @@ func NewRollbackCmd() *cobra.Command {
 				height = currentHeight - 1
 			}
 
-			executor, err := kvexecutor.NewKVExecutor(nodeConfig.RootDir, nodeConfig.DBPath)
-			if err != nil {
-				return err
-			}
+			executor := kvexecutor.NewKVExecutor()
 
 			// rollback ev-node main state
 			// Note: With the unified store approach, the ev-node store is the single source of truth.

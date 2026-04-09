@@ -10,29 +10,41 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
 )
 
 type serverStats struct {
-	InjectedTxs    uint64 `json:"injected_txs"`
 	ExecutedTxs    uint64 `json:"executed_txs"`
 	BlocksProduced uint64 `json:"blocks_produced"`
+}
+
+const uniquePoolSize = 65536
+
+var uniqueBodies [uniquePoolSize]string
+
+func init() {
+	for i := range uniquePoolSize {
+		uniqueBodies[i] = "k" + strconv.Itoa(i) + "=v"
+	}
 }
 
 func main() {
 	addr := flag.String("addr", "localhost:9090", "server host:port")
 	duration := flag.Duration("duration", 10*time.Second, "test duration")
 	workers := flag.Int("workers", 1000, "concurrent workers")
-	targetRPS := flag.Uint64("target-rps", 10_000_000, "target requests per second")
+	batchSize := flag.Int("batch", 1, "transactions per request (uses /tx/batch when >1)")
+	targetRPS := flag.Uint64("target-rps", 1_000_000, "target transactions per second")
 	flag.Parse()
 
 	fmt.Printf("Stress Test Configuration\n")
 	fmt.Printf("  Server:    %s\n", *addr)
 	fmt.Printf("  Duration:  %s\n", *duration)
 	fmt.Printf("  Workers:   %d\n", *workers)
-	fmt.Printf("  Goal:      %d req/s\n\n", *targetRPS)
+	fmt.Printf("  Batch:     %d txs/request\n", *batchSize)
+	fmt.Printf("  Goal:      %d tx/s\n\n", *targetRPS)
 
 	if err := checkServer(*addr); err != nil {
 		fmt.Fprintf(os.Stderr, "Server check failed: %v\n", err)
@@ -41,28 +53,28 @@ func main() {
 
 	before := fetchStats(*addr)
 
-	rawReq := fmt.Appendf(nil,
-		"POST /tx HTTP/1.1\r\nHost: %s\r\nContent-Type: text/plain\r\nContent-Length: 3\r\n\r\ns=v",
-		*addr,
-	)
-
 	var success atomic.Uint64
 	var failures atomic.Uint64
+	var totalTxs atomic.Uint64
 
 	ctx, cancel := context.WithTimeout(context.Background(), *duration)
 	defer cancel()
 
 	done := make(chan struct{}, *workers)
 	for i := 0; i < *workers; i++ {
-		go worker(ctx, *addr, rawReq, &success, &failures, done)
+		if *batchSize > 1 {
+			go batchWorker(ctx, *addr, *batchSize, &success, &failures, &totalTxs, done)
+		} else {
+			go singleWorker(ctx, *addr, &success, &failures, &totalTxs, done)
+		}
 	}
 
 	start := time.Now()
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
-	var lastCount uint64
-	var peakRPS uint64
+	var lastTxs uint64
+	var peakTPS uint64
 
 loop:
 	for {
@@ -70,15 +82,15 @@ loop:
 		case <-ctx.Done():
 			break loop
 		case <-ticker.C:
-			cur := success.Load() + failures.Load()
-			rps := cur - lastCount
-			lastCount = cur
-			if rps > peakRPS {
-				peakRPS = rps
+			cur := totalTxs.Load()
+			tps := cur - lastTxs
+			lastTxs = cur
+			if tps > peakTPS {
+				peakTPS = tps
 			}
 			elapsed := time.Since(start).Truncate(time.Second)
-			fmt.Printf("\r[%6s] Total: %12d | Success: %12d | Fail: %8d | RPS: %12d   ",
-				elapsed, cur, success.Load(), failures.Load(), rps)
+			fmt.Printf("\r[%6s] Total txs: %12d | Success: %12d | Fail: %8d | TPS: %12d   ",
+				elapsed, cur, success.Load(), failures.Load(), tps)
 		}
 	}
 
@@ -90,8 +102,8 @@ loop:
 
 	after := fetchStats(*addr)
 
-	total := success.Load() + failures.Load()
-	avgRPS := float64(total) / elapsed.Seconds()
+	total := totalTxs.Load()
+	avgTPS := float64(total) / elapsed.Seconds()
 
 	var txsPerBlock float64
 	deltaBlocks := after.BlocksProduced - before.BlocksProduced
@@ -100,16 +112,27 @@ loop:
 		txsPerBlock = float64(deltaTxs) / float64(deltaBlocks)
 	}
 
-	reached := avgRPS >= float64(*targetRPS)
+	reached := avgTPS >= float64(*targetRPS)
 
 	fmt.Println()
 	fmt.Println()
-	printResults(elapsed, uint64(*workers), total, success.Load(), failures.Load(),
-		avgRPS, float64(peakRPS), deltaBlocks, deltaTxs, txsPerBlock, reached, *targetRPS)
+	printResults(elapsed, uint64(*workers), uint64(*batchSize), total, success.Load(), failures.Load(),
+		avgTPS, float64(peakTPS), deltaBlocks, deltaTxs, txsPerBlock, reached, *targetRPS)
 }
 
-func worker(ctx context.Context, addr string, rawReq []byte, success, failures *atomic.Uint64, done chan struct{}) {
+func singleWorker(ctx context.Context, addr string, success, failures, totalTxs *atomic.Uint64, done chan struct{}) {
 	defer func() { done <- struct{}{} }()
+
+	rawReqs := make([][]byte, uniquePoolSize)
+	for i := range uniquePoolSize {
+		body := uniqueBodies[i]
+		rawReqs[i] = fmt.Appendf(nil,
+			"POST /tx HTTP/1.1\r\nHost: %s\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s",
+			addr, len(body), body,
+		)
+	}
+
+	var idx uint64
 
 	for {
 		select {
@@ -134,7 +157,8 @@ func worker(ctx context.Context, addr string, rawReq []byte, success, failures *
 			default:
 			}
 
-			if _, err := conn.Write(rawReq); err != nil {
+			i := atomic.AddUint64(&idx, 1) % uniquePoolSize
+			if _, err := conn.Write(rawReqs[i]); err != nil {
 				failures.Add(1)
 				conn.Close()
 				break
@@ -151,6 +175,79 @@ func worker(ctx context.Context, addr string, rawReq []byte, success, failures *
 
 			if resp.StatusCode == http.StatusAccepted {
 				success.Add(1)
+				totalTxs.Add(1)
+			} else {
+				failures.Add(1)
+			}
+		}
+	}
+}
+
+func batchWorker(ctx context.Context, addr string, batchSize int, success, failures, totalTxs *atomic.Uint64, done chan struct{}) {
+	defer func() { done <- struct{}{} }()
+
+	var idx uint64
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		conn, err := net.DialTimeout("tcp", addr, time.Second)
+		if err != nil {
+			failures.Add(1)
+			continue
+		}
+
+		br := bufio.NewReaderSize(conn, 4096)
+
+		for {
+			select {
+			case <-ctx.Done():
+				conn.Close()
+				return
+			default:
+			}
+
+			base := atomic.AddUint64(&idx, uint64(batchSize))
+			var body strings.Builder
+			body.Grow(batchSize * 10)
+			for i := range batchSize {
+				body.WriteString(uniqueBodies[(base+uint64(i))%uniquePoolSize])
+				body.WriteByte('\n')
+			}
+			bodyStr := body.String()
+
+			header := fmt.Sprintf(
+				"POST /tx/batch HTTP/1.1\r\nHost: %s\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n",
+				addr, len(bodyStr),
+			)
+			rawReq := []byte(header + bodyStr)
+
+			if _, err := conn.Write(rawReq); err != nil {
+				failures.Add(1)
+				conn.Close()
+				break
+			}
+
+			resp, err := http.ReadResponse(br, nil)
+			if err != nil {
+				failures.Add(1)
+				conn.Close()
+				break
+			}
+			respBody, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+
+			if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusAccepted {
+				var result struct {
+					Accepted int `json:"accepted"`
+				}
+				json.Unmarshal(respBody, &result)
+				success.Add(1)
+				totalTxs.Add(uint64(result.Accepted))
 			} else {
 				failures.Add(1)
 			}
@@ -196,10 +293,10 @@ func formatNum(n uint64) string {
 	return result.String()
 }
 
-func printResults(elapsed time.Duration, workers, total, success, failures uint64,
-	avgRPS, peakRPS float64, blocks, executedTxs uint64, txsPerBlock float64, reached bool, targetRPS uint64) {
+func printResults(elapsed time.Duration, workers, batchSize, total, success, failures uint64,
+	avgTPS, peakTPS float64, blocks, executedTxs uint64, txsPerBlock float64, reached bool, targetRPS uint64) {
 
-	goalLabel := fmt.Sprintf("Goal (%s req/s)", formatNum(targetRPS))
+	goalLabel := fmt.Sprintf("Goal (%s tx/s)", formatNum(targetRPS))
 	sep := "+----------------------------------------+----------------------------------------+"
 	rowFmt := "| %-38s | %-38s |"
 
@@ -208,13 +305,14 @@ func printResults(elapsed time.Duration, workers, total, success, failures uint6
 	fmt.Println(sep)
 	fmt.Printf(rowFmt+"\n", "Duration", elapsed.Truncate(time.Millisecond).String())
 	fmt.Printf(rowFmt+"\n", "Workers", fmt.Sprintf("%d", workers))
+	fmt.Printf(rowFmt+"\n", "Batch Size", fmt.Sprintf("%d txs/request", batchSize))
 	fmt.Println(sep)
-	fmt.Printf(rowFmt+"\n", "Total Requests", formatNum(total))
-	fmt.Printf(rowFmt+"\n", "Successful (202)", formatNum(success))
-	fmt.Printf(rowFmt+"\n", "Failed", formatNum(failures))
+	fmt.Printf(rowFmt+"\n", "Total Transactions", formatNum(total))
+	fmt.Printf(rowFmt+"\n", "Successful Requests", formatNum(success))
+	fmt.Printf(rowFmt+"\n", "Failed Requests", formatNum(failures))
 	fmt.Println(sep)
-	fmt.Printf(rowFmt+"\n", "Avg req/s", formatFloat(avgRPS))
-	fmt.Printf(rowFmt+"\n", "Peak req/s (1s window)", formatFloat(peakRPS))
+	fmt.Printf(rowFmt+"\n", "Avg tx/s", formatFloat(avgTPS))
+	fmt.Printf(rowFmt+"\n", "Peak tx/s (1s window)", formatFloat(peakTPS))
 	fmt.Println(sep)
 	fmt.Printf(rowFmt+"\n", "Server Blocks Produced", formatNum(blocks))
 	fmt.Printf(rowFmt+"\n", "Server Txs Executed", formatNum(executedTxs))
@@ -226,13 +324,13 @@ func printResults(elapsed time.Duration, workers, total, success, failures uint6
 		fmt.Println(sep)
 		fmt.Println()
 		fmt.Println("  ====================================================")
-		fmt.Printf("      S U C C E S S !   %s  R E A C H E D !\n", formatNum(targetRPS))
+		fmt.Printf("      S U C C E S S !   %s  T X / S  R E A C H E D !\n", formatNum(targetRPS))
 		fmt.Println("  ====================================================")
 	} else {
 		fmt.Printf(rowFmt+"\n", goalLabel, "NOT REACHED")
 		fmt.Println(sep)
 		fmt.Printf("\n  Achieved %.2f%% of target (%.1fx away)\n",
-			avgRPS/float64(targetRPS)*100, float64(targetRPS)/avgRPS)
+			avgTPS/float64(targetRPS)*100, float64(targetRPS)/avgTPS)
 	}
 }
 
