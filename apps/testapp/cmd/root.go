@@ -12,13 +12,17 @@ const (
 
 	// flagKVEndpoint is the flag for the KV endpoint
 	flagKVEndpoint = "kv-endpoint"
+	// flagSoloSequencer is the flag to enable a solo sequencer
+	flagSoloSequencer = "solo-sequencer"
 )
 
 func init() {
 	config.AddGlobalFlags(RootCmd, AppName)
 	config.AddFlags(RunCmd)
-	// Add the KV endpoint flag specifically to the RunCmd
+
+	// add more flags to RunCmd
 	RunCmd.Flags().String(flagKVEndpoint, "", "Address and port for the KV executor HTTP server")
+	RunCmd.Flags().Bool(flagSoloSequencer, true, "Enable Solo sequencer (instead of based sequencer or single sequencer)")
 }
 
 // RootCmd is the root command for Evolve

@@ -22,6 +22,7 @@ import (
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/sequencers/based"
 	"github.com/evstack/ev-node/pkg/sequencers/single"
+	"github.com/evstack/ev-node/pkg/sequencers/solo"
 	"github.com/evstack/ev-node/pkg/store"
 )
 
@@ -91,7 +92,7 @@ var RunCmd = &cobra.Command{
 		}
 
 		// Create sequencer based on configuration
-		sequencer, err := createSequencer(ctx, logger, datastore, nodeConfig, genesis, executor)
+		sequencer, err := createSequencer(ctx, command, logger, datastore, nodeConfig, genesis, executor)
 		if err != nil {
 			return err
 		}
@@ -105,12 +106,18 @@ var RunCmd = &cobra.Command{
 // Otherwise, it creates a single (traditional) sequencer.
 func createSequencer(
 	ctx context.Context,
+	cmd *cobra.Command,
 	logger zerolog.Logger,
 	datastore datastore.Batching,
 	nodeConfig config.Config,
 	genesis genesis.Genesis,
 	executor execution.Executor,
 ) (coresequencer.Sequencer, error) {
+	if enabled, _ := cmd.Flags().GetBool(flagSoloSequencer); enabled {
+		logger.Info().Msg("using solo sequencer")
+		return solo.NewSoloSequencer(logger, nodeConfig, []byte(genesis.ChainID), executor), nil
+	}
+
 	blobClient, err := blobrpc.NewWSClient(ctx, logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create blob client: %w", err)

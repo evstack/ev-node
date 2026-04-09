@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -14,13 +13,9 @@ import (
 	"github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
-	"github.com/evstack/ev-node/pkg/genesis"
 )
 
-var (
-	ErrInvalidID = errors.New("invalid chain id")
-	ErrQueueFull = errors.New("transaction queue is full")
-)
+var ErrInvalidID = errors.New("invalid chain id")
 
 var _ coresequencer.Sequencer = (*SoloSequencer)(nil)
 
@@ -29,32 +24,26 @@ var _ coresequencer.Sequencer = (*SoloSequencer)(nil)
 // produces batches on demand.
 type SoloSequencer struct {
 	logger   zerolog.Logger
-	genesis  genesis.Genesis
 	id       []byte
 	executor execution.Executor
 
 	daHeight atomic.Uint64
 
-	mu           sync.Mutex
-	queue        [][]byte
-	maxQueueSize int
+	mu    sync.Mutex
+	queue [][]byte
 }
 
 func NewSoloSequencer(
 	logger zerolog.Logger,
 	cfg config.Config,
 	id []byte,
-	maxQueueSize int,
-	genesis genesis.Genesis,
 	executor execution.Executor,
 ) *SoloSequencer {
 	return &SoloSequencer{
-		logger:       logger,
-		genesis:      genesis,
-		id:           id,
-		executor:     executor,
-		queue:        make([][]byte, 0),
-		maxQueueSize: maxQueueSize,
+		logger:   logger,
+		id:       id,
+		executor: executor,
+		queue:    make([][]byte, 0),
 	}
 }
 
@@ -73,11 +62,6 @@ func (s *SoloSequencer) SubmitBatchTxs(ctx context.Context, req coresequencer.Su
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	if s.maxQueueSize > 0 && len(s.queue)+len(req.Batch.Transactions) > s.maxQueueSize {
-		return nil, fmt.Errorf("%w: queue has %d txs, batch has %d txs, limit is %d",
-			ErrQueueFull, len(s.queue), len(req.Batch.Transactions), s.maxQueueSize)
-	}
 
 	s.queue = append(s.queue, req.Batch.Transactions...)
 	return &coresequencer.SubmitBatchTxsResponse{}, nil

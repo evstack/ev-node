@@ -13,7 +13,6 @@ import (
 	"github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
-	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/test/mocks"
 )
 
@@ -40,19 +39,17 @@ func createDefaultMockExecutor(t *testing.T) *mocks.MockExecutor {
 	return mockExec
 }
 
-func newTestSequencer(t *testing.T, maxQueueSize int) *SoloSequencer {
+func newTestSequencer(t *testing.T) *SoloSequencer {
 	return NewSoloSequencer(
 		zerolog.Nop(),
 		config.DefaultConfig(),
 		[]byte("test"),
-		maxQueueSize,
-		genesis.Genesis{ChainID: "test"},
 		createDefaultMockExecutor(t),
 	)
 }
 
 func TestSoloSequencer_SubmitBatchTxs(t *testing.T) {
-	seq := newTestSequencer(t, 0)
+	seq := newTestSequencer(t)
 
 	tx := []byte("transaction1")
 	res, err := seq.SubmitBatchTxs(context.Background(), coresequencer.SubmitBatchTxsRequest{
@@ -69,7 +66,7 @@ func TestSoloSequencer_SubmitBatchTxs(t *testing.T) {
 }
 
 func TestSoloSequencer_SubmitBatchTxs_InvalidID(t *testing.T) {
-	seq := newTestSequencer(t, 0)
+	seq := newTestSequencer(t)
 
 	res, err := seq.SubmitBatchTxs(context.Background(), coresequencer.SubmitBatchTxsRequest{
 		Id:    []byte("wrong"),
@@ -80,7 +77,7 @@ func TestSoloSequencer_SubmitBatchTxs_InvalidID(t *testing.T) {
 }
 
 func TestSoloSequencer_SubmitBatchTxs_EmptyBatch(t *testing.T) {
-	seq := newTestSequencer(t, 0)
+	seq := newTestSequencer(t)
 
 	res, err := seq.SubmitBatchTxs(context.Background(), coresequencer.SubmitBatchTxsRequest{
 		Id:    []byte("test"),
@@ -100,26 +97,8 @@ func TestSoloSequencer_SubmitBatchTxs_EmptyBatch(t *testing.T) {
 	assert.Empty(t, seq.queue)
 }
 
-func TestSoloSequencer_SubmitBatchTxs_QueueFull(t *testing.T) {
-	seq := newTestSequencer(t, 3) // max 3 txs
-
-	batch := coresequencer.Batch{Transactions: [][]byte{{1}, {2}, {3}}}
-	_, err := seq.SubmitBatchTxs(context.Background(), coresequencer.SubmitBatchTxsRequest{
-		Id:    []byte("test"),
-		Batch: &batch,
-	})
-	require.NoError(t, err)
-
-	res, err := seq.SubmitBatchTxs(context.Background(), coresequencer.SubmitBatchTxsRequest{
-		Id:    []byte("test"),
-		Batch: &coresequencer.Batch{Transactions: [][]byte{{4}}},
-	})
-	assert.ErrorIs(t, err, ErrQueueFull)
-	assert.Nil(t, res)
-}
-
 func TestSoloSequencer_GetNextBatch_EmptyQueue(t *testing.T) {
-	seq := newTestSequencer(t, 0)
+	seq := newTestSequencer(t)
 
 	resp, err := seq.GetNextBatch(context.Background(), coresequencer.GetNextBatchRequest{Id: []byte("test")})
 	require.NoError(t, err)
@@ -129,7 +108,7 @@ func TestSoloSequencer_GetNextBatch_EmptyQueue(t *testing.T) {
 }
 
 func TestSoloSequencer_GetNextBatch_InvalidID(t *testing.T) {
-	seq := newTestSequencer(t, 0)
+	seq := newTestSequencer(t)
 
 	res, err := seq.GetNextBatch(context.Background(), coresequencer.GetNextBatchRequest{Id: []byte("wrong")})
 	assert.ErrorIs(t, err, ErrInvalidID)
@@ -137,7 +116,7 @@ func TestSoloSequencer_GetNextBatch_InvalidID(t *testing.T) {
 }
 
 func TestSoloSequencer_GetNextBatch_DrainsAndFilters(t *testing.T) {
-	seq := newTestSequencer(t, 0)
+	seq := newTestSequencer(t)
 
 	batch := coresequencer.Batch{Transactions: [][]byte{{1}, {2}, {3}}}
 	_, err := seq.SubmitBatchTxs(context.Background(), coresequencer.SubmitBatchTxsRequest{
@@ -175,8 +154,6 @@ func TestSoloSequencer_GetNextBatch_PostponedTxsRequeued(t *testing.T) {
 		zerolog.Nop(),
 		config.DefaultConfig(),
 		[]byte("test"),
-		0,
-		genesis.Genesis{ChainID: "test"},
 		mockExec,
 	)
 
@@ -197,7 +174,7 @@ func TestSoloSequencer_GetNextBatch_PostponedTxsRequeued(t *testing.T) {
 }
 
 func TestSoloSequencer_GetNextBatch_SubmitDuringProcessing(t *testing.T) {
-	seq := newTestSequencer(t, 0)
+	seq := newTestSequencer(t)
 
 	batch := coresequencer.Batch{Transactions: [][]byte{{1}, {2}}}
 	_, err := seq.SubmitBatchTxs(context.Background(), coresequencer.SubmitBatchTxsRequest{
@@ -223,7 +200,7 @@ func TestSoloSequencer_GetNextBatch_SubmitDuringProcessing(t *testing.T) {
 }
 
 func TestSoloSequencer_VerifyBatch(t *testing.T) {
-	seq := newTestSequencer(t, 0)
+	seq := newTestSequencer(t)
 
 	batchData := [][]byte{[]byte("batch1"), []byte("batch2")}
 
@@ -236,35 +213,10 @@ func TestSoloSequencer_VerifyBatch(t *testing.T) {
 }
 
 func TestSoloSequencer_DAHeight(t *testing.T) {
-	seq := newTestSequencer(t, 0)
+	seq := newTestSequencer(t)
 
 	assert.Equal(t, uint64(0), seq.GetDAHeight())
 
 	seq.SetDAHeight(42)
 	assert.Equal(t, uint64(42), seq.GetDAHeight())
-}
-
-func TestSoloSequencer_QueueFullThenFreed(t *testing.T) {
-	seq := newTestSequencer(t, 2) // max 2 txs
-
-	_, err := seq.SubmitBatchTxs(context.Background(), coresequencer.SubmitBatchTxsRequest{
-		Id:    []byte("test"),
-		Batch: &coresequencer.Batch{Transactions: [][]byte{{1}, {2}}},
-	})
-	require.NoError(t, err)
-
-	_, err = seq.SubmitBatchTxs(context.Background(), coresequencer.SubmitBatchTxsRequest{
-		Id:    []byte("test"),
-		Batch: &coresequencer.Batch{Transactions: [][]byte{{3}}},
-	})
-	assert.ErrorIs(t, err, ErrQueueFull)
-
-	_, err = seq.GetNextBatch(context.Background(), coresequencer.GetNextBatchRequest{Id: []byte("test")})
-	require.NoError(t, err)
-
-	_, err = seq.SubmitBatchTxs(context.Background(), coresequencer.SubmitBatchTxsRequest{
-		Id:    []byte("test"),
-		Batch: &coresequencer.Batch{Transactions: [][]byte{{3}}},
-	})
-	assert.NoError(t, err, "submission should succeed after queue is drained")
 }
