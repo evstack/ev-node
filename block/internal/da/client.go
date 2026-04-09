@@ -559,7 +559,7 @@ func extractBlobData(resp *blobrpc.SubscriptionResponse) [][]byte {
 			continue
 		}
 		data := blob.Data()
-		if len(data) == 0 || len(data) > common.DefaultMaxBlobSize {
+		if len(data) == 0 || uint64(len(data)) > common.DefaultMaxBlobSize {
 			continue
 		}
 		blobs = append(blobs, data)
