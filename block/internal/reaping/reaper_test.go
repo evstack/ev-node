@@ -2,214 +2,233 @@ package reaping
 
 import (
 	"context"
-	crand "crypto/rand"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
-	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/evstack/ev-node/block/internal/cache"
-	"github.com/evstack/ev-node/block/internal/common"
-	"github.com/evstack/ev-node/block/internal/executing"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
-	"github.com/evstack/ev-node/pkg/signer/noop"
 	"github.com/evstack/ev-node/pkg/store"
 	testmocks "github.com/evstack/ev-node/test/mocks"
 )
 
-// helper to create a minimal executor to capture notifications
-func newTestExecutor(t *testing.T) *executing.Executor {
-	t.Helper()
-
-	// signer is required by NewExecutor
-	priv, _, err := crypto.GenerateEd25519Key(crand.Reader)
-	require.NoError(t, err)
-	s, err := noop.NewNoopSigner(priv)
-	require.NoError(t, err)
-
-	// Get the signer's address to use as proposer
-	signerAddr, err := s.GetAddress()
-	require.NoError(t, err)
-
-	exec, err := executing.NewExecutor(
-		nil, // store (unused)
-		nil, // core executor (unused)
-		nil, // sequencer (unused)
-		s,   // signer (required)
-		nil, // cache (unused)
-		nil, // metrics (unused)
-		config.DefaultConfig(),
-		genesis.Genesis{ // minimal genesis
-			ChainID:         "test-chain",
-			InitialHeight:   1,
-			StartTime:       time.Now(),
-			ProposerAddress: signerAddr,
-		},
-		nil, // header broadcaster
-		nil, // data broadcaster
-		zerolog.Nop(),
-		common.DefaultBlockOptions(),
-		make(chan error, 1), // error channel
-		nil,
-	)
-	require.NoError(t, err)
-
-	return exec
-}
-
-// helper to create a cache manager for tests
 func newTestCache(t *testing.T) cache.CacheManager {
 	t.Helper()
-
-	cfg := config.Config{
-		RootDir: t.TempDir(),
-	}
-
-	// Create an in-memory store for the cache
+	cfg := config.Config{RootDir: t.TempDir()}
 	memDS := dssync.MutexWrap(ds.NewMapDatastore())
 	st := store.New(memDS)
-
-	cacheManager, err := cache.NewManager(cfg, st, zerolog.Nop())
+	cm, err := cache.NewManager(cfg, st, zerolog.Nop())
 	require.NoError(t, err)
-
-	return cacheManager
+	return cm
 }
 
-// reaper with mocks and cache manager
-func newTestReaper(t *testing.T, chainID string, execMock *testmocks.MockExecutor, seqMock *testmocks.MockSequencer, e *executing.Executor, cm cache.CacheManager) *Reaper {
+type testEnv struct {
+	execMock *testmocks.MockExecutor
+	seqMock  *testmocks.MockSequencer
+	cache    cache.CacheManager
+	reaper   *Reaper
+	notified atomic.Bool
+}
+
+func newTestEnv(t *testing.T) *testEnv {
 	t.Helper()
-
-	r, err := NewReaper(execMock, seqMock, genesis.Genesis{ChainID: chainID}, zerolog.Nop(), e, cm, 100*time.Millisecond)
-	require.NoError(t, err)
-
-	return r
-}
-
-func TestReaper_SubmitTxs_NewTxs_SubmitsAndPersistsAndNotifies(t *testing.T) {
 	mockExec := testmocks.NewMockExecutor(t)
 	mockSeq := testmocks.NewMockSequencer(t)
+	cm := newTestCache(t)
 
-	// Two new transactions
+	env := &testEnv{
+		execMock: mockExec,
+		seqMock:  mockSeq,
+		cache:    cm,
+	}
+
+	r, err := NewReaper(
+		mockExec, mockSeq,
+		genesis.Genesis{ChainID: "test-chain"},
+		zerolog.Nop(), cm,
+		100*time.Millisecond,
+		env.notify,
+	)
+	require.NoError(t, err)
+	env.reaper = r
+
+	return env
+}
+
+func (e *testEnv) notify() {
+	e.notified.Store(true)
+}
+
+func (e *testEnv) wasNotified() bool {
+	return e.notified.Load()
+}
+
+func TestReaper_NewTxs_SubmitsAndPersistsAndNotifies(t *testing.T) {
+	env := newTestEnv(t)
+
 	tx1 := []byte("tx1")
 	tx2 := []byte("tx2")
-	mockExec.EXPECT().GetTxs(mock.Anything).Return([][]byte{tx1, tx2}, nil).Once()
 
-	// Expect a single SubmitBatchTxs with both txs
-	mockSeq.EXPECT().SubmitBatchTxs(mock.Anything, mock.AnythingOfType("sequencer.SubmitBatchTxsRequest")).
+	env.execMock.EXPECT().GetTxs(mock.Anything).Return([][]byte{tx1, tx2}, nil).Once()
+	env.execMock.EXPECT().GetTxs(mock.Anything).Return(nil, nil).Once()
+
+	env.seqMock.EXPECT().SubmitBatchTxs(mock.Anything, mock.AnythingOfType("sequencer.SubmitBatchTxsRequest")).
 		RunAndReturn(func(ctx context.Context, req coresequencer.SubmitBatchTxsRequest) (*coresequencer.SubmitBatchTxsResponse, error) {
-			require.Equal(t, []byte("chain-A"), req.Id)
-			require.NotNil(t, req.Batch)
 			assert.Equal(t, [][]byte{tx1, tx2}, req.Batch.Transactions)
 			return &coresequencer.SubmitBatchTxsResponse{}, nil
 		}).Once()
 
-	// Minimal executor to capture NotifyNewTransactions
-	e := newTestExecutor(t)
-	cm := newTestCache(t)
-
-	r := newTestReaper(t, "chain-A", mockExec, mockSeq, e, cm)
-
-	assert.NoError(t, r.SubmitTxs())
-
-	// Verify transactions are marked as seen in cache
-	assert.True(t, cm.IsTxSeen(hashTx(tx1)))
-	assert.True(t, cm.IsTxSeen(hashTx(tx2)))
-
-	// Executor notified - check using test helper
-	if !e.HasPendingTxNotification() {
-		t.Fatal("expected NotifyNewTransactions to signal txNotifyCh")
-	}
+	submitted, err := env.reaper.drainMempool()
+	assert.NoError(t, err)
+	assert.True(t, submitted)
+	assert.True(t, env.cache.IsTxSeen(hashTx(tx1)))
+	assert.True(t, env.cache.IsTxSeen(hashTx(tx2)))
+	assert.True(t, env.wasNotified())
 }
 
-func TestReaper_SubmitTxs_AllSeen_NoSubmit(t *testing.T) {
-	mockExec := testmocks.NewMockExecutor(t)
-	mockSeq := testmocks.NewMockSequencer(t)
+func TestReaper_AllSeen_NoSubmit(t *testing.T) {
+	env := newTestEnv(t)
 
 	tx1 := []byte("tx1")
 	tx2 := []byte("tx2")
 
-	// Pre-populate cache with seen transactions
-	e := newTestExecutor(t)
-	cm := newTestCache(t)
-	cm.SetTxSeen(hashTx(tx1))
-	cm.SetTxSeen(hashTx(tx2))
+	env.cache.SetTxSeen(hashTx(tx1))
+	env.cache.SetTxSeen(hashTx(tx2))
 
-	r := newTestReaper(t, "chain-B", mockExec, mockSeq, e, cm)
+	env.execMock.EXPECT().GetTxs(mock.Anything).Return([][]byte{tx1, tx2}, nil).Once()
+	env.execMock.EXPECT().GetTxs(mock.Anything).Return(nil, nil).Once()
 
-	mockExec.EXPECT().GetTxs(mock.Anything).Return([][]byte{tx1, tx2}, nil).Once()
-	// No SubmitBatchTxs expected
-
-	assert.NoError(t, r.SubmitTxs())
-
-	// Ensure no notification occurred
-	if e.HasPendingTxNotification() {
-		t.Fatal("did not expect notification when all txs are seen")
-	}
+	submitted, err := env.reaper.drainMempool()
+	assert.NoError(t, err)
+	assert.False(t, submitted)
+	assert.False(t, env.wasNotified())
 }
 
-func TestReaper_SubmitTxs_PartialSeen_FiltersAndPersists(t *testing.T) {
-	mockExec := testmocks.NewMockExecutor(t)
-	mockSeq := testmocks.NewMockSequencer(t)
+func TestReaper_PartialSeen_FiltersAndPersists(t *testing.T) {
+	env := newTestEnv(t)
 
 	txOld := []byte("old")
 	txNew := []byte("new")
 
-	e := newTestExecutor(t)
-	cm := newTestCache(t)
+	env.cache.SetTxSeen(hashTx(txOld))
 
-	// Mark txOld as seen
-	cm.SetTxSeen(hashTx(txOld))
+	env.execMock.EXPECT().GetTxs(mock.Anything).Return([][]byte{txOld, txNew}, nil).Once()
+	env.execMock.EXPECT().GetTxs(mock.Anything).Return(nil, nil).Once()
 
-	r := newTestReaper(t, "chain-C", mockExec, mockSeq, e, cm)
-
-	mockExec.EXPECT().GetTxs(mock.Anything).Return([][]byte{txOld, txNew}, nil).Once()
-	mockSeq.EXPECT().SubmitBatchTxs(mock.Anything, mock.AnythingOfType("sequencer.SubmitBatchTxsRequest")).
+	env.seqMock.EXPECT().SubmitBatchTxs(mock.Anything, mock.AnythingOfType("sequencer.SubmitBatchTxsRequest")).
 		RunAndReturn(func(ctx context.Context, req coresequencer.SubmitBatchTxsRequest) (*coresequencer.SubmitBatchTxsResponse, error) {
-			// Should only include txNew
 			assert.Equal(t, [][]byte{txNew}, req.Batch.Transactions)
 			return &coresequencer.SubmitBatchTxsResponse{}, nil
 		}).Once()
 
-	assert.NoError(t, r.SubmitTxs())
-
-	// Both should be seen after successful submit
-	assert.True(t, cm.IsTxSeen(hashTx(txOld)))
-	assert.True(t, cm.IsTxSeen(hashTx(txNew)))
-
-	// Notification should occur since a new tx was submitted
-	if !e.HasPendingTxNotification() {
-		t.Fatal("expected notification when new tx submitted")
-	}
+	submitted, err := env.reaper.drainMempool()
+	assert.NoError(t, err)
+	assert.True(t, submitted)
+	assert.True(t, env.cache.IsTxSeen(hashTx(txOld)))
+	assert.True(t, env.cache.IsTxSeen(hashTx(txNew)))
+	assert.True(t, env.wasNotified())
 }
 
-func TestReaper_SubmitTxs_SequencerError_NoPersistence_NoNotify(t *testing.T) {
-	mockExec := testmocks.NewMockExecutor(t)
-	mockSeq := testmocks.NewMockSequencer(t)
+func TestReaper_SequencerError_NoPersistence_NoNotify(t *testing.T) {
+	env := newTestEnv(t)
 
 	tx := []byte("oops")
-	mockExec.EXPECT().GetTxs(mock.Anything).Return([][]byte{tx}, nil).Once()
-	mockSeq.EXPECT().SubmitBatchTxs(mock.Anything, mock.AnythingOfType("sequencer.SubmitBatchTxsRequest")).
+
+	env.execMock.EXPECT().GetTxs(mock.Anything).Return([][]byte{tx}, nil).Once()
+
+	env.seqMock.EXPECT().SubmitBatchTxs(mock.Anything, mock.AnythingOfType("sequencer.SubmitBatchTxsRequest")).
 		Return((*coresequencer.SubmitBatchTxsResponse)(nil), assert.AnError).Once()
 
-	e := newTestExecutor(t)
+	_, err := env.reaper.drainMempool()
+	assert.Error(t, err)
+	assert.False(t, env.cache.IsTxSeen(hashTx(tx)))
+	assert.False(t, env.wasNotified())
+}
+
+func TestReaper_DrainsMempoolInMultipleRounds(t *testing.T) {
+	env := newTestEnv(t)
+
+	tx1 := []byte("tx1")
+	tx2 := []byte("tx2")
+	tx3 := []byte("tx3")
+
+	env.execMock.EXPECT().GetTxs(mock.Anything).Return([][]byte{tx1, tx2}, nil).Once()
+	env.execMock.EXPECT().GetTxs(mock.Anything).Return([][]byte{tx3}, nil).Once()
+	env.execMock.EXPECT().GetTxs(mock.Anything).Return(nil, nil).Once()
+
+	env.seqMock.EXPECT().SubmitBatchTxs(mock.Anything, mock.AnythingOfType("sequencer.SubmitBatchTxsRequest")).
+		RunAndReturn(func(ctx context.Context, req coresequencer.SubmitBatchTxsRequest) (*coresequencer.SubmitBatchTxsResponse, error) {
+			return &coresequencer.SubmitBatchTxsResponse{}, nil
+		}).Twice()
+
+	submitted, err := env.reaper.drainMempool()
+	assert.NoError(t, err)
+	assert.True(t, submitted)
+	assert.True(t, env.cache.IsTxSeen(hashTx(tx1)))
+	assert.True(t, env.cache.IsTxSeen(hashTx(tx2)))
+	assert.True(t, env.cache.IsTxSeen(hashTx(tx3)))
+	assert.True(t, env.wasNotified())
+}
+
+func TestReaper_EmptyMempool_NoAction(t *testing.T) {
+	env := newTestEnv(t)
+
+	env.execMock.EXPECT().GetTxs(mock.Anything).Return(nil, nil).Once()
+
+	submitted, err := env.reaper.drainMempool()
+	assert.NoError(t, err)
+	assert.False(t, submitted)
+	assert.False(t, env.wasNotified())
+}
+
+func TestReaper_HashComputedOnce(t *testing.T) {
+	env := newTestEnv(t)
+
+	tx := []byte("unique-tx")
+	expectedHash := hashTx(tx)
+
+	env.execMock.EXPECT().GetTxs(mock.Anything).Return([][]byte{tx}, nil).Once()
+	env.execMock.EXPECT().GetTxs(mock.Anything).Return(nil, nil).Once()
+
+	env.seqMock.EXPECT().SubmitBatchTxs(mock.Anything, mock.AnythingOfType("sequencer.SubmitBatchTxsRequest")).
+		Return(&coresequencer.SubmitBatchTxsResponse{}, nil).Once()
+
+	submitted, err := env.reaper.drainMempool()
+	assert.NoError(t, err)
+	assert.True(t, submitted)
+	assert.True(t, env.cache.IsTxSeen(expectedHash))
+}
+
+func TestReaper_NilCallback_NoPanic(t *testing.T) {
+	mockExec := testmocks.NewMockExecutor(t)
+	mockSeq := testmocks.NewMockSequencer(t)
 	cm := newTestCache(t)
-	r := newTestReaper(t, "chain-D", mockExec, mockSeq, e, cm)
 
-	assert.Error(t, r.SubmitTxs())
+	r, err := NewReaper(
+		mockExec, mockSeq,
+		genesis.Genesis{ChainID: "test-chain"},
+		zerolog.Nop(), cm,
+		100*time.Millisecond,
+		nil,
+	)
+	require.NoError(t, err)
 
-	// Should not be marked seen
-	assert.False(t, cm.IsTxSeen(hashTx(tx)))
+	tx := []byte("tx")
+	mockExec.EXPECT().GetTxs(mock.Anything).Return([][]byte{tx}, nil).Once()
+	mockExec.EXPECT().GetTxs(mock.Anything).Return(nil, nil).Once()
+	mockSeq.EXPECT().SubmitBatchTxs(mock.Anything, mock.AnythingOfType("sequencer.SubmitBatchTxsRequest")).
+		Return(&coresequencer.SubmitBatchTxsResponse{}, nil).Once()
 
-	// Should not notify
-	if e.HasPendingTxNotification() {
-		t.Fatal("did not expect notification on sequencer error")
-	}
+	submitted, err := r.drainMempool()
+	assert.NoError(t, err)
+	assert.True(t, submitted)
 }

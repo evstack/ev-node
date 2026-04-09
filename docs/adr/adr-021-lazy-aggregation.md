@@ -92,7 +92,6 @@ Leverage the existing empty batch mechanism and `dataHashForEmptyTxs` to maintai
     A dedicated lazy aggregation loop has been implemented with dual timer mechanisms. The `lazyTimer` ensures blocks are produced at regular intervals even during network inactivity, while the `blockTimer` handles normal block production when transactions are available. Transaction notifications from the `Reaper` to the `Manager` are now handled via the `txNotifyCh` channel: when the `Reaper` detects new transactions, it calls `Manager.NotifyNewTransactions()`, which performs a non-blocking signal on this channel. See the tests in `block/lazy_aggregation_test.go` for verification of this behavior.
 
     ```go
-    // In Reaper.SubmitTxs
     if r.manager != nil && len(newTxs) > 0 {
         r.logger.Debug("Notifying manager of new transactions")
         r.manager.NotifyNewTransactions() // Signals txNotifyCh

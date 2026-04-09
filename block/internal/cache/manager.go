@@ -53,6 +53,7 @@ type CacheManager interface {
 	// Transaction operations
 	IsTxSeen(hash string) bool
 	SetTxSeen(hash string)
+	SetTxsSeen(hashes []string)
 	CleanupOldTxs(olderThan time.Duration) int
 
 	// Pending events syncing coordination
@@ -208,6 +209,14 @@ func (m *implementation) SetTxSeen(hash string) {
 	m.txCache.setSeen(hash, 0)
 	// Track timestamp for cleanup purposes
 	m.txTimestamps.Store(hash, time.Now())
+}
+
+func (m *implementation) SetTxsSeen(hashes []string) {
+	now := time.Now()
+	for _, hash := range hashes {
+		m.txCache.setSeen(hash, 0)
+		m.txTimestamps.Store(hash, now)
+	}
 }
 
 // CleanupOldTxs removes transaction hashes older than olderThan and returns
