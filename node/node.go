@@ -21,6 +21,13 @@ type Node interface {
 	IsRunning() bool
 }
 
+// LeaderResigner is an optional interface implemented by nodes that participate
+// in Raft leader election. Callers should type-assert to this interface and call
+// ResignLeader before cancelling the node context on graceful shutdown.
+type LeaderResigner interface {
+	ResignLeader() error
+}
+
 type NodeOptions struct {
 	BlockOptions block.BlockOptions
 }

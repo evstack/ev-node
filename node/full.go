@@ -35,6 +35,7 @@ const (
 )
 
 var _ Node = &FullNode{}
+var _ LeaderResigner = &FullNode{}
 
 type leaderElection interface {
 	Run(ctx context.Context) error
@@ -383,4 +384,13 @@ func (n *FullNode) GetGenesisChunks() ([]string, error) {
 // IsRunning returns true if the node is running.
 func (n *FullNode) IsRunning() bool {
 	return n.leaderElection.IsRunning()
+}
+
+// ResignLeader transfers raft leadership before the node shuts down.
+// It is a no-op when raft is not enabled or this node is not the leader.
+func (n *FullNode) ResignLeader() error {
+	if n.raftNode == nil {
+		return nil
+	}
+	return n.raftNode.ResignLeader()
 }
