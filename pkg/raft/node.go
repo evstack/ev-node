@@ -109,13 +109,8 @@ func (n *Node) Start(_ context.Context) error {
 	if n == nil {
 		return nil
 	}
-	if !n.config.Bootstrap {
-		// it is intended to fail fast here. at this stage only bootstrap mode is supported.
-		return fmt.Errorf("raft cluster requires bootstrap mode")
-	}
-
 	if future := n.raft.GetConfiguration(); future.Error() == nil && len(future.Configuration().Servers) > 0 {
-		n.logger.Info().Msg("cluster already bootstrapped, skipping")
+		n.logger.Info().Msg("raft node started with existing local state")
 		return nil
 	}
 

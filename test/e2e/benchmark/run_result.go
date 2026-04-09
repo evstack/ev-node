@@ -27,6 +27,7 @@ type runResult struct {
 	Metrics           runMetrics        `json:"metrics"`
 	BlockRange        runBlockRange     `json:"block_range"`
 	Spamoor           *runSpamoorStats  `json:"spamoor,omitempty"`
+	TracesURL         string            `json:"traces_url,omitempty"`
 	FieldDescriptions map[string]string `json:"field_descriptions"`
 }
 
@@ -195,6 +196,7 @@ func buildRunResult(cfg benchConfig, br *benchmarkResult, wallClock time.Duratio
 			NonEmpty: br.bm.BlockCount,
 		},
 		Spamoor:           spamoor,
+		TracesURL:         br.traces.tracesURL,
 		FieldDescriptions: fieldDescriptions(),
 	}
 }
@@ -306,5 +308,7 @@ func fieldDescriptions() map[string]string {
 
 		"spamoor.sent":   "total txs successfully sent by spamoor",
 		"spamoor.failed": "total txs that failed",
+
+		"traces_url": "VMUI link to view ev-node traces for this benchmark run",
 	}
 }
