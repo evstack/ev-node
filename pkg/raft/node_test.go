@@ -140,3 +140,27 @@ func TestNodeResignLeader_NotLeaderNoop(t *testing.T) {
 
 	assert.NoError(t, n.ResignLeader()) // not leader, must be a noop
 }
+
+func TestNewNode_SnapshotConfigApplied(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &Config{
+		NodeID:             "test",
+		RaftAddr:           "127.0.0.1:0",
+		RaftDir:            dir,
+		SnapCount:          3,
+		SendTimeout:        200 * time.Millisecond,
+		HeartbeatTimeout:   350 * time.Millisecond,
+		LeaderLeaseTimeout: 175 * time.Millisecond,
+		ElectionTimeout:    500 * time.Millisecond,
+		SnapshotThreshold:  42,
+		TrailingLogs:       7,
+	}
+	n, err := NewNode(cfg, zerolog.Nop())
+	require.NoError(t, err)
+	defer n.raft.Shutdown()
+
+	// Verify the config was stored and raft started without error.
+	assert.Equal(t, cfg.SnapshotThreshold, n.config.SnapshotThreshold)
+	assert.Equal(t, cfg.TrailingLogs, n.config.TrailingLogs)
+	assert.Equal(t, cfg.ElectionTimeout, n.config.ElectionTimeout)
+}

@@ -157,6 +157,9 @@ func initRaftNode(nodeConfig config.Config, logger zerolog.Logger) (*raftpkg.Nod
 		SendTimeout:        nodeConfig.Raft.SendTimeout,
 		HeartbeatTimeout:   nodeConfig.Raft.HeartbeatTimeout,
 		LeaderLeaseTimeout: nodeConfig.Raft.LeaderLeaseTimeout,
+		ElectionTimeout:    nodeConfig.Raft.ElectionTimeout,
+		SnapshotThreshold:  nodeConfig.Raft.SnapshotThreshold,
+		TrailingLogs:       nodeConfig.Raft.TrailingLogs,
 	}
 
 	if nodeConfig.Raft.Peers != "" {

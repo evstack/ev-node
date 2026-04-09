@@ -38,6 +38,9 @@ type Config struct {
 	SendTimeout        time.Duration
 	HeartbeatTimeout   time.Duration
 	LeaderLeaseTimeout time.Duration
+	ElectionTimeout    time.Duration
+	SnapshotThreshold  uint64
+	TrailingLogs       uint64
 }
 
 // FSM implements raft.FSM for block state
@@ -59,6 +62,15 @@ func NewNode(cfg *Config, logger zerolog.Logger) (*Node, error) {
 	raftConfig.LogLevel = "INFO"
 	raftConfig.HeartbeatTimeout = cfg.HeartbeatTimeout
 	raftConfig.LeaderLeaseTimeout = cfg.LeaderLeaseTimeout
+	if cfg.ElectionTimeout > 0 {
+		raftConfig.ElectionTimeout = cfg.ElectionTimeout
+	}
+	if cfg.SnapshotThreshold > 0 {
+		raftConfig.SnapshotThreshold = cfg.SnapshotThreshold
+	}
+	if cfg.TrailingLogs > 0 {
+		raftConfig.TrailingLogs = cfg.TrailingLogs
+	}
 
 	startPointer := new(atomic.Pointer[RaftBlockState])
 	startPointer.Store(&RaftBlockState{})
