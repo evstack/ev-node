@@ -4,7 +4,7 @@ go 1.25.7
 
 require (
 	github.com/celestiaorg/go-square/v3 v3.0.2
-	github.com/evstack/ev-node v1.1.0-rc.2
+	github.com/evstack/ev-node v1.1.0
 	github.com/rs/zerolog v1.35.0
 	github.com/spf13/cobra v1.10.2
 	google.golang.org/protobuf v1.36.11
