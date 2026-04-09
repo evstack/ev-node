@@ -231,6 +231,17 @@ func (n *Node) leadershipTransfer() error {
 	return n.raft.LeadershipTransfer().Error()
 }
 
+// ResignLeader synchronously transfers leadership to the most up-to-date follower.
+// It is a no-op when the node is nil or not currently the leader.
+// Call this before cancelling the node context on graceful shutdown to minimise
+// the window where a dying leader could still serve blocks.
+func (n *Node) ResignLeader() error {
+	if n == nil || !n.IsLeader() {
+		return nil
+	}
+	return n.leadershipTransfer()
+}
+
 func (n *Node) Config() Config {
 	return *n.config
 }

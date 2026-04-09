@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/raft"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -113,4 +115,28 @@ func TestDeduplicateServers(t *testing.T) {
 func TestNodeStartNilNoop(t *testing.T) {
 	var node *Node
 	require.NoError(t, node.Start(context.Background()))
+}
+
+func TestNodeResignLeader_NilNoop(t *testing.T) {
+	var n *Node
+	assert.NoError(t, n.ResignLeader())
+}
+
+func TestNodeResignLeader_NotLeaderNoop(t *testing.T) {
+	// A raft node that hasn't bootstrapped is never leader.
+	// Use a temp dir so boltdb can initialize.
+	dir := t.TempDir()
+	n, err := NewNode(&Config{
+		NodeID:             "test",
+		RaftAddr:           "127.0.0.1:0",
+		RaftDir:            dir,
+		SnapCount:          3,
+		SendTimeout:        200 * time.Millisecond,
+		HeartbeatTimeout:   350 * time.Millisecond,
+		LeaderLeaseTimeout: 175 * time.Millisecond,
+	}, zerolog.Nop())
+	require.NoError(t, err)
+	defer n.raft.Shutdown()
+
+	assert.NoError(t, n.ResignLeader()) // not leader, must be a noop
 }
