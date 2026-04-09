@@ -260,6 +260,7 @@ func (s *Submitter) daSubmissionLoop() {
 							return
 						}
 
+						// Calculate total size (excluding signature)
 						totalSize := uint64(0)
 						for _, marshalled := range marshalledData {
 							totalSize += uint64(len(marshalled))

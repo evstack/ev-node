@@ -16,12 +16,12 @@ flowchart LR
 
 ## Design Decisions
 
-| Decision | Rationale |
-|---|---|
-| In-memory queue | No persistence overhead; suitable for trusted single-operator setups |
-| No forced inclusion | Avoids DA epoch tracking, checkpoint storage, and catch-up logic |
-| No DA client dependency | `VerifyBatch` returns true unconditionally |
-| Configurable queue limit | Provides backpressure when blocks can't be produced fast enough |
+| Decision                 | Rationale                                                            |
+| ------------------------ | -------------------------------------------------------------------- |
+| In-memory queue          | No persistence overhead; suitable for trusted single-operator setups |
+| No forced inclusion      | Avoids DA epoch tracking, checkpoint storage, and catch-up logic     |
+| No DA client dependency  | `VerifyBatch` returns true unconditionally                           |
+| Configurable queue limit | Provides backpressure when blocks can't be produced fast enough      |
 
 ## Flow
 
@@ -33,8 +33,6 @@ flowchart TD
     B -->|No| C["Return ErrInvalidID"]
     B -->|Yes| D{"Empty batch?"}
     D -->|Yes| E["Return OK"]
-    D -->|No| F{"Queue full?"}
-    F -->|Yes| G["Return ErrQueueFull"]
     F -->|No| H["Append txs to queue"]
     H --> E
 ```
@@ -80,11 +78,11 @@ resp, err := seq.GetNextBatch(ctx, coresequencer.GetNextBatchRequest{
 
 ## Comparison with Other Sequencers
 
-| Aspect | Solo | Single | Based |
-|---|---|---|---|
-| Mempool transactions | Yes | Yes | No |
-| Forced inclusion | No | Yes | Yes |
-| Persistence | None | DB-backed queue + checkpoints | Checkpoints only |
-| Crash recovery | Lost on restart | Full recovery | Checkpoint-based |
-| Catch-up mode | N/A | Yes | N/A |
-| DA client required | No | Yes | Yes |
+| Aspect               | Solo            | Single                        | Based            |
+| -------------------- | --------------- | ----------------------------- | ---------------- |
+| Mempool transactions | Yes             | Yes                           | No               |
+| Forced inclusion     | No              | Yes                           | Yes              |
+| Persistence          | None            | DB-backed queue + checkpoints | Checkpoints only |
+| Crash recovery       | Lost on restart | Full recovery                 | Checkpoint-based |
+| Catch-up mode        | N/A             | Yes                           | N/A              |
+| DA client required   | No              | Yes                           | Yes              |

@@ -114,6 +114,10 @@ func createSequencer(
 	executor execution.Executor,
 ) (coresequencer.Sequencer, error) {
 	if enabled, _ := cmd.Flags().GetBool(flagSoloSequencer); enabled {
+		if nodeConfig.Node.BasedSequencer {
+			return nil, fmt.Errorf("solo sequencer cannot be used with based")
+		}
+
 		logger.Info().Msg("using solo sequencer")
 		return solo.NewSoloSequencer(logger, nodeConfig, []byte(genesis.ChainID), executor), nil
 	}
