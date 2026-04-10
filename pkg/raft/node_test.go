@@ -128,9 +128,9 @@ func TestNodeResignLeader_NotLeaderNoop(t *testing.T) {
 
 func TestNewNode_SnapshotConfigApplied(t *testing.T) {
 	specs := map[string]struct {
-		cfg                        *Config
-		expectedSnapshotThreshold  uint64
-		expectedTrailingLogs       uint64
+		cfg                       *Config
+		expectedSnapshotThreshold uint64
+		expectedTrailingLogs      uint64
 	}{
 		"custom values applied": {
 			cfg: &Config{
