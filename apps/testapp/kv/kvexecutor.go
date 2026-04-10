@@ -4,15 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"hash/fnv"
-	"maps"
 	"sort"
-	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
-	"unsafe"
 
 	ds "github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/query"
@@ -26,46 +21,25 @@ var (
 	genesisStateRootKey   = ds.NewKey("/genesis/stateroot")
 	heightKeyPrefix       = ds.NewKey("/height")
 	finalizedHeightKey    = ds.NewKey("/finalizedHeight")
-	reservedKeys          = map[ds.Key]bool{
+	// Define a buffer size for the transaction channel
+	txChannelBufferSize = 100_000_000
+	// reservedKeys defines the set of keys that should be excluded from state root calculation
+	// and protected from transaction modifications
+	reservedKeys = map[ds.Key]bool{
 		genesisInitializedKey: true,
 		genesisStateRootKey:   true,
 		finalizedHeightKey:    true,
 	}
 )
 
-const shardCount = 64
-
-type txShard struct {
-	mu    sync.Mutex
-	buf   [][]byte
-	flush chan [][]byte
-}
-
+// KVExecutor is a simple key-value store backed by go-datastore that implements the Executor interface
+// for testing purposes. It uses a buffered channel as a mempool for transactions.
+// It also includes fields to track genesis initialization persisted in the datastore.
 type KVExecutor struct {
 	db               ds.Batching
+	txChan           chan []byte
 	blocksProduced   atomic.Uint64
 	totalExecutedTxs atomic.Uint64
-
-	stateMu    sync.RWMutex
-	stateMap   map[string]string
-	sortedKeys []string
-	cachedRoot []byte
-	rootDirty  bool
-
-	shards   [shardCount]txShard
-	shardIdx atomic.Uint64
-
-	dbWriteCh chan dbWriteReq
-}
-
-type dbWriteReq struct {
-	height uint64
-	kvs    []kvEntry
-}
-
-type kvEntry struct {
-	key   string
-	value string
 }
 
 type ExecutorStats struct {
@@ -80,92 +54,106 @@ func (k *KVExecutor) GetStats() ExecutorStats {
 	}
 }
 
+// NewKVExecutor creates a new instance of KVExecutor with initialized store and mempool channel.
 func NewKVExecutor() *KVExecutor {
-	k := &KVExecutor{
-		db:        dssync.MutexWrap(ds.NewMapDatastore()),
-		stateMap:  make(map[string]string),
-		dbWriteCh: make(chan dbWriteReq, 4096),
+	return &KVExecutor{
+		db:     dssync.MutexWrap(ds.NewMapDatastore()),
+		txChan: make(chan []byte, txChannelBufferSize),
 	}
-
-	for i := range k.shards {
-		k.shards[i].buf = make([][]byte, 0, 256)
-		k.shards[i].flush = make(chan [][]byte, 64)
-	}
-
-	go k.dbWriterLoop()
-
-	return k
 }
 
-func (k *KVExecutor) dbWriterLoop() {
-	for req := range k.dbWriteCh {
-		if len(req.kvs) == 0 {
+// GetStoreValue is a helper for the HTTP interface to retrieve the value for a key from the database.
+// It searches across all block heights to find the latest value for the given key.
+func (k *KVExecutor) GetStoreValue(ctx context.Context, key string) (string, bool) {
+	// Query all keys to find height-prefixed versions of this key
+	q := query.Query{}
+	results, err := k.db.Query(ctx, q)
+	if err != nil {
+		fmt.Printf("Error querying DB for key '%s': %v\n", key, err)
+		return "", false
+	}
+	defer results.Close()
+
+	heightPrefix := heightKeyPrefix.String()
+	var latestValue string
+	var latestHeight uint64
+	found := false
+
+	for result := range results.Next() {
+		if result.Error != nil {
+			fmt.Printf("Error iterating query results for key '%s': %v\n", key, result.Error)
+			return "", false
+		}
+
+		resultKey := result.Key
+		// Check if this is a height-prefixed key that matches our target key
+		if after, ok := strings.CutPrefix(resultKey, heightPrefix+"/"); ok {
+			// Extract height and actual key: /height/{height}/{actual_key}
+			parts := strings.Split(after, "/")
+			if len(parts) >= 2 {
+				var keyHeight uint64
+				if _, err := fmt.Sscanf(parts[0], "%d", &keyHeight); err == nil {
+					// Reconstruct the actual key by joining all parts after the height
+					actualKey := strings.Join(parts[1:], "/")
+					if actualKey == key {
+						// This key matches - check if it's the latest height
+						if !found || keyHeight > latestHeight {
+							latestHeight = keyHeight
+							latestValue = string(result.Value)
+							found = true
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if !found {
+		return "", false
+	}
+
+	return latestValue, true
+}
+
+// computeStateRoot computes a deterministic state root by querying all keys, sorting them,
+// and concatenating key-value pairs from the database.
+func (k *KVExecutor) computeStateRoot(ctx context.Context) ([]byte, error) {
+	q := query.Query{KeysOnly: true}
+	results, err := k.db.Query(ctx, q)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query keys for state root: %w", err)
+	}
+	defer results.Close()
+
+	keys := make([]string, 0)
+	for result := range results.Next() {
+		if result.Error != nil {
+			return nil, fmt.Errorf("error iterating query results: %w", result.Error)
+		}
+		// Exclude reserved keys from the state root calculation
+		dsKey := ds.NewKey(result.Key)
+		if reservedKeys[dsKey] {
 			continue
 		}
-		ctx := context.Background()
-		batch, err := k.db.Batch(ctx)
+		keys = append(keys, result.Key)
+	}
+	sort.Strings(keys)
+
+	var sb strings.Builder
+	for _, key := range keys {
+		valueBytes, err := k.db.Get(ctx, ds.NewKey(key))
 		if err != nil {
-			continue
+			// This shouldn't happen if the key came from the query, but handle defensively
+			return nil, fmt.Errorf("failed to get value for key '%s' during state root computation: %w", key, err)
 		}
-		for _, kv := range req.kvs {
-			dsKey := getTxKey(req.height, kv.key)
-			_ = batch.Put(ctx, dsKey, bytesFromString(kv.value))
-		}
-		_ = batch.Commit(ctx)
+		sb.WriteString(fmt.Sprintf("%s:%s;", key, string(valueBytes)))
 	}
+	return []byte(sb.String()), nil
 }
 
-func (k *KVExecutor) GetStoreValue(_ context.Context, key string) (string, bool) {
-	k.stateMu.RLock()
-	val := k.stateMap[key]
-	k.stateMu.RUnlock()
-	return val, val != ""
-}
-
-func (k *KVExecutor) GetAllEntries() map[string]string {
-	k.stateMu.RLock()
-	m := make(map[string]string, len(k.stateMap))
-	maps.Copy(m, k.stateMap)
-	k.stateMu.RUnlock()
-	return m
-}
-
-func (k *KVExecutor) insertSorted(key string) {
-	n := len(k.sortedKeys)
-	i := sort.SearchStrings(k.sortedKeys, key)
-	if i < n && k.sortedKeys[i] == key {
-		return
-	}
-	k.sortedKeys = append(k.sortedKeys, "")
-	copy(k.sortedKeys[i+1:], k.sortedKeys[i:])
-	k.sortedKeys[i] = key
-}
-
-func (k *KVExecutor) computeRootFromStateLocked() []byte {
-	if !k.rootDirty && k.cachedRoot != nil {
-		return k.cachedRoot
-	}
-
-	h := fnv.New128a()
-	for _, key := range k.sortedKeys {
-		h.Write(bytesFromString(key))
-		h.Write([]byte{0})
-		h.Write(bytesFromString(k.stateMap[key]))
-		h.Write([]byte{0})
-	}
-
-	k.cachedRoot = h.Sum(nil)
-	k.rootDirty = false
-	return k.cachedRoot
-}
-
-func (k *KVExecutor) computeStateRoot(_ context.Context) ([]byte, error) {
-	k.stateMu.Lock()
-	root := k.computeRootFromStateLocked()
-	k.stateMu.Unlock()
-	return root, nil
-}
-
+// InitChain initializes the chain state with genesis parameters.
+// It checks the database to see if genesis was already performed.
+// If not, it computes the state root from the current DB state and persists genesis info.
 func (k *KVExecutor) InitChain(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, error) {
 	select {
 	case <-ctx.Done():
@@ -186,28 +174,36 @@ func (k *KVExecutor) InitChain(ctx context.Context, genesisTime time.Time, initi
 		return genesisRoot, nil
 	}
 
+	// Genesis not initialized. Compute state root from the current DB state.
+	// Note: The DB might not be empty if restarting, this reflects the state *at genesis time*.
 	stateRoot, err := k.computeStateRoot(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compute initial state root for genesis: %w", err)
 	}
 
+	// Persist genesis state root and initialized flag
 	batch, err := k.db.Batch(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create batch for genesis persistence: %w", err)
 	}
-	if err := batch.Put(ctx, genesisStateRootKey, stateRoot); err != nil {
+	err = batch.Put(ctx, genesisStateRootKey, stateRoot)
+	if err != nil {
 		return nil, fmt.Errorf("failed to put genesis state root in batch: %w", err)
 	}
-	if err := batch.Put(ctx, genesisInitializedKey, []byte("true")); err != nil {
+	err = batch.Put(ctx, genesisInitializedKey, []byte("true")) // Store a marker value
+	if err != nil {
 		return nil, fmt.Errorf("failed to put genesis initialized flag in batch: %w", err)
 	}
-	if err := batch.Commit(ctx); err != nil {
+	err = batch.Commit(ctx)
+	if err != nil {
 		return nil, fmt.Errorf("failed to commit genesis persistence batch: %w", err)
 	}
 
 	return stateRoot, nil
 }
 
+// GetTxs retrieves available transactions from the mempool channel.
+// It drains the channel in a non-blocking way.
 func (k *KVExecutor) GetTxs(ctx context.Context) ([][]byte, error) {
 	select {
 	case <-ctx.Done():
@@ -215,31 +211,30 @@ func (k *KVExecutor) GetTxs(ctx context.Context) ([][]byte, error) {
 	default:
 	}
 
-	var all [][]byte
-	for i := range k.shards {
-		s := &k.shards[i]
-		s.mu.Lock()
-		if len(s.buf) > 0 {
-			batch := s.buf
-			s.buf = make([][]byte, 0, cap(batch))
-			s.mu.Unlock()
-			all = append(all, batch...)
-		} else {
-			s.mu.Unlock()
-		}
+	// Drain the channel efficiently
+	txs := make([][]byte, 0, len(k.txChan)) // Pre-allocate roughly
+	for {
 		select {
-		case batch := <-s.flush:
-			all = append(all, batch...)
-		default:
+		case tx := <-k.txChan:
+			txs = append(txs, tx)
+		default: // Channel is empty or context is done
+			// Check context again in case it was cancelled during drain
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			default:
+				if len(txs) == 0 {
+					return nil, nil // Return nil slice if no transactions were retrieved
+				}
+				return txs, nil
+			}
 		}
 	}
-
-	if len(all) == 0 {
-		return nil, nil
-	}
-	return all, nil
 }
 
+// ExecuteTxs processes each transaction assumed to be in the format "key=value".
+// It updates the database accordingly using a batch and removes the executed transactions from the mempool.
+// Invalid transactions are filtered out and logged, but execution continues.
 func (k *KVExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, error) {
 	select {
 	case <-ctx.Done():
@@ -247,66 +242,82 @@ func (k *KVExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight u
 	default:
 	}
 
-	type parsedTx struct {
-		key   string
-		value string
+	batch, err := k.db.Batch(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create database batch: %w", err)
 	}
 
-	parsed := make([]parsedTx, 0, len(txs))
+	validTxCount := 0
+	invalidTxCount := 0
 
-	for _, tx := range txs {
+	// Process transactions and stage them in the batch
+	// Filter out invalid/gibberish transactions gracefully
+	for i, tx := range txs {
+		// Skip empty transactions
 		if len(tx) == 0 {
+			fmt.Printf("Warning: skipping empty transaction at index %d in block %d\n", i, blockHeight)
+			invalidTxCount++
 			continue
 		}
 
-		s := stringUnsafe(tx)
-		before, after, ok := strings.Cut(s, "=")
-		if !ok {
+		parts := strings.SplitN(string(tx), "=", 2)
+		if len(parts) != 2 {
+			fmt.Printf("Warning: filtering out malformed transaction at index %d in block %d (expected format key=value): %s\n", i, blockHeight, string(tx))
+			invalidTxCount++
 			continue
 		}
 
-		key := strings.TrimSpace(before)
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
 		if key == "" {
+			fmt.Printf("Warning: filtering out transaction with empty key at index %d in block %d\n", i, blockHeight)
+			invalidTxCount++
 			continue
 		}
 
-		value := strings.TrimSpace(after)
 		dsKey := getTxKey(blockHeight, key)
+
+		// Prevent writing reserved keys via transactions
 		if reservedKeys[dsKey] {
+			fmt.Printf("Warning: filtering out transaction attempting to modify reserved key at index %d in block %d: %s\n", i, blockHeight, key)
+			invalidTxCount++
 			continue
 		}
 
-		parsed = append(parsed, parsedTx{key: key, value: value})
+		err = batch.Put(ctx, dsKey, []byte(value))
+		if err != nil {
+			// This error is unlikely for Put unless the context is cancelled.
+			return nil, fmt.Errorf("failed to stage put operation in batch for key '%s': %w", key, err)
+		}
+		validTxCount++
 	}
 
-	k.stateMu.Lock()
-	for _, p := range parsed {
-		if _, exists := k.stateMap[p.key]; !exists {
-			k.insertSorted(p.key)
-		}
-		k.stateMap[p.key] = p.value
+	// Log filtering results if any transactions were filtered
+	if invalidTxCount > 0 {
+		fmt.Printf("Block %d: processed %d valid transactions, filtered out %d invalid transactions\n", blockHeight, validTxCount, invalidTxCount)
 	}
-	k.rootDirty = true
-	root := k.computeRootFromStateLocked()
-	k.stateMu.Unlock()
 
-	if len(parsed) > 0 {
-		kvs := make([]kvEntry, len(parsed))
-		for i, p := range parsed {
-			kvs[i] = kvEntry{key: p.key, value: p.value}
-		}
-		select {
-		case k.dbWriteCh <- dbWriteReq{height: blockHeight, kvs: kvs}:
-		default:
-		}
+	// Commit the batch to apply all changes atomically
+	err = batch.Commit(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to commit transaction batch: %w", err)
 	}
 
 	k.blocksProduced.Add(1)
-	k.totalExecutedTxs.Add(uint64(len(parsed)))
+	k.totalExecutedTxs.Add(uint64(validTxCount))
 
-	return root, nil
+	// Compute the new state root *after* successful commit
+	stateRoot, err := k.computeStateRoot(ctx)
+	if err != nil {
+		// This is problematic, state was changed but root calculation failed.
+		// May need more robust error handling or recovery logic.
+		return nil, fmt.Errorf("failed to compute state root after executing transactions: %w", err)
+	}
+
+	return stateRoot, nil
 }
 
+// SetFinal marks a block as finalized at the specified height.
 func (k *KVExecutor) SetFinal(ctx context.Context, blockHeight uint64) error {
 	select {
 	case <-ctx.Done():
@@ -314,32 +325,42 @@ func (k *KVExecutor) SetFinal(ctx context.Context, blockHeight uint64) error {
 	default:
 	}
 
+	// Validate blockHeight
 	if blockHeight == 0 {
 		return errors.New("invalid blockHeight: cannot be zero")
 	}
 
-	return k.db.Put(ctx, finalizedHeightKey, strconv.AppendUint(nil, blockHeight, 10))
+	return k.db.Put(ctx, finalizedHeightKey, fmt.Appendf(nil, "%d", blockHeight))
 }
 
+// InjectTx adds a transaction to the mempool channel.
+// Uses a non-blocking send to avoid blocking the caller if the channel is full.
 func (k *KVExecutor) InjectTx(tx []byte) {
-	s := &k.shards[(k.shardIdx.Add(1))%shardCount]
-	s.mu.Lock()
-	s.buf = append(s.buf, tx)
-	s.mu.Unlock()
+	select {
+	case k.txChan <- tx:
+		// Transaction successfully sent to channel
+	default:
+		// Channel is full, transaction is dropped. Log this event.
+		fmt.Printf("Warning: Transaction channel buffer full. Dropping transaction.\n")
+		// Consider adding metrics here
+	}
 }
 
+// InjectTxs adds multiple transactions to the mempool channel and returns the number accepted.
 func (k *KVExecutor) InjectTxs(txs [][]byte) int {
 	accepted := 0
 	for _, tx := range txs {
-		s := &k.shards[(k.shardIdx.Add(1))%shardCount]
-		s.mu.Lock()
-		s.buf = append(s.buf, tx)
-		s.mu.Unlock()
-		accepted++
+		select {
+		case k.txChan <- tx:
+			accepted++
+		default:
+			fmt.Printf("Warning: Transaction channel buffer full. Dropping transaction.\n")
+		}
 	}
 	return accepted
 }
 
+// Rollback reverts the state to the previous block height.
 func (k *KVExecutor) Rollback(ctx context.Context, height uint64) error {
 	select {
 	case <-ctx.Done():
@@ -347,15 +368,18 @@ func (k *KVExecutor) Rollback(ctx context.Context, height uint64) error {
 	default:
 	}
 
+	// Validate height constraints
 	if height == 0 {
 		return fmt.Errorf("cannot rollback to height 0: invalid height")
 	}
 
+	// Create a batch for atomic rollback operation
 	batch, err := k.db.Batch(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create batch for rollback: %w", err)
 	}
 
+	// Query all keys to find those with height > target height
 	q := query.Query{}
 	results, err := k.db.Query(ctx, q)
 	if err != nil {
@@ -372,11 +396,14 @@ func (k *KVExecutor) Rollback(ctx context.Context, height uint64) error {
 		}
 
 		key := result.Key
+		// Check if this is a height-prefixed key
 		if after, ok := strings.CutPrefix(key, heightPrefix+"/"); ok {
+			// Extract height from key: /height/{height}/{actual_key} (see getTxKey)
 			parts := strings.Split(after, "/")
 			if len(parts) > 0 {
 				var keyHeight uint64
 				if _, err := fmt.Sscanf(parts[0], "%d", &keyHeight); err == nil {
+					// If this key's height is greater than target, mark for deletion
 					if keyHeight > height {
 						keysToDelete = append(keysToDelete, ds.NewKey(key))
 					}
@@ -385,99 +412,64 @@ func (k *KVExecutor) Rollback(ctx context.Context, height uint64) error {
 		}
 	}
 
+	// Delete all keys with height > target height
 	for _, key := range keysToDelete {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
 		}
-		if err := batch.Delete(ctx, key); err != nil {
+
+		err = batch.Delete(ctx, key)
+		if err != nil {
 			return fmt.Errorf("failed to stage delete operation for key '%s' during rollback: %w", key.String(), err)
 		}
 	}
 
+	// Update finalized height if necessary - it should not exceed rollback height
+	finalizedHeightKey := ds.NewKey("/finalizedHeight")
 	if finalizedHeightBytes, err := k.db.Get(ctx, finalizedHeightKey); err == nil {
 		var finalizedHeight uint64
 		if _, err := fmt.Sscanf(string(finalizedHeightBytes), "%d", &finalizedHeight); err == nil {
 			if finalizedHeight > height {
-				if err := batch.Put(ctx, finalizedHeightKey, strconv.AppendUint(nil, height, 10)); err != nil {
+				err = batch.Put(ctx, finalizedHeightKey, fmt.Appendf([]byte{}, "%d", height))
+				if err != nil {
 					return fmt.Errorf("failed to update finalized height during rollback: %w", err)
 				}
 			}
 		}
 	}
 
-	if err := batch.Commit(ctx); err != nil {
+	// Commit the batch atomically
+	err = batch.Commit(ctx)
+	if err != nil {
 		return fmt.Errorf("failed to commit rollback batch: %w", err)
 	}
-
-	k.stateMu.Lock()
-	k.stateMap = make(map[string]string)
-	k.rebuildStateFromDB(ctx)
-	k.sortedKeys = k.sortedKeys[:0]
-	for key := range k.stateMap {
-		k.sortedKeys = append(k.sortedKeys, key)
-	}
-	sort.Strings(k.sortedKeys)
-	k.rootDirty = true
-	k.stateMu.Unlock()
 
 	return nil
 }
 
-func (k *KVExecutor) rebuildStateFromDB(ctx context.Context) {
-	q := query.Query{}
-	results, err := k.db.Query(ctx, q)
-	if err != nil {
-		return
-	}
-	defer results.Close()
-
-	heightPrefix := heightKeyPrefix.String()
-	type entry struct {
-		height uint64
-		value  string
-	}
-	latest := make(map[string]entry)
-
-	for result := range results.Next() {
-		if result.Error != nil {
-			return
-		}
-		if after, ok := strings.CutPrefix(result.Key, heightPrefix+"/"); ok {
-			parts := strings.Split(after, "/")
-			if len(parts) >= 2 {
-				var keyHeight uint64
-				if _, err := fmt.Sscanf(parts[0], "%d", &keyHeight); err == nil {
-					actualKey := strings.Join(parts[1:], "/")
-					if e, ok := latest[actualKey]; !ok || keyHeight > e.height {
-						latest[actualKey] = entry{height: keyHeight, value: string(result.Value)}
-					}
-				}
-			}
-		}
-	}
-
-	for key, e := range latest {
-		k.stateMap[key] = e.value
-	}
-}
-
 func getTxKey(height uint64, txKey string) ds.Key {
-	return heightKeyPrefix.ChildString(strconv.FormatUint(height, 10) + "/" + txKey)
+	return heightKeyPrefix.Child(ds.NewKey(fmt.Sprintf("%d/%s", height, txKey)))
 }
 
-func (k *KVExecutor) GetExecutionInfo(_ context.Context) (execution.ExecutionInfo, error) {
+// GetExecutionInfo returns execution layer parameters.
+// For KVExecutor, returns MaxGas=0 indicating no gas-based filtering.
+func (k *KVExecutor) GetExecutionInfo(ctx context.Context) (execution.ExecutionInfo, error) {
 	return execution.ExecutionInfo{MaxGas: 0}, nil
 }
 
-func (k *KVExecutor) FilterTxs(_ context.Context, txs [][]byte, maxBytes, maxGas uint64, hasForceIncludedTransaction bool) ([]execution.FilterStatus, error) {
+// FilterTxs validates force-included transactions and applies size filtering.
+// For KVExecutor, validates key=value format when force-included txs are present.
+// KVExecutor doesn't track gas, so maxGas is ignored.
+func (k *KVExecutor) FilterTxs(ctx context.Context, txs [][]byte, maxBytes, maxGas uint64, hasForceIncludedTransaction bool) ([]execution.FilterStatus, error) {
 	result := make([]execution.FilterStatus, len(txs))
 
 	var cumulativeBytes uint64
 	limitReached := false
 
 	for i, tx := range txs {
+		// Skip empty transactions
 		if len(tx) == 0 {
 			result[i] = execution.FilterRemove
 			continue
@@ -485,28 +477,30 @@ func (k *KVExecutor) FilterTxs(_ context.Context, txs [][]byte, maxBytes, maxGas
 
 		txBytes := uint64(len(tx))
 
+		// Only validate tx format if force-included txs are present
+		// Mempool txs are already validated
 		if hasForceIncludedTransaction {
-			eqIdx := indexByte(tx, '=')
-			if eqIdx < 0 {
-				result[i] = execution.FilterRemove
-				continue
-			}
-			if isAllSpace(tx[:eqIdx]) {
+			// Basic format validation: must be key=value
+			parts := strings.SplitN(string(tx), "=", 2)
+			if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" {
 				result[i] = execution.FilterRemove
 				continue
 			}
 		}
 
+		// Skip tx that can never make it in a block (too big)
 		if maxBytes > 0 && txBytes > maxBytes {
 			result[i] = execution.FilterRemove
 			continue
 		}
 
+		// Once limit is reached, postpone remaining txs
 		if limitReached {
 			result[i] = execution.FilterPostpone
 			continue
 		}
 
+		// Check size limit
 		if maxBytes > 0 && cumulativeBytes+txBytes > maxBytes {
 			limitReached = true
 			result[i] = execution.FilterPostpone
@@ -518,37 +512,4 @@ func (k *KVExecutor) FilterTxs(_ context.Context, txs [][]byte, maxBytes, maxGas
 	}
 
 	return result, nil
-}
-
-func indexByte(s []byte, c byte) int {
-	for i, b := range s {
-		if b == c {
-			return i
-		}
-	}
-	return -1
-}
-
-func isAllSpace(s []byte) bool {
-	allSpace := true
-	for _, b := range s {
-		if b != ' ' && b != '\t' && b != '\n' && b != '\r' {
-			allSpace = false
-			break
-		}
-	}
-	return allSpace && len(s) == 0
-}
-
-func stringUnsafe(b []byte) string {
-	return *(*string)(unsafe.Pointer(&b))
-}
-
-func bytesFromString(s string) []byte {
-	return *(*[]byte)(unsafe.Pointer(
-		&struct {
-			string
-			int
-		}{s, len(s)},
-	))
 }

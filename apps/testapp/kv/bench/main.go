@@ -323,9 +323,9 @@ func printResults(elapsed time.Duration, workers, batchSize, total, success, fai
 		fmt.Printf(rowFmt+"\n", goalLabel, "REACHED")
 		fmt.Println(sep)
 		fmt.Println()
-		fmt.Println("  ====================================================")
-		fmt.Printf("      S U C C E S S !   %s  T X / S  R E A C H E D !\n", formatNum(targetRPS))
-		fmt.Println("  ====================================================")
+		fmt.Println("====================================================")
+		fmt.Printf(" S U C C E S S !   %s  T X / S  R E A C H E D !\n", formatNum(targetRPS))
+		fmt.Println("====================================================")
 	} else {
 		fmt.Printf(rowFmt+"\n", goalLabel, "NOT REACHED")
 		fmt.Println(sep)

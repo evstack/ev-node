@@ -61,7 +61,9 @@ func TestHandleTx(t *testing.T) {
 				t.Errorf("expected body %q, got %q", tt.expectedBody, rr.Body.String())
 			}
 
+			// Verify the transaction was added to the channel if it was a valid POST
 			if tt.method == http.MethodPost && tt.expectedStatus == http.StatusAccepted {
+				// Allow a moment for the channel send to potentially complete
 				time.Sleep(10 * time.Millisecond)
 				ctx := context.Background()
 				retrievedTxs, err := exec.GetTxs(ctx)
@@ -74,6 +76,7 @@ func TestHandleTx(t *testing.T) {
 					t.Errorf("expected channel to contain %q, got %q", tt.body, string(retrievedTxs[0]))
 				}
 			} else if tt.method == http.MethodPost {
+				// If it was a POST but not accepted, ensure nothing ended up in the channel
 				ctx := context.Background()
 				retrievedTxs, err := exec.GetTxs(ctx)
 				if err != nil {
@@ -127,7 +130,9 @@ func TestHandleKV_Get(t *testing.T) {
 			exec := NewKVExecutor()
 			server := NewHTTPServer(exec, ":0")
 
+			// Set up initial data if needed
 			if tt.key != "" && tt.value != "" {
+				// Create and execute the transaction directly
 				tx := fmt.Appendf(nil, "%s=%s", tt.key, tt.value)
 				ctx := context.Background()
 				_, err := exec.ExecuteTxs(ctx, [][]byte{tx}, 1, time.Now(), []byte(""))
@@ -158,12 +163,15 @@ func TestHandleKV_Get(t *testing.T) {
 }
 
 func TestHTTPServerStartStop(t *testing.T) {
+	// Create a test server that listens on a random port
 	exec := NewKVExecutor()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// This is just a placeholder handler
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
 
+	// Test the NewHTTPServer function
 	httpServer := NewHTTPServer(exec, server.URL)
 	if httpServer == nil {
 		t.Fatal("NewHTTPServer returned nil")
@@ -173,23 +181,33 @@ func TestHTTPServerStartStop(t *testing.T) {
 		t.Error("HTTPServer.executor not set correctly")
 	}
 
+	// Note: We don't test Start() and Stop() methods directly
+	// as they actually bind to ports, which can be problematic in unit tests.
+	// In a real test environment, you might want to use integration tests for these.
+
+	// Test with context (minimal test just to verify it compiles)
 	_, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Just create a mock test to ensure the context parameter is accepted
+	// Don't actually start the server in the test
 	testServer := &HTTPServer{
 		server: &http.Server{
-			Addr:              ":0",
-			ReadHeaderTimeout: 10 * time.Second,
+			Addr:              ":0",             // Use a random port
+			ReadHeaderTimeout: 10 * time.Second, // Add timeout to prevent Slowloris attacks
 		},
 		executor: exec,
 	}
 
+	// Just verify the method signature works
 	_ = testServer.Start
 }
 
+// TestHTTPServerContextCancellation tests that the server shuts down properly when the context is cancelled
 func TestHTTPServerContextCancellation(t *testing.T) {
 	exec := NewKVExecutor()
 
+	// Use a random available port
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Failed to find available port: %v", err)
@@ -202,15 +220,19 @@ func TestHTTPServerContextCancellation(t *testing.T) {
 	serverAddr := fmt.Sprintf("127.0.0.1:%d", port)
 	server := NewHTTPServer(exec, serverAddr)
 
+	// Create a context with cancel function
 	ctx, cancel := context.WithCancel(context.Background())
 
+	// Start the server
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- server.Start(ctx)
 	}()
 
+	// Give it time to start
 	time.Sleep(100 * time.Millisecond)
 
+	// Send a request to confirm it's running
 	client := &http.Client{Timeout: 1 * time.Second}
 	resp, err := client.Get(fmt.Sprintf("http://%s/store", serverAddr))
 	if err != nil {
@@ -224,8 +246,10 @@ func TestHTTPServerContextCancellation(t *testing.T) {
 		t.Fatalf("Expected status 200, got %d", resp.StatusCode)
 	}
 
+	// Cancel the context to shut down the server
 	cancel()
 
+	// Wait for shutdown to complete with timeout
 	select {
 	case err := <-errCh:
 		if err != nil && errors.Is(err, http.ErrServerClosed) {
@@ -235,6 +259,7 @@ func TestHTTPServerContextCancellation(t *testing.T) {
 		t.Fatal("Server shutdown timed out")
 	}
 
+	// Verify server is actually shutdown by attempting a new connection
 	_, err = client.Get(fmt.Sprintf("http://%s/store", serverAddr))
 	if err == nil {
 		t.Fatal("Expected connection error after shutdown, but got none")
@@ -245,6 +270,7 @@ func TestHTTPIntegration_GetKVWithMultipleHeights(t *testing.T) {
 	exec := NewKVExecutor()
 	ctx := context.Background()
 
+	// Execute transactions at different heights for the same key
 	txsHeight1 := [][]byte{[]byte("testkey=original_value")}
 	_, err := exec.ExecuteTxs(ctx, txsHeight1, 1, time.Now(), []byte(""))
 	if err != nil {
@@ -259,6 +285,7 @@ func TestHTTPIntegration_GetKVWithMultipleHeights(t *testing.T) {
 
 	server := NewHTTPServer(exec, ":0")
 
+	// Test GET request - should return the latest value
 	req := httptest.NewRequest(http.MethodGet, "/kv?key=testkey", nil)
 	rr := httptest.NewRecorder()
 
