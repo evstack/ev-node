@@ -1,10 +1,12 @@
 package raft
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -18,6 +20,24 @@ import (
 	"github.com/rs/zerolog"
 	"google.golang.org/protobuf/proto"
 )
+
+// suppressBoltNoise redirects the stdlib log output once to drop the
+// "Rollback failed: tx closed" messages emitted by hashicorp/raft-boltdb.
+// boltdb returns ErrTxClosed when Rollback is called after a successful
+// Commit; raft-boltdb unconditionally logs this as an error even though it
+// is the expected outcome of every successful transaction.
+var suppressBoltNoise sync.Once
+
+// boltTxClosedFilter is an io.Writer that silently drops log lines containing
+// "tx closed" and forwards everything else to the underlying writer.
+type boltTxClosedFilter struct{ w io.Writer }
+
+func (f *boltTxClosedFilter) Write(p []byte) (n int, err error) {
+	if bytes.Contains(p, []byte("tx closed")) {
+		return len(p), nil
+	}
+	return f.w.Write(p)
+}
 
 // Node represents a raft consensus node
 type Node struct {
@@ -53,6 +73,9 @@ type FSM struct {
 
 // NewNode creates a new raft node
 func NewNode(cfg *Config, logger zerolog.Logger) (*Node, error) {
+	suppressBoltNoise.Do(func() {
+		log.SetOutput(&boltTxClosedFilter{w: os.Stderr})
+	})
 	if err := os.MkdirAll(cfg.RaftDir, 0755); err != nil {
 		return nil, fmt.Errorf("create raft dir: %w", err)
 	}
