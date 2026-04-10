@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	raftpkg "github.com/evstack/ev-node/pkg/raft"
 	"github.com/evstack/ev-node/pkg/service"
 )
 
@@ -81,4 +82,16 @@ func TestStartInstrumentationServer(t *testing.T) {
 		err = pprofSrv.Shutdown(shutdownCtx)
 		assert.NoError(err, "Pprof server shutdown should not return error")
 	}
+}
+
+func TestFullNode_ResignLeader_NilRaftNode(t *testing.T) {
+	n := &FullNode{} // raftNode is nil
+	assert.NoError(t, n.ResignLeader())
+}
+
+func TestFullNode_ResignLeader_NonLeaderRaftNode(t *testing.T) {
+	// Empty *raftpkg.Node has nil raft field so IsLeader() returns false;
+	// ResignLeader() is a no-op and returns nil.
+	n := &FullNode{raftNode: &raftpkg.Node{}}
+	assert.NoError(t, n.ResignLeader())
 }

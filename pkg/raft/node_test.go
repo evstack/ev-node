@@ -1,14 +1,80 @@
 package raft
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/raft"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestBoltTxClosedFilter_Write(t *testing.T) {
+	specs := map[string]struct {
+		input     string
+		expectFwd bool
+	}{
+		"passes through normal log line": {
+			input:     "some normal log message\n",
+			expectFwd: true,
+		},
+		"drops line containing tx closed": {
+			input:     "Rollback failed: tx closed\n",
+			expectFwd: false,
+		},
+		"drops line with tx closed anywhere": {
+			input:     "error: tx closed due to commit\n",
+			expectFwd: false,
+		},
+	}
+
+	for name, spec := range specs {
+		t.Run(name, func(t *testing.T) {
+			var buf bytes.Buffer
+			f := &boltTxClosedFilter{w: &buf}
+			n, err := f.Write([]byte(spec.input))
+			require.NoError(t, err)
+			assert.Equal(t, len(spec.input), n)
+			if spec.expectFwd {
+				assert.Equal(t, spec.input, buf.String())
+			} else {
+				assert.Empty(t, buf.String())
+			}
+		})
+	}
+}
+
+func TestBuildRaftConfig_ElectionTimeout(t *testing.T) {
+	specs := map[string]struct {
+		cfg                     *Config
+		expectedElectionTimeout time.Duration
+	}{
+		"custom election timeout is applied": {
+			cfg: &Config{
+				NodeID:          "node1",
+				ElectionTimeout: 500 * time.Millisecond,
+			},
+			expectedElectionTimeout: 500 * time.Millisecond,
+		},
+		"zero election timeout uses default": {
+			cfg: &Config{
+				NodeID:          "node1",
+				ElectionTimeout: 0,
+			},
+			expectedElectionTimeout: raft.DefaultConfig().ElectionTimeout,
+		},
+	}
+
+	for name, spec := range specs {
+		t.Run(name, func(t *testing.T) {
+			rc := buildRaftConfig(spec.cfg)
+			assert.Equal(t, spec.expectedElectionTimeout, rc.ElectionTimeout)
+		})
+	}
+}
 
 func TestSplitPeerAddr(t *testing.T) {
 	specs := map[string]struct {

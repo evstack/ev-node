@@ -532,6 +532,59 @@ func TestSyncer_RecoverFromRaft_LocalAheadOfStaleSnapshot(t *testing.T) {
 		require.Error(t, err)
 		require.ErrorContains(t, err, "diverged from raft")
 	})
+
+	t.Run("get header fails returns error", func(t *testing.T) {
+		// lastState is at height 2; raft snapshot at height 0.
+		// No block is stored at height 0, so GetHeader fails.
+		err := s.RecoverFromRaft(t.Context(), &raft.RaftBlockState{
+			Height: 0,
+			Hash:   make([]byte, 32),
+			Header: headerBz1,
+			Data:   dataBz1,
+		})
+		require.Error(t, err)
+		require.ErrorContains(t, err, "cannot verify hash")
+	})
+}
+
+func TestSyncer_Stop_CallsRaftRetrieverStop(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	require.NoError(t, err)
+
+	raftNode := &stubRaftNode{}
+	s := NewSyncer(
+		st,
+		nil,
+		nil,
+		cm,
+		common.NopMetrics(),
+		config.DefaultConfig(),
+		genesis.Genesis{},
+		nil,
+		nil,
+		zerolog.Nop(),
+		common.DefaultBlockOptions(),
+		make(chan error, 1),
+		raftNode,
+	)
+
+	require.NotNil(t, s.raftRetriever, "raftRetriever should be set when raftNode is provided")
+
+	// Manually set cancel so Stop() doesn't bail out early (simulates having been started).
+	ctx, cancel := context.WithCancel(t.Context())
+	s.ctx = ctx
+	s.cancel = cancel
+
+	require.NoError(t, s.Stop(t.Context()))
+
+	// raftRetriever.Stop clears the apply callback (sets it to nil).
+	// The stub records each SetApplyCallback call; the last one should be nil.
+	callbacks := raftNode.recordedCallbacks()
+	require.NotEmpty(t, callbacks, "expected at least one callback registration")
+	assert.Nil(t, callbacks[len(callbacks)-1], "last callback should be nil after Stop")
 }
 
 func TestSyncer_processPendingEvents(t *testing.T) {
