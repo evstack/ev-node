@@ -279,7 +279,6 @@ func (s *Syncer) Stop(ctx context.Context) error {
 
 	s.logger.Info().Msg("syncer stopped")
 	close(s.heightInCh)
-	s.cancel = nil
 	return nil
 }
 
