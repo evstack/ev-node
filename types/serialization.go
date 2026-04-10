@@ -19,37 +19,37 @@ import (
 // structs in hot serialization paths (marshal → discard → repeat per block).
 var (
 	pbHeaderPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return &pb.Header{}
 		},
 	}
 	pbVersionPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return &pb.Version{}
 		},
 	}
 	pbDataPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return &pb.Data{}
 		},
 	}
 	pbMetadataPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return &pb.Metadata{}
 		},
 	}
 	pbSignerPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return &pb.Signer{}
 		},
 	}
 	pbSignedHeaderPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return &pb.SignedHeader{}
 		},
 	}
 	pbStatePool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return &pb.State{}
 		},
 	}

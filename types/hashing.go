@@ -19,7 +19,7 @@ var (
 	// sha256.New() allocates ~213 bytes (216B on 64-bit) per call. Pooling
 	// eliminates this allocation entirely in the hot path.
 	sha256Pool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return sha256.New()
 		},
 	}
