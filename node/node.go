@@ -1,6 +1,8 @@
 package node
 
 import (
+	"context"
+
 	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 
@@ -25,7 +27,7 @@ type Node interface {
 // in Raft leader election. Callers should type-assert to this interface and call
 // ResignLeader before cancelling the node context on graceful shutdown.
 type LeaderResigner interface {
-	ResignLeader() error
+	ResignLeader(ctx context.Context) error
 }
 
 type NodeOptions struct {

@@ -392,9 +392,9 @@ func (n *FullNode) IsRunning() bool {
 
 // ResignLeader transfers raft leadership before the node shuts down.
 // It is a no-op when raft is not enabled or this node is not the leader.
-func (n *FullNode) ResignLeader() error {
+func (n *FullNode) ResignLeader(ctx context.Context) error {
 	if n.raftNode == nil {
 		return nil
 	}
-	return n.raftNode.ResignLeader()
+	return n.raftNode.ResignLeader(ctx)
 }

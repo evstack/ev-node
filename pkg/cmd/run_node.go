@@ -230,17 +230,14 @@ func StartNode(
 		if resigner, ok := rollnode.(node.LeaderResigner); ok {
 			resignCtx, resignCancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer resignCancel()
-			resignDone := make(chan error, 1)
-			go func() { resignDone <- resigner.ResignLeader() }()
-			select {
-			case err := <-resignDone:
-				if err != nil {
-					logger.Warn().Err(err).Msg("leadership resign on shutdown failed")
+			if err := resigner.ResignLeader(resignCtx); err != nil {
+				if errors.Is(err, context.DeadlineExceeded) {
+					logger.Warn().Msg("leadership resign timed out")
 				} else {
-					logger.Info().Msg("leadership resigned before shutdown")
+					logger.Warn().Err(err).Msg("leadership resign on shutdown failed")
 				}
-			case <-resignCtx.Done():
-				logger.Warn().Msg("leadership resign timed out")
+			} else {
+				logger.Info().Msg("leadership resigned before shutdown")
 			}
 		}
 		cancel()

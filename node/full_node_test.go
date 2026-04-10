@@ -84,14 +84,18 @@ func TestStartInstrumentationServer(t *testing.T) {
 	}
 }
 
-func TestFullNode_ResignLeader_NilRaftNode(t *testing.T) {
-	n := &FullNode{} // raftNode is nil
-	assert.NoError(t, n.ResignLeader())
-}
-
-func TestFullNode_ResignLeader_NonLeaderRaftNode(t *testing.T) {
-	// Empty *raftpkg.Node has nil raft field so IsLeader() returns false;
-	// ResignLeader() is a no-op and returns nil.
-	n := &FullNode{raftNode: &raftpkg.Node{}}
-	assert.NoError(t, n.ResignLeader())
+func TestFullNode_ResignLeader_Noop(t *testing.T) {
+	cases := []struct {
+		name string
+		node *FullNode
+	}{
+		{name: "nil raftNode", node: &FullNode{}},
+		// Empty *raftpkg.Node has nil raft field so IsLeader() returns false.
+		{name: "non-leader raftNode", node: &FullNode{raftNode: &raftpkg.Node{}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.NoError(t, tc.node.ResignLeader(context.Background()))
+		})
+	}
 }
