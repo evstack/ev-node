@@ -88,9 +88,9 @@ func (r *Reaper) reaperLoop() {
 	consecutiveFailures := 0
 
 	for {
-		submitted, err := r.drainMempool()
+		submitted, err := r.drainMempool(cleanupTicker.C)
 
-		if err != nil && !errors.Is(err, context.Canceled) {
+		if err != nil && r.ctx.Err() == nil {
 			consecutiveFailures++
 			backoff := r.interval * time.Duration(1<<min(consecutiveFailures, 5))
 			backoff = min(backoff, MaxBackoffInterval)
@@ -99,7 +99,7 @@ func (r *Reaper) reaperLoop() {
 				Int("consecutive_failures", consecutiveFailures).
 				Dur("next_retry_in", backoff).
 				Msg("reaper error, backing off")
-			if r.wait(backoff, nil) {
+			if r.wait(backoff) {
 				return
 			}
 			continue
@@ -115,29 +115,19 @@ func (r *Reaper) reaperLoop() {
 			continue
 		}
 
-		// Note: if the cleanup ticker fires before the idle interval elapses,
-		// the remaining idle duration is discarded. drainMempool() is called
-		// immediately and a fresh idle wait starts from scratch.
-		if r.wait(r.interval, cleanupTicker.C) {
+		if r.wait(r.interval) {
 			return
 		}
 	}
 }
 
 // wait blocks for the given duration. Returns true if the context was cancelled.
-// When cleanupCh is non-nil, processes cache cleanup if that channel fires first.
-func (r *Reaper) wait(d time.Duration, cleanupCh <-chan time.Time) bool {
+func (r *Reaper) wait(d time.Duration) bool {
 	timer := time.NewTimer(d)
 	defer timer.Stop()
 	select {
 	case <-r.ctx.Done():
 		return true
-	case <-cleanupCh:
-		removed := r.cache.CleanupOldTxs(cache.DefaultTxCacheRetention)
-		if removed > 0 {
-			r.logger.Info().Int("removed", removed).Msg("cleaned up old transaction hashes")
-		}
-		return false
 	case <-timer.C:
 		return false
 	}
@@ -158,7 +148,7 @@ type pendingTx struct {
 	hash string
 }
 
-func (r *Reaper) drainMempool() (bool, error) {
+func (r *Reaper) drainMempool(cleanupCh <-chan time.Time) (bool, error) {
 	var totalSubmitted int
 
 	defer func() {
@@ -168,6 +158,15 @@ func (r *Reaper) drainMempool() (bool, error) {
 	}()
 
 	for {
+		select {
+		case <-cleanupCh:
+			removed := r.cache.CleanupOldTxs(cache.DefaultTxCacheRetention)
+			if removed > 0 {
+				r.logger.Info().Int("removed", removed).Msg("cleaned up old transaction hashes")
+			}
+		default:
+		}
+
 		txs, err := r.exec.GetTxs(r.ctx)
 		if err != nil {
 			return totalSubmitted > 0, fmt.Errorf("failed to get txs from executor: %w", err)

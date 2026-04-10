@@ -87,7 +87,7 @@ func TestReaper_NewTxs_SubmitsAndPersistsAndNotifies(t *testing.T) {
 			return &coresequencer.SubmitBatchTxsResponse{}, nil
 		}).Once()
 
-	submitted, err := env.reaper.drainMempool()
+	submitted, err := env.reaper.drainMempool(nil)
 	assert.NoError(t, err)
 	assert.True(t, submitted)
 	assert.True(t, env.cache.IsTxSeen(hashTx(tx1)))
@@ -106,7 +106,7 @@ func TestReaper_AllSeen_NoSubmit(t *testing.T) {
 
 	env.execMock.EXPECT().GetTxs(mock.Anything).Return([][]byte{tx1, tx2}, nil).Once()
 
-	submitted, err := env.reaper.drainMempool()
+	submitted, err := env.reaper.drainMempool(nil)
 	assert.NoError(t, err)
 	assert.False(t, submitted)
 	assert.False(t, env.wasNotified())
@@ -129,7 +129,7 @@ func TestReaper_PartialSeen_FiltersAndPersists(t *testing.T) {
 			return &coresequencer.SubmitBatchTxsResponse{}, nil
 		}).Once()
 
-	submitted, err := env.reaper.drainMempool()
+	submitted, err := env.reaper.drainMempool(nil)
 	assert.NoError(t, err)
 	assert.True(t, submitted)
 	assert.True(t, env.cache.IsTxSeen(hashTx(txOld)))
@@ -147,7 +147,7 @@ func TestReaper_SequencerError_NoPersistence_NoNotify(t *testing.T) {
 	env.seqMock.EXPECT().SubmitBatchTxs(mock.Anything, mock.AnythingOfType("sequencer.SubmitBatchTxsRequest")).
 		Return((*coresequencer.SubmitBatchTxsResponse)(nil), assert.AnError).Once()
 
-	_, err := env.reaper.drainMempool()
+	_, err := env.reaper.drainMempool(nil)
 	assert.Error(t, err)
 	assert.False(t, env.cache.IsTxSeen(hashTx(tx)))
 	assert.False(t, env.wasNotified())
@@ -169,7 +169,7 @@ func TestReaper_DrainsMempoolInMultipleRounds(t *testing.T) {
 			return &coresequencer.SubmitBatchTxsResponse{}, nil
 		}).Twice()
 
-	submitted, err := env.reaper.drainMempool()
+	submitted, err := env.reaper.drainMempool(nil)
 	assert.NoError(t, err)
 	assert.True(t, submitted)
 	assert.True(t, env.cache.IsTxSeen(hashTx(tx1)))
@@ -183,7 +183,7 @@ func TestReaper_EmptyMempool_NoAction(t *testing.T) {
 
 	env.execMock.EXPECT().GetTxs(mock.Anything).Return(nil, nil).Once()
 
-	submitted, err := env.reaper.drainMempool()
+	submitted, err := env.reaper.drainMempool(nil)
 	assert.NoError(t, err)
 	assert.False(t, submitted)
 	assert.False(t, env.wasNotified())
@@ -201,7 +201,7 @@ func TestReaper_HashComputedOnce(t *testing.T) {
 	env.seqMock.EXPECT().SubmitBatchTxs(mock.Anything, mock.AnythingOfType("sequencer.SubmitBatchTxsRequest")).
 		Return(&coresequencer.SubmitBatchTxsResponse{}, nil).Once()
 
-	submitted, err := env.reaper.drainMempool()
+	submitted, err := env.reaper.drainMempool(nil)
 	assert.NoError(t, err)
 	assert.True(t, submitted)
 	assert.True(t, env.cache.IsTxSeen(expectedHash))
@@ -227,7 +227,7 @@ func TestReaper_NilCallback_NoPanic(t *testing.T) {
 	mockSeq.EXPECT().SubmitBatchTxs(mock.Anything, mock.AnythingOfType("sequencer.SubmitBatchTxsRequest")).
 		Return(&coresequencer.SubmitBatchTxsResponse{}, nil).Once()
 
-	submitted, err := r.drainMempool()
+	submitted, err := r.drainMempool(nil)
 	assert.NoError(t, err)
 	assert.True(t, submitted)
 }

@@ -162,14 +162,20 @@ func (e *Executor) SetBlockProducer(bp BlockProducer) {
 }
 
 // Start begins the execution component
-func (e *Executor) Start(ctx context.Context) error {
+func (e *Executor) Start(ctx context.Context) (err error) {
 	if e.cancel != nil {
 		return errors.New("executor already started")
 	}
 	e.ctx, e.cancel = context.WithCancel(ctx)
+	defer func() { // if error during init cancel context
+		if err != nil {
+			e.cancel()
+			e.ctx, e.cancel = nil, nil
+		}
+	}()
 
 	// Initialize state
-	if err := e.initializeState(); err != nil {
+	if err = e.initializeState(); err != nil {
 		return fmt.Errorf("failed to initialize state: %w", err)
 	}
 
