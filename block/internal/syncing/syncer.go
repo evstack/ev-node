@@ -243,6 +243,11 @@ func (s *Syncer) Stop(ctx context.Context) error {
 	if s.daFollower != nil {
 		s.daFollower.Stop()
 	}
+
+	if s.raftRetriever != nil {
+		s.raftRetriever.Stop()
+	}
+
 	s.wg.Wait()
 
 	// Skip draining if we're shutting down due to a critical error (e.g. execution

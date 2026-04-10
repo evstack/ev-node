@@ -72,14 +72,8 @@ type FSM struct {
 }
 
 // NewNode creates a new raft node
-func NewNode(cfg *Config, logger zerolog.Logger) (*Node, error) {
-	suppressBoltNoise.Do(func() {
-		log.SetOutput(&boltTxClosedFilter{w: os.Stderr})
-	})
-	if err := os.MkdirAll(cfg.RaftDir, 0755); err != nil {
-		return nil, fmt.Errorf("create raft dir: %w", err)
-	}
-
+// buildRaftConfig converts a Node Config into a hashicorp/raft Config.
+func buildRaftConfig(cfg *Config) *raft.Config {
 	raftConfig := raft.DefaultConfig()
 	raftConfig.LocalID = raft.ServerID(cfg.NodeID)
 	raftConfig.LogLevel = "INFO"
@@ -94,6 +88,18 @@ func NewNode(cfg *Config, logger zerolog.Logger) (*Node, error) {
 	if cfg.TrailingLogs > 0 {
 		raftConfig.TrailingLogs = cfg.TrailingLogs
 	}
+	return raftConfig
+}
+
+func NewNode(cfg *Config, logger zerolog.Logger) (*Node, error) {
+	suppressBoltNoise.Do(func() {
+		log.SetOutput(&boltTxClosedFilter{w: os.Stderr})
+	})
+	if err := os.MkdirAll(cfg.RaftDir, 0755); err != nil {
+		return nil, fmt.Errorf("create raft dir: %w", err)
+	}
+
+	raftConfig := buildRaftConfig(cfg)
 
 	startPointer := new(atomic.Pointer[RaftBlockState])
 	startPointer.Store(&RaftBlockState{})
@@ -218,7 +224,9 @@ func (n *Node) Stop() error {
 		n.logger.Warn().Err(err).Msg("timed out waiting for raft messages to land during shutdown")
 	}
 	if n.IsLeader() {
-		_ = n.leadershipTransfer()
+		if err := n.leadershipTransfer(); err != nil {
+			n.logger.Warn().Err(err).Msg("leadership transfer on shutdown failed")
+		}
 	}
 	return n.raft.Shutdown().Error()
 }

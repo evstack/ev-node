@@ -119,3 +119,44 @@ func TestNodeResignLeader_NilNoop(t *testing.T) {
 	var n *Node
 	assert.NoError(t, n.ResignLeader())
 }
+
+func TestNodeResignLeader_NotLeaderNoop(t *testing.T) {
+	// Non-nil node with nil raft field — IsLeader() returns false, no transfer attempted.
+	n := &Node{}
+	assert.NoError(t, n.ResignLeader())
+}
+
+func TestNewNode_SnapshotConfigApplied(t *testing.T) {
+	specs := map[string]struct {
+		cfg                        *Config
+		expectedSnapshotThreshold  uint64
+		expectedTrailingLogs       uint64
+	}{
+		"custom values applied": {
+			cfg: &Config{
+				NodeID:            "node1",
+				SnapshotThreshold: 1000,
+				TrailingLogs:      500,
+			},
+			expectedSnapshotThreshold: 1000,
+			expectedTrailingLogs:      500,
+		},
+		"zero values use defaults": {
+			cfg: &Config{
+				NodeID:            "node1",
+				SnapshotThreshold: 0,
+				TrailingLogs:      0,
+			},
+			expectedSnapshotThreshold: raft.DefaultConfig().SnapshotThreshold,
+			expectedTrailingLogs:      raft.DefaultConfig().TrailingLogs,
+		},
+	}
+
+	for name, spec := range specs {
+		t.Run(name, func(t *testing.T) {
+			rc := buildRaftConfig(spec.cfg)
+			assert.Equal(t, spec.expectedSnapshotThreshold, rc.SnapshotThreshold)
+			assert.Equal(t, spec.expectedTrailingLogs, rc.TrailingLogs)
+		})
+	}
+}

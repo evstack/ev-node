@@ -187,7 +187,7 @@ const (
 	FlagRaftBootstrap = FlagPrefixEvnode + "raft.bootstrap"
 	// FlagRaftPeers is a flag for specifying Raft peer addresses
 	FlagRaftPeers = FlagPrefixEvnode + "raft.peers"
-	// FlagRaftSnapCount is a flag for specifying snapshot frequency
+	// FlagRaftSnapCount is a flag for specifying how many snapshot files to retain on disk
 	FlagRaftSnapCount = FlagPrefixEvnode + "raft.snap_count"
 	// FlagRaftSendTimeout max time to wait for a message to be sent to a peer
 	FlagRaftSendTimeout = FlagPrefixEvnode + "raft.send_timeout"
@@ -408,7 +408,7 @@ type RaftConfig struct {
 	RaftDir            string        `mapstructure:"raft_dir" yaml:"raft_dir" comment:"Directory for Raft logs and snapshots"`
 	Bootstrap          bool          `mapstructure:"bootstrap" yaml:"bootstrap" comment:"Bootstrap a new static Raft cluster during initial bring-up"`
 	Peers              string        `mapstructure:"peers" yaml:"peers" comment:"Comma-separated list of peer Raft addresses (nodeID@host:port)"`
-	SnapCount          uint64        `mapstructure:"snap_count" yaml:"snap_count" comment:"Number of log entries between snapshots"`
+	SnapCount          uint64        `mapstructure:"snap_count" yaml:"snap_count" comment:"Number of snapshot files to retain on disk"`
 	SendTimeout        time.Duration `mapstructure:"send_timeout" yaml:"send_timeout" comment:"Max duration to wait for a message to be sent to a peer"`
 	HeartbeatTimeout   time.Duration `mapstructure:"heartbeat_timeout" yaml:"heartbeat_timeout" comment:"Time between leader heartbeats to followers"`
 	LeaderLeaseTimeout time.Duration `mapstructure:"leader_lease_timeout" yaml:"leader_lease_timeout" comment:"Duration of the leader lease"`
@@ -657,7 +657,7 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().String(FlagRaftDir, def.Raft.RaftDir, "directory for Raft logs and snapshots")
 	cmd.Flags().Bool(FlagRaftBootstrap, def.Raft.Bootstrap, "bootstrap a new static Raft cluster during initial bring-up")
 	cmd.Flags().String(FlagRaftPeers, def.Raft.Peers, "comma-separated list of peer Raft addresses (nodeID@host:port)")
-	cmd.Flags().Uint64(FlagRaftSnapCount, def.Raft.SnapCount, "number of log entries between snapshots")
+	cmd.Flags().Uint64(FlagRaftSnapCount, def.Raft.SnapCount, "number of snapshot files to retain on disk")
 	cmd.Flags().Duration(FlagRaftSendTimeout, def.Raft.SendTimeout, "max duration to wait for a message to be sent to a peer")
 	cmd.Flags().Duration(FlagRaftHeartbeatTimeout, def.Raft.HeartbeatTimeout, "time between leader heartbeats to followers")
 	cmd.Flags().Duration(FlagRaftLeaderLeaseTimeout, def.Raft.LeaderLeaseTimeout, "duration of the leader lease")
