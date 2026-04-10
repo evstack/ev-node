@@ -56,6 +56,7 @@ type Config struct {
 	Peers              []string
 	SnapCount          uint64
 	SendTimeout        time.Duration
+	ShutdownTimeout    time.Duration
 	HeartbeatTimeout   time.Duration
 	LeaderLeaseTimeout time.Duration
 	ElectionTimeout    time.Duration
@@ -71,7 +72,6 @@ type FSM struct {
 	applyCh chan<- RaftApplyMsg
 }
 
-// NewNode creates a new raft node
 // buildRaftConfig converts a Node Config into a hashicorp/raft Config.
 func buildRaftConfig(cfg *Config) *raft.Config {
 	raftConfig := raft.DefaultConfig()
@@ -220,7 +220,7 @@ func (n *Node) Stop() error {
 	}
 	// Wait for FSM to apply all committed logs before shutdown to prevent state loss.
 	// This ensures pending raft messages are processed before the node stops.
-	if err := n.waitForMsgsLanded(n.config.SendTimeout); err != nil {
+	if err := n.waitForMsgsLanded(n.config.ShutdownTimeout); err != nil {
 		n.logger.Warn().Err(err).Msg("timed out waiting for raft messages to land during shutdown")
 	}
 	if n.IsLeader() {

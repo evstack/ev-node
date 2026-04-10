@@ -228,10 +228,19 @@ func StartNode(
 		// This gives the cluster a chance to elect a new leader before this node
 		// stops producing blocks, shrinking the unconfirmed-block window.
 		if resigner, ok := rollnode.(node.LeaderResigner); ok {
-			if err := resigner.ResignLeader(); err != nil {
-				logger.Warn().Err(err).Msg("leadership resign on shutdown failed")
-			} else {
-				logger.Info().Msg("leadership resigned before shutdown")
+			resignCtx, resignCancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer resignCancel()
+			resignDone := make(chan error, 1)
+			go func() { resignDone <- resigner.ResignLeader() }()
+			select {
+			case err := <-resignDone:
+				if err != nil {
+					logger.Warn().Err(err).Msg("leadership resign on shutdown failed")
+				} else {
+					logger.Info().Msg("leadership resigned before shutdown")
+				}
+			case <-resignCtx.Done():
+				logger.Warn().Msg("leadership resign timed out")
 			}
 		}
 		cancel()

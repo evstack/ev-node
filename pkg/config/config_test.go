@@ -131,6 +131,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagRaftPeers, DefaultConfig().Raft.Peers)
 	assertFlagValue(t, flags, FlagRaftSnapCount, DefaultConfig().Raft.SnapCount)
 	assertFlagValue(t, flags, FlagRaftSendTimeout, DefaultConfig().Raft.SendTimeout)
+	assertFlagValue(t, flags, FlagRaftShutdownTimeout, DefaultConfig().Raft.ShutdownTimeout)
 	assertFlagValue(t, flags, FlagRaftHeartbeatTimeout, DefaultConfig().Raft.HeartbeatTimeout)
 	assertFlagValue(t, flags, FlagRaftLeaderLeaseTimeout, DefaultConfig().Raft.LeaderLeaseTimeout)
 	assertFlagValue(t, flags, FlagRaftElectionTimeout, DefaultConfig().Raft.ElectionTimeout)
@@ -143,7 +144,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagPruningInterval, DefaultConfig().Pruning.Interval.Duration)
 
 	// Count the number of flags we're explicitly checking
-	expectedFlagCount := 81 // Update this number if you add more flag checks above
+	expectedFlagCount := 82 // Update this number if you add more flag checks above
 
 	// Get the actual number of flags (both regular and persistent)
 	actualFlagCount := 0
@@ -404,8 +405,10 @@ func TestRaftConfig_Validate(t *testing.T) {
 			Peers:              "",
 			SnapCount:          1,
 			SendTimeout:        1 * time.Second,
+			ShutdownTimeout:    5 * time.Second,
 			HeartbeatTimeout:   1 * time.Second,
 			LeaderLeaseTimeout: 1 * time.Second,
+			ElectionTimeout:    2 * time.Second,
 		}
 	}
 
@@ -442,6 +445,17 @@ func TestRaftConfig_Validate(t *testing.T) {
 		"non-positive leader lease timeout": {
 			mutate: func(c *RaftConfig) { c.LeaderLeaseTimeout = 0 },
 			expErr: "leader lease timeout must be positive",
+		},
+		"non-positive shutdown timeout": {
+			mutate: func(c *RaftConfig) { c.ShutdownTimeout = 0 },
+			expErr: "shutdown timeout must be positive",
+		},
+		"election timeout less than heartbeat timeout": {
+			mutate: func(c *RaftConfig) { c.ElectionTimeout = 500 * time.Millisecond },
+			expErr: "election timeout (500ms) must be >= heartbeat timeout (1s)",
+		},
+		"zero election timeout skips check": {
+			mutate: func(c *RaftConfig) { c.ElectionTimeout = 0 },
 		},
 		"multiple invalid returns last": {
 			mutate: func(c *RaftConfig) {
