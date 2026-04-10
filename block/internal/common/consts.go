@@ -9,12 +9,12 @@ import "strconv"
 var defaultMaxBlobSizeStr = "5242880" // 5 MB
 
 // DefaultMaxBlobSize is the max blob size limit used for blob submission.
-var DefaultMaxBlobSize uint64 = 5 * 1024 * 1024
+var DefaultMaxBlobSize uint64
 
 func init() {
 	v, err := strconv.ParseUint(defaultMaxBlobSizeStr, 10, 64)
 	if err != nil || v == 0 {
-		DefaultMaxBlobSize = 5 * 1024 * 1024
+		DefaultMaxBlobSize = 5 * 1024 * 1024 // 5 MB fallback
 		return
 	}
 	DefaultMaxBlobSize = v

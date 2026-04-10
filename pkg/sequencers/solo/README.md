@@ -32,7 +32,7 @@ flowchart TD
     B -->|No| C["Return ErrInvalidID"]
     B -->|Yes| D{"Empty batch?"}
     D -->|Yes| E["Return OK"]
-    F -->|No| H["Append txs to queue"]
+    D -->|No| H["Append txs to queue"]
     H --> E
 ```
 
