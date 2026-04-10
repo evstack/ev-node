@@ -451,7 +451,9 @@ func (c RaftConfig) Validate() error {
 		multiErr = errors.Join(multiErr, fmt.Errorf("leader lease timeout must be positive"))
 	}
 
-	if c.ElectionTimeout > 0 && c.ElectionTimeout < c.HeartbeatTimeout {
+	if c.ElectionTimeout < 0 {
+		multiErr = errors.Join(multiErr, fmt.Errorf("election timeout (%v) must be >= 0", c.ElectionTimeout))
+	} else if c.ElectionTimeout > 0 && c.ElectionTimeout < c.HeartbeatTimeout {
 		multiErr = errors.Join(multiErr, fmt.Errorf("election timeout (%v) must be >= heartbeat timeout (%v)", c.ElectionTimeout, c.HeartbeatTimeout))
 	}
 

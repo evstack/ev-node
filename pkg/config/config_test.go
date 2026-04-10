@@ -450,6 +450,10 @@ func TestRaftConfig_Validate(t *testing.T) {
 			mutate: func(c *RaftConfig) { c.ShutdownTimeout = 0 },
 			expErr: "shutdown timeout must be positive",
 		},
+		"negative election timeout rejected": {
+			mutate: func(c *RaftConfig) { c.ElectionTimeout = -1 * time.Second },
+			expErr: "election timeout (-1s) must be >= 0",
+		},
 		"election timeout less than heartbeat timeout": {
 			mutate: func(c *RaftConfig) { c.ElectionTimeout = 500 * time.Millisecond },
 			expErr: "election timeout (500ms) must be >= heartbeat timeout (1s)",
