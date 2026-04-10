@@ -162,7 +162,11 @@ func (s *Syncer) SetBlockSyncer(bs BlockSyncer) {
 }
 
 // Start begins the syncing component
+// The component should not be started after being stopped.
 func (s *Syncer) Start(ctx context.Context) (err error) {
+	if s.cancel != nil {
+		return errors.New("syncer already started")
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	s.ctx, s.cancel = ctx, cancel
 
@@ -275,7 +279,6 @@ func (s *Syncer) Stop(ctx context.Context) error {
 
 	s.logger.Info().Msg("syncer stopped")
 	close(s.heightInCh)
-	s.cancel = nil
 	return nil
 }
 

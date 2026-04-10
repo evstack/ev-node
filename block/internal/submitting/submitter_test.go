@@ -289,7 +289,6 @@ func TestSubmitter_processDAInclusionLoop_advances(t *testing.T) {
 	cm.SetHeaderDAIncluded(h2.Hash().String(), 101, 2)
 	cm.SetDataDAIncluded(d2.DACommitment().String(), 101, 2)
 
-	s.ctx, s.cancel = ctx, cancel
 	require.NoError(t, s.initializeDAIncludedHeight(ctx))
 	require.Equal(t, uint64(0), s.GetDAIncludedHeight())
 
@@ -518,7 +517,6 @@ func TestSubmitter_CacheClearedOnHeightInclusion(t *testing.T) {
 	cm.SetHeaderDAIncluded(h2.Hash().String(), 101, 2)
 	cm.SetDataDAIncluded(d2.DACommitment().String(), 101, 2)
 
-	s.ctx, s.cancel = ctx, cancel
 	require.NoError(t, s.initializeDAIncludedHeight(ctx))
 	require.Equal(t, uint64(0), s.GetDAIncludedHeight())
 

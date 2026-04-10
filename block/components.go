@@ -278,9 +278,9 @@ func newAggregatorComponents(
 		sequencer,
 		genesis,
 		logger,
-		executor,
 		cacheManager,
 		config.Node.ScrapeInterval.Duration,
+		executor.NotifyNewTransactions,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create reaper: %w", err)
