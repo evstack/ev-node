@@ -183,13 +183,13 @@ func TestNodeStartNilNoop(t *testing.T) {
 
 func TestNodeResignLeader_NilNoop(t *testing.T) {
 	var n *Node
-	assert.NoError(t, n.ResignLeader())
+	assert.NoError(t, n.ResignLeader(context.Background()))
 }
 
 func TestNodeResignLeader_NotLeaderNoop(t *testing.T) {
 	// Non-nil node with nil raft field — IsLeader() returns false, no transfer attempted.
 	n := &Node{}
-	assert.NoError(t, n.ResignLeader())
+	assert.NoError(t, n.ResignLeader(context.Background()))
 }
 
 func TestNewNode_SnapshotConfigApplied(t *testing.T) {

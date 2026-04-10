@@ -93,7 +93,7 @@ func buildRaftConfig(cfg *Config) *raft.Config {
 
 func NewNode(cfg *Config, logger zerolog.Logger) (*Node, error) {
 	suppressBoltNoise.Do(func() {
-		log.SetOutput(&boltTxClosedFilter{w: os.Stderr})
+		log.SetOutput(&boltTxClosedFilter{w: log.Writer()})
 	})
 	if err := os.MkdirAll(cfg.RaftDir, 0755); err != nil {
 		return nil, fmt.Errorf("create raft dir: %w", err)
@@ -278,11 +278,19 @@ func (n *Node) leadershipTransfer() error {
 // It is a no-op when the node is nil or not currently the leader.
 // Call this before cancelling the node context on graceful shutdown to minimise
 // the window where a dying leader could still serve blocks.
-func (n *Node) ResignLeader() error {
+// The transfer is abandoned and ctx.Err() is returned if ctx expires first.
+func (n *Node) ResignLeader(ctx context.Context) error {
 	if n == nil || !n.IsLeader() {
 		return nil
 	}
-	return n.leadershipTransfer()
+	done := make(chan error, 1)
+	go func() { done <- n.leadershipTransfer() }()
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (n *Node) Config() Config {
