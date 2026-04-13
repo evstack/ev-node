@@ -83,6 +83,13 @@ func DefaultConfig() Config {
 			BatchSizeThreshold:       0.8,
 			BatchMaxDelay:            DurationWrapper{0}, // 0 means use DA BlockTime
 			BatchMinItems:            1,
+			Fiber: FiberDAConfig{
+				Enabled:             false,
+				StateAddress:        "127.0.0.1:9090",
+				KeyName:             "default-fibre",
+				UploadConcurrency:   100,
+				DownloadConcurrency: 34,
+			},
 		},
 		Instrumentation: DefaultInstrumentationConfig(),
 		Log: LogConfig{

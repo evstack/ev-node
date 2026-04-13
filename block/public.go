@@ -63,6 +63,28 @@ func NewDAClient(
 	return base
 }
 
+// NewFiberDAClient creates a new DA client backed by the Fiber protocol.
+// The fiberClient parameter must implement the da.FiberClient interface.
+// The returned client implements both DAClient and DAVerifier interfaces.
+func NewFiberDAClient(
+	fiberClient da.FiberClient,
+	config config.Config,
+	logger zerolog.Logger,
+) FullDAClient {
+	base := da.NewFiberClient(da.FiberConfig{
+		Client:                    fiberClient,
+		Logger:                    logger,
+		DefaultTimeout:            config.DA.RequestTimeout.Duration,
+		Namespace:                 config.DA.GetNamespace(),
+		DataNamespace:             config.DA.GetDataNamespace(),
+		ForcedInclusionNamespace:  config.DA.GetForcedInclusionNamespace(),
+	})
+	if config.Instrumentation.IsTracingEnabled() {
+		return da.WithTracingClient(base)
+	}
+	return base
+}
+
 // Exported errors used by the sequencers
 var (
 	// ErrForceInclusionNotConfigured is returned when force inclusion is not configured.

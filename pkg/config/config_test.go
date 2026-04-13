@@ -78,6 +78,18 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagDAMempoolTTL, DefaultConfig().DA.MempoolTTL)
 	assertFlagValue(t, flags, FlagDAMaxSubmitAttempts, DefaultConfig().DA.MaxSubmitAttempts)
 	assertFlagValue(t, flags, FlagDARequestTimeout, DefaultConfig().DA.RequestTimeout.Duration)
+	assertFlagValue(t, flags, FlagDABatchingStrategy, DefaultConfig().DA.BatchingStrategy)
+	assertFlagValue(t, flags, FlagDABatchSizeThreshold, DefaultConfig().DA.BatchSizeThreshold)
+	assertFlagValue(t, flags, FlagDABatchMaxDelay, DefaultConfig().DA.BatchMaxDelay.Duration)
+	assertFlagValue(t, flags, FlagDABatchMinItems, DefaultConfig().DA.BatchMinItems)
+
+	// DA Fiber flags
+	assertFlagValue(t, flags, FlagDAFiberEnabled, DefaultConfig().DA.Fiber.Enabled)
+	assertFlagValue(t, flags, FlagDAFiberStateAddress, DefaultConfig().DA.Fiber.StateAddress)
+	assertFlagValue(t, flags, FlagDAFiberKeyringPath, DefaultConfig().DA.Fiber.KeyringPath)
+	assertFlagValue(t, flags, FlagDAFiberKeyName, DefaultConfig().DA.Fiber.KeyName)
+	assertFlagValue(t, flags, FlagDAFiberUploadConcurrency, DefaultConfig().DA.Fiber.UploadConcurrency)
+	assertFlagValue(t, flags, FlagDAFiberDownloadConcurrency, DefaultConfig().DA.Fiber.DownloadConcurrency)
 
 	// P2P flags
 	assertFlagValue(t, flags, FlagP2PListenAddress, DefaultConfig().P2P.ListenAddress)
@@ -140,7 +152,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagPruningInterval, DefaultConfig().Pruning.Interval.Duration)
 
 	// Count the number of flags we're explicitly checking
-	expectedFlagCount := 78 // Update this number if you add more flag checks above
+	expectedFlagCount := 84 // Update this number if you add more flag checks above
 
 	// Get the actual number of flags (both regular and persistent)
 	actualFlagCount := 0
