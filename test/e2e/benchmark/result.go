@@ -20,6 +20,13 @@ type traceResult struct {
 	// empty when the trace provider doesn't support rich span collection.
 	evNodeRich []richSpan
 	evRethRich []richSpan
+
+	// resource attributes extracted from trace spans (OTEL_RESOURCE_ATTRIBUTES).
+	evNodeAttrs *resourceAttrs
+	evRethAttrs *resourceAttrs
+
+	// tracesURL is a link to the trace UI for the ev-node service.
+	tracesURL string
 }
 
 // displayFlowcharts renders ASCII flowcharts from rich spans. Falls back to

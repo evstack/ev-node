@@ -40,9 +40,11 @@ func (s *SpamoorSuite) SetupTest() {
 
 // env holds a fully-wired environment created by setupEnv.
 type env struct {
-	traces     traceProvider
-	spamoorAPI *spamoor.API
-	ethClient  *ethclient.Client
+	traces             traceProvider
+	spamoorAPI         *spamoor.API
+	ethClient          *ethclient.Client
+	evNodeServiceName  string
+	evRethServiceName  string
 }
 
 // TODO: temporary hardcoded tag, will be replaced with a proper release tag
@@ -151,8 +153,10 @@ func (s *SpamoorSuite) setupLocalEnv(cfg benchConfig) *env {
 			t:         t,
 			startTime: time.Now(),
 		},
-		spamoorAPI: spNode.API(),
-		ethClient:  ethClient,
+		spamoorAPI:        spNode.API(),
+		ethClient:         ethClient,
+		evNodeServiceName: cfg.ServiceName,
+		evRethServiceName: "ev-reth",
 	}
 }
 
@@ -205,39 +209,47 @@ func (s *SpamoorSuite) setupExternalEnv(cfg benchConfig, rpcURL string) *env {
 			t:         t,
 			startTime: time.Now(),
 		},
-		spamoorAPI: spNode.API(),
-		ethClient:  ethClient,
+		spamoorAPI:        spNode.API(),
+		ethClient:         ethClient,
+		evNodeServiceName: envOrDefault("BENCH_EVNODE_SERVICE_NAME", "ev-node"),
+		evRethServiceName: envOrDefault("BENCH_EVRETH_SERVICE_NAME", "ev-reth"),
 	}
 }
 
 // collectTraces fetches ev-node traces (required) and ev-reth traces (optional)
 // from the configured trace provider, then displays flowcharts.
-func (s *SpamoorSuite) collectTraces(e *env, serviceName string) *traceResult {
+func (s *SpamoorSuite) collectTraces(e *env) *traceResult {
 	t := s.T()
 	ctx := t.Context()
 
-	evNodeSpans, err := e.traces.collectSpans(ctx, serviceName)
-	s.Require().NoError(err, "failed to collect %s traces", serviceName)
+	evNodeSpans, err := e.traces.collectSpans(ctx, e.evNodeServiceName)
+	s.Require().NoError(err, "failed to collect %s traces", e.evNodeServiceName)
 
 	tr := &traceResult{
 		evNode: evNodeSpans,
-		evReth: e.traces.tryCollectSpans(ctx, "ev-reth"),
+		evReth: e.traces.tryCollectSpans(ctx, e.evRethServiceName),
 	}
 
-	if link := e.traces.uiURL(serviceName); link != "" {
+	if link := e.traces.uiURL(e.evNodeServiceName, time.Now()); link != "" {
 		t.Logf("traces UI: %s", link)
+		tr.tracesURL = link
 	}
 
 	if rc, ok := e.traces.(richSpanCollector); ok {
-		if spans, err := rc.collectRichSpans(ctx, serviceName); err == nil {
+		if spans, err := rc.collectRichSpans(ctx, e.evNodeServiceName); err == nil {
 			tr.evNodeRich = spans
 		}
-		if spans, err := rc.collectRichSpans(ctx, "ev-reth"); err == nil {
+		if spans, err := rc.collectRichSpans(ctx, e.evRethServiceName); err == nil {
 			tr.evRethRich = spans
 		}
 	}
 
-	tr.displayFlowcharts(t, serviceName)
+	if rac, ok := e.traces.(resourceAttrCollector); ok {
+		tr.evNodeAttrs = rac.fetchResourceAttrs(ctx, e.evNodeServiceName)
+		tr.evRethAttrs = rac.fetchResourceAttrs(ctx, e.evRethServiceName)
+	}
+
+	tr.displayFlowcharts(t, e.evNodeServiceName)
 	return tr
 }
 

@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changes
+
+- Improve reaper to sustain txs burst better [#3236](https://github.com/evstack/ev-node/pull/3236)
+
+## v1.1.0
+
+No changes from v1.1.0-rc.2.
+
+## v1.1.0-rc.2
+
+### Changes
+
+- Added publisher-mode synchronization option for failover scenarios with early P2P infrastructure readiness [#3222](https://github.com/evstack/ev-node/pull/3222)
+- Improve P2P transient network failure [#3212](https://github.com/evstack/ev-node/pull/3212)
+- Improve execution/evm check for stored meta not stale [#3221](https://github.com/evstack/ev-node/pull/3221)
+
+## v1.1.0-rc.1
+
 ### Added
 
 - Add AWS & GCP KMS signer backend [#3171](https://github.com/evstack/ev-node/pull/3171)
@@ -18,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Avoid evicting yet to be processed heights [#3204](https://github.com/evstack/ev-node/pull/3204)
+- Bound Badger index cache memory to prevent growth with chain length [3209](https://github.com/evstack/ev-node/pull/3209)
 - Refetch latest da height instead of da height +1 when P2P is offline [#3201](https://github.com/evstack/ev-node/pull/3201)
 - Fix race on startup sync. [#3162](https://github.com/evstack/ev-node/pull/3162)
 - Strict raft state. [#3167](https://github.com/evstack/ev-node/pull/3167)
@@ -233,96 +252,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated EVM execution client to use new `txpoolExt_getTxs` RPC API for retrieving pending transactions as RLP-encoded
   bytes
 
-### Deprecated
-
-<!-- Features that will be removed in future versions -->
-
 ### Removed
-
-<!-- Features that were removed -->
 
 - Removed `LastCommitHash`, `ConsensusHash`, and `LastResultsHash` from the canonical header representation in favor of
   slim headers (BREAKING; legacy hashes now live under
   `Header.Legacy`) ([#2766](https://github.com/evstack/ev-node/pull/2766))
-
-### Fixed
-
-<!-- Bug fixes -->
-
-### Security
-
-<!-- Security vulnerability fixes -->
-
-<!--
-## Category Guidelines:
-
-### Added
-- New features
-- New APIs
-- New configuration options
-- New commands
-- New integrations
-
-### Changed
-- API changes (breaking or non-breaking)
-- Behavior changes
-- Performance improvements
-- Refactoring (only if it affects users)
-- Documentation updates (major ones)
-- Default value changes
-
-### Deprecated
-- Features planned for removal
-- Old APIs being phased out
-- Configuration options being replaced
-
-### Removed
-- Deleted features
-- Removed APIs
-- Removed configuration options
-- Removed dependencies
-
-### Fixed
-- Bug fixes
-- Crash fixes
-- Memory leak fixes
-- Race condition fixes
-- Incorrect behavior fixes
-
-### Security
-- Security vulnerability patches
-- Security hardening
-- Authentication/authorization fixes
-- Cryptographic updates
-
-## Writing Good Changelog Entries:
-
-DO:
-- Start with a verb (Added, Fixed, Changed, etc.)
-- Include PR number: "Fixed memory leak in block sync (#1234)"
-- Be concise but descriptive
-- Focus on WHAT changed and WHY it matters to users
-- Group related changes
-
-DON'T:
-- Include internal refactoring that doesn't affect users
-- Use technical jargon without explanation
-- Write from developer perspective
-- Include every minor change
-
-## Version Numbering:
-
-Given a version number MAJOR.MINOR.PATCH:
-
-- MAJOR: Incompatible API changes
-- MINOR: Backwards-compatible functionality additions
-- PATCH: Backwards-compatible bug fixes
-
-Pre-release versions: 0.x.y (anything may change)
--->
-
-<!-- Links -->
-
--
 
 [Unreleased]: https://github.com/evstack/ev-node/compare/v1.0.0-beta.1...HEAD

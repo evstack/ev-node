@@ -35,7 +35,7 @@ type traceProvider interface {
 	collectSpans(ctx context.Context, serviceName string) ([]e2e.TraceSpan, error)
 	tryCollectSpans(ctx context.Context, serviceName string) []e2e.TraceSpan
 	// uiURL returns a link to view traces for the given service, or empty string if not available.
-	uiURL(serviceName string) string
+	uiURL(serviceName string, end time.Time) string
 	// resetStartTime sets the trace collection window start to now.
 	resetStartTime()
 }
@@ -44,6 +44,12 @@ type traceProvider interface {
 // collecting spans with full parent-child hierarchy information.
 type richSpanCollector interface {
 	collectRichSpans(ctx context.Context, serviceName string) ([]richSpan, error)
+}
+
+// resourceAttrCollector is an optional interface for providers that can
+// extract OTEL resource attributes from trace spans.
+type resourceAttrCollector interface {
+	fetchResourceAttrs(ctx context.Context, serviceName string) *resourceAttrs
 }
 
 // victoriaTraceProvider collects spans from a VictoriaTraces instance via its
@@ -58,13 +64,15 @@ func (v *victoriaTraceProvider) resetStartTime() {
 	v.startTime = time.Now()
 }
 
-func (v *victoriaTraceProvider) uiURL(serviceName string) string {
+func (v *victoriaTraceProvider) uiURL(serviceName string, end time.Time) string {
 	query := fmt.Sprintf(`_stream:{resource_attr:service.name="%s"}`, serviceName)
-	return fmt.Sprintf("%s/select/vmui/#/query?query=%s&start=%s&end=%s",
+	rangeInput := end.Sub(v.startTime).Round(time.Second).String()
+	endInput := end.UTC().Format("2006-01-02T15:04:05")
+	return fmt.Sprintf("%s/select/vmui/?#/?g0.expr=%s&g0.range_input=%s&g0.end_input=%s",
 		strings.TrimRight(v.queryURL, "/"),
 		neturl.QueryEscape(query),
-		v.startTime.Format(time.RFC3339),
-		time.Now().Format(time.RFC3339))
+		rangeInput,
+		endInput)
 }
 
 func (v *victoriaTraceProvider) collectSpans(ctx context.Context, serviceName string) ([]e2e.TraceSpan, error) {
@@ -254,6 +262,50 @@ func (v *victoriaTraceProvider) fetchAllSpans(ctx context.Context, serviceName s
 	return spans, nil
 }
 
+// fetchResourceAttrs queries a single span and extracts OTEL resource attributes
+// from it. Uses limit=1 to avoid streaming the full span set on long-lived
+// instances. Returns nil if no spans are available.
+func (v *victoriaTraceProvider) fetchResourceAttrs(ctx context.Context, serviceName string) *resourceAttrs {
+	end := time.Now()
+	query := fmt.Sprintf(`_stream:{resource_attr:service.name="%s"}`, serviceName)
+	baseURL := strings.TrimRight(v.queryURL, "/")
+	url := fmt.Sprintf("%s/select/logsql/query?query=%s&start=%s&end=%s&limit=1",
+		baseURL,
+		neturl.QueryEscape(query),
+		v.startTime.Format(time.RFC3339Nano),
+		end.Format(time.RFC3339Nano))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		v.t.Logf("warning: failed to create resource attrs request: %v", err)
+		return nil
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		v.t.Logf("warning: failed to fetch resource attrs: %v", err)
+		return nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		v.t.Logf("warning: unexpected status %d fetching resource attrs", resp.StatusCode)
+		return nil
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		attrs := extractResourceAttrs(line)
+		return &attrs
+	}
+	return nil
+}
+
 // logsqlSpan maps the fields returned by VictoriaTraces' LogsQL endpoint.
 type logsqlSpan struct {
 	Name     string `json:"name"`
@@ -273,16 +325,47 @@ type logsqlRichSpan struct {
 // VictoriaTraces encodes it as resource_attr:'host.name which Go's
 // struct tags can't match due to the single quote.
 func extractHostName(line []byte) string {
+	return extractResourceAttr(line, "host.name")
+}
+
+// extractResourceAttr pulls a specific resource attribute from a raw LogsQL JSON line.
+// VictoriaTraces encodes resource attributes with keys like resource_attr:'host.name
+// which can't be mapped via struct tags.
+func extractResourceAttr(line []byte, attr string) string {
 	var raw map[string]string
 	if err := json.Unmarshal(line, &raw); err != nil {
 		return ""
 	}
 	for k, v := range raw {
-		if strings.Contains(k, "host.name") {
+		if strings.Contains(k, attr) {
 			return v
 		}
 	}
 	return ""
+}
+
+// resourceAttrs holds OTEL resource attributes extracted from trace spans.
+type resourceAttrs struct {
+	HostName    string `json:"host_name,omitempty"`
+	HostCPU     string `json:"host_cpu,omitempty"`
+	HostMemory  string `json:"host_memory,omitempty"`
+	HostType    string `json:"host_type,omitempty"`
+	OSName      string `json:"os_name,omitempty"`
+	OSVersion   string `json:"os_version,omitempty"`
+	ServiceType string `json:"service_type,omitempty"`
+}
+
+// extractResourceAttrs pulls all known OTEL resource attributes from a raw LogsQL JSON line.
+func extractResourceAttrs(line []byte) resourceAttrs {
+	return resourceAttrs{
+		HostName:    extractResourceAttr(line, "host.name"),
+		HostCPU:     extractResourceAttr(line, "host.cpu"),
+		HostMemory:  extractResourceAttr(line, "host.memory"),
+		HostType:    extractResourceAttr(line, "host.type"),
+		OSName:      extractResourceAttr(line, "os.name"),
+		OSVersion:   extractResourceAttr(line, "os.version"),
+		ServiceType: extractResourceAttr(line, "service.type"),
+	}
 }
 
 func (s logsqlSpan) SpanName() string { return s.Name }

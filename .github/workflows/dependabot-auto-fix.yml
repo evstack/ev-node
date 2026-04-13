@@ -18,12 +18,12 @@ jobs:
         with:
           ref: ${{ github.head_ref }}
 
-      - uses: actions/setup-go@v6.3.0
+      - uses: actions/setup-go@v6.4.0
         with:
           go-version-file: ./go.mod
 
       - name: Install just
-        uses: extractions/setup-just@v3
+        uses: extractions/setup-just@v4
 
       - name: Run dependency update
         run: just deps

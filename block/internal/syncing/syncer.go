@@ -162,7 +162,11 @@ func (s *Syncer) SetBlockSyncer(bs BlockSyncer) {
 }
 
 // Start begins the syncing component
+// The component should not be started after being stopped.
 func (s *Syncer) Start(ctx context.Context) (err error) {
+	if s.cancel != nil {
+		return errors.New("syncer already started")
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	s.ctx, s.cancel = ctx, cancel
 
@@ -275,7 +279,6 @@ func (s *Syncer) Stop(ctx context.Context) error {
 
 	s.logger.Info().Msg("syncer stopped")
 	close(s.heightInCh)
-	s.cancel = nil
 	return nil
 }
 
@@ -517,6 +520,11 @@ func (s *Syncer) waitForGenesis() bool {
 }
 
 func (s *Syncer) PipeEvent(ctx context.Context, event common.DAHeightEvent) error {
+	// Avoid sending already seen events to channel (would have been skipped in processHeightEvent anyway)
+	if s.cache.IsHeaderSeen(event.Header.Hash().String()) {
+		return nil
+	}
+
 	select {
 	case s.heightInCh <- event:
 		return nil
@@ -537,6 +545,7 @@ func (s *Syncer) processHeightEvent(ctx context.Context, event *common.DAHeightE
 		Uint64("height", height).
 		Uint64("da_height", event.DaHeight).
 		Str("hash", headerHash).
+		Str("source", string(event.Source)).
 		Msg("processing height event")
 
 	currentHeight, err := s.store.Height(ctx)
@@ -547,7 +556,10 @@ func (s *Syncer) processHeightEvent(ctx context.Context, event *common.DAHeightE
 
 	// Skip if already processed
 	if height <= currentHeight || s.cache.IsHeaderSeen(headerHash) {
-		s.logger.Debug().Uint64("height", height).Msg("height already processed")
+		s.logger.Debug().
+			Uint64("height", height).
+			Str("source", string(event.Source)).
+			Msg("height already processed")
 		return
 	}
 
@@ -656,6 +668,7 @@ func (s *Syncer) processHeightEvent(ctx context.Context, event *common.DAHeightE
 		s.logger.Error().Err(err).
 			Uint64("event-height", event.Header.Height()).
 			Uint64("state-height", s.getLastState().LastBlockHeight).
+			Str("source", string(event.Source)).
 			Msg("failed to sync next block")
 		// If the error is not due to a validation error, re-store the event as pending
 		switch {
@@ -684,6 +697,12 @@ var (
 // TrySyncNextBlock attempts to sync the next available block
 // the event is always the next block in sequence as processHeightEvent ensures it.
 func (s *Syncer) TrySyncNextBlock(ctx context.Context, event *common.DAHeightEvent) error {
+	return s.trySyncNextBlockWithState(ctx, event, s.getLastState())
+}
+
+// trySyncNextBlockWithState attempts to sync the next available block using
+// the provided current state as the validation/apply baseline.
+func (s *Syncer) trySyncNextBlockWithState(ctx context.Context, event *common.DAHeightEvent, currentState types.State) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -693,7 +712,6 @@ func (s *Syncer) TrySyncNextBlock(ctx context.Context, event *common.DAHeightEve
 	header := event.Header
 	data := event.Data
 	nextHeight := event.Header.Height()
-	currentState := s.getLastState()
 	headerHash := header.Hash().String()
 
 	s.logger.Info().Uint64("height", nextHeight).Str("source", string(event.Source)).Msg("syncing block")
@@ -1156,8 +1174,9 @@ func (s *Syncer) IsSyncedWithRaft(raftState *raft.RaftBlockState) (int, error) {
 		s.logger.Error().Err(err).Uint64("height", raftState.Height).Msg("failed to get header for sync check")
 		return 0, fmt.Errorf("get header for sync check at height %d: %w", raftState.Height, err)
 	}
-	if !bytes.Equal(header.Hash(), raftState.Hash) {
-		return 0, fmt.Errorf("header hash mismatch: %x vs %x", header.Hash(), raftState.Hash)
+	headerHash := header.Hash()
+	if !bytes.Equal(headerHash, raftState.Hash) {
+		return 0, fmt.Errorf("header hash mismatch: %x vs %x", headerHash, raftState.Hash)
 	}
 
 	return 0, nil
@@ -1190,6 +1209,7 @@ func (s *Syncer) RecoverFromRaft(ctx context.Context, raftState *raft.RaftBlockS
 			s.logger.Debug().Err(err).Msg("no state in store, using genesis defaults for recovery")
 			currentState = types.State{
 				ChainID:         s.genesis.ChainID,
+				InitialHeight:   s.genesis.InitialHeight,
 				LastBlockHeight: s.genesis.InitialHeight - 1,
 			}
 		}
@@ -1203,11 +1223,12 @@ func (s *Syncer) RecoverFromRaft(ctx context.Context, raftState *raft.RaftBlockS
 		return nil
 	} else if currentState.LastBlockHeight+1 == raftState.Height { // raft is 1 block ahead
 		// apply block
-		err := s.TrySyncNextBlock(ctx, &common.DAHeightEvent{
+		event := &common.DAHeightEvent{
 			Header: &header,
 			Data:   &data,
 			Source: "",
-		})
+		}
+		err := s.trySyncNextBlockWithState(ctx, event, currentState)
 		if err != nil {
 			return err
 		}

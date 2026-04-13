@@ -122,6 +122,18 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagRPCAddress, DefaultConfig().RPC.Address)
 	assertFlagValue(t, flags, FlagRPCEnableDAVisualization, DefaultConfig().RPC.EnableDAVisualization)
 
+	// Raft flags
+	assertFlagValue(t, flags, FlagRaftEnable, DefaultConfig().Raft.Enable)
+	assertFlagValue(t, flags, FlagRaftNodeID, DefaultConfig().Raft.NodeID)
+	assertFlagValue(t, flags, FlagRaftAddr, DefaultConfig().Raft.RaftAddr)
+	assertFlagValue(t, flags, FlagRaftDir, DefaultConfig().Raft.RaftDir)
+	assertFlagValue(t, flags, FlagRaftBootstrap, DefaultConfig().Raft.Bootstrap)
+	assertFlagValue(t, flags, FlagRaftPeers, DefaultConfig().Raft.Peers)
+	assertFlagValue(t, flags, FlagRaftSnapCount, DefaultConfig().Raft.SnapCount)
+	assertFlagValue(t, flags, FlagRaftSendTimeout, DefaultConfig().Raft.SendTimeout)
+	assertFlagValue(t, flags, FlagRaftHeartbeatTimeout, DefaultConfig().Raft.HeartbeatTimeout)
+	assertFlagValue(t, flags, FlagRaftLeaderLeaseTimeout, DefaultConfig().Raft.LeaderLeaseTimeout)
+
 	// Pruning flags
 	assertFlagValue(t, flags, FlagPruningMode, DefaultConfig().Pruning.Mode)
 	assertFlagValue(t, flags, FlagPruningKeepRecent, DefaultConfig().Pruning.KeepRecent)

@@ -74,7 +74,7 @@ func (s *SpamoorSuite) TestSpamoorSmoke() {
 	fail := sumCounter(metrics["spamoor_transactions_failed_total"])
 
 	// collect traces
-	traces := s.collectTraces(e, "ev-node-smoke")
+	traces := s.collectTraces(e)
 	w.addSpans(traces.allSpans())
 
 	s.Require().Greater(sent, float64(0), "at least one transaction should have been sent")

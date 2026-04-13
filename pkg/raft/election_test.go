@@ -25,6 +25,9 @@ func TestDynamicLeaderElectionRun(t *testing.T) {
 				m.EXPECT().leaderCh().Return((<-chan bool)(leaderCh))
 				m.EXPECT().leaderID().Return("other")
 				m.EXPECT().NodeID().Return("self")
+				m.EXPECT().Config().Return(testCfg())
+				m.EXPECT().waitForMsgsLanded(2 * time.Millisecond).Return(nil)
+				m.EXPECT().GetState().Return(&RaftBlockState{})
 
 				started := make(chan struct{})
 				follower := &testRunnable{startedCh: started}

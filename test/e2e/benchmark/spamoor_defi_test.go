@@ -29,17 +29,26 @@ func (s *SpamoorSuite) TestDeFiSimulation() {
 	w := newResultWriter(t, "DeFiSimulation")
 	defer w.flush()
 
+	var result *benchmarkResult
+	var wallClock time.Duration
+	var spamoorStats *runSpamoorStats
+	defer func() {
+		if result != nil {
+			emitRunResult(t, cfg, result, wallClock, spamoorStats)
+		}
+	}()
+
 	e := s.setupEnv(cfg)
 
 	uniswapConfig := map[string]any{
 		"throughput":      cfg.Throughput,
 		"total_count":     cfg.CountPerSpammer,
-		"max_pending":     50000,
+		"max_pending":     cfg.MaxPending,
 		"max_wallets":     cfg.MaxWallets,
 		"pair_count":      envInt("BENCH_PAIR_COUNT", 1),
-		"rebroadcast":     envInt("BENCH_REBROADCAST", 0),
-		"base_fee":        20,
-		"tip_fee":         2,
+		"rebroadcast":     cfg.Rebroadcast,
+		"base_fee":        cfg.BaseFee,
+		"tip_fee":         cfg.TipFee,
 		"refill_amount":   "10000000000000000000", // 10 ETH (swaps need ETH for WETH wrapping and router approvals)
 		"refill_balance":  "5000000000000000000",  // 5 ETH
 		"refill_interval": 600,
@@ -93,7 +102,7 @@ func (s *SpamoorSuite) TestDeFiSimulation() {
 	if err := waitForDrain(drainCtx, t.Logf, e.ethClient, 10); err != nil {
 		t.Logf("warning: %v", err)
 	}
-	wallClock := time.Since(loadStart)
+	wallClock = time.Since(loadStart)
 
 	endHeader, err := e.ethClient.HeaderByNumber(ctx, nil)
 	s.Require().NoError(err, "failed to get end block header")
@@ -104,10 +113,16 @@ func (s *SpamoorSuite) TestDeFiSimulation() {
 	bm, err := collectBlockMetrics(ctx, e.ethClient, startBlock, endBlock)
 	s.Require().NoError(err, "failed to collect block metrics")
 
-	traces := s.collectTraces(e, cfg.ServiceName)
+	traces := s.collectTraces(e)
 
-	result := newBenchmarkResult("DeFiSimulation", bm, traces)
+	result = newBenchmarkResult("DeFiSimulation", bm, traces)
 	s.Require().Greater(result.summary.SteadyState, time.Duration(0), "expected non-zero steady-state duration")
 	result.log(t, wallClock)
 	w.addEntries(result.entries())
+
+	metrics, mErr := e.spamoorAPI.GetMetrics()
+	s.Require().NoError(mErr, "failed to get final metrics")
+	sent := sumCounter(metrics["spamoor_transactions_sent_total"])
+	failed := sumCounter(metrics["spamoor_transactions_failed_total"])
+	spamoorStats = &runSpamoorStats{Sent: sent, Failed: failed}
 }

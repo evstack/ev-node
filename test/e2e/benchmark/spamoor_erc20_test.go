@@ -23,15 +23,24 @@ func (s *SpamoorSuite) TestERC20Throughput() {
 	w := newResultWriter(t, "ERC20Throughput")
 	defer w.flush()
 
+	var result *benchmarkResult
+	var wallClock time.Duration
+	var spamoorStats *runSpamoorStats
+	defer func() {
+		if result != nil {
+			emitRunResult(t, cfg, result, wallClock, spamoorStats)
+		}
+	}()
+
 	e := s.setupEnv(cfg)
 
 	erc20Config := map[string]any{
 		"throughput":      cfg.Throughput,
 		"total_count":     cfg.CountPerSpammer,
-		"max_pending":     50000,
-		"max_wallets":     200,
-		"base_fee":        20,
-		"tip_fee":         3,
+		"max_pending":     cfg.MaxPending,
+		"max_wallets":     cfg.MaxWallets,
+		"base_fee":        cfg.BaseFee,
+		"tip_fee":         cfg.TipFee,
 		"refill_amount":   "5000000000000000000",
 		"refill_balance":  "2000000000000000000",
 		"refill_interval": 600,
@@ -68,7 +77,7 @@ func (s *SpamoorSuite) TestERC20Throughput() {
 	if err := waitForDrain(drainCtx, t.Logf, e.ethClient, 10); err != nil {
 		t.Logf("warning: %v", err)
 	}
-	wallClock := time.Since(loadStart)
+	wallClock = time.Since(loadStart)
 
 	endHeader, err := e.ethClient.HeaderByNumber(ctx, nil)
 	s.Require().NoError(err, "failed to get end block header")
@@ -78,12 +87,14 @@ func (s *SpamoorSuite) TestERC20Throughput() {
 	bm, err := collectBlockMetrics(ctx, e.ethClient, startBlock, endBlock)
 	s.Require().NoError(err, "failed to collect block metrics")
 
-	traces := s.collectTraces(e, cfg.ServiceName)
+	traces := s.collectTraces(e)
 
-	result := newBenchmarkResult("ERC20Throughput", bm, traces)
+	result = newBenchmarkResult("ERC20Throughput", bm, traces)
 	s.Require().Greater(result.summary.SteadyState, time.Duration(0), "expected non-zero steady-state duration")
 	result.log(t, wallClock)
 	w.addEntries(result.entries())
+
+	spamoorStats = &runSpamoorStats{Sent: sent, Failed: failed}
 
 	s.Require().Greater(sent, float64(0), "at least one transaction should have been sent")
 	s.Require().Zero(failed, "no transactions should have failed")

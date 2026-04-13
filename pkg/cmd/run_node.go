@@ -149,7 +149,7 @@ func StartNode(
 		}
 	}
 
-	blobClient, err := blobrpc.NewWSClient(ctx, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
+	blobClient, err := blobrpc.NewWSClient(ctx, logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
 	if err != nil {
 		return fmt.Errorf("failed to create blob client: %w", err)
 	}

@@ -111,7 +111,7 @@ func createSequencer(
 	genesis genesis.Genesis,
 	executor execution.Executor,
 ) (coresequencer.Sequencer, error) {
-	blobClient, err := blobrpc.NewWSClient(ctx, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
+	blobClient, err := blobrpc.NewWSClient(ctx, logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create blob client: %w", err)
 	}
@@ -143,7 +143,7 @@ func createSequencer(
 		daClient,
 		nodeConfig,
 		[]byte(genesis.ChainID),
-		1000,
+		1_000_000,
 		genesis,
 		executor,
 	)

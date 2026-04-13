@@ -6,11 +6,20 @@ import (
 	badger4 "github.com/ipfs/go-ds-badger4"
 )
 
+const (
+	// DefaultBadgerIndexCacheSize bounds Badger's table index and bloom filter
+	// cache to avoid growth with chain length.
+	DefaultBadgerIndexCacheSize int64 = 256 << 20 // 256 MiB
+)
+
 // BadgerOptions returns ev-node tuned Badger options for the node workload.
 // These defaults favor write throughput for append-heavy usage.
 func BadgerOptions() *badger4.Options {
 	opts := badger4.DefaultOptions
 
+	// Bound Badger-owned caches explicitly instead of inheriting a large block
+	// cache and an unbounded index cache from the upstream defaults.
+	opts.Options = opts.WithIndexCacheSize(DefaultBadgerIndexCacheSize)
 	// Disable conflict detection to reduce write overhead; ev-node does not rely
 	// on Badger's multi-writer conflict checks for correctness.
 	opts.Options = opts.WithDetectConflicts(false)

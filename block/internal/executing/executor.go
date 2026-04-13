@@ -162,11 +162,20 @@ func (e *Executor) SetBlockProducer(bp BlockProducer) {
 }
 
 // Start begins the execution component
-func (e *Executor) Start(ctx context.Context) error {
+func (e *Executor) Start(ctx context.Context) (err error) {
+	if e.cancel != nil {
+		return errors.New("executor already started")
+	}
 	e.ctx, e.cancel = context.WithCancel(ctx)
+	defer func() { // if error during init cancel context
+		if err != nil {
+			e.cancel()
+			e.ctx, e.cancel = nil, nil
+		}
+	}()
 
 	// Initialize state
-	if err := e.initializeState(); err != nil {
+	if err = e.initializeState(); err != nil {
 		return fmt.Errorf("failed to initialize state: %w", err)
 	}
 
@@ -263,8 +272,9 @@ func (e *Executor) initializeState() error {
 				if err != nil {
 					return fmt.Errorf("failed to get header at %d for sync check: %w", state.LastBlockHeight, err)
 				}
-				if !bytes.Equal(header.Hash(), raftState.Hash) {
-					return fmt.Errorf("invalid state: block hash mismatch at height %d: raft=%x local=%x", state.LastBlockHeight, raftState.Hash, header.Hash())
+				headerHash := header.MemoizeHash()
+				if !bytes.Equal(headerHash, raftState.Hash) {
+					return fmt.Errorf("invalid state: block hash mismatch at height %d: raft=%x local=%x", state.LastBlockHeight, raftState.Hash, headerHash)
 				}
 			}
 		}
@@ -358,8 +368,9 @@ func (e *Executor) initializeState() error {
 			if err != nil {
 				return fmt.Errorf("get header at %d: %w", newState.LastBlockHeight, err)
 			}
-			if !bytes.Equal(header.Hash(), raftState.Hash) {
-				return fmt.Errorf("CRITICAL: content mismatch after replay! local=%x raft=%x. This indicates a 'Dual-Store Conflict' where data diverged from Raft", header.Hash(), raftState.Hash)
+			headerHash := header.MemoizeHash()
+			if !bytes.Equal(headerHash, raftState.Hash) {
+				return fmt.Errorf("CRITICAL: content mismatch after replay! local=%x raft=%x. This indicates a 'Dual-Store Conflict' where data diverged from Raft", headerHash, raftState.Hash)
 			}
 		}
 	}
@@ -917,8 +928,9 @@ func (e *Executor) IsSyncedWithRaft(raftState *raft.RaftBlockState) (int, error)
 		return 0, fmt.Errorf("get header for sync check at height %d: %w", raftState.Height, err)
 	}
 
-	if !bytes.Equal(header.Hash(), raftState.Hash) {
-		return 0, fmt.Errorf("block hash mismatch: %s != %s", header.Hash(), raftState.Hash)
+	headerHash := header.MemoizeHash()
+	if !bytes.Equal(headerHash, raftState.Hash) {
+		return 0, fmt.Errorf("block hash mismatch: %s != %s", headerHash, raftState.Hash)
 	}
 
 	return 0, nil

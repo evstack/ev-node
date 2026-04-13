@@ -257,6 +257,7 @@ func (h *Header) FromProto(other *pb.Header) error {
 	if other == nil {
 		return errors.New("header is nil")
 	}
+	h.InvalidateHash()
 	if other.Version != nil {
 		h.Version.Block = other.Version.Block
 		h.Version.App = other.Version.App
