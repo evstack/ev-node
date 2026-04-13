@@ -127,7 +127,10 @@ func (d *Data) Hash() Hash {
 
 // DACommitment returns the DA commitment of the Data excluding the Metadata.
 func (d *Data) DACommitment() Hash {
-	pbData := pb.Data{Txs: unsafe.Slice((*[]byte)(unsafe.SliceData(d.Txs)), len(d.Txs))}
+	var pbData pb.Data
+	if d.Txs != nil {
+		pbData.Txs = unsafe.Slice((*[]byte)(unsafe.SliceData(d.Txs)), len(d.Txs))
+	}
 	dBytes, _ := proto.Marshal(&pbData)
 	s := sha256Pool.Get().(hash.Hash)
 	defer sha256Pool.Put(s)

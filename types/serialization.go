@@ -249,8 +249,7 @@ func (sh *SignedHeader) MarshalBinary() ([]byte, error) {
 	psi.Reset()
 	psh.Signer = psi
 
-	if sh.Signer.PubKey == nil {
-		bz, err := proto.Marshal(psh)
+	defer func() {
 		ph.Reset()
 		pbHeaderPool.Put(ph)
 		pv.Reset()
@@ -259,35 +258,20 @@ func (sh *SignedHeader) MarshalBinary() ([]byte, error) {
 		pbSignerPool.Put(psi)
 		psh.Reset()
 		pbSignedHeaderPool.Put(psh)
-		return bz, err
+	}()
+
+	if sh.Signer.PubKey == nil {
+		return proto.Marshal(psh)
 	}
 
 	pubKey, err := sh.Signer.MarshalledPubKey()
 	if err != nil {
-		ph.Reset()
-		pbHeaderPool.Put(ph)
-		pv.Reset()
-		pbVersionPool.Put(pv)
-		psi.Reset()
-		pbSignerPool.Put(psi)
-		psh.Reset()
-		pbSignedHeaderPool.Put(psh)
 		return nil, err
 	}
 	psi.Address = sh.Signer.Address
 	psi.PubKey = pubKey
 	psh.Signer = psi
-	bz, err := proto.Marshal(psh)
-
-	ph.Reset()
-	pbHeaderPool.Put(ph)
-	pv.Reset()
-	pbVersionPool.Put(pv)
-	psi.Reset()
-	pbSignerPool.Put(psi)
-	psh.Reset()
-	pbSignedHeaderPool.Put(psh)
-	return bz, err
+	return proto.Marshal(psh)
 }
 
 // UnmarshalBinary decodes binary form of SignedHeader into object.
