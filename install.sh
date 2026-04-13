@@ -66,7 +66,7 @@ echo -e "   Required Go version: ${BOLD}${formatted_go_version}${RESET}\n"
 print_header "Checking if Go is installed..."
 if ! which go > /dev/null; then
     print_warning "Go is not installed. Attempting to install Go..."
-    curl -sL "https://ev.xyz/install-go.sh" | sh -s "$formatted_go_version"
+    curl -sL "https://docs.ev.xyz/install-go.sh" | sh -s "$formatted_go_version"
 fi
 
 installed_version=$(go version | awk '{print $3}' | sed 's/go//')
