@@ -13,7 +13,7 @@ fi
 # if jq is not installed then install it using the script
 if ! command -v jq &> /dev/null; then
 	echo "jq is not installed. Downloading and executing the script to install jq..."
-	curl -sSL https://ev.xyz/install-jq.sh | bash
+	curl -sSL https://docs.ev.xyz/install-jq.sh | bash
 fi
 
 # Define the Go binary path
