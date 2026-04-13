@@ -26,7 +26,7 @@ export default withMermaid({
   appearance: false,
   base: base,
   sitemap: {
-    hostname: "https://ev.xyz",
+    hostname: "https://docs.ev.xyz",
   },
 
   head: [
@@ -71,7 +71,7 @@ export default withMermaid({
       "script",
       {
         src: "https://plausible.celestia.org/js/plausible.js",
-        "data-domain": "ev.xyz",
+        "data-domain": "docs.ev.xyz",
         defer: "",
       },
     ],

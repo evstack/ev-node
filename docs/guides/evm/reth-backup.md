@@ -8,7 +8,7 @@ This guide covers how to backup the reth state of a Evolve EVM based blockchain.
 
 Before starting, ensure you have:
 
-- A running Evolve full node - Follow the [Evolve Full Node Setup Guide](https://ev.xyz/guides/full-node) to set up your node
+- A running Evolve full node - Follow the [Evolve Full Node Setup Guide](https://docs.ev.xyz/guides/full-node) to set up your node
 - Zstandard (zstd) compression tool installed
 - jq JSON processor installed
 - Administrative access to the Docker host

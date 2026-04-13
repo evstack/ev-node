@@ -702,4 +702,4 @@ See [tutorial] for running a multi-node network with both aggregator and non-agg
 [Syncer]: https://github.com/evstack/ev-node/blob/main/block/internal/syncing/syncer.go
 [Cache Manager]: https://github.com/evstack/ev-node/blob/main/block/internal/cache/manager.go
 [Components]: https://github.com/evstack/ev-node/blob/main/block/components.go
-[tutorial]: https://ev.xyz/guides/full-node
+[tutorial]: https://docs.ev.xyz/guides/full-node
