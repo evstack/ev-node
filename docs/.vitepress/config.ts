@@ -23,20 +23,28 @@ export default withMermaid({
   lastUpdated: true,
   cleanUrls: true,
   ignoreDeadLinks: true,
+  appearance: false,
   base: base,
   sitemap: {
-    hostname: "https://ev.xyz",
+    hostname: "https://docs.ev.xyz",
   },
 
   head: [
-    ["link", { rel: "icon", href: "/img/favicon.svg", type: "image/svg+xml" }],
-    ["link", { rel: "icon", href: "/img/favicon.png", type: "image/png" }],
+    ["link", { rel: "icon", href: "/favicon/favicon.ico", type: "image/x-icon" }],
     [
       "link",
-      { rel: "shortcut icon", href: "/img/favicon.ico", type: "image/x-icon" },
+      { rel: "icon", href: "/favicon/favicon-32x32.png", type: "image/png", sizes: "32x32" },
     ],
-    ["meta", { name: "msapplication-TileColor", content: "#fff" }],
-    ["meta", { name: "theme-color", content: "#fff" }],
+    [
+      "link",
+      { rel: "icon", href: "/favicon/favicon-16x16.png", type: "image/png", sizes: "16x16" },
+    ],
+    [
+      "link",
+      { rel: "apple-touch-icon", href: "/favicon/apple-touch-icon.png", sizes: "180x180" },
+    ],
+    ["meta", { name: "msapplication-TileColor", content: "#F3F4F4" }],
+    ["meta", { name: "theme-color", content: "#F3F4F4" }],
     [
       "meta",
       {
@@ -54,57 +62,33 @@ export default withMermaid({
     ],
     ["meta", { httpEquiv: "Content-Language", content: "en" }],
     ["meta", { name: "twitter:card", content: "summary_large_image" }],
-    ["meta", { name: "twitter:image", content: "/img/Evolve-cover.jpg" }],
+    ["meta", { name: "twitter:image", content: "/og-image.png" }],
     ["meta", { name: "twitter:site:domain", content: "ev.xyz" }],
     ["meta", { name: "twitter:url", content: "https://ev.xyz" }],
-    ["meta", { name: "og:image", content: "/img/Evolve-cover.jpg" }],
+    ["meta", { name: "og:image", content: "/og-image.png" }],
     ["meta", { name: "apple-mobile-web-app-title", content: "Evolve" }],
     [
       "script",
       {
         src: "https://plausible.celestia.org/js/plausible.js",
-        "data-domain": "ev.xyz",
+        "data-domain": "docs.ev.xyz",
         defer: "",
       },
     ],
   ],
 
-  // // Build optimizations
-  // vite: {
-  //   build: {
-  //     rollupOptions: {
-  //       output: {
-  //         manualChunks: (id) => {
-  //           // Extract vendor chunks
-  //           if (id.includes('node_modules')) {
-  //             if (id.includes('vue') || id.includes('@vue')) {
-  //               return 'vue';
-  //             }
-  //             if (id.includes('mermaid')) {
-  //               return 'mermaid';
-  //             }
-  //             return 'vendor';
-  //           }
-  //         },
-  //       },
-  //     },
-  //     // Enable minification
-  //     minify: 'terser',
-  //     terserOptions: {
-  //       compress: {
-  //         drop_console: true,
-  //         drop_debugger: true,
-  //       },
-  //     },
-  //     // Optimize chunk size
-  //     chunkSizeWarningLimit: 1000,
-  //   },
-  //   // Optimize dependencies
-  //   optimizeDeps: {
-  //     include: ['vue', '@vue/runtime-core', '@vue/runtime-dom', '@vue/shared'],
-  //     exclude: ['vitepress'],
-  //   },
-  // },
+  vite: {
+    build: {
+      minify: "terser",
+      terserOptions: {
+        compress: {
+          drop_console: true,
+          drop_debugger: true,
+        },
+      },
+      chunkSizeWarningLimit: 1500,
+    },
+  },
 
   themeConfig: {
     // https://vitepress.dev/reference/default-theme-config
@@ -136,8 +120,8 @@ export default withMermaid({
 
     logo: {
       alt: "Evolve Logo",
-      light: "/img/logo.png",
-      dark: "/img/logo.png",
+      light: "/img/evolve-logo-dark.svg",
+      dark: "/img/evolve-logo-dark.svg",
     },
 
     socialLinks: [

@@ -25,9 +25,7 @@ func TestSyncerStatusStartOnce(t *testing.T) {
 				var wg sync.WaitGroup
 
 				for range 8 {
-					wg.Add(1)
-					go func() {
-						defer wg.Done()
+					wg.Go(func() {
 						_, err := status.startOnce(func() error {
 							if calls.Add(1) == 1 {
 								close(started)
@@ -36,7 +34,7 @@ func TestSyncerStatusStartOnce(t *testing.T) {
 							return nil
 						})
 						require.NoError(t, err)
-					}()
+					})
 				}
 
 				<-started
