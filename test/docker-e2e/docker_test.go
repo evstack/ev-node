@@ -37,7 +37,7 @@ const (
 	// it must be the string "test" as it is handled explicitly in app/node.
 	celestiaChainID = "test"
 	// celestiaAppVersion specifies the tag of the celestia-app image to deploy in tests.
-	celestiaAppVersion = "v5.0.2"
+	celestiaAppVersion = "v8.0.1-mocha"
 
 	// EVM test constants shared across EVM-related tests.
 	evmTestChainID    = "1234"
@@ -151,7 +151,7 @@ func (s *DockerTestSuite) CreateDANetwork() *da.Network {
 	daNetwork, err := da.NewNetworkBuilder(t).
 		WithDockerClient(s.dockerClient).
 		WithDockerNetworkID(s.dockerNetworkID).
-		WithImage(container.NewImage("ghcr.io/celestiaorg/celestia-node", "v0.25.3", "10001:10001")).
+		WithImage(container.NewImage("ghcr.io/celestiaorg/celestia-node", "v0.30.2-mocha", "10001:10001")).
 		WithNode(bridgeNodeConfig).
 		Build(ctx)
 	s.Require().NoError(err)
