@@ -176,7 +176,7 @@ jobs:
 
       - name: Create Draft GitHub Release
         id: create-release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           draft: true
           name: ${{ steps.extract-version.outputs.tag }} (${{ fromJSON(steps.claude-release.outputs.structured_output).release_date }})
