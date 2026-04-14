@@ -13,11 +13,12 @@ import (
 
 func TestImmediateStrategy(t *testing.T) {
 	strategy := &ImmediateStrategy{}
+	maxBlobSize := common.DefaultMaxBlobSize
 
 	tests := []struct {
 		name         string
 		pendingCount uint64
-		totalSize    int
+		totalSize    uint64
 		expected     bool
 	}{
 		{
@@ -42,7 +43,7 @@ func TestImmediateStrategy(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := strategy.ShouldSubmit(tt.pendingCount, tt.totalSize, common.DefaultMaxBlobSize, 0)
+			result := strategy.ShouldSubmit(tt.pendingCount, tt.totalSize, maxBlobSize, 0)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
@@ -56,7 +57,7 @@ func TestSizeBasedStrategy(t *testing.T) {
 		sizeThreshold  float64
 		minItems       uint64
 		pendingCount   uint64
-		totalSize      int
+		totalSize      uint64
 		expectedSubmit bool
 	}{
 		{
@@ -80,7 +81,7 @@ func TestSizeBasedStrategy(t *testing.T) {
 			sizeThreshold:  0.8,
 			minItems:       1,
 			pendingCount:   10,
-			totalSize:      int(float64(maxBlobSize) * 0.8), // 80% of max
+			totalSize:      uint64(float64(maxBlobSize) * 0.8), // 80% of max
 			expectedSubmit: true,
 		},
 		{
@@ -88,7 +89,7 @@ func TestSizeBasedStrategy(t *testing.T) {
 			sizeThreshold:  0.8,
 			minItems:       1,
 			pendingCount:   20,
-			totalSize:      int(float64(maxBlobSize) * 0.875), // 87.5%
+			totalSize:      uint64(float64(maxBlobSize) * 0.875), // 87.5%
 			expectedSubmit: true,
 		},
 		{
@@ -125,7 +126,7 @@ func TestTimeBasedStrategy(t *testing.T) {
 		name                string
 		minItems            uint64
 		pendingCount        uint64
-		totalSize           int
+		totalSize           uint64
 		timeSinceLastSubmit time.Duration
 		expectedSubmit      bool
 	}{
@@ -133,7 +134,7 @@ func TestTimeBasedStrategy(t *testing.T) {
 			name:                "below min items",
 			minItems:            2,
 			pendingCount:        1,
-			totalSize:           int(float64(maxBlobSize) * 0.2),
+			totalSize:           uint64(float64(maxBlobSize) * 0.2),
 			timeSinceLastSubmit: 10 * time.Second,
 			expectedSubmit:      false,
 		},
@@ -141,7 +142,7 @@ func TestTimeBasedStrategy(t *testing.T) {
 			name:                "before max delay",
 			minItems:            1,
 			pendingCount:        5,
-			totalSize:           int(float64(maxBlobSize) * 0.5),
+			totalSize:           uint64(float64(maxBlobSize) * 0.5),
 			timeSinceLastSubmit: 3 * time.Second,
 			expectedSubmit:      false,
 		},
@@ -149,7 +150,7 @@ func TestTimeBasedStrategy(t *testing.T) {
 			name:                "at max delay",
 			minItems:            1,
 			pendingCount:        3,
-			totalSize:           int(float64(maxBlobSize) * 0.4),
+			totalSize:           uint64(float64(maxBlobSize) * 0.4),
 			timeSinceLastSubmit: 6 * time.Second,
 			expectedSubmit:      true,
 		},
@@ -157,7 +158,7 @@ func TestTimeBasedStrategy(t *testing.T) {
 			name:                "after max delay",
 			minItems:            1,
 			pendingCount:        2,
-			totalSize:           int(float64(maxBlobSize) * 0.2),
+			totalSize:           uint64(float64(maxBlobSize) * 0.2),
 			timeSinceLastSubmit: 10 * time.Second,
 			expectedSubmit:      true,
 		},
@@ -181,7 +182,7 @@ func TestAdaptiveStrategy(t *testing.T) {
 		name                string
 		minItems            uint64
 		pendingCount        uint64
-		totalSize           int
+		totalSize           uint64
 		timeSinceLastSubmit time.Duration
 		expectedSubmit      bool
 		reason              string
@@ -190,7 +191,7 @@ func TestAdaptiveStrategy(t *testing.T) {
 			name:                "below min items",
 			minItems:            3,
 			pendingCount:        2,
-			totalSize:           int(float64(maxBlobSize) * 0.875),
+			totalSize:           uint64(float64(maxBlobSize) * 0.875),
 			timeSinceLastSubmit: 10 * time.Second,
 			expectedSubmit:      false,
 			reason:              "not enough items",
@@ -199,7 +200,7 @@ func TestAdaptiveStrategy(t *testing.T) {
 			name:                "size threshold reached",
 			minItems:            1,
 			pendingCount:        10,
-			totalSize:           int(float64(maxBlobSize) * 0.85), // 85%
+			totalSize:           uint64(float64(maxBlobSize) * 0.85), // 85%
 			timeSinceLastSubmit: 1 * time.Second,
 			expectedSubmit:      true,
 			reason:              "size threshold met",
@@ -208,7 +209,7 @@ func TestAdaptiveStrategy(t *testing.T) {
 			name:                "time threshold reached",
 			minItems:            1,
 			pendingCount:        2,
-			totalSize:           int(float64(maxBlobSize) * 0.2), // Only 20%
+			totalSize:           uint64(float64(maxBlobSize) * 0.2), // Only 20%
 			timeSinceLastSubmit: 7 * time.Second,
 			expectedSubmit:      true,
 			reason:              "time threshold met",
@@ -217,7 +218,7 @@ func TestAdaptiveStrategy(t *testing.T) {
 			name:                "neither threshold reached",
 			minItems:            1,
 			pendingCount:        5,
-			totalSize:           int(float64(maxBlobSize) * 0.5), // 50%
+			totalSize:           uint64(float64(maxBlobSize) * 0.5), // 50%
 			timeSinceLastSubmit: 3 * time.Second,
 			expectedSubmit:      false,
 			reason:              "waiting for threshold",
@@ -226,7 +227,7 @@ func TestAdaptiveStrategy(t *testing.T) {
 			name:                "both thresholds reached",
 			minItems:            1,
 			pendingCount:        20,
-			totalSize:           int(float64(maxBlobSize) * 0.875), // 87.5%
+			totalSize:           uint64(float64(maxBlobSize) * 0.875), // 87.5%
 			timeSinceLastSubmit: 10 * time.Second,
 			expectedSubmit:      true,
 			reason:              "both thresholds met",
@@ -305,10 +306,9 @@ func TestNewBatchingStrategy(t *testing.T) {
 }
 
 func TestBatchingStrategiesComparison(t *testing.T) {
-	// This test demonstrates how different strategies behave with the same input
 	maxBlobSize := common.DefaultMaxBlobSize
 	pendingCount := uint64(10)
-	totalSize := maxBlobSize / 2 // 50% full
+	totalSize := maxBlobSize / 2
 	timeSinceLastSubmit := 3 * time.Second
 
 	immediate := &ImmediateStrategy{}

@@ -211,9 +211,9 @@ func (s *Submitter) daSubmissionLoop() {
 						}
 
 						// Calculate total size (excluding signature)
-						totalSize := 0
+						totalSize := uint64(0)
 						for _, marshalled := range marshalledHeaders {
-							totalSize += len(marshalled)
+							totalSize += uint64(len(marshalled))
 						}
 
 						shouldSubmit := s.batchingStrategy.ShouldSubmit(
@@ -227,7 +227,7 @@ func (s *Submitter) daSubmissionLoop() {
 							s.logger.Debug().
 								Time("t", time.Now()).
 								Uint64("headers", headersNb).
-								Int("total_size_kb", totalSize/1024).
+								Uint64("total_size_kb", totalSize/1024).
 								Dur("time_since_last", timeSinceLastSubmit).
 								Msg("batching strategy triggered header submission")
 
@@ -271,9 +271,9 @@ func (s *Submitter) daSubmissionLoop() {
 						}
 
 						// Calculate total size (excluding signature)
-						totalSize := 0
+						totalSize := uint64(0)
 						for _, marshalled := range marshalledData {
-							totalSize += len(marshalled)
+							totalSize += uint64(len(marshalled))
 						}
 
 						shouldSubmit := s.batchingStrategy.ShouldSubmit(
@@ -287,7 +287,7 @@ func (s *Submitter) daSubmissionLoop() {
 							s.logger.Debug().
 								Time("t", time.Now()).
 								Uint64("data", dataNb).
-								Int("total_size_kb", totalSize/1024).
+								Uint64("total_size_kb", totalSize/1024).
 								Dur("time_since_last", timeSinceLastSubmit).
 								Msg("batching strategy triggered data submission")
 

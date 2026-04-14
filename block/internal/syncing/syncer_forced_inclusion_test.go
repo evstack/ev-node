@@ -480,7 +480,7 @@ func TestGracePeriodForEpoch_LightBlocks(t *testing.T) {
 func TestGracePeriodForEpoch_FullBlocks(t *testing.T) {
 	s := &Syncer{daBlockBytes: make(map[uint64]uint64)}
 	for h := uint64(0); h <= 4; h++ {
-		s.daBlockBytes[h] = uint64(common.DefaultMaxBlobSize)
+		s.daBlockBytes[h] = common.DefaultMaxBlobSize
 	}
 	grace := s.gracePeriodForEpoch(0, 4)
 	require.GreaterOrEqual(t, grace, baseGracePeriodEpochs)
@@ -501,7 +501,7 @@ func TestGracePeriodForEpoch_ExtendedUnderHighCongestion(t *testing.T) {
 // TestGracePeriodForEpoch_CappedAtMax verifies the grace period never exceeds maxGracePeriodEpochs.
 func TestGracePeriodForEpoch_CappedAtMax(t *testing.T) {
 	s := &Syncer{daBlockBytes: make(map[uint64]uint64)}
-	huge := uint64(common.DefaultMaxBlobSize) * 100
+	huge := common.DefaultMaxBlobSize * 100
 	for h := uint64(0); h <= 4; h++ {
 		s.daBlockBytes[h] = huge
 	}

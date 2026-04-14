@@ -42,7 +42,7 @@ type retryPolicy struct {
 	MaxAttempts  int
 	MinBackoff   time.Duration
 	MaxBackoff   time.Duration
-	MaxBlobBytes int
+	MaxBlobBytes uint64
 }
 
 func defaultRetryPolicy(maxAttempts int, maxDuration time.Duration) retryPolicy {
@@ -581,7 +581,7 @@ func submitToDA[T any](
 		if err != nil {
 			s.logger.Error().
 				Str("itemType", itemType).
-				Int("maxBlobBytes", pol.MaxBlobBytes).
+				Uint64("maxBlobBytes", pol.MaxBlobBytes).
 				Err(err).
 				Msg("CRITICAL: Unrecoverable error - item exceeds maximum blob size")
 			return fmt.Errorf("unrecoverable error: no %s items fit within max blob size: %w", itemType, err)
@@ -644,7 +644,7 @@ func submitToDA[T any](
 			if len(items) == 1 {
 				s.logger.Error().
 					Str("itemType", itemType).
-					Int("maxBlobBytes", pol.MaxBlobBytes).
+					Uint64("maxBlobBytes", pol.MaxBlobBytes).
 					Msg("CRITICAL: Unrecoverable error - single item exceeds DA blob size limit")
 				return fmt.Errorf("unrecoverable error: %w: single %s item exceeds DA blob size limit", common.ErrOversizedItem, itemType)
 			}
@@ -690,11 +690,11 @@ func submitToDA[T any](
 
 // limitBatchBySize returns a prefix of items whose total marshaled size does not exceed maxBytes.
 // If the first item exceeds maxBytes, it returns ErrOversizedItem which is unrecoverable.
-func limitBatchBySize[T any](items []T, marshaled [][]byte, maxBytes int) ([]T, [][]byte, error) {
-	total := 0
+func limitBatchBySize[T any](items []T, marshaled [][]byte, maxBytes uint64) ([]T, [][]byte, error) {
+	total := uint64(0)
 	count := 0
 	for i := range items {
-		sz := len(marshaled[i])
+		sz := uint64(len(marshaled[i]))
 		if sz > maxBytes {
 			if i == 0 {
 				return nil, nil, fmt.Errorf("%w: item size %d exceeds max %d", common.ErrOversizedItem, sz, maxBytes)
