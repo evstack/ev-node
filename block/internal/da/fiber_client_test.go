@@ -16,10 +16,9 @@ import (
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
-// mockFiberClient is a test mock for the FiberClient interface.
 type mockFiberClient struct {
 	mu        sync.Mutex
-	uploads   map[string][]byte // blobID hex -> data
+	uploads   map[string][]byte
 	height    uint64
 	uploadErr error
 	callCount atomic.Uint64
@@ -43,9 +42,8 @@ func (m *mockFiberClient) Upload(_ context.Context, namespace, data []byte) (Fib
 	m.height++
 	callIdx := m.callCount.Add(1)
 
-	// Generate a unique blob ID for each upload
 	blobID := make([]byte, 33)
-	blobID[0] = 0 // version 0
+	blobID[0] = 0
 	hash := sha256.Sum256(append([]byte{byte(callIdx)}, data...))
 	copy(blobID[1:], hash[:])
 
@@ -185,10 +183,91 @@ func TestFiberClient_Submit_BlobTooLarge(t *testing.T) {
 	_, cl := makeTestFiberClient(t)
 
 	ns := datypes.NamespaceFromString("test-ns").Bytes()
-	largeBlob := make([]byte, 6*1024*1024) // 6MB > 5MB default max
+	largeBlob := make([]byte, 6*1024*1024)
 	res := cl.Submit(context.Background(), [][]byte{largeBlob}, 0, ns, nil)
 
 	require.Equal(t, datypes.StatusTooBig, res.Code)
+}
+
+func TestFiberClient_Submit_PartialFailureIndexesUploaded(t *testing.T) {
+	mock := newMockFiberClient()
+	cl := NewFiberClient(FiberConfig{
+		Client:         mock,
+		Logger:         zerolog.Nop(),
+		DefaultTimeout: 5 * time.Second,
+		Namespace:      "test-ns",
+		DataNamespace:  "test-ns",
+	})
+
+	ns := datypes.NamespaceFromString("test-ns").Bytes()
+
+	res1 := cl.Submit(context.Background(), [][]byte{[]byte("first")}, 0, ns, nil)
+	require.Equal(t, datypes.StatusSuccess, res1.Code)
+
+	mock.uploadErr = errors.New("transient failure")
+	res2 := cl.Submit(context.Background(), [][]byte{[]byte("second")}, 0, ns, nil)
+	require.Equal(t, datypes.StatusError, res2.Code)
+
+	mock.uploadErr = nil
+	res3 := cl.Submit(context.Background(), [][]byte{[]byte("third")}, 0, ns, nil)
+	require.Equal(t, datypes.StatusSuccess, res3.Code)
+
+	retrieveRes := cl.Retrieve(context.Background(), res1.Height, ns)
+	require.Equal(t, datypes.StatusSuccess, retrieveRes.Code)
+	require.Len(t, retrieveRes.Data, 1)
+	require.Equal(t, []byte("first"), retrieveRes.Data[0])
+
+	retrieveRes3 := cl.Retrieve(context.Background(), res3.Height, ns)
+	require.Equal(t, datypes.StatusSuccess, retrieveRes3.Code)
+	require.Equal(t, []byte("third"), retrieveRes3.Data[0])
+}
+
+func TestFiberClient_Submit_PartialFailureOnSecondBlob(t *testing.T) {
+	failingMock := &failingOnSecondBlobFiberClient{inner: newMockFiberClient()}
+	cl := NewFiberClient(FiberConfig{
+		Client:         failingMock,
+		Logger:         zerolog.Nop(),
+		DefaultTimeout: 5 * time.Second,
+		Namespace:      "test-ns",
+		DataNamespace:  "test-ns",
+	})
+
+	ns := datypes.NamespaceFromString("test-ns").Bytes()
+
+	res := cl.Submit(context.Background(), [][]byte{[]byte("first"), []byte("second"), []byte("third")}, 0, ns, nil)
+	require.Equal(t, datypes.StatusError, res.Code)
+	require.Contains(t, res.Message, "blob 1")
+	require.Equal(t, uint64(1), res.SubmittedCount)
+
+	fc := cl.(*fiberDAClient)
+	fc.mu.RLock()
+	totalBlobs := 0
+	for _, blobs := range fc.index {
+		totalBlobs += len(blobs)
+	}
+	fc.mu.RUnlock()
+	require.Equal(t, 1, totalBlobs)
+}
+
+type failingOnSecondBlobFiberClient struct {
+	inner     *mockFiberClient
+	callCount atomic.Uint64
+}
+
+func (f *failingOnSecondBlobFiberClient) Upload(ctx context.Context, namespace, data []byte) (FiberUploadResult, error) {
+	idx := f.callCount.Add(1)
+	if idx == 2 {
+		return FiberUploadResult{}, errors.New("second blob fails")
+	}
+	return f.inner.Upload(ctx, namespace, data)
+}
+
+func (f *failingOnSecondBlobFiberClient) Download(ctx context.Context, blobID []byte, height uint64) ([]byte, error) {
+	return f.inner.Download(ctx, blobID, height)
+}
+
+func (f *failingOnSecondBlobFiberClient) GetLatestHeight(ctx context.Context) (uint64, error) {
+	return f.inner.GetLatestHeight(ctx)
 }
 
 func TestFiberClient_Retrieve_Success(t *testing.T) {
@@ -227,8 +306,35 @@ func TestFiberClient_Retrieve_NotFound(t *testing.T) {
 	require.Equal(t, datypes.StatusNotFound, retrieveRes.Code)
 }
 
+func TestFiberClient_Retrieve_NamespaceFiltering(t *testing.T) {
+	_, cl := makeTestFiberClient(t)
+
+	ns1 := datypes.NamespaceFromString("ns-a").Bytes()
+	ns2 := datypes.NamespaceFromString("ns-b").Bytes()
+
+	res1 := cl.Submit(context.Background(), [][]byte{[]byte("alpha")}, 0, ns1, nil)
+	require.Equal(t, datypes.StatusSuccess, res1.Code)
+
+	res2 := cl.Submit(context.Background(), [][]byte{[]byte("beta")}, 0, ns2, nil)
+	require.Equal(t, datypes.StatusSuccess, res2.Code)
+
+	// Retrieving at ns1's height with ns1 returns the blob
+	rr1 := cl.Retrieve(context.Background(), res1.Height, ns1)
+	require.Equal(t, datypes.StatusSuccess, rr1.Code)
+	require.Equal(t, []byte("alpha"), rr1.Data[0])
+
+	// Retrieving at ns1's height with ns2 returns not found (different height)
+	rr2 := cl.Retrieve(context.Background(), res1.Height, ns2)
+	require.Equal(t, datypes.StatusNotFound, rr2.Code)
+
+	// Retrieving at ns2's height with ns2 returns the blob
+	rr3 := cl.Retrieve(context.Background(), res2.Height, ns2)
+	require.Equal(t, datypes.StatusSuccess, rr3.Code)
+	require.Equal(t, []byte("beta"), rr3.Data[0])
+}
+
 func TestFiberClient_Get_Success(t *testing.T) {
-	mock, cl := makeTestFiberClient(t)
+	_, cl := makeTestFiberClient(t)
 
 	ns := datypes.NamespaceFromString("test-ns").Bytes()
 	submitRes := cl.Submit(context.Background(), [][]byte{[]byte("getme")}, 0, ns, nil)
@@ -239,8 +345,6 @@ func TestFiberClient_Get_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, blobs, 1)
 	require.Equal(t, []byte("getme"), blobs[0])
-
-	_ = mock // mock stores the data for download
 }
 
 func TestFiberClient_Get_EmptyIDs(t *testing.T) {
@@ -262,7 +366,6 @@ func TestFiberClient_Get_InvalidID(t *testing.T) {
 func TestFiberClient_Get_DownloadError(t *testing.T) {
 	_, cl := makeTestFiberClient(t)
 
-	// Construct a valid-looking ID but with a blob ID that doesn't exist
 	fakeBlobID := make([]byte, 33)
 	id := makeFiberID(1, fakeBlobID)
 
@@ -289,7 +392,7 @@ func TestFiberClient_GetProofs_Success(t *testing.T) {
 	proofs, err := cl.GetProofs(context.Background(), submitRes.IDs, ns)
 	require.NoError(t, err)
 	require.Len(t, proofs, 1)
-	require.NotEmpty(t, proofs[0]) // Should contain the promise
+	require.NotEmpty(t, proofs[0])
 }
 
 func TestFiberClient_GetProofs_Empty(t *testing.T) {
@@ -339,12 +442,11 @@ func TestFiberClient_Validate_WrongProof(t *testing.T) {
 	submitRes := cl.Submit(context.Background(), [][]byte{[]byte("validatewrong")}, 0, ns, nil)
 	require.Equal(t, datypes.StatusSuccess, submitRes.Code)
 
-	// Use a wrong proof
 	fakeProofs := []datypes.Proof{[]byte("wrong-proof")}
 	results, err := cl.Validate(context.Background(), submitRes.IDs, fakeProofs, ns)
 	require.NoError(t, err)
 	require.Len(t, results, 1)
-	require.False(t, results[0]) // Wrong proof should fail validation
+	require.False(t, results[0])
 }
 
 func TestFiberClient_Validate_EmptyProof(t *testing.T) {
@@ -360,13 +462,24 @@ func TestFiberClient_Validate_EmptyProof(t *testing.T) {
 	require.False(t, results[0])
 }
 
+func TestFiberClient_Validate_UnknownID(t *testing.T) {
+	_, cl := makeTestFiberClient(t)
+
+	fakeID := makeFiberID(99999, make([]byte, 33))
+	proofs := []datypes.Proof{[]byte("some-proof")}
+	results, err := cl.Validate(context.Background(), []datypes.ID{fakeID}, proofs, nil)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.False(t, results[0])
+}
+
 func TestFiberClient_Namespaces(t *testing.T) {
 	cl := NewFiberClient(FiberConfig{
-		Client:                    newMockFiberClient(),
-		Logger:                    zerolog.Nop(),
-		Namespace:                 "header-ns",
-		DataNamespace:             "data-ns",
-		ForcedInclusionNamespace:  "forced-ns",
+		Client:                   newMockFiberClient(),
+		Logger:                   zerolog.Nop(),
+		Namespace:                "header-ns",
+		DataNamespace:            "data-ns",
+		ForcedInclusionNamespace: "forced-ns",
 	})
 	require.NotNil(t, cl)
 
@@ -399,14 +512,10 @@ func TestFiberClient_Subscribe(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, ch)
 
-	// Submit a blob so the index has something
 	ns := datypes.NamespaceFromString("test-ns").Bytes()
 	submitRes := cl.Submit(context.Background(), [][]byte{[]byte("sub-data")}, 0, ns, nil)
 	require.Equal(t, datypes.StatusSuccess, submitRes.Code)
 
-	// The subscribe goroutine polls and should emit the event for the submitted height.
-	// Since the mock height starts at 100 and upload increments to 101,
-	// the subscribe loop should eventually pick it up.
 	select {
 	case ev := <-ch:
 		require.Equal(t, submitRes.Height, ev.Height)
@@ -428,7 +537,6 @@ func TestFiberClient_Submit_MultipleBlobs(t *testing.T) {
 	require.Len(t, res.IDs, 3)
 	require.Equal(t, uint64(3), res.SubmittedCount)
 
-	// Verify all blobs can be retrieved
 	retrieveRes := cl.Retrieve(context.Background(), res.Height, ns)
 	require.Equal(t, datypes.StatusSuccess, retrieveRes.Code)
 	require.Len(t, retrieveRes.Data, 3)
@@ -438,20 +546,17 @@ func TestFiberClient_Submit_MultipleBlobs(t *testing.T) {
 }
 
 func TestFiberClient_SubmitAndDownload(t *testing.T) {
-	mock, cl := makeTestFiberClient(t)
+	_, cl := makeTestFiberClient(t)
 
 	ns := datypes.NamespaceFromString("test-ns").Bytes()
 	data := []byte("download-test")
 	submitRes := cl.Submit(context.Background(), [][]byte{data}, 0, ns, nil)
 	require.Equal(t, datypes.StatusSuccess, submitRes.Code)
 
-	// The mock stores the data, so Get should be able to download it
 	blobs, err := cl.Get(context.Background(), submitRes.IDs, ns)
 	require.NoError(t, err)
 	require.Len(t, blobs, 1)
 	require.Equal(t, data, blobs[0])
-
-	_ = mock
 }
 
 func TestMakeFiberID_RoundTrip(t *testing.T) {
@@ -491,23 +596,19 @@ func TestFiberClient_FullSubmitRetrieveCycle(t *testing.T) {
 
 	ns := datypes.NamespaceFromString("test-ns").Bytes()
 
-	// Submit
 	submitRes := cl.Submit(context.Background(), [][]byte{[]byte("cycle-data")}, 0, ns, nil)
 	require.Equal(t, datypes.StatusSuccess, submitRes.Code)
 	require.Len(t, submitRes.IDs, 1)
 	submittedHeight := submitRes.Height
 
-	// Retrieve
 	retrieveRes := cl.Retrieve(context.Background(), submittedHeight, ns)
 	require.Equal(t, datypes.StatusSuccess, retrieveRes.Code)
 	require.Equal(t, []byte("cycle-data"), retrieveRes.Data[0])
 
-	// Get
 	blobs, err := cl.Get(context.Background(), submitRes.IDs, ns)
 	require.NoError(t, err)
 	require.Equal(t, []byte("cycle-data"), blobs[0])
 
-	// GetProofs + Validate
 	proofs, err := cl.GetProofs(context.Background(), submitRes.IDs, ns)
 	require.NoError(t, err)
 	require.NotEmpty(t, proofs[0])
@@ -515,4 +616,37 @@ func TestFiberClient_FullSubmitRetrieveCycle(t *testing.T) {
 	valid, err := cl.Validate(context.Background(), submitRes.IDs, proofs, ns)
 	require.NoError(t, err)
 	require.True(t, valid[0])
+}
+
+func TestFiberClient_IndexPruning(t *testing.T) {
+	mock := newMockFiberClient()
+	cl := NewFiberClient(FiberConfig{
+		Client:         mock,
+		Logger:         zerolog.Nop(),
+		DefaultTimeout: 5 * time.Second,
+		Namespace:      "test-ns",
+		DataNamespace:  "test-ns",
+	})
+	require.NotNil(t, cl)
+	fc := cl.(*fiberDAClient)
+	fc.indexWindow = 10
+
+	ns := datypes.NamespaceFromString("test-ns").Bytes()
+
+	var lastHeight uint64
+	for i := 0; i < 20; i++ {
+		res := cl.Submit(context.Background(), [][]byte{[]byte("data")}, 0, ns, nil)
+		require.Equal(t, datypes.StatusSuccess, res.Code)
+		lastHeight = res.Height
+	}
+
+	fc.mu.RLock()
+	indexLen := len(fc.index)
+	_, hasOld := fc.index[lastHeight-20]
+	_, hasRecent := fc.index[lastHeight]
+	fc.mu.RUnlock()
+
+	require.True(t, hasRecent, "most recent height should be in index")
+	require.False(t, hasOld, "old height should have been pruned")
+	require.LessOrEqual(t, indexLen, 10, "index should be bounded by window")
 }

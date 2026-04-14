@@ -14,52 +14,33 @@ import (
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
-// FiberUploadResult contains the result of a Fiber upload operation.
+const (
+	fiberIndexRetainHeights = 4096
+	fiberSubscribePollFreq  = 1 * time.Second
+	fiberSubscribeChanSize  = 16
+)
+
 type FiberUploadResult struct {
-	// BlobID is the Fiber blob identifier (typically 33 bytes: 1 version + 32 commitment).
-	BlobID []byte
-	// Height is the validator set height at which the blob was uploaded.
-	Height uint64
-	// Promise is the serialized signed payment promise from validators,
-	// which serves as proof of data availability.
+	BlobID  []byte
+	Height  uint64
 	Promise []byte
 }
 
-// FiberClient defines the interface for a Fiber protocol client backend.
-// Implementations wrap the celestia-app fibre.Client or equivalent.
 type FiberClient interface {
-	// Upload uploads data to the Fiber network under the given namespace.
-	// The namespace must be a valid share.Namespace (29 bytes).
 	Upload(ctx context.Context, namespace, data []byte) (FiberUploadResult, error)
-
-	// Download downloads and reconstructs data from the Fiber network.
-	// blobID is the Fiber blob identifier returned by Upload.
-	// height is the validator set height (0 to use the current head).
 	Download(ctx context.Context, blobID []byte, height uint64) ([]byte, error)
-
-	// GetLatestHeight returns the latest block height from the Fiber network.
 	GetLatestHeight(ctx context.Context) (uint64, error)
 }
 
-// FiberConfig holds configuration for the Fiber DA client.
 type FiberConfig struct {
-	// Client is the Fiber protocol client backend.
-	Client FiberClient
-	// Logger is the structured logger.
-	Logger zerolog.Logger
-	// DefaultTimeout is the default timeout for operations.
-	DefaultTimeout time.Duration
-	// Namespace is the header namespace string.
-	Namespace string
-	// DataNamespace is the data namespace string.
-	DataNamespace string
-	// ForcedInclusionNamespace is the forced inclusion namespace string.
+	Client                   FiberClient
+	Logger                   zerolog.Logger
+	DefaultTimeout           time.Duration
+	Namespace                string
+	DataNamespace            string
 	ForcedInclusionNamespace string
 }
 
-// fiberDAClient adapts a FiberClient to the ev-node FullClient interface.
-// It bridges the Fiber push/pull model to the block-based DA interface by
-// maintaining a local index of submitted blobs for height-based retrieval.
 type fiberDAClient struct {
 	fiber              FiberClient
 	logger             zerolog.Logger
@@ -69,21 +50,22 @@ type fiberDAClient struct {
 	forcedNamespaceBz  []byte
 	hasForcedNamespace bool
 
-	mu    sync.RWMutex
-	index map[uint64][]fiberIndexedBlob
+	mu          sync.RWMutex
+	index       map[uint64][]fiberIndexedBlob
+	indexTail   uint64
+	indexWindow uint64
 }
 
 type fiberIndexedBlob struct {
-	id      datypes.ID
-	data    []byte
-	promise []byte
-	blobID  []byte
+	id        datypes.ID
+	namespace []byte
+	data      []byte
+	promise   []byte
+	blobID    []byte
 }
 
 var _ FullClient = (*fiberDAClient)(nil)
 
-// NewFiberClient creates a new Fiber DA client adapter.
-// Returns nil if the Fiber client backend is not provided.
 func NewFiberClient(cfg FiberConfig) FullClient {
 	if cfg.Client == nil {
 		return nil
@@ -107,11 +89,10 @@ func NewFiberClient(cfg FiberConfig) FullClient {
 		forcedNamespaceBz:  forcedBz,
 		hasForcedNamespace: hasForced,
 		index:              make(map[uint64][]fiberIndexedBlob),
+		indexWindow:        fiberIndexRetainHeights,
 	}
 }
 
-// makeFiberID constructs an ev-node DA ID from a Fiber height and blob ID.
-// Format: 8 bytes LE height + blobID bytes (compatible with datypes.SplitID).
 func makeFiberID(height uint64, blobID []byte) datypes.ID {
 	id := make([]byte, 8+len(blobID))
 	binary.LittleEndian.PutUint64(id, height)
@@ -119,7 +100,6 @@ func makeFiberID(height uint64, blobID []byte) datypes.ID {
 	return id
 }
 
-// splitFiberID extracts the Fiber height and blob ID from an ev-node DA ID.
 func splitFiberID(id datypes.ID) (uint64, []byte) {
 	if len(id) <= 8 {
 		return 0, nil
@@ -127,24 +107,25 @@ func splitFiberID(id datypes.ID) (uint64, []byte) {
 	return binary.LittleEndian.Uint64(id[:8]), id[8:]
 }
 
-// Submit uploads each data blob to the Fiber network.
-// All blobs are uploaded individually, then indexed under a single canonical height
-// (the height of the last upload) to satisfy the ev-node DA contract that all
-// submitted blobs appear at the same height.
+func (c *fiberDAClient) pruneIndexLocked() {
+	if c.indexWindow == 0 || c.indexTail == 0 || c.indexTail < c.indexWindow {
+		return
+	}
+	cutoff := c.indexTail - c.indexWindow + 1
+	for h := range c.index {
+		if h < cutoff {
+			delete(c.index, h)
+		}
+	}
+}
+
 func (c *fiberDAClient) Submit(ctx context.Context, data [][]byte, _ float64, namespace []byte, _ []byte) datypes.ResultSubmit {
 	var blobSize uint64
 	for _, b := range data {
 		blobSize += uint64(len(b))
 	}
 
-	type uploadResult struct {
-		blobID  []byte
-		height  uint64
-		promise []byte
-		data    []byte
-	}
-
-	uploaded := make([]uploadResult, 0, len(data))
+	uploaded := make([]fiberUploadResult, 0, len(data))
 
 	for i, raw := range data {
 		if uint64(len(raw)) > common.DefaultMaxBlobSize {
@@ -167,7 +148,13 @@ func (c *fiberDAClient) Submit(ctx context.Context, data [][]byte, _ float64, na
 			case errors.Is(err, context.DeadlineExceeded):
 				code = datypes.StatusContextDeadline
 			}
+
 			c.logger.Error().Err(err).Int("blob_index", i).Msg("fiber upload failed")
+
+			if len(uploaded) > 0 {
+				c.indexUploaded(uploaded, namespace)
+			}
+
 			return datypes.ResultSubmit{
 				BaseResult: datypes.BaseResult{
 					Code:           code,
@@ -179,7 +166,7 @@ func (c *fiberDAClient) Submit(ctx context.Context, data [][]byte, _ float64, na
 			}
 		}
 
-		uploaded = append(uploaded, uploadResult{
+		uploaded = append(uploaded, fiberUploadResult{
 			blobID:  result.BlobID,
 			height:  result.Height,
 			promise: result.Promise,
@@ -197,9 +184,30 @@ func (c *fiberDAClient) Submit(ctx context.Context, data [][]byte, _ float64, na
 		}
 	}
 
-	// Use the height of the last upload as the canonical submit height.
-	// Re-index all blobs under this single height so that Retrieve(height)
-	// returns all blobs from the same submit call.
+	ids := c.indexUploaded(uploaded, namespace)
+
+	c.logger.Debug().Int("num_ids", len(ids)).Uint64("height", uploaded[len(uploaded)-1].height).Msg("fiber DA submission successful")
+
+	return datypes.ResultSubmit{
+		BaseResult: datypes.BaseResult{
+			Code:           datypes.StatusSuccess,
+			IDs:            ids,
+			SubmittedCount: uint64(len(ids)),
+			Height:         uploaded[len(uploaded)-1].height,
+			BlobSize:       blobSize,
+			Timestamp:      time.Now(),
+		},
+	}
+}
+
+type fiberUploadResult struct {
+	blobID  []byte
+	height  uint64
+	promise []byte
+	data    []byte
+}
+
+func (c *fiberDAClient) indexUploaded(uploaded []fiberUploadResult, namespace []byte) []datypes.ID {
 	submitHeight := uploaded[len(uploaded)-1].height
 	ids := make([]datypes.ID, len(uploaded))
 
@@ -208,45 +216,36 @@ func (c *fiberDAClient) Submit(ctx context.Context, data [][]byte, _ float64, na
 		id := makeFiberID(submitHeight, u.blobID)
 		ids[i] = id
 		c.index[submitHeight] = append(c.index[submitHeight], fiberIndexedBlob{
-			id:      id,
-			data:    u.data,
-			promise: u.promise,
-			blobID:  u.blobID,
+			id:        id,
+			namespace: namespace,
+			data:      u.data,
+			promise:   u.promise,
+			blobID:    u.blobID,
 		})
 	}
+	if submitHeight > c.indexTail {
+		c.indexTail = submitHeight
+	}
+	c.pruneIndexLocked()
 	c.mu.Unlock()
 
-	c.logger.Debug().Int("num_ids", len(ids)).Uint64("height", submitHeight).Msg("fiber DA submission successful")
-
-	return datypes.ResultSubmit{
-		BaseResult: datypes.BaseResult{
-			Code:           datypes.StatusSuccess,
-			IDs:            ids,
-			SubmittedCount: uint64(len(ids)),
-			Height:         submitHeight,
-			BlobSize:       blobSize,
-			Timestamp:      time.Now(),
-		},
-	}
+	return ids
 }
 
-// Retrieve retrieves blobs from the Fiber network at the specified height and namespace.
-// It first checks the local submission index, then falls back to downloading via blob IDs.
 func (c *fiberDAClient) Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
 	return c.retrieve(ctx, height, namespace, true)
 }
 
-// RetrieveBlobs retrieves blobs without blocking on timestamp resolution.
 func (c *fiberDAClient) RetrieveBlobs(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
 	return c.retrieve(ctx, height, namespace, false)
 }
 
-func (c *fiberDAClient) retrieve(_ context.Context, height uint64, _ []byte, _ bool) datypes.ResultRetrieve {
+func (c *fiberDAClient) retrieve(_ context.Context, height uint64, namespace []byte, _ bool) datypes.ResultRetrieve {
 	c.mu.RLock()
-	blobs, ok := c.index[height]
+	allBlobs, ok := c.index[height]
 	c.mu.RUnlock()
 
-	if !ok || len(blobs) == 0 {
+	if !ok || len(allBlobs) == 0 {
 		return datypes.ResultRetrieve{
 			BaseResult: datypes.BaseResult{
 				Code:      datypes.StatusNotFound,
@@ -257,9 +256,27 @@ func (c *fiberDAClient) retrieve(_ context.Context, height uint64, _ []byte, _ b
 		}
 	}
 
-	ids := make([]datypes.ID, len(blobs))
-	data := make([]datypes.Blob, len(blobs))
-	for i, b := range blobs {
+	var matching []fiberIndexedBlob
+	for _, b := range allBlobs {
+		if nsEqual(b.namespace, namespace) {
+			matching = append(matching, b)
+		}
+	}
+
+	if len(matching) == 0 {
+		return datypes.ResultRetrieve{
+			BaseResult: datypes.BaseResult{
+				Code:      datypes.StatusNotFound,
+				Message:   "no blobs found at height for given namespace in fiber index",
+				Height:    height,
+				Timestamp: time.Now(),
+			},
+		}
+	}
+
+	ids := make([]datypes.ID, len(matching))
+	data := make([]datypes.Blob, len(matching))
+	for i, b := range matching {
 		ids[i] = b.id
 		data[i] = b.data
 	}
@@ -275,9 +292,18 @@ func (c *fiberDAClient) retrieve(_ context.Context, height uint64, _ []byte, _ b
 	}
 }
 
-// Get downloads specific blobs by their IDs from the Fiber network.
-// Each ID is decoded to extract the Fiber blob ID and height,
-// then downloaded via the Fiber client.
+func nsEqual(a, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func (c *fiberDAClient) Get(ctx context.Context, ids []datypes.ID, _ []byte) ([]datypes.Blob, error) {
 	if len(ids) == 0 {
 		return nil, nil
@@ -302,17 +328,13 @@ func (c *fiberDAClient) Get(ctx context.Context, ids []datypes.ID, _ []byte) ([]
 	return res, nil
 }
 
-// Subscribe returns a channel that emits SubscriptionEvents for new DA heights.
-// Since the Fiber protocol doesn't have a native subscription mechanism, this
-// implementation polls GetLatestHeight and emits events for heights present in
-// the local submission index. Only heights indexed by this client are emitted.
 func (c *fiberDAClient) Subscribe(ctx context.Context, _ []byte, _ bool) (<-chan datypes.SubscriptionEvent, error) {
-	out := make(chan datypes.SubscriptionEvent, 16)
+	out := make(chan datypes.SubscriptionEvent, fiberSubscribeChanSize)
 
 	go func() {
 		defer close(out)
 
-		ticker := time.NewTicker(1 * time.Second)
+		ticker := time.NewTicker(fiberSubscribePollFreq)
 		defer ticker.Stop()
 
 		var lastHeight uint64
@@ -364,7 +386,6 @@ func (c *fiberDAClient) Subscribe(ctx context.Context, _ []byte, _ bool) (<-chan
 	return out, nil
 }
 
-// GetLatestDAHeight returns the latest block height from the Fiber network.
 func (c *fiberDAClient) GetLatestDAHeight(ctx context.Context) (uint64, error) {
 	heightCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
 	defer cancel()
@@ -376,9 +397,6 @@ func (c *fiberDAClient) GetLatestDAHeight(ctx context.Context) (uint64, error) {
 	return height, nil
 }
 
-// GetProofs returns the serialized payment promises as proofs for the given IDs.
-// In the Fiber protocol, the signed payment promise from validators serves as
-// proof of data availability.
 func (c *fiberDAClient) GetProofs(_ context.Context, ids []datypes.ID, _ []byte) ([]datypes.Proof, error) {
 	if len(ids) == 0 {
 		return []datypes.Proof{}, nil
@@ -403,8 +421,6 @@ func (c *fiberDAClient) GetProofs(_ context.Context, ids []datypes.ID, _ []byte)
 	return proofs, nil
 }
 
-// Validate verifies that the proofs (payment promises) correspond to the given IDs.
-// It checks that each proof was stored for the matching blob during submission.
 func (c *fiberDAClient) Validate(_ context.Context, ids []datypes.ID, proofs []datypes.Proof, _ []byte) ([]bool, error) {
 	if len(ids) != len(proofs) {
 		return nil, errors.New("number of IDs and proofs must match")
@@ -423,7 +439,6 @@ func (c *fiberDAClient) Validate(_ context.Context, ids []datypes.ID, proofs []d
 
 		for _, b := range blobs {
 			if string(b.id) == string(id) {
-				// A non-empty promise proof that matches the stored promise is valid.
 				results[i] = len(proofs[i]) > 0 && string(proofs[i]) == string(b.promise)
 				break
 			}
@@ -433,14 +448,7 @@ func (c *fiberDAClient) Validate(_ context.Context, ids []datypes.ID, proofs []d
 	return results, nil
 }
 
-// GetHeaderNamespace returns the header namespace bytes.
-func (c *fiberDAClient) GetHeaderNamespace() []byte { return c.namespaceBz }
-
-// GetDataNamespace returns the data namespace bytes.
-func (c *fiberDAClient) GetDataNamespace() []byte { return c.dataNamespaceBz }
-
-// GetForcedInclusionNamespace returns the forced inclusion namespace bytes.
+func (c *fiberDAClient) GetHeaderNamespace() []byte          { return c.namespaceBz }
+func (c *fiberDAClient) GetDataNamespace() []byte            { return c.dataNamespaceBz }
 func (c *fiberDAClient) GetForcedInclusionNamespace() []byte { return c.forcedNamespaceBz }
-
-// HasForcedInclusionNamespace reports whether forced inclusion namespace is configured.
-func (c *fiberDAClient) HasForcedInclusionNamespace() bool { return c.hasForcedNamespace }
+func (c *fiberDAClient) HasForcedInclusionNamespace() bool   { return c.hasForcedNamespace }
