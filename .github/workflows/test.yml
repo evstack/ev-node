@@ -55,7 +55,7 @@ jobs:
       - name: Run unit test
         run: just test-cover
       - name: Upload unit test coverage report
-        uses: actions/upload-artifact@v7.0.0
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: unit-test-coverage-report-${{ github.sha }}
           path: ./coverage.txt
@@ -75,7 +75,7 @@ jobs:
       - name: Run integration test
         run: just test-integration-cover
       - name: Upload integration test coverage report
-        uses: actions/upload-artifact@v7.0.0
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: integration-test-coverage-report-${{ github.sha }}
           path: ./node/coverage.txt

@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changes
+
+- Improve reaper to sustain txs burst better [#3236](https://github.com/evstack/ev-node/pull/3236)
+
 ## v1.1.0
 
 No changes from v1.1.0-rc.2.
