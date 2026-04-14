@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1776154522080,
+  "lastUpdate": 1776175526591,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -286,6 +286,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 176666,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "marko@baricevic.me",
+            "name": "Marko",
+            "username": "tac0turtle"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": false,
+          "id": "25892d762a0e45bc9705a3edee44e78a73b4d1f5",
+          "message": "perf: use autoresearch to reduce allocations (#3225)\n\n* Baseline - current block production performance with 100 txs\n\nResult: {\"status\":\"keep\",\"allocs_per_op\":81,\"bytes_per_op\":25934,\"ns_per_op\":34001}\n\n* sync.Pool for sha256.Hash in leafHashOpt — eliminates 2 sha256.New() allocations per block\n\nResult: {\"status\":\"keep\",\"allocs_per_op\":79,\"bytes_per_op\":25697,\"ns_per_op\":34147}\n\n* Unsafe reinterpret cast of Txs to [][]byte in ApplyBlock — eliminates make([][]byte, n) allocation\n\nResult: {\"status\":\"keep\",\"allocs_per_op\":78,\"bytes_per_op\":22996,\"ns_per_op\":33091}\n\n* Direct pb.Data serialization in DACommitment — avoids pruned Data wrapper and txsToByteSlices allocations\n\nResult: {\"status\":\"keep\",\"allocs_per_op\":77,\"bytes_per_op\":20276,\"ns_per_op\":32480}\n\n* unsafe.Slice in Data.ToProto() — eliminates txsToByteSlices [][]byte allocation\n\nResult: {\"status\":\"keep\",\"allocs_per_op\":74,\"bytes_per_op\":12192,\"ns_per_op\":31624}\n\n* sync.Pool for protobuf message structs in MarshalBinary — eliminates 10 allocs per block\n\nReplace per-call allocation of pb.Header/pb.Version/pb.Data/pb.Metadata with\nsync.Pool reuse in the hot MarshalBinary path. ToProto() API is unchanged —\nonly MarshalBinary is affected since it consumes the result immediately.\n\nMetrics (100_txs benchmark):\n- 74 → 64 allocs/op (-13.5%)\n- ~12.1 → ~11.1 KB (-8.3%)\n- ~31ns flat\n\n* pool SignedHeader.MarshalBinary — reuse pb.SignedHeader/pb.Header/pb.Signer/pb.Version\n\nEliminates 4 struct allocations per signed header marshal: pb.SignedHeader,\npb.Header, pb.Version, pb.Signer. These are now borrowed from sync.Pool and\nreturned after proto.Marshal completes.\n\nMetrics (100_txs benchmark):\n- 64 → 56 allocs/op\n- ~11KB → ~10.2KB\n\n* pool State.MarshalBinary and use it in UpdateState — saves 2 allocs per block\n\nState.ToProto allocated pb.State + pb.Version + timestamppb.Timestamp per block.\nMarshalBinary now pools those structs and returns the marshaled bytes directly.\npkg/store/batch.UpdateState switched from ToProto+proto.Marshal to MarshalBinary.\n\n* fix lint\n\n* remove files\n\n* remove extra comments\n\n* deps\n\n* comments\n\n* go fix\n\n* changes++\n\n---------\n\nCo-authored-by: Julien Robert <julien@rbrt.fr>",
+          "timestamp": "2026-04-14T13:33:05Z",
+          "tree_id": "16c27bf3288780493d2416498cf089e58581d5ad",
+          "url": "https://github.com/evstack/ev-node/commit/25892d762a0e45bc9705a3edee44e78a73b4d1f5"
+        },
+        "date": 1776175523025,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 881284498,
+            "unit": "ns/op\t27372620 B/op\t  135927 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 881284498,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 27372620,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 135927,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
