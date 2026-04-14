@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1776175526591,
+  "lastUpdate": 1776175528339,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -914,6 +914,102 @@ window.BENCHMARK_DATA = {
             "value": 81,
             "unit": "allocs/op",
             "extra": "25467 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "marko@baricevic.me",
+            "name": "Marko",
+            "username": "tac0turtle"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": false,
+          "id": "25892d762a0e45bc9705a3edee44e78a73b4d1f5",
+          "message": "perf: use autoresearch to reduce allocations (#3225)\n\n* Baseline - current block production performance with 100 txs\n\nResult: {\"status\":\"keep\",\"allocs_per_op\":81,\"bytes_per_op\":25934,\"ns_per_op\":34001}\n\n* sync.Pool for sha256.Hash in leafHashOpt — eliminates 2 sha256.New() allocations per block\n\nResult: {\"status\":\"keep\",\"allocs_per_op\":79,\"bytes_per_op\":25697,\"ns_per_op\":34147}\n\n* Unsafe reinterpret cast of Txs to [][]byte in ApplyBlock — eliminates make([][]byte, n) allocation\n\nResult: {\"status\":\"keep\",\"allocs_per_op\":78,\"bytes_per_op\":22996,\"ns_per_op\":33091}\n\n* Direct pb.Data serialization in DACommitment — avoids pruned Data wrapper and txsToByteSlices allocations\n\nResult: {\"status\":\"keep\",\"allocs_per_op\":77,\"bytes_per_op\":20276,\"ns_per_op\":32480}\n\n* unsafe.Slice in Data.ToProto() — eliminates txsToByteSlices [][]byte allocation\n\nResult: {\"status\":\"keep\",\"allocs_per_op\":74,\"bytes_per_op\":12192,\"ns_per_op\":31624}\n\n* sync.Pool for protobuf message structs in MarshalBinary — eliminates 10 allocs per block\n\nReplace per-call allocation of pb.Header/pb.Version/pb.Data/pb.Metadata with\nsync.Pool reuse in the hot MarshalBinary path. ToProto() API is unchanged —\nonly MarshalBinary is affected since it consumes the result immediately.\n\nMetrics (100_txs benchmark):\n- 74 → 64 allocs/op (-13.5%)\n- ~12.1 → ~11.1 KB (-8.3%)\n- ~31ns flat\n\n* pool SignedHeader.MarshalBinary — reuse pb.SignedHeader/pb.Header/pb.Signer/pb.Version\n\nEliminates 4 struct allocations per signed header marshal: pb.SignedHeader,\npb.Header, pb.Version, pb.Signer. These are now borrowed from sync.Pool and\nreturned after proto.Marshal completes.\n\nMetrics (100_txs benchmark):\n- 64 → 56 allocs/op\n- ~11KB → ~10.2KB\n\n* pool State.MarshalBinary and use it in UpdateState — saves 2 allocs per block\n\nState.ToProto allocated pb.State + pb.Version + timestamppb.Timestamp per block.\nMarshalBinary now pools those structs and returns the marshaled bytes directly.\npkg/store/batch.UpdateState switched from ToProto+proto.Marshal to MarshalBinary.\n\n* fix lint\n\n* remove files\n\n* remove extra comments\n\n* deps\n\n* comments\n\n* go fix\n\n* changes++\n\n---------\n\nCo-authored-by: Julien Robert <julien@rbrt.fr>",
+          "timestamp": "2026-04-14T13:33:05Z",
+          "tree_id": "16c27bf3288780493d2416498cf089e58581d5ad",
+          "url": "https://github.com/evstack/ev-node/commit/25892d762a0e45bc9705a3edee44e78a73b4d1f5"
+        },
+        "date": 1776175527897,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 40202,
+            "unit": "ns/op\t    4817 B/op\t      50 allocs/op",
+            "extra": "30284 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 40202,
+            "unit": "ns/op",
+            "extra": "30284 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 4817,
+            "unit": "B/op",
+            "extra": "30284 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 50,
+            "unit": "allocs/op",
+            "extra": "30284 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 41082,
+            "unit": "ns/op\t    5031 B/op\t      54 allocs/op",
+            "extra": "29521 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 41082,
+            "unit": "ns/op",
+            "extra": "29521 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 5031,
+            "unit": "B/op",
+            "extra": "29521 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 54,
+            "unit": "allocs/op",
+            "extra": "29521 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 47041,
+            "unit": "ns/op\t   10325 B/op\t      54 allocs/op",
+            "extra": "25737 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 47041,
+            "unit": "ns/op",
+            "extra": "25737 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 10325,
+            "unit": "B/op",
+            "extra": "25737 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 54,
+            "unit": "allocs/op",
+            "extra": "25737 times\n4 procs"
           }
         ]
       }
