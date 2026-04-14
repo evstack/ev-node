@@ -3,7 +3,9 @@ package types
 import (
 	"errors"
 	"fmt"
+	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"google.golang.org/protobuf/encoding/protowire"
@@ -11,6 +13,46 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
+)
+
+// Proto object pools — avoid heap allocation of short-lived protobuf message
+// structs in hot serialization paths (marshal → discard → repeat per block).
+var (
+	pbHeaderPool = sync.Pool{
+		New: func() any {
+			return &pb.Header{}
+		},
+	}
+	pbVersionPool = sync.Pool{
+		New: func() any {
+			return &pb.Version{}
+		},
+	}
+	pbDataPool = sync.Pool{
+		New: func() any {
+			return &pb.Data{}
+		},
+	}
+	pbMetadataPool = sync.Pool{
+		New: func() any {
+			return &pb.Metadata{}
+		},
+	}
+	pbSignerPool = sync.Pool{
+		New: func() any {
+			return &pb.Signer{}
+		},
+	}
+	pbSignedHeaderPool = sync.Pool{
+		New: func() any {
+			return &pb.SignedHeader{}
+		},
+	}
+	pbStatePool = sync.Pool{
+		New: func() any {
+			return &pb.State{}
+		},
+	}
 )
 
 // MarshalBinary encodes Metadata into binary form and returns it.
@@ -29,8 +71,35 @@ func (m *Metadata) UnmarshalBinary(metadata []byte) error {
 }
 
 // MarshalBinary encodes Header into binary form and returns it.
+// Uses a pooled pb.Header proto message to avoid allocation.
 func (h *Header) MarshalBinary() ([]byte, error) {
-	return proto.Marshal(h.ToProto())
+	ph := pbHeaderPool.Get().(*pb.Header)
+
+	pv := pbVersionPool.Get().(*pb.Version)
+	pv.Reset()
+	pv.Block, pv.App = h.Version.Block, h.Version.App
+
+	ph.Reset()
+	ph.Version = pv
+	ph.Height = h.BaseHeader.Height
+	ph.Time = h.BaseHeader.Time
+	ph.ChainId = h.BaseHeader.ChainID
+	ph.LastHeaderHash = h.LastHeaderHash
+	ph.DataHash = h.DataHash
+	ph.AppHash = h.AppHash
+	ph.ProposerAddress = h.ProposerAddress
+	ph.ValidatorHash = h.ValidatorHash
+	if unknown := encodeLegacyUnknownFields(h.Legacy); len(unknown) > 0 {
+		ph.ProtoReflect().SetUnknown(unknown)
+	}
+
+	bz, err := proto.Marshal(ph)
+
+	ph.Reset()
+	pbHeaderPool.Put(ph)
+	pv.Reset()
+	pbVersionPool.Put(pv)
+	return bz, err
 }
 
 // MarshalBinaryLegacy returns the legacy header encoding that includes the
@@ -51,8 +120,33 @@ func (h *Header) UnmarshalBinary(data []byte) error {
 }
 
 // MarshalBinary encodes Data into binary form and returns it.
+// Uses pooled protobuf messages to avoid per-block allocation.
 func (d *Data) MarshalBinary() ([]byte, error) {
-	return proto.Marshal(d.ToProto())
+	pd := pbDataPool.Get().(*pb.Data)
+	pd.Reset()
+
+	if d.Metadata != nil {
+		pm := pbMetadataPool.Get().(*pb.Metadata)
+		pm.Reset()
+		pm.ChainId = d.Metadata.ChainID
+		pm.Height = d.Metadata.Height
+		pm.Time = d.Metadata.Time
+		pm.LastDataHash = d.LastDataHash
+		pd.Metadata = pm
+		defer func() {
+			pm.Reset()
+			pbMetadataPool.Put(pm)
+		}()
+	}
+
+	if d.Txs != nil {
+		pd.Txs = unsafe.Slice((*[]byte)(unsafe.SliceData(d.Txs)), len(d.Txs))
+	}
+
+	bz, err := proto.Marshal(pd)
+	pd.Reset()
+	pbDataPool.Put(pd)
+	return bz, err
 }
 
 // UnmarshalBinary decodes binary form of Data into object.
@@ -125,12 +219,59 @@ func (sh *SignedHeader) FromProto(other *pb.SignedHeader) error {
 }
 
 // MarshalBinary encodes SignedHeader into binary form and returns it.
+// Uses pooled protobuf messages to avoid per-block allocation.
 func (sh *SignedHeader) MarshalBinary() ([]byte, error) {
-	hp, err := sh.ToProto()
+	psh := pbSignedHeaderPool.Get().(*pb.SignedHeader)
+	psh.Reset()
+
+	// Reuse pooled pb.Header + pb.Version for the nested header.
+	ph := pbHeaderPool.Get().(*pb.Header)
+	ph.Reset()
+	pv := pbVersionPool.Get().(*pb.Version)
+	pv.Reset()
+	pv.Block, pv.App = sh.Version.Block, sh.Version.App
+	ph.Version = pv
+	ph.Height = sh.BaseHeader.Height
+	ph.Time = sh.BaseHeader.Time
+	ph.ChainId = sh.BaseHeader.ChainID
+	ph.LastHeaderHash = sh.LastHeaderHash
+	ph.DataHash = sh.DataHash
+	ph.AppHash = sh.AppHash
+	ph.ProposerAddress = sh.ProposerAddress
+	ph.ValidatorHash = sh.ValidatorHash
+	if unknown := encodeLegacyUnknownFields(sh.Legacy); len(unknown) > 0 {
+		ph.ProtoReflect().SetUnknown(unknown)
+	}
+	psh.Header = ph
+	psh.Signature = sh.Signature
+
+	psi := pbSignerPool.Get().(*pb.Signer)
+	psi.Reset()
+	psh.Signer = psi
+
+	defer func() {
+		ph.Reset()
+		pbHeaderPool.Put(ph)
+		pv.Reset()
+		pbVersionPool.Put(pv)
+		psi.Reset()
+		pbSignerPool.Put(psi)
+		psh.Reset()
+		pbSignedHeaderPool.Put(psh)
+	}()
+
+	if sh.Signer.PubKey == nil {
+		return proto.Marshal(psh)
+	}
+
+	pubKey, err := sh.Signer.MarshalledPubKey()
 	if err != nil {
 		return nil, err
 	}
-	return proto.Marshal(hp)
+	psi.Address = sh.Signer.Address
+	psi.PubKey = pubKey
+	psh.Signer = psi
+	return proto.Marshal(psh)
 }
 
 // UnmarshalBinary decodes binary form of SignedHeader into object.
@@ -335,7 +476,14 @@ func (m *Metadata) FromProto(other *pb.Metadata) error {
 func (d *Data) ToProto() *pb.Data {
 	var mProto *pb.Metadata
 	if d.Metadata != nil {
-		mProto = d.Metadata.ToProto()
+		// Inline Metadata.ToProto() to keep pb.Metadata allocation on the
+		// stack for small structs, and avoid the intermediate method frame.
+		mProto = &pb.Metadata{
+			ChainId:      d.Metadata.ChainID,
+			Height:       d.Metadata.Height,
+			Time:         d.Metadata.Time,
+			LastDataHash: d.LastDataHash[:],
+		}
 	}
 	return &pb.Data{
 		Metadata: mProto,
@@ -360,6 +508,39 @@ func (d *Data) FromProto(other *pb.Data) error {
 	}
 	d.Txs = byteSlicesToTxs(other.GetTxs())
 	return nil
+}
+
+// MarshalBinary encodes State into binary form using pooled protobuf messages
+// to reduce per-block allocations in the UpdateState hot path.
+func (s *State) MarshalBinary() ([]byte, error) {
+	ps := pbStatePool.Get().(*pb.State)
+	ps.Reset()
+
+	pv := pbVersionPool.Get().(*pb.Version)
+	pv.Reset()
+	pv.Block, pv.App = s.Version.Block, s.Version.App
+
+	pts := &timestamppb.Timestamp{
+		Seconds: s.LastBlockTime.Unix(),
+		Nanos:   int32(s.LastBlockTime.Nanosecond()),
+	}
+
+	ps.Version = pv
+	ps.ChainId = s.ChainID
+	ps.InitialHeight = s.InitialHeight
+	ps.LastBlockHeight = s.LastBlockHeight
+	ps.LastBlockTime = pts
+	ps.DaHeight = s.DAHeight
+	ps.AppHash = s.AppHash
+	ps.LastHeaderHash = s.LastHeaderHash
+
+	bz, err := proto.Marshal(ps)
+
+	ps.Reset()
+	pbStatePool.Put(ps)
+	pv.Reset()
+	pbVersionPool.Put(pv)
+	return bz, err
 }
 
 // ToProto converts State into protobuf representation and returns it.

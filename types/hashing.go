@@ -4,10 +4,25 @@ import (
 	"crypto/sha256"
 	"errors"
 	"hash"
+	"sync"
+	"unsafe"
+
+	"google.golang.org/protobuf/proto"
+
+	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
 
 var (
 	leafPrefix = []byte{0}
+
+	// sha256Pool reuses sha256 Hash instances to avoid per-block allocation.
+	// sha256.New() allocates ~213 bytes (216B on 64-bit) per call. Pooling
+	// eliminates this allocation entirely in the hot path.
+	sha256Pool = sync.Pool{
+		New: func() any {
+			return sha256.New()
+		},
+	}
 )
 
 // HashSlim returns the SHA256 hash of the header using the slim (current) binary encoding.
@@ -105,17 +120,21 @@ func (d *Data) Hash() Hash {
 	// Ignoring the marshal error for now to satisfy the go-header interface
 	// Later on the usage of Hash should be replaced with DA commitment
 	dBytes, _ := d.MarshalBinary()
-	return leafHashOpt(sha256.New(), dBytes)
+	s := sha256Pool.Get().(hash.Hash)
+	defer sha256Pool.Put(s)
+	return leafHashOpt(s, dBytes)
 }
 
-// DACommitment returns the DA commitment of the Data excluding the Metadata
+// DACommitment returns the DA commitment of the Data excluding the Metadata.
 func (d *Data) DACommitment() Hash {
-	// Prune the Data to only include the Txs
-	prunedData := &Data{
-		Txs: d.Txs,
+	var pbData pb.Data
+	if d.Txs != nil {
+		pbData.Txs = unsafe.Slice((*[]byte)(unsafe.SliceData(d.Txs)), len(d.Txs))
 	}
-	dBytes, _ := prunedData.MarshalBinary()
-	return leafHashOpt(sha256.New(), dBytes)
+	dBytes, _ := proto.Marshal(&pbData)
+	s := sha256Pool.Get().(hash.Hash)
+	defer sha256Pool.Put(s)
+	return leafHashOpt(s, dBytes)
 }
 
 func leafHashOpt(s hash.Hash, leaf []byte) []byte {
