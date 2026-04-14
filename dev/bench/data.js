@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1776175604371,
+  "lastUpdate": 1776179016953,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -382,6 +382,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 160411,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "julien@rbrt.fr",
+            "name": "julienrbrt",
+            "username": "julienrbrt"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "2865d6d2917c6346404af9ade20b129e2830b88f",
+          "message": "chore(apps): cleanup unecessary replaces (#3253)",
+          "timestamp": "2026-04-14T16:59:39+02:00",
+          "tree_id": "2968d5ed1bd0315b25b9fab322fc098ce68be2cf",
+          "url": "https://github.com/evstack/ev-node/commit/2865d6d2917c6346404af9ade20b129e2830b88f"
+        },
+        "date": 1776179012111,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 905241510,
+            "unit": "ns/op\t31357856 B/op\t  170890 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 905241510,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 31357856,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 170890,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
