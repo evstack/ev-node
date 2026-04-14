@@ -12,7 +12,7 @@ import (
 type BatchingStrategy interface {
 	// ShouldSubmit determines if a batch should be submitted based on the strategy
 	// Returns true if submission should happen now
-	ShouldSubmit(pendingCount uint64, totalSizeBeforeSig int, maxBlobSize int, timeSinceLastSubmit time.Duration) bool
+	ShouldSubmit(pendingCount uint64, totalSizeBeforeSig uint64, maxBlobSize uint64, timeSinceLastSubmit time.Duration) bool
 }
 
 // NewBatchingStrategy creates a batching strategy based on configuration
@@ -34,7 +34,7 @@ func NewBatchingStrategy(cfg config.DAConfig) (BatchingStrategy, error) {
 // ImmediateStrategy submits as soon as any items are available
 type ImmediateStrategy struct{}
 
-func (s *ImmediateStrategy) ShouldSubmit(pendingCount uint64, totalSize int, maxBlobSize int, timeSinceLastSubmit time.Duration) bool {
+func (s *ImmediateStrategy) ShouldSubmit(pendingCount uint64, totalSize uint64, maxBlobSize uint64, timeSinceLastSubmit time.Duration) bool {
 	return pendingCount > 0
 }
 
@@ -57,12 +57,12 @@ func NewSizeBasedStrategy(sizeThreshold float64, minItems uint64) *SizeBasedStra
 	}
 }
 
-func (s *SizeBasedStrategy) ShouldSubmit(pendingCount uint64, totalSize int, maxBlobSize int, timeSinceLastSubmit time.Duration) bool {
+func (s *SizeBasedStrategy) ShouldSubmit(pendingCount uint64, totalSize uint64, maxBlobSize uint64, timeSinceLastSubmit time.Duration) bool {
 	if pendingCount < s.minItems {
 		return false
 	}
 
-	threshold := int(float64(maxBlobSize) * s.sizeThreshold)
+	threshold := uint64(float64(maxBlobSize) * s.sizeThreshold)
 	return totalSize >= threshold
 }
 
@@ -85,7 +85,7 @@ func NewTimeBasedStrategy(daBlockTime time.Duration, maxDelay time.Duration, min
 	}
 }
 
-func (s *TimeBasedStrategy) ShouldSubmit(pendingCount uint64, totalSize int, maxBlobSize int, timeSinceLastSubmit time.Duration) bool {
+func (s *TimeBasedStrategy) ShouldSubmit(pendingCount uint64, totalSize uint64, maxBlobSize uint64, timeSinceLastSubmit time.Duration) bool {
 	if pendingCount < s.minItems {
 		return false
 	}
@@ -120,18 +120,16 @@ func NewAdaptiveStrategy(daBlockTime time.Duration, sizeThreshold float64, maxDe
 	}
 }
 
-func (s *AdaptiveStrategy) ShouldSubmit(pendingCount uint64, totalSize int, maxBlobSize int, timeSinceLastSubmit time.Duration) bool {
+func (s *AdaptiveStrategy) ShouldSubmit(pendingCount uint64, totalSize uint64, maxBlobSize uint64, timeSinceLastSubmit time.Duration) bool {
 	if pendingCount < s.minItems {
 		return false
 	}
 
-	// Submit if we've reached the size threshold
-	threshold := int(float64(maxBlobSize) * s.sizeThreshold)
+	threshold := uint64(float64(maxBlobSize) * s.sizeThreshold)
 	if totalSize >= threshold {
 		return true
 	}
 
-	// Submit if max delay has been reached
 	if timeSinceLastSubmit >= s.maxDelay {
 		return true
 	}
