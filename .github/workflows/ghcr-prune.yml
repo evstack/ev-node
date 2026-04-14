@@ -30,7 +30,7 @@ jobs:
           - local-da
     steps:
       - name: Delete stale tags
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         env:
           PACKAGE_NAME: ${{ matrix.package }}
           OVERRIDE_RETENTION: ${{ github.event.inputs.retention-days }}
