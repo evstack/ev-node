@@ -72,12 +72,12 @@ func NewFiberDAClient(
 	logger zerolog.Logger,
 ) FullDAClient {
 	base := da.NewFiberClient(da.FiberConfig{
-		Client:                    fiberClient,
-		Logger:                    logger,
-		DefaultTimeout:            config.DA.RequestTimeout.Duration,
-		Namespace:                 config.DA.GetNamespace(),
-		DataNamespace:             config.DA.GetDataNamespace(),
-		ForcedInclusionNamespace:  config.DA.GetForcedInclusionNamespace(),
+		Client:                   fiberClient,
+		Logger:                   logger,
+		DefaultTimeout:           config.DA.RequestTimeout.Duration,
+		Namespace:                config.DA.GetNamespace(),
+		DataNamespace:            config.DA.GetDataNamespace(),
+		ForcedInclusionNamespace: config.DA.GetForcedInclusionNamespace(),
 	})
 	if config.Instrumentation.IsTracingEnabled() {
 		return da.WithTracingClient(base)
