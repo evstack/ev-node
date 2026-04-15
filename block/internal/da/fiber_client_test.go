@@ -2,80 +2,21 @@ package da
 
 import (
 	"context"
-	"crypto/sha256"
 	"errors"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/rs/zerolog"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/evstack/ev-node/block/internal/da/fibremock"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
-type mockFiberClient struct {
-	mu        sync.Mutex
-	uploads   map[string][]byte
-	height    uint64
-	uploadErr error
-	callCount atomic.Uint64
-}
-
-func newMockFiberClient() *mockFiberClient {
-	return &mockFiberClient{
-		uploads: make(map[string][]byte),
-		height:  100,
-	}
-}
-
-func (m *mockFiberClient) Upload(_ context.Context, namespace, data []byte) (FiberUploadResult, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.uploadErr != nil {
-		return FiberUploadResult{}, m.uploadErr
-	}
-
-	m.height++
-	callIdx := m.callCount.Add(1)
-
-	blobID := make([]byte, 33)
-	blobID[0] = 0
-	hash := sha256.Sum256(append([]byte{byte(callIdx)}, data...))
-	copy(blobID[1:], hash[:])
-
-	m.uploads[string(blobID)] = data
-
-	return FiberUploadResult{
-		BlobID:  blobID,
-		Height:  m.height,
-		Promise: []byte("signed-promise-" + string(blobID)),
-	}, nil
-}
-
-func (m *mockFiberClient) Download(_ context.Context, blobID []byte, _ uint64) ([]byte, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	data, ok := m.uploads[string(blobID)]
-	if !ok {
-		return nil, errors.New("blob not found")
-	}
-	return data, nil
-}
-
-func (m *mockFiberClient) GetLatestHeight(_ context.Context) (uint64, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.height, nil
-}
-
-func makeTestFiberClient(t *testing.T) (*mockFiberClient, FullClient) {
+func makeTestFiberClient(t *testing.T) (*fibremock.MockDA, FullClient) {
 	t.Helper()
-	mock := newMockFiberClient()
+	mock := fibremock.NewMockDA(fibremock.DefaultMockDAConfig())
 	cl := NewFiberClient(FiberConfig{
 		Client:         mock,
 		Logger:         zerolog.Nop(),
@@ -89,7 +30,7 @@ func makeTestFiberClient(t *testing.T) (*mockFiberClient, FullClient) {
 
 func TestFiberClient_NewClient_Nil(t *testing.T) {
 	cl := NewFiberClient(FiberConfig{Client: nil})
-	assert.Nil(t, cl)
+	require.Nil(t, cl)
 }
 
 func TestFiberClient_Submit_Success(t *testing.T) {
@@ -128,10 +69,9 @@ func TestFiberClient_Submit_EmptyData(t *testing.T) {
 }
 
 func TestFiberClient_Submit_UploadError(t *testing.T) {
-	mock := newMockFiberClient()
-	mock.uploadErr = errors.New("upload failed")
+	mock := fibremock.NewMockDA(fibremock.DefaultMockDAConfig())
 	cl := NewFiberClient(FiberConfig{
-		Client:         mock,
+		Client:         &faultInjector{FiberClient: mock, err: errors.New("upload failed")},
 		Logger:         zerolog.Nop(),
 		DefaultTimeout: 5 * time.Second,
 		Namespace:      "test-ns",
@@ -146,10 +86,9 @@ func TestFiberClient_Submit_UploadError(t *testing.T) {
 }
 
 func TestFiberClient_Submit_CanceledContext(t *testing.T) {
-	mock := newMockFiberClient()
-	mock.uploadErr = context.Canceled
+	mock := fibremock.NewMockDA(fibremock.DefaultMockDAConfig())
 	cl := NewFiberClient(FiberConfig{
-		Client:         mock,
+		Client:         &faultInjector{FiberClient: mock, err: context.Canceled},
 		Logger:         zerolog.Nop(),
 		DefaultTimeout: 5 * time.Second,
 		Namespace:      "test-ns",
@@ -163,10 +102,9 @@ func TestFiberClient_Submit_CanceledContext(t *testing.T) {
 }
 
 func TestFiberClient_Submit_DeadlineExceeded(t *testing.T) {
-	mock := newMockFiberClient()
-	mock.uploadErr = context.DeadlineExceeded
+	mock := fibremock.NewMockDA(fibremock.DefaultMockDAConfig())
 	cl := NewFiberClient(FiberConfig{
-		Client:         mock,
+		Client:         &faultInjector{FiberClient: mock, err: context.DeadlineExceeded},
 		Logger:         zerolog.Nop(),
 		DefaultTimeout: 5 * time.Second,
 		Namespace:      "test-ns",
@@ -190,9 +128,10 @@ func TestFiberClient_Submit_BlobTooLarge(t *testing.T) {
 }
 
 func TestFiberClient_Submit_PartialFailureIndexesUploaded(t *testing.T) {
-	mock := newMockFiberClient()
+	mock := fibremock.NewMockDA(fibremock.DefaultMockDAConfig())
+	fault := &faultInjector{FiberClient: mock}
 	cl := NewFiberClient(FiberConfig{
-		Client:         mock,
+		Client:         fault,
 		Logger:         zerolog.Nop(),
 		DefaultTimeout: 5 * time.Second,
 		Namespace:      "test-ns",
@@ -204,11 +143,11 @@ func TestFiberClient_Submit_PartialFailureIndexesUploaded(t *testing.T) {
 	res1 := cl.Submit(context.Background(), [][]byte{[]byte("first")}, 0, ns, nil)
 	require.Equal(t, datypes.StatusSuccess, res1.Code)
 
-	mock.uploadErr = errors.New("transient failure")
+	fault.SetError(errors.New("transient failure"))
 	res2 := cl.Submit(context.Background(), [][]byte{[]byte("second")}, 0, ns, nil)
 	require.Equal(t, datypes.StatusError, res2.Code)
 
-	mock.uploadErr = nil
+	fault.SetError(nil)
 	res3 := cl.Submit(context.Background(), [][]byte{[]byte("third")}, 0, ns, nil)
 	require.Equal(t, datypes.StatusSuccess, res3.Code)
 
@@ -223,9 +162,10 @@ func TestFiberClient_Submit_PartialFailureIndexesUploaded(t *testing.T) {
 }
 
 func TestFiberClient_Submit_PartialFailureOnSecondBlob(t *testing.T) {
-	failingMock := &failingOnSecondBlobFiberClient{inner: newMockFiberClient()}
+	mock := fibremock.NewMockDA(fibremock.DefaultMockDAConfig())
+	failing := &failOnNthUpload{FiberClient: mock, failAt: 2, err: errors.New("second blob fails")}
 	cl := NewFiberClient(FiberConfig{
-		Client:         failingMock,
+		Client:         failing,
 		Logger:         zerolog.Nop(),
 		DefaultTimeout: 5 * time.Second,
 		Namespace:      "test-ns",
@@ -247,27 +187,6 @@ func TestFiberClient_Submit_PartialFailureOnSecondBlob(t *testing.T) {
 	}
 	fc.mu.RUnlock()
 	require.Equal(t, 1, totalBlobs)
-}
-
-type failingOnSecondBlobFiberClient struct {
-	inner     *mockFiberClient
-	callCount atomic.Uint64
-}
-
-func (f *failingOnSecondBlobFiberClient) Upload(ctx context.Context, namespace, data []byte) (FiberUploadResult, error) {
-	idx := f.callCount.Add(1)
-	if idx == 2 {
-		return FiberUploadResult{}, errors.New("second blob fails")
-	}
-	return f.inner.Upload(ctx, namespace, data)
-}
-
-func (f *failingOnSecondBlobFiberClient) Download(ctx context.Context, blobID []byte, height uint64) ([]byte, error) {
-	return f.inner.Download(ctx, blobID, height)
-}
-
-func (f *failingOnSecondBlobFiberClient) GetLatestHeight(ctx context.Context) (uint64, error) {
-	return f.inner.GetLatestHeight(ctx)
 }
 
 func TestFiberClient_Retrieve_Success(t *testing.T) {
@@ -318,16 +237,13 @@ func TestFiberClient_Retrieve_NamespaceFiltering(t *testing.T) {
 	res2 := cl.Submit(context.Background(), [][]byte{[]byte("beta")}, 0, ns2, nil)
 	require.Equal(t, datypes.StatusSuccess, res2.Code)
 
-	// Retrieving at ns1's height with ns1 returns the blob
 	rr1 := cl.Retrieve(context.Background(), res1.Height, ns1)
 	require.Equal(t, datypes.StatusSuccess, rr1.Code)
 	require.Equal(t, []byte("alpha"), rr1.Data[0])
 
-	// Retrieving at ns1's height with ns2 returns not found (different height)
 	rr2 := cl.Retrieve(context.Background(), res1.Height, ns2)
 	require.Equal(t, datypes.StatusNotFound, rr2.Code)
 
-	// Retrieving at ns2's height with ns2 returns the blob
 	rr3 := cl.Retrieve(context.Background(), res2.Height, ns2)
 	require.Equal(t, datypes.StatusSuccess, rr3.Code)
 	require.Equal(t, []byte("beta"), rr3.Data[0])
@@ -375,11 +291,15 @@ func TestFiberClient_Get_DownloadError(t *testing.T) {
 }
 
 func TestFiberClient_GetLatestDAHeight(t *testing.T) {
-	mock, cl := makeTestFiberClient(t)
+	_, cl := makeTestFiberClient(t)
+
+	ns := datypes.NamespaceFromString("test-ns").Bytes()
+	res := cl.Submit(context.Background(), [][]byte{[]byte("data")}, 0, ns, nil)
+	require.Equal(t, datypes.StatusSuccess, res.Code)
 
 	height, err := cl.GetLatestDAHeight(context.Background())
 	require.NoError(t, err)
-	require.Equal(t, mock.height, height)
+	require.Equal(t, res.Height, height)
 }
 
 func TestFiberClient_GetProofs_Success(t *testing.T) {
@@ -474,8 +394,9 @@ func TestFiberClient_Validate_UnknownID(t *testing.T) {
 }
 
 func TestFiberClient_Namespaces(t *testing.T) {
+	mock := fibremock.NewMockDA(fibremock.DefaultMockDAConfig())
 	cl := NewFiberClient(FiberConfig{
-		Client:                   newMockFiberClient(),
+		Client:                   mock,
 		Logger:                   zerolog.Nop(),
 		Namespace:                "header-ns",
 		DataNamespace:            "data-ns",
@@ -490,8 +411,9 @@ func TestFiberClient_Namespaces(t *testing.T) {
 }
 
 func TestFiberClient_NoForcedNamespace(t *testing.T) {
+	mock := fibremock.NewMockDA(fibremock.DefaultMockDAConfig())
 	cl := NewFiberClient(FiberConfig{
-		Client:        newMockFiberClient(),
+		Client:        mock,
 		Logger:        zerolog.Nop(),
 		Namespace:     "header-ns",
 		DataNamespace: "data-ns",
@@ -580,8 +502,9 @@ func TestSplitFiberID_Invalid(t *testing.T) {
 }
 
 func TestFiberClient_DefaultTimeout(t *testing.T) {
+	mock := fibremock.NewMockDA(fibremock.DefaultMockDAConfig())
 	cl := NewFiberClient(FiberConfig{
-		Client:        newMockFiberClient(),
+		Client:        mock,
 		Logger:        zerolog.Nop(),
 		Namespace:     "ns",
 		DataNamespace: "ns",
@@ -619,7 +542,7 @@ func TestFiberClient_FullSubmitRetrieveCycle(t *testing.T) {
 }
 
 func TestFiberClient_IndexPruning(t *testing.T) {
-	mock := newMockFiberClient()
+	mock := fibremock.NewMockDA(fibremock.DefaultMockDAConfig())
 	cl := NewFiberClient(FiberConfig{
 		Client:         mock,
 		Logger:         zerolog.Nop(),
@@ -649,4 +572,33 @@ func TestFiberClient_IndexPruning(t *testing.T) {
 	require.True(t, hasRecent, "most recent height should be in index")
 	require.False(t, hasOld, "old height should have been pruned")
 	require.LessOrEqual(t, indexLen, 10, "index should be bounded by window")
+}
+
+type faultInjector struct {
+	FiberClient
+	err error
+}
+
+func (f *faultInjector) SetError(err error) { f.err = err }
+
+func (f *faultInjector) Upload(ctx context.Context, namespace, data []byte) (fibremock.UploadResult, error) {
+	if f.err != nil {
+		return fibremock.UploadResult{}, f.err
+	}
+	return f.FiberClient.Upload(ctx, namespace, data)
+}
+
+type failOnNthUpload struct {
+	FiberClient
+	failAt    uint64
+	err       error
+	callCount atomic.Uint64
+}
+
+func (f *failOnNthUpload) Upload(ctx context.Context, namespace, data []byte) (fibremock.UploadResult, error) {
+	n := f.callCount.Add(1)
+	if n == f.failAt {
+		return fibremock.UploadResult{}, f.err
+	}
+	return f.FiberClient.Upload(ctx, namespace, data)
 }

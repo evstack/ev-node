@@ -11,6 +11,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block/internal/common"
+	"github.com/evstack/ev-node/block/internal/da/fibremock"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
@@ -20,17 +21,12 @@ const (
 	fiberSubscribeChanSize  = 16
 )
 
-type FiberUploadResult struct {
-	BlobID  []byte
-	Height  uint64
-	Promise []byte
-}
-
-type FiberClient interface {
-	Upload(ctx context.Context, namespace, data []byte) (FiberUploadResult, error)
-	Download(ctx context.Context, blobID []byte, height uint64) ([]byte, error)
-	GetLatestHeight(ctx context.Context) (uint64, error)
-}
+type (
+	FiberClient  = fibremock.DA
+	BlobID       = fibremock.BlobID
+	UploadResult = fibremock.UploadResult
+	BlobEvent    = fibremock.BlobEvent
+)
 
 type FiberConfig struct {
 	Client                   FiberClient
@@ -50,17 +46,17 @@ type fiberDAClient struct {
 	forcedNamespaceBz  []byte
 	hasForcedNamespace bool
 
-	mu          sync.RWMutex
-	index       map[uint64][]fiberIndexedBlob
-	indexTail   uint64
-	indexWindow uint64
+	mu           sync.RWMutex
+	index        map[uint64][]fiberIndexedBlob
+	indexTail    uint64
+	indexWindow  uint64
+	latestHeight uint64
 }
 
 type fiberIndexedBlob struct {
 	id        datypes.ID
 	namespace []byte
 	data      []byte
-	promise   []byte
 	blobID    []byte
 }
 
@@ -166,11 +162,15 @@ func (c *fiberDAClient) Submit(ctx context.Context, data [][]byte, _ float64, na
 			}
 		}
 
+		c.mu.Lock()
+		c.latestHeight++
+		h := c.latestHeight
+		c.mu.Unlock()
+
 		uploaded = append(uploaded, fiberUploadResult{
-			blobID:  result.BlobID,
-			height:  result.Height,
-			promise: result.Promise,
-			data:    raw,
+			blobID: result.BlobID,
+			height: h,
+			data:   raw,
 		})
 	}
 
@@ -201,10 +201,9 @@ func (c *fiberDAClient) Submit(ctx context.Context, data [][]byte, _ float64, na
 }
 
 type fiberUploadResult struct {
-	blobID  []byte
-	height  uint64
-	promise []byte
-	data    []byte
+	blobID []byte
+	height uint64
+	data   []byte
 }
 
 func (c *fiberDAClient) indexUploaded(uploaded []fiberUploadResult, namespace []byte) []datypes.ID {
@@ -219,7 +218,6 @@ func (c *fiberDAClient) indexUploaded(uploaded []fiberUploadResult, namespace []
 			id:        id,
 			namespace: namespace,
 			data:      u.data,
-			promise:   u.promise,
 			blobID:    u.blobID,
 		})
 	}
@@ -311,13 +309,13 @@ func (c *fiberDAClient) Get(ctx context.Context, ids []datypes.ID, _ []byte) ([]
 
 	res := make([]datypes.Blob, 0, len(ids))
 	for _, id := range ids {
-		height, blobID := splitFiberID(id)
+		_, blobID := splitFiberID(id)
 		if blobID == nil {
 			return nil, fmt.Errorf("invalid fiber blob id: %x", id)
 		}
 
 		downloadCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
-		data, err := c.fiber.Download(downloadCtx, blobID, height)
+		data, err := c.fiber.Download(downloadCtx, blobID)
 		cancel()
 		if err != nil {
 			return nil, fmt.Errorf("fiber download failed for blob %x: %w", blobID, err)
@@ -344,13 +342,10 @@ func (c *fiberDAClient) Subscribe(ctx context.Context, _ []byte, _ bool) (<-chan
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				heightCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
-				height, err := c.fiber.GetLatestHeight(heightCtx)
-				cancel()
-				if err != nil {
-					c.logger.Error().Err(err).Msg("failed to get latest fiber height during subscribe")
-					continue
-				}
+				c.mu.RLock()
+				height := c.latestHeight
+				c.mu.RUnlock()
+
 				if height <= lastHeight {
 					continue
 				}
@@ -386,15 +381,10 @@ func (c *fiberDAClient) Subscribe(ctx context.Context, _ []byte, _ bool) (<-chan
 	return out, nil
 }
 
-func (c *fiberDAClient) GetLatestDAHeight(ctx context.Context) (uint64, error) {
-	heightCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
-	defer cancel()
-
-	height, err := c.fiber.GetLatestHeight(heightCtx)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get latest fiber height: %w", err)
-	}
-	return height, nil
+func (c *fiberDAClient) GetLatestDAHeight(context.Context) (uint64, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.latestHeight, nil
 }
 
 func (c *fiberDAClient) GetProofs(_ context.Context, ids []datypes.ID, _ []byte) ([]datypes.Proof, error) {
@@ -412,7 +402,7 @@ func (c *fiberDAClient) GetProofs(_ context.Context, ids []datypes.ID, _ []byte)
 
 		for _, b := range blobs {
 			if string(b.id) == string(id) {
-				proofs[i] = b.promise
+				proofs[i] = b.blobID
 				break
 			}
 		}
@@ -439,7 +429,7 @@ func (c *fiberDAClient) Validate(_ context.Context, ids []datypes.ID, proofs []d
 
 		for _, b := range blobs {
 			if string(b.id) == string(id) {
-				results[i] = len(proofs[i]) > 0 && string(proofs[i]) == string(b.promise)
+				results[i] = len(proofs[i]) > 0 && string(proofs[i]) == string(b.blobID)
 				break
 			}
 		}
