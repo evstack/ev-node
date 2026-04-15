@@ -27,7 +27,9 @@ RUN go mod download && (cd apps/testapp && go mod download)
 COPY . .
 
 WORKDIR /ev-node/apps/testapp
-RUN go build -o /go/bin/testapp .
+
+# 125829120 = 120 MB
+RUN go build -ldflags "-X github.com/evstack/ev-node/block/internal/common.defaultMaxBlobSizeStr=125829120" -o /go/bin/testapp .
 
 ## prep the final image.
 #

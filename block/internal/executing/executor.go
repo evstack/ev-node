@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/ipfs/go-datastore"
 	"github.com/libp2p/go-libp2p/core/crypto"
@@ -162,11 +163,20 @@ func (e *Executor) SetBlockProducer(bp BlockProducer) {
 }
 
 // Start begins the execution component
-func (e *Executor) Start(ctx context.Context) error {
+func (e *Executor) Start(ctx context.Context) (err error) {
+	if e.cancel != nil {
+		return errors.New("executor already started")
+	}
 	e.ctx, e.cancel = context.WithCancel(ctx)
+	defer func() { // if error during init cancel context
+		if err != nil {
+			e.cancel()
+			e.ctx, e.cancel = nil, nil
+		}
+	}()
 
 	// Initialize state
-	if err := e.initializeState(); err != nil {
+	if err = e.initializeState(); err != nil {
 		return fmt.Errorf("failed to initialize state: %w", err)
 	}
 
@@ -792,14 +802,12 @@ func (e *Executor) CreateBlock(ctx context.Context, height uint64, batchData *Ba
 func (e *Executor) ApplyBlock(ctx context.Context, header types.Header, data *types.Data) (types.State, error) {
 	currentState := e.getLastState()
 
-	// Convert Txs to [][]byte for the execution client.
-	// types.Tx is []byte, so this is a type conversion, not a copy.
+	// Reinterpret []Tx as [][]byte without allocation.
+	// types.Tx is defined as []byte and has the same slice-header layout.
+	// Using unsafe.Slice/unsafe.SliceData avoids the heap allocation of make([][]byte, n).
 	var rawTxs [][]byte
 	if n := len(data.Txs); n > 0 {
-		rawTxs = make([][]byte, n)
-		for i, tx := range data.Txs {
-			rawTxs[i] = []byte(tx)
-		}
+		rawTxs = unsafe.Slice((*[]byte)(unsafe.SliceData(data.Txs)), n)
 	}
 
 	// Execute transactions

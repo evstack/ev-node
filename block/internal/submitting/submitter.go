@@ -118,11 +118,21 @@ func NewSubmitter(
 }
 
 // Start begins the submitting component
-func (s *Submitter) Start(ctx context.Context) error {
+func (s *Submitter) Start(ctx context.Context) (err error) {
+	if s.cancel != nil {
+		return errors.New("submitter already started")
+	}
+
 	s.ctx, s.cancel = context.WithCancel(ctx)
+	defer func() { // if error during init cancel context
+		if err != nil {
+			s.cancel()
+			s.ctx, s.cancel = nil, nil
+		}
+	}()
 
 	// Initialize DA included height
-	if err := s.initializeDAIncludedHeight(ctx); err != nil {
+	if err = s.initializeDAIncludedHeight(ctx); err != nil {
 		return err
 	}
 
@@ -201,9 +211,9 @@ func (s *Submitter) daSubmissionLoop() {
 						}
 
 						// Calculate total size (excluding signature)
-						totalSize := 0
+						totalSize := uint64(0)
 						for _, marshalled := range marshalledHeaders {
-							totalSize += len(marshalled)
+							totalSize += uint64(len(marshalled))
 						}
 
 						shouldSubmit := s.batchingStrategy.ShouldSubmit(
@@ -217,7 +227,7 @@ func (s *Submitter) daSubmissionLoop() {
 							s.logger.Debug().
 								Time("t", time.Now()).
 								Uint64("headers", headersNb).
-								Int("total_size_kb", totalSize/1024).
+								Uint64("total_size_kb", totalSize/1024).
 								Dur("time_since_last", timeSinceLastSubmit).
 								Msg("batching strategy triggered header submission")
 
@@ -261,9 +271,9 @@ func (s *Submitter) daSubmissionLoop() {
 						}
 
 						// Calculate total size (excluding signature)
-						totalSize := 0
+						totalSize := uint64(0)
 						for _, marshalled := range marshalledData {
-							totalSize += len(marshalled)
+							totalSize += uint64(len(marshalled))
 						}
 
 						shouldSubmit := s.batchingStrategy.ShouldSubmit(
@@ -277,7 +287,7 @@ func (s *Submitter) daSubmissionLoop() {
 							s.logger.Debug().
 								Time("t", time.Now()).
 								Uint64("data", dataNb).
-								Int("total_size_kb", totalSize/1024).
+								Uint64("total_size_kb", totalSize/1024).
 								Dur("time_since_last", timeSinceLastSubmit).
 								Msg("batching strategy triggered data submission")
 

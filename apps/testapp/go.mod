@@ -2,10 +2,10 @@ module github.com/evstack/ev-node/apps/testapp
 
 go 1.25.7
 
-// replace github.com/evstack/ev-node => ../../.
+replace github.com/evstack/ev-node => ../../.
 
 require (
-	github.com/evstack/ev-node v1.1.0-rc.2
+	github.com/evstack/ev-node v1.1.0
 	github.com/evstack/ev-node/core v1.0.0
 	github.com/ipfs/go-datastore v0.9.1
 	github.com/rs/zerolog v1.35.0
@@ -211,11 +211,4 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
-)
-
-// pin google genproto to a single version to avoid ambiguous imports pulled by transitive deps
-replace (
-	google.golang.org/genproto => google.golang.org/genproto v0.0.0-20240213162025-012b6fc9bca9
-	google.golang.org/genproto/googleapis/api => google.golang.org/genproto/googleapis/api v0.0.0-20240213162025-012b6fc9bca9
-	google.golang.org/genproto/googleapis/rpc => google.golang.org/genproto/googleapis/rpc v0.0.0-20240213162025-012b6fc9bca9
 )

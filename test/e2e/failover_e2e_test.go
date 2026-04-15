@@ -837,8 +837,6 @@ func submitTxToURL(t *testing.T, client *ethclient.Client) (common.Hash, uint64)
 	return tx.Hash(), blk
 }
 
-const defaultMaxBlobSize = 2 * 1024 * 1024 // 2MB
-
 func queryLastDAHeight(t *testing.T, jwtSecret string, daAddress string) uint64 {
 	t.Helper()
 	blobClient, err := blobrpc.NewClient(t.Context(), daAddress, jwtSecret, "")
