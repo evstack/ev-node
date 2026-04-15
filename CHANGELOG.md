@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Raft HA production hardening: leader fencing on SIGTERM, FSM data race, follower restart crash, log compaction config, and election timeout validation [#3230](https://github.com/evstack/ev-node/pull/3230)
+
 ### Changes
 
 - Make it easier to override `DefaultMaxBlobSize` by ldflags [#3235](https://github.com/evstack/ev-node/pull/3235)
