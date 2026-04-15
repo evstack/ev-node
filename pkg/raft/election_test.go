@@ -241,10 +241,15 @@ func TestDynamicLeaderElectionRun(t *testing.T) {
 					startedCh:  fStarted,
 					isSyncedFn: func(*RaftBlockState) (int, error) { return -5, nil },
 				}
-				// Leader must never start
+				// Signal if leader ever starts — it must not.
+				leaderStarted := make(chan struct{}, 1)
 				leader := &testRunnable{runFn: func(ctx context.Context) error {
-					t.Fatal("leader should not start when store is significantly behind raft")
-					return nil
+					select {
+					case leaderStarted <- struct{}{}:
+					default:
+					}
+					<-ctx.Done()
+					return ctx.Err()
 				}}
 
 				logger := zerolog.Nop()
@@ -257,7 +262,14 @@ func TestDynamicLeaderElectionRun(t *testing.T) {
 					leaderCh <- false
 					<-fStarted
 					leaderCh <- true
-					time.Sleep(10 * time.Millisecond)
+					// Wait for abdication to complete (transfer + continue) then verify
+					// the leader was never started before cancelling.
+					select {
+					case <-leaderStarted:
+						t.Error("leader should not start when store is significantly behind raft")
+					case <-time.After(50 * time.Millisecond):
+						// leadership transferred without starting leader — expected
+					}
 					cancel()
 				}()
 				return d, ctx, cancel

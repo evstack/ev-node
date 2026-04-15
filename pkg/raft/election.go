@@ -146,6 +146,7 @@ func (d *DynamicLeaderElection) Run(ctx context.Context) error {
 							Msg("became leader but store is significantly behind raft state; abdicating to prevent stalled block production")
 						if tErr := d.node.leadershipTransfer(); tErr != nil {
 							d.logger.Error().Err(tErr).Msg("leadership transfer failed after store-lag abdication")
+							return fmt.Errorf("leadership transfer failed after store-lag abdication: %w", tErr)
 						}
 						continue
 					}

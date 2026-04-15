@@ -82,6 +82,15 @@ func buildRaftConfig(cfg *Config, logger zerolog.Logger) *raft.Config {
 }
 
 func NewNode(cfg *Config, logger zerolog.Logger) (*Node, error) {
+	// Clamp ShutdownTimeout so waitForMsgsLanded never receives a zero or
+	// negative interval (which would panic in time.NewTicker). Callers such as
+	// initRaftNode already set this, but direct callers in tests may not.
+	if cfg.ShutdownTimeout <= 0 {
+		cfgCopy := *cfg
+		cfgCopy.ShutdownTimeout = 5 * cfg.SendTimeout
+		cfg = &cfgCopy
+	}
+
 	if err := os.MkdirAll(cfg.RaftDir, 0755); err != nil {
 		return nil, fmt.Errorf("create raft dir: %w", err)
 	}
