@@ -132,6 +132,23 @@ func (d *DynamicLeaderElection) Run(ctx context.Context) error {
 					if err != nil {
 						return err
 					}
+					if diff < -1 {
+						// Store is more than 1 block behind raft state.
+						// RecoverFromRaft can only apply the single latest block
+						// from the raft snapshot; it cannot replay a larger gap.
+						// Starting leader operations in this state would stall block
+						// production until catch-up completes (potentially minutes or
+						// hours). Abdicate immediately so a better-synced peer can
+						// take leadership.
+						d.logger.Warn().
+							Int("store_lag_blocks", -diff).
+							Uint64("raft_height", raftState.Height).
+							Msg("became leader but store is significantly behind raft state; abdicating to prevent stalled block production")
+						if tErr := d.node.leadershipTransfer(); tErr != nil {
+							d.logger.Error().Err(tErr).Msg("leadership transfer failed after store-lag abdication")
+						}
+						continue
+					}
 					if diff != 0 {
 						d.logger.Info().Msg("became leader but not synced, attempting recovery")
 						if err := runnable.Recover(ctx, raftState); err != nil {

@@ -221,6 +221,52 @@ func TestDynamicLeaderElectionRun(t *testing.T) {
 				assert.ErrorIs(t, err, context.Canceled)
 			},
 		},
+		"abdicate when store significantly behind raft": {
+			setup: func(t *testing.T) (*DynamicLeaderElection, context.Context, context.CancelFunc) {
+				m := newMocksourceNode(t)
+				leaderCh := make(chan bool, 2)
+				m.EXPECT().leaderCh().Return((<-chan bool)(leaderCh))
+				// GetState called in verifyState (follower start) and in leader sync check
+				m.EXPECT().GetState().Return(&RaftBlockState{Height: 10})
+				m.EXPECT().GetState().Return(&RaftBlockState{Height: 10})
+				m.EXPECT().Config().Return(testCfg()).Times(2)
+				m.EXPECT().waitForMsgsLanded(2 * time.Millisecond).Return(nil)
+				m.EXPECT().NodeID().Return("self")
+				m.EXPECT().leaderID().Return("self")
+				// Abdication must transfer leadership
+				m.EXPECT().leadershipTransfer().Return(nil)
+
+				fStarted := make(chan struct{})
+				follower := &testRunnable{
+					startedCh:  fStarted,
+					isSyncedFn: func(*RaftBlockState) (int, error) { return -5, nil },
+				}
+				// Leader must never start
+				leader := &testRunnable{runFn: func(ctx context.Context) error {
+					t.Fatal("leader should not start when store is significantly behind raft")
+					return nil
+				}}
+
+				logger := zerolog.Nop()
+				d := &DynamicLeaderElection{logger: logger, node: m,
+					leaderFactory:   func() (Runnable, error) { return leader, nil },
+					followerFactory: func() (Runnable, error) { return follower, nil },
+				}
+				ctx, cancel := context.WithCancel(t.Context())
+				go func() {
+					leaderCh <- false
+					<-fStarted
+					leaderCh <- true
+					time.Sleep(10 * time.Millisecond)
+					cancel()
+				}()
+				return d, ctx, cancel
+			},
+			assertF: func(t *testing.T, err error) {
+				require.Error(t, err)
+				assert.ErrorIs(t, err, context.Canceled)
+			},
+		},
 		"lost leadership during sync wait": {
 			setup: func(t *testing.T) (*DynamicLeaderElection, context.Context, context.CancelFunc) {
 				m := newMocksourceNode(t)
