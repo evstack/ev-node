@@ -42,10 +42,10 @@ type stubRaftNode struct {
 	callbacks []chan<- raft.RaftApplyMsg
 }
 
-func (s *stubRaftNode) IsLeader() bool                                          { return false }
-func (s *stubRaftNode) HasQuorum() bool                                         { return false }
-func (s *stubRaftNode) GetState() *raft.RaftBlockState                          { return nil }
-func (s *stubRaftNode) Broadcast(context.Context, *raft.RaftBlockState) error   { return nil }
+func (s *stubRaftNode) IsLeader() bool                                        { return false }
+func (s *stubRaftNode) HasQuorum() bool                                       { return false }
+func (s *stubRaftNode) GetState() *raft.RaftBlockState                        { return nil }
+func (s *stubRaftNode) Broadcast(context.Context, *raft.RaftBlockState) error { return nil }
 func (s *stubRaftNode) SetApplyCallback(ch chan<- raft.RaftApplyMsg) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
