@@ -116,7 +116,6 @@ func DefaultConfig() Config {
 		},
 		Raft: RaftConfig{
 			SendTimeout:        200 * time.Millisecond,
-			ShutdownTimeout:    5 * time.Second,
 			HeartbeatTimeout:   350 * time.Millisecond,
 			LeaderLeaseTimeout: 175 * time.Millisecond,
 			ElectionTimeout:    1000 * time.Millisecond,

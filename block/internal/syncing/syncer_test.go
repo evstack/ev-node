@@ -6,6 +6,7 @@ import (
 	"crypto/sha512"
 	"errors"
 	"math"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -34,6 +35,30 @@ import (
 	extmocks "github.com/evstack/ev-node/test/mocks/external"
 	"github.com/evstack/ev-node/types"
 )
+
+// stubRaftNode is a minimal RaftNode stub that records SetApplyCallback calls.
+type stubRaftNode struct {
+	mu        sync.Mutex
+	callbacks []chan<- raft.RaftApplyMsg
+}
+
+func (s *stubRaftNode) IsLeader() bool                                          { return false }
+func (s *stubRaftNode) HasQuorum() bool                                         { return false }
+func (s *stubRaftNode) GetState() *raft.RaftBlockState                          { return nil }
+func (s *stubRaftNode) Broadcast(context.Context, *raft.RaftBlockState) error   { return nil }
+func (s *stubRaftNode) SetApplyCallback(ch chan<- raft.RaftApplyMsg) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.callbacks = append(s.callbacks, ch)
+}
+
+func (s *stubRaftNode) recordedCallbacks() []chan<- raft.RaftApplyMsg {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]chan<- raft.RaftApplyMsg, len(s.callbacks))
+	copy(out, s.callbacks)
+	return out
+}
 
 // helper to create a signer, pubkey and address for tests
 func buildSyncTestSigner(tb testing.TB) (addr []byte, pub crypto.PubKey, signer signerpkg.Signer) {

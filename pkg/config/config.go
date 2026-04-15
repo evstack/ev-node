@@ -201,9 +201,6 @@ const (
 	FlagRaftSnapshotThreshold = FlagPrefixEvnode + "raft.snapshot_threshold"
 	// FlagRaftTrailingLogs is the flag for the number of trailing logs after a snapshot.
 	FlagRaftTrailingLogs = FlagPrefixEvnode + "raft.trailing_logs"
-	// FlagRaftShutdownTimeout is the flag for how long to wait for committed logs to be applied on graceful shutdown.
-	FlagRaftShutdownTimeout = FlagPrefixEvnode + "raft.shutdown_timeout"
-
 	// Pruning configuration flags
 	FlagPruningMode       = FlagPrefixEvnode + "pruning.pruning_mode"
 	FlagPruningKeepRecent = FlagPrefixEvnode + "pruning.pruning_keep_recent"
@@ -412,7 +409,6 @@ type RaftConfig struct {
 	Peers              string        `mapstructure:"peers" yaml:"peers" comment:"Comma-separated list of peer Raft addresses (nodeID@host:port)"`
 	SnapCount          uint64        `mapstructure:"snap_count" yaml:"snap_count" comment:"Number of snapshot files to retain on disk"`
 	SendTimeout        time.Duration `mapstructure:"send_timeout" yaml:"send_timeout" comment:"Max duration to wait for a message to be sent to a peer"`
-	ShutdownTimeout    time.Duration `mapstructure:"shutdown_timeout" yaml:"shutdown_timeout" comment:"Max duration to wait for committed raft logs to be applied on graceful shutdown"`
 	HeartbeatTimeout   time.Duration `mapstructure:"heartbeat_timeout" yaml:"heartbeat_timeout" comment:"Time between leader heartbeats to followers"`
 	LeaderLeaseTimeout time.Duration `mapstructure:"leader_lease_timeout" yaml:"leader_lease_timeout" comment:"Duration of the leader lease"`
 	ElectionTimeout    time.Duration `mapstructure:"election_timeout" yaml:"election_timeout" comment:"Time a candidate waits for votes before restarting election; must be >= heartbeat_timeout"`
@@ -437,10 +433,6 @@ func (c RaftConfig) Validate() error {
 
 	if c.SendTimeout <= 0 {
 		multiErr = errors.Join(multiErr, fmt.Errorf("send timeout must be positive"))
-	}
-
-	if c.ShutdownTimeout <= 0 {
-		multiErr = errors.Join(multiErr, fmt.Errorf("shutdown timeout must be positive"))
 	}
 
 	if c.HeartbeatTimeout <= 0 {
@@ -672,7 +664,6 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().String(FlagRaftPeers, def.Raft.Peers, "comma-separated list of peer Raft addresses (nodeID@host:port)")
 	cmd.Flags().Uint64(FlagRaftSnapCount, def.Raft.SnapCount, "number of snapshot files to retain on disk")
 	cmd.Flags().Duration(FlagRaftSendTimeout, def.Raft.SendTimeout, "max duration to wait for a message to be sent to a peer")
-	cmd.Flags().Duration(FlagRaftShutdownTimeout, def.Raft.ShutdownTimeout, "max duration to wait for committed raft logs to be applied on graceful shutdown")
 	cmd.Flags().Duration(FlagRaftHeartbeatTimeout, def.Raft.HeartbeatTimeout, "time between leader heartbeats to followers")
 	cmd.Flags().Duration(FlagRaftLeaderLeaseTimeout, def.Raft.LeaderLeaseTimeout, "duration of the leader lease")
 	cmd.Flags().Duration(FlagRaftElectionTimeout, def.Raft.ElectionTimeout, "time a candidate waits for votes before restarting election")

@@ -1,12 +1,10 @@
 package raft
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -15,29 +13,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	hclog "github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb"
 	"github.com/rs/zerolog"
 	"google.golang.org/protobuf/proto"
 )
-
-// suppressBoltNoise redirects the stdlib log output once to drop the
-// "Rollback failed: tx closed" messages emitted by hashicorp/raft-boltdb.
-// boltdb returns ErrTxClosed when Rollback is called after a successful
-// Commit; raft-boltdb unconditionally logs this as an error even though it
-// is the expected outcome of every successful transaction.
-var suppressBoltNoise sync.Once
-
-// boltTxClosedFilter is an io.Writer that silently drops log lines containing
-// "tx closed" and forwards everything else to the underlying writer.
-type boltTxClosedFilter struct{ w io.Writer }
-
-func (f *boltTxClosedFilter) Write(p []byte) (n int, err error) {
-	if bytes.Contains(p, []byte("tx closed")) {
-		return len(p), nil
-	}
-	return f.w.Write(p)
-}
 
 // Node represents a raft consensus node
 type Node struct {
@@ -73,10 +54,19 @@ type FSM struct {
 }
 
 // buildRaftConfig converts a Node Config into a hashicorp/raft Config.
-func buildRaftConfig(cfg *Config) *raft.Config {
+// logger is used to bridge hashicorp/raft's internal hclog output to zerolog.
+func buildRaftConfig(cfg *Config, logger zerolog.Logger) *raft.Config {
 	raftConfig := raft.DefaultConfig()
 	raftConfig.LocalID = raft.ServerID(cfg.NodeID)
-	raftConfig.LogLevel = "INFO"
+	// Route raft's internal hclog messages through zerolog so all log output is
+	// consistent. hclog writes formatted text lines; zerolog receives them via
+	// its io.Writer implementation and emits them as structured JSON.
+	raftConfig.Logger = hclog.New(&hclog.LoggerOptions{
+		Name:        "raft",
+		Level:       hclog.Info,
+		Output:      logger.With().Str("component", "raft-hashicorp").Logger(),
+		DisableTime: true, // zerolog adds its own timestamp
+	})
 	raftConfig.HeartbeatTimeout = cfg.HeartbeatTimeout
 	raftConfig.LeaderLeaseTimeout = cfg.LeaderLeaseTimeout
 	if cfg.ElectionTimeout > 0 {
@@ -92,14 +82,11 @@ func buildRaftConfig(cfg *Config) *raft.Config {
 }
 
 func NewNode(cfg *Config, logger zerolog.Logger) (*Node, error) {
-	suppressBoltNoise.Do(func() {
-		log.SetOutput(&boltTxClosedFilter{w: log.Writer()})
-	})
 	if err := os.MkdirAll(cfg.RaftDir, 0755); err != nil {
 		return nil, fmt.Errorf("create raft dir: %w", err)
 	}
 
-	raftConfig := buildRaftConfig(cfg)
+	raftConfig := buildRaftConfig(cfg, logger)
 
 	startPointer := new(atomic.Pointer[RaftBlockState])
 	startPointer.Store(&RaftBlockState{})

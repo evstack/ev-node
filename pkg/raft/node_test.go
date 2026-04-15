@@ -1,51 +1,16 @@
 package raft
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"testing"
 	"time"
 
 	"github.com/hashicorp/raft"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-func TestBoltTxClosedFilter_Write(t *testing.T) {
-	specs := map[string]struct {
-		input     string
-		expectFwd bool
-	}{
-		"passes through normal log line": {
-			input:     "some normal log message\n",
-			expectFwd: true,
-		},
-		"drops line containing tx closed": {
-			input:     "Rollback failed: tx closed\n",
-			expectFwd: false,
-		},
-		"drops line with tx closed anywhere": {
-			input:     "error: tx closed due to commit\n",
-			expectFwd: false,
-		},
-	}
-
-	for name, spec := range specs {
-		t.Run(name, func(t *testing.T) {
-			var buf bytes.Buffer
-			f := &boltTxClosedFilter{w: &buf}
-			n, err := f.Write([]byte(spec.input))
-			require.NoError(t, err)
-			assert.Equal(t, len(spec.input), n)
-			if spec.expectFwd {
-				assert.Equal(t, spec.input, buf.String())
-			} else {
-				assert.Empty(t, buf.String())
-			}
-		})
-	}
-}
 
 func TestBuildRaftConfig_ElectionTimeout(t *testing.T) {
 	specs := map[string]struct {
@@ -70,7 +35,7 @@ func TestBuildRaftConfig_ElectionTimeout(t *testing.T) {
 
 	for name, spec := range specs {
 		t.Run(name, func(t *testing.T) {
-			rc := buildRaftConfig(spec.cfg)
+			rc := buildRaftConfig(spec.cfg, zerolog.Nop())
 			assert.Equal(t, spec.expectedElectionTimeout, rc.ElectionTimeout)
 		})
 	}
@@ -192,7 +157,7 @@ func TestNodeResignLeader_NotLeaderNoop(t *testing.T) {
 	assert.NoError(t, n.ResignLeader(context.Background()))
 }
 
-func TestNewNode_SnapshotConfigApplied(t *testing.T) {
+func TestBuildRaftConfig_SnapshotConfigApplied(t *testing.T) {
 	specs := map[string]struct {
 		cfg                       *Config
 		expectedSnapshotThreshold uint64
@@ -220,7 +185,7 @@ func TestNewNode_SnapshotConfigApplied(t *testing.T) {
 
 	for name, spec := range specs {
 		t.Run(name, func(t *testing.T) {
-			rc := buildRaftConfig(spec.cfg)
+			rc := buildRaftConfig(spec.cfg, zerolog.Nop())
 			assert.Equal(t, spec.expectedSnapshotThreshold, rc.SnapshotThreshold)
 			assert.Equal(t, spec.expectedTrailingLogs, rc.TrailingLogs)
 		})

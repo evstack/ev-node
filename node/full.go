@@ -155,7 +155,7 @@ func initRaftNode(nodeConfig config.Config, logger zerolog.Logger) (*raftpkg.Nod
 		Bootstrap:          nodeConfig.Raft.Bootstrap,
 		SnapCount:          nodeConfig.Raft.SnapCount,
 		SendTimeout:        nodeConfig.Raft.SendTimeout,
-		ShutdownTimeout:    nodeConfig.Raft.ShutdownTimeout,
+		ShutdownTimeout:    5 * nodeConfig.Raft.SendTimeout,
 		HeartbeatTimeout:   nodeConfig.Raft.HeartbeatTimeout,
 		LeaderLeaseTimeout: nodeConfig.Raft.LeaderLeaseTimeout,
 		ElectionTimeout:    nodeConfig.Raft.ElectionTimeout,
