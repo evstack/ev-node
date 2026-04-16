@@ -1229,7 +1229,7 @@ func (s *Syncer) RecoverFromRaft(ctx context.Context, raftState *raft.RaftBlockS
 		event := &common.DAHeightEvent{
 			Header: &header,
 			Data:   &data,
-			Source: "",
+			Source: common.SourceRaft,
 		}
 		err := s.trySyncNextBlockWithState(ctx, event, currentState)
 		if err != nil {

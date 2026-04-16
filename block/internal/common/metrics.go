@@ -228,7 +228,7 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 	}
 
 	// Syncer metrics
-	for _, source := range []EventSource{SourceDA, SourceP2P} {
+	for _, source := range AllEventSources() {
 		m.BlocksSynchronized[source] = prometheus.NewCounterFrom(stdprometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
@@ -286,7 +286,7 @@ func NopMetrics() *Metrics {
 	}
 
 	// Initialize syncer no-op metrics
-	for _, source := range []EventSource{SourceDA, SourceP2P} {
+	for _, source := range AllEventSources() {
 		m.BlocksSynchronized[source] = discard.NewCounter()
 	}
 
