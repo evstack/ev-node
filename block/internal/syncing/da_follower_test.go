@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
@@ -11,7 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/evstack/ev-node/block/internal/common"
+	"github.com/evstack/ev-node/block/internal/da"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
+	"github.com/evstack/ev-node/types"
 )
 
 func TestDAFollower_HandleEvent(t *testing.T) {
@@ -250,4 +253,153 @@ func makeRange(start, end uint64) []uint64 {
 		out = append(out, v)
 	}
 	return out
+}
+
+type mockSubHandler struct {
+	mock.Mock
+}
+
+func (m *mockSubHandler) HandleEvent(ctx context.Context, ev datypes.SubscriptionEvent, isInline bool) error {
+	return m.Called(ctx, ev, isInline).Error(0)
+}
+
+func (m *mockSubHandler) HandleCatchup(ctx context.Context, height uint64) error {
+	return m.Called(ctx, height).Error(0)
+}
+
+func newTestSubscriber(startHeight uint64) *da.Subscriber {
+	return da.NewSubscriber(da.SubscriberConfig{
+		Client:      nil,
+		Logger:      zerolog.Nop(),
+		Handler:     &mockSubHandler{},
+		Namespaces:  nil,
+		StartHeight: startHeight,
+		DABlockTime: time.Millisecond,
+	})
+}
+
+func makeHeader(height uint64) *types.SignedHeader {
+	return &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{Height: height}}}
+}
+
+func TestDAFollower_HandleCatchup_SelfCorrectingWalkback(t *testing.T) {
+	t.Run("rewinds_when_gap_detected", func(t *testing.T) {
+		daRetriever := NewMockDARetriever(t)
+		daRetriever.On("RetrieveFromDA", mock.Anything, uint64(100)).
+			Return([]common.DAHeightEvent{{Header: makeHeader(50)}}, nil).Once()
+
+		sub := newTestSubscriber(100)
+		sub.LocalDAHeight() // ensure initialized
+
+		var nodeHeight uint64 = 40
+
+		follower := &daFollower{
+			subscriber:    sub,
+			retriever:     daRetriever,
+			eventSink:     common.EventSinkFunc(func(_ context.Context, _ common.DAHeightEvent) error { return nil }),
+			logger:        zerolog.Nop(),
+			nodeHeightFn:  func() uint64 { return nodeHeight },
+			startDAHeight: 1,
+		}
+
+		err := follower.HandleCatchup(t.Context(), 100)
+		require.NoError(t, err)
+		assert.True(t, follower.walkbackActive.Load())
+		assert.Equal(t, uint64(99), sub.LocalDAHeight())
+	})
+
+	t.Run("keeps_walking_back_on_empty_height", func(t *testing.T) {
+		daRetriever := NewMockDARetriever(t)
+		daRetriever.On("RetrieveFromDA", mock.Anything, uint64(99)).
+			Return(nil, datypes.ErrBlobNotFound).Once()
+
+		sub := newTestSubscriber(100)
+
+		var nodeHeight uint64 = 40
+
+		follower := &daFollower{
+			subscriber:    sub,
+			retriever:     daRetriever,
+			eventSink:     common.EventSinkFunc(func(_ context.Context, _ common.DAHeightEvent) error { return nil }),
+			logger:        zerolog.Nop(),
+			nodeHeightFn:  func() uint64 { return nodeHeight },
+			startDAHeight: 1,
+		}
+		follower.walkbackActive.Store(true)
+
+		err := follower.HandleCatchup(t.Context(), 99)
+		require.NoError(t, err)
+		assert.True(t, follower.walkbackActive.Load())
+		assert.Equal(t, uint64(98), sub.LocalDAHeight())
+	})
+
+	t.Run("stops_walkback_when_contiguous", func(t *testing.T) {
+		daRetriever := NewMockDARetriever(t)
+		daRetriever.On("RetrieveFromDA", mock.Anything, uint64(95)).
+			Return([]common.DAHeightEvent{{Header: makeHeader(41)}}, nil).Once()
+
+		sub := newTestSubscriber(100)
+
+		var nodeHeight uint64 = 40
+
+		follower := &daFollower{
+			subscriber:    sub,
+			retriever:     daRetriever,
+			eventSink:     common.EventSinkFunc(func(_ context.Context, _ common.DAHeightEvent) error { return nil }),
+			logger:        zerolog.Nop(),
+			nodeHeightFn:  func() uint64 { return nodeHeight },
+			startDAHeight: 1,
+		}
+		follower.walkbackActive.Store(true)
+
+		err := follower.HandleCatchup(t.Context(), 95)
+		require.NoError(t, err)
+		assert.False(t, follower.walkbackActive.Load())
+		assert.Equal(t, uint64(100), sub.LocalDAHeight()) // no rewind
+	})
+
+	t.Run("no_walkback_without_nodeHeightFn", func(t *testing.T) {
+		daRetriever := NewMockDARetriever(t)
+		daRetriever.On("RetrieveFromDA", mock.Anything, uint64(100)).
+			Return([]common.DAHeightEvent{{Header: makeHeader(50)}}, nil).Once()
+
+		sub := newTestSubscriber(100)
+
+		follower := &daFollower{
+			subscriber:    sub,
+			retriever:     daRetriever,
+			eventSink:     common.EventSinkFunc(func(_ context.Context, _ common.DAHeightEvent) error { return nil }),
+			logger:        zerolog.Nop(),
+			startDAHeight: 1,
+		}
+
+		err := follower.HandleCatchup(t.Context(), 100)
+		require.NoError(t, err)
+		assert.False(t, follower.walkbackActive.Load())
+		assert.Equal(t, uint64(100), sub.LocalDAHeight()) // no rewind
+	})
+
+	t.Run("no_walkback_at_startDAHeight", func(t *testing.T) {
+		daRetriever := NewMockDARetriever(t)
+		daRetriever.On("RetrieveFromDA", mock.Anything, uint64(1)).
+			Return([]common.DAHeightEvent{{Header: makeHeader(50)}}, nil).Once()
+
+		sub := newTestSubscriber(1)
+
+		var nodeHeight uint64 = 40
+
+		follower := &daFollower{
+			subscriber:    sub,
+			retriever:     daRetriever,
+			eventSink:     common.EventSinkFunc(func(_ context.Context, _ common.DAHeightEvent) error { return nil }),
+			logger:        zerolog.Nop(),
+			nodeHeightFn:  func() uint64 { return nodeHeight },
+			startDAHeight: 1,
+		}
+
+		err := follower.HandleCatchup(t.Context(), 1)
+		require.NoError(t, err)
+		assert.False(t, follower.walkbackActive.Load())
+		assert.Equal(t, uint64(1), sub.LocalDAHeight()) // no rewind
+	})
 }

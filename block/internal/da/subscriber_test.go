@@ -101,6 +101,44 @@ func TestSubscriber_RunCatchup(t *testing.T) {
 	})
 }
 
+func TestSubscriber_RewindTo(t *testing.T) {
+	t.Run("no_op_when_target_is_equal_or_higher", func(t *testing.T) {
+		sub := NewSubscriber(SubscriberConfig{
+			Client:      testmocks.NewMockClient(t),
+			Logger:      zerolog.Nop(),
+			Handler:     new(MockSubscriberHandler),
+			Namespaces:  [][]byte{[]byte("ns")},
+			StartHeight: 100,
+			DABlockTime: time.Millisecond,
+		})
+		sub.localDAHeight.Store(100)
+
+		sub.RewindTo(100)
+		assert.Equal(t, uint64(100), sub.LocalDAHeight())
+
+		sub.RewindTo(200)
+		assert.Equal(t, uint64(100), sub.LocalDAHeight())
+	})
+
+	t.Run("rewinds_local_height_and_clears_head", func(t *testing.T) {
+		sub := NewSubscriber(SubscriberConfig{
+			Client:      testmocks.NewMockClient(t),
+			Logger:      zerolog.Nop(),
+			Handler:     new(MockSubscriberHandler),
+			Namespaces:  [][]byte{[]byte("ns")},
+			StartHeight: 100,
+			DABlockTime: time.Millisecond,
+		})
+		sub.localDAHeight.Store(150)
+		sub.headReached.Store(true)
+
+		sub.RewindTo(120)
+
+		assert.Equal(t, uint64(120), sub.LocalDAHeight())
+		assert.False(t, sub.HasReachedHead())
+	})
+}
+
 func TestSubscriber_RunSubscription_InlineDoesNotPrematurelyReachHead(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()

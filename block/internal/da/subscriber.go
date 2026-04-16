@@ -159,6 +159,23 @@ func (s *Subscriber) HasReachedHead() bool {
 	return s.headReached.Load()
 }
 
+// RewindTo sets localDAHeight back to the given height and signals the catchup
+// loop so that DA heights are re-fetched. This is used when the primary source
+// (P2P) stalls and DA needs to take over for the missing range.
+func (s *Subscriber) RewindTo(daHeight uint64) {
+	for {
+		cur := s.localDAHeight.Load()
+		if daHeight >= cur {
+			return
+		}
+		if s.localDAHeight.CompareAndSwap(cur, daHeight) {
+			s.headReached.Store(false)
+			s.signalCatchup()
+			return
+		}
+	}
+}
+
 // signalCatchup sends a non-blocking signal to wake catchupLoop.
 func (s *Subscriber) signalCatchup() {
 	select {

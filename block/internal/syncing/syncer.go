@@ -82,6 +82,11 @@ type Syncer struct {
 
 	daFollower DAFollower
 
+	// p2pStalled is set by p2pWorkerLoop when P2P genuinely fails (not
+	// cancelled by a DA event). The DA follower reads it to decide whether
+	// to walk back and fill the gap from DA.
+	p2pStalled atomic.Bool
+
 	// Forced inclusion tracking
 	forcedInclusionMu    sync.RWMutex
 	seenBlockTxs         map[string]struct{} // SHA-256 hex of every tx seen in a DA-sourced block
@@ -220,6 +225,11 @@ func (s *Syncer) Start(ctx context.Context) (err error) {
 		DataNamespace: s.daClient.GetDataNamespace(),
 		StartDAHeight: s.daRetrieverHeight.Load(),
 		DABlockTime:   s.config.DA.BlockTime.Duration,
+		NodeHeight: func() uint64 {
+			h, _ := s.store.Height(s.ctx)
+			return h
+		},
+		P2PStalled: s.p2pStalled.Load,
 	})
 	if err = s.daFollower.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start DA follower: %w", err)
@@ -488,6 +498,7 @@ func (s *Syncer) p2pWorkerLoop(ctx context.Context) {
 			}
 
 			if waitCtx.Err() == nil {
+				s.p2pStalled.Store(true)
 				logger.Warn().Err(err).Uint64("height", targetHeight).Msg("P2P handler failed to process height")
 			}
 
@@ -496,6 +507,8 @@ func (s *Syncer) p2pWorkerLoop(ctx context.Context) {
 			}
 			continue
 		}
+
+		s.p2pStalled.Store(false)
 
 		if err := s.waitForStoreHeight(ctx, targetHeight); err != nil {
 			if errors.Is(err, context.Canceled) {
