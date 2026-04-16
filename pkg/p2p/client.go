@@ -35,12 +35,6 @@ const (
 
 	// peerLimit defines limit of number of peers returned during active peer discovery.
 	peerLimit = 60
-
-	// seedReconnectBackoff is the initial backoff when reconnecting to a disconnected seed peer.
-	seedReconnectBackoff = 1 * time.Second
-
-	// seedReconnectMaxBackoff is the maximum backoff for seed peer reconnection attempts.
-	seedReconnectMaxBackoff = 30 * time.Second
 )
 
 // Client is a P2P client, implemented with libp2p.
@@ -61,11 +55,6 @@ type Client struct {
 	gater   *conngater.BasicConnectionGater
 	ps      *pubsub.PubSub
 	started bool
-
-	ctx    context.Context
-	cancel context.CancelFunc
-
-	seedPeers []peer.AddrInfo
 
 	metrics *Metrics
 }
@@ -151,7 +140,6 @@ func (c *Client) Start(ctx context.Context) error {
 
 func (c *Client) startWithHost(ctx context.Context, h host.Host) error {
 	c.host = h
-	c.ctx, c.cancel = context.WithCancel(ctx)
 	for _, a := range c.host.Addrs() {
 		c.logger.Info().Str("address", fmt.Sprintf("%s/p2p/%s", a, c.host.ID())).Msg("listening on address")
 	}
@@ -182,17 +170,11 @@ func (c *Client) startWithHost(ctx context.Context, h host.Host) error {
 	}
 
 	c.started = true
-
-	c.host.Network().Notify(c.newDisconnectNotifee())
-
 	return nil
 }
 
 // Close gently stops Client.
 func (c *Client) Close() error {
-	if c.cancel != nil {
-		c.cancel()
-	}
 	var err error
 	if c.dht != nil {
 		err = errors.Join(err, c.dht.Close())
@@ -263,77 +245,6 @@ func (c *Client) Peers() []PeerConnection {
 	return res
 }
 
-type disconnectNotifee struct {
-	c *Client
-}
-
-func (n disconnectNotifee) Connected(_ network.Network, conn network.Conn) {
-	p := conn.RemotePeer()
-	for _, sp := range n.c.seedPeers {
-		if sp.ID == p {
-			n.c.logger.Info().Str("peer", p.String()).Msg("connected to seed peer")
-			return
-		}
-	}
-}
-func (n disconnectNotifee) OpenedStream(_ network.Network, _ network.Stream)     {}
-func (n disconnectNotifee) ClosedStream(_ network.Network, _ network.Stream)     {}
-func (n disconnectNotifee) Listen(_ network.Network, _ multiaddr.Multiaddr)      {}
-func (n disconnectNotifee) ListenClose(_ network.Network, _ multiaddr.Multiaddr) {}
-
-func (n disconnectNotifee) Disconnected(_ network.Network, conn network.Conn) {
-	p := conn.RemotePeer()
-	for _, sp := range n.c.seedPeers {
-		if sp.ID == p {
-			n.c.logger.Warn().Str("peer", p.String()).Msg("disconnected from seed peer, scheduling reconnect")
-			go n.c.reconnectSeedPeer(sp)
-			return
-		}
-	}
-}
-
-func (c *Client) reconnectSeedPeer(sp peer.AddrInfo) {
-	backoff := seedReconnectBackoff
-	for {
-		if c.ctx.Err() != nil {
-			return
-		}
-		if c.isConnected(sp.ID) {
-			return
-		}
-
-		err := c.host.Connect(c.ctx, sp)
-		if err == nil {
-			c.logger.Info().Str("peer", sp.ID.String()).Msg("reconnected to seed peer")
-			return
-		}
-		if c.ctx.Err() != nil {
-			return
-		}
-
-		c.logger.Debug().Str("peer", sp.ID.String()).Dur("backoff", backoff).Err(err).Msg("failed to reconnect to seed peer, retrying")
-		select {
-		case <-c.ctx.Done():
-			return
-		case <-time.After(backoff):
-		}
-
-		backoff *= 2
-		if backoff > seedReconnectMaxBackoff {
-			backoff = seedReconnectMaxBackoff
-		}
-	}
-}
-
-func (c *Client) newDisconnectNotifee() disconnectNotifee {
-	return disconnectNotifee{c: c}
-}
-
-// isConnected returns true if there is an active connection to the given peer.
-func (c *Client) isConnected(id peer.ID) bool {
-	return c.host.Network().Connectedness(id) == network.Connected
-}
-
 func (c *Client) listen() (host.Host, error) {
 	maddr, err := multiaddr.NewMultiaddr(c.conf.ListenAddress)
 	if err != nil {
@@ -345,7 +256,6 @@ func (c *Client) listen() (host.Host, error) {
 
 func (c *Client) setupDHT(ctx context.Context) error {
 	peers := c.parseAddrInfoList(c.conf.Peers)
-	c.seedPeers = peers
 	if len(peers) == 0 {
 		c.logger.Info().Msg("no peers - only listening for connections")
 	}
