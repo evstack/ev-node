@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1776341307783,
+  "lastUpdate": 1776341309689,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -1346,6 +1346,102 @@ window.BENCHMARK_DATA = {
             "value": 54,
             "unit": "allocs/op",
             "extra": "30229 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "27022259+auricom@users.noreply.github.com",
+            "name": "auricom",
+            "username": "auricom"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "3cfc1ad15f1b466cdab0b5feac43d39bda16fc4b",
+          "message": "feat(metrics): track blocks synchronized by source (#3259)\n\n* feat(metrics): track blocks synchronized by source\n\nAdd sequencer_blocks_synchronized_total counter with source label (DA/P2P) to track how many blocks were synced from each source.\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n* docs(changelog): add entry for blocks_synchronized_total metric\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n* docs(changelog): fix PR number for blocks_synchronized_total metric\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n* fix(metrics): guard BlocksSynchronized lookup and move after commit\n\n- Use nil-safe map lookup to avoid panic when RecoverFromRaft calls\n  trySyncNextBlockWithState with Source: \"\" (not in the map)\n- Move counter increment to after batch.Commit() so only successfully\n  committed blocks are counted\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n* fix(metrics): address code review feedback\n\n- Lowercase EventSource constant values (da/p2p/raft) for Prometheus label convention\n- Add SourceRaft for RecoverFromRaft path so blocks are counted\n- Add AllEventSources() helper to avoid duplicating source list in metrics.go\n- Use AllEventSources() in both PrometheusMetrics and NopMetrics init loops\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n---------\n\nCo-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>",
+          "timestamp": "2026-04-16T14:04:34+02:00",
+          "tree_id": "83423c66ce925b9caebdbee95109fe67d6c2582a",
+          "url": "https://github.com/evstack/ev-node/commit/3cfc1ad15f1b466cdab0b5feac43d39bda16fc4b"
+        },
+        "date": 1776341309052,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 37160,
+            "unit": "ns/op\t    4763 B/op\t      50 allocs/op",
+            "extra": "32391 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 37160,
+            "unit": "ns/op",
+            "extra": "32391 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 4763,
+            "unit": "B/op",
+            "extra": "32391 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 50,
+            "unit": "allocs/op",
+            "extra": "32391 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 37714,
+            "unit": "ns/op\t    4965 B/op\t      54 allocs/op",
+            "extra": "31981 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 37714,
+            "unit": "ns/op",
+            "extra": "31981 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 4965,
+            "unit": "B/op",
+            "extra": "31981 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 54,
+            "unit": "allocs/op",
+            "extra": "31981 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 46872,
+            "unit": "ns/op\t   10262 B/op\t      54 allocs/op",
+            "extra": "27500 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 46872,
+            "unit": "ns/op",
+            "extra": "27500 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 10262,
+            "unit": "B/op",
+            "extra": "27500 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 54,
+            "unit": "allocs/op",
+            "extra": "27500 times\n4 procs"
           }
         ]
       }
