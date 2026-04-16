@@ -715,6 +715,7 @@ func (s *Syncer) trySyncNextBlockWithState(ctx context.Context, event *common.DA
 	headerHash := header.Hash().String()
 
 	s.logger.Info().Uint64("height", nextHeight).Str("source", string(event.Source)).Msg("syncing block")
+	s.metrics.BlocksSynchronized[event.Source].Add(1)
 
 	// Compared to the executor logic where the current block needs to be applied first,
 	// here only the previous block needs to be applied to proceed to the verification.

@@ -67,6 +67,9 @@ type Metrics struct {
 	// Forced inclusion metrics
 	ForcedInclusionTxsInGracePeriod metrics.Gauge   // Number of forced inclusion txs currently in grace period
 	ForcedInclusionTxsMalicious     metrics.Counter // Total number of forced inclusion txs marked as malicious
+
+	// Syncer metrics
+	BlocksSynchronized map[EventSource]metrics.Counter // Blocks synchronized by source (P2P or DA)
 }
 
 // PrometheusMetrics returns Metrics built using Prometheus client library
@@ -80,6 +83,7 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 		OperationDuration:      make(map[string]metrics.Histogram),
 		DASubmitterFailures:    make(map[DASubmitterFailureReason]metrics.Counter),
 		DASubmitterLastFailure: make(map[DASubmitterFailureReason]metrics.Gauge),
+		BlocksSynchronized:     make(map[EventSource]metrics.Counter),
 	}
 
 	// Original metrics
@@ -223,6 +227,19 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 		}, labels).With(labelsAndValues...)
 	}
 
+	// Syncer metrics
+	for _, source := range []EventSource{SourceDA, SourceP2P} {
+		m.BlocksSynchronized[source] = prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "blocks_synchronized_total",
+			Help:      "Total number of blocks synchronized by source",
+			ConstLabels: map[string]string{
+				"source": string(source),
+			},
+		}, labels).With(labelsAndValues...)
+	}
+
 	return m
 }
 
@@ -251,6 +268,9 @@ func NopMetrics() *Metrics {
 		// Forced inclusion metrics
 		ForcedInclusionTxsInGracePeriod: discard.NewGauge(),
 		ForcedInclusionTxsMalicious:     discard.NewCounter(),
+
+		// Syncer metrics
+		BlocksSynchronized: make(map[EventSource]metrics.Counter),
 	}
 
 	// Initialize maps with no-op metrics
@@ -263,6 +283,11 @@ func NopMetrics() *Metrics {
 	for _, reason := range AllDASubmitterFailureReasons() {
 		m.DASubmitterFailures[reason] = discard.NewCounter()
 		m.DASubmitterLastFailure[reason] = discard.NewGauge()
+	}
+
+	// Initialize syncer no-op metrics
+	for _, source := range []EventSource{SourceDA, SourceP2P} {
+		m.BlocksSynchronized[source] = discard.NewCounter()
 	}
 
 	return m
