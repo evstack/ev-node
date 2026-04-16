@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changes
 
+- Add `sequencer_blocks_synchronized_total` Prometheus counter metric tracking blocks synced by source (DA/P2P) [#3259](https://github.com/evstack/ev-node/pull/3259)
 - Make it easier to override `DefaultMaxBlobSize` by ldflags [#3235](https://github.com/evstack/ev-node/pull/3235)
 - Add solo sequencer (simple in memory single sequencer without force inclusion) [#3235](https://github.com/evstack/ev-node/pull/3235)
 - Improve reaper to sustain txs burst better [#3236](https://github.com/evstack/ev-node/pull/3236)

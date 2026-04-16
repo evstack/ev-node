@@ -784,6 +784,9 @@ func (s *Syncer) trySyncNextBlockWithState(ctx context.Context, event *common.DA
 	// Update in-memory state after successful commit
 	s.SetLastState(newState)
 	s.metrics.Height.Set(float64(newState.LastBlockHeight))
+	if counter, ok := s.metrics.BlocksSynchronized[event.Source]; ok {
+		counter.Add(1)
+	}
 
 	// Mark as seen
 	s.cache.SetHeaderSeen(headerHash, header.Height())
@@ -1226,7 +1229,7 @@ func (s *Syncer) RecoverFromRaft(ctx context.Context, raftState *raft.RaftBlockS
 		event := &common.DAHeightEvent{
 			Header: &header,
 			Data:   &data,
-			Source: "",
+			Source: common.SourceRaft,
 		}
 		err := s.trySyncNextBlockWithState(ctx, event, currentState)
 		if err != nil {
