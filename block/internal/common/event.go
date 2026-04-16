@@ -11,10 +11,17 @@ type EventSource string
 
 const (
 	// SourceDA indicates the event came from the DA layer
-	SourceDA EventSource = "DA"
+	SourceDA EventSource = "da"
 	// SourceP2P indicates the event came from P2P network
-	SourceP2P EventSource = "P2P"
+	SourceP2P EventSource = "p2p"
+	// SourceRaft indicates the event came from Raft consensus recovery
+	SourceRaft EventSource = "raft"
 )
+
+// AllEventSources returns all possible event sources.
+func AllEventSources() []EventSource {
+	return []EventSource{SourceDA, SourceP2P, SourceRaft}
+}
 
 // DAHeightEvent represents a DA event for caching
 type DAHeightEvent struct {
