@@ -221,19 +221,21 @@ func TestDynamicLeaderElectionRun(t *testing.T) {
 				assert.ErrorIs(t, err, context.Canceled)
 			},
 		},
-		"abdicate when store significantly behind raft": {
+		"abdicate when store significantly behind raft and never catches up": {
 			setup: func(t *testing.T) (*DynamicLeaderElection, context.Context, context.CancelFunc) {
 				m := newMocksourceNode(t)
 				leaderCh := make(chan bool, 2)
 				m.EXPECT().leaderCh().Return((<-chan bool)(leaderCh))
-				// GetState called in verifyState (follower start) and in leader sync check
-				m.EXPECT().GetState().Return(&RaftBlockState{Height: 10})
-				m.EXPECT().GetState().Return(&RaftBlockState{Height: 10})
-				m.EXPECT().Config().Return(testCfg()).Times(2)
+				// GetState is called in verifyState, leader sync check, and the wait loop.
+				m.EXPECT().GetState().Return(&RaftBlockState{Height: 10}).Maybe()
+				// Config: once for follower waitForMsgsLanded, once for leader waitForMsgsLanded,
+				// once inside waitForBlockStoreSync.
+				m.EXPECT().Config().Return(testCfg()).Times(3)
 				m.EXPECT().waitForMsgsLanded(2 * time.Millisecond).Return(nil)
-				m.EXPECT().NodeID().Return("self")
-				m.EXPECT().leaderID().Return("self")
-				// Abdication must transfer leadership
+				// NodeID + leaderID: called in leader-sync check and polled inside the wait loop.
+				m.EXPECT().NodeID().Return("self").Maybe()
+				m.EXPECT().leaderID().Return("self").Maybe()
+				// Abdication must transfer leadership after wait times out.
 				m.EXPECT().leadershipTransfer().Return(nil)
 
 				fStarted := make(chan struct{})
@@ -262,13 +264,74 @@ func TestDynamicLeaderElectionRun(t *testing.T) {
 					leaderCh <- false
 					<-fStarted
 					leaderCh <- true
-					// Wait for abdication to complete (transfer + continue) then verify
-					// the leader was never started before cancelling.
+					// Wait long enough for the sync wait to time out and abdication to
+					// complete, then verify the leader was never started.
 					select {
 					case <-leaderStarted:
 						t.Error("leader should not start when store is significantly behind raft")
-					case <-time.After(50 * time.Millisecond):
+					case <-time.After(200 * time.Millisecond):
 						// leadership transferred without starting leader — expected
+					}
+					cancel()
+				}()
+				return d, ctx, cancel
+			},
+			assertF: func(t *testing.T, err error) {
+				require.Error(t, err)
+				assert.ErrorIs(t, err, context.Canceled)
+			},
+		},
+		"proceed as leader when store catches up during wait": {
+			// Simulates the hot-potato scenario: all nodes behind on election,
+			// but the winner's block store syncs up before the wait times out.
+			setup: func(t *testing.T) (*DynamicLeaderElection, context.Context, context.CancelFunc) {
+				m := newMocksourceNode(t)
+				leaderCh := make(chan bool, 2)
+				m.EXPECT().leaderCh().Return((<-chan bool)(leaderCh))
+				m.EXPECT().GetState().Return(&RaftBlockState{Height: 10}).Maybe()
+				m.EXPECT().Config().Return(testCfg()).Maybe()
+				m.EXPECT().waitForMsgsLanded(2 * time.Millisecond).Return(nil)
+				m.EXPECT().NodeID().Return("self").Maybe()
+				m.EXPECT().leaderID().Return("self").Maybe()
+				// No leadershipTransfer: the node should stay as leader.
+
+				fStarted := make(chan struct{})
+				var syncedCalls int
+				follower := &testRunnable{
+					startedCh: fStarted,
+					isSyncedFn: func(*RaftBlockState) (int, error) {
+						syncedCalls++
+						if syncedCalls < 3 {
+							return -5, nil // still catching up
+						}
+						return 0, nil // caught up
+					},
+				}
+				leaderStarted := make(chan struct{})
+				leader := &testRunnable{
+					startedCh: leaderStarted,
+					runFn: func(ctx context.Context) error {
+						<-ctx.Done()
+						return ctx.Err()
+					},
+				}
+
+				logger := zerolog.Nop()
+				d := &DynamicLeaderElection{logger: logger, node: m,
+					leaderFactory:   func() (Runnable, error) { return leader, nil },
+					followerFactory: func() (Runnable, error) { return follower, nil },
+				}
+				ctx, cancel := context.WithCancel(t.Context())
+				go func() {
+					leaderCh <- false
+					<-fStarted
+					leaderCh <- true
+					// The leader must start once the store catches up.
+					select {
+					case <-leaderStarted:
+						// expected: leader started after store synced
+					case <-time.After(200 * time.Millisecond):
+						t.Error("leader should have started once store caught up")
 					}
 					cancel()
 				}()
