@@ -65,7 +65,7 @@ The project uses a zero-dependency core package pattern:
 
 ### P2P Architecture
 
-- Built on libp2p with GossipSub and Kademlia DHT
+- Built on libp2p with FloodSub and Kademlia DHT
 - Nodes advertise capabilities (full/light, DA layers)
 - Automatic peer discovery with rendezvous points
 
