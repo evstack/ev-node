@@ -450,7 +450,7 @@ func (c *Client) tryConnect(ctx context.Context, peer peer.AddrInfo) {
 
 func (c *Client) setupGossiping(ctx context.Context) error {
 	var err error
-	c.ps, err = pubsub.NewGossipSub(ctx, c.host)
+	c.ps, err = pubsub.NewFloodSub(ctx, c.host)
 	if err != nil {
 		return err
 	}
