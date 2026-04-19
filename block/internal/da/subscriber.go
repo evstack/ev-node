@@ -11,6 +11,7 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"github.com/evstack/ev-node/block/internal/common"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
@@ -23,9 +24,13 @@ type SubscriberHandler interface {
 	HandleEvent(ctx context.Context, ev datypes.SubscriptionEvent, isInline bool) error
 
 	// HandleCatchup is called for each height during sequential catchup.
-	// The subscriber advances localDAHeight only after this returns (true, nil).
+	// The subscriber advances localDAHeight only after this returns nil.
 	// Returning an error rolls back localDAHeight and triggers a backoff retry.
-	HandleCatchup(ctx context.Context, height uint64) error
+	// The returned events are the DAHeightEvents produced for this height
+	// (may be nil/empty). The subscriber does not interpret them; they are
+	// returned so that higher-level callers (via the Subscriber) can inspect
+	// the results without coupling to the handler's internals.
+	HandleCatchup(ctx context.Context, height uint64) ([]common.DAHeightEvent, error)
 }
 
 // SubscriberConfig holds configuration for creating a Subscriber.
@@ -39,6 +44,14 @@ type SubscriberConfig struct {
 	FetchBlockTimestamp bool // the timestamp comes with an extra api call before Celestia v0.29.1-mocha.
 
 	StartHeight uint64 // initial localDAHeight
+
+	// WalkbackChecker is an optional callback invoked after each successful
+	// HandleCatchup call. It receives the DA height just processed and the
+	// events returned by the handler. If it returns a non-zero DA height,
+	// the subscriber rewinds to that height so it re-fetches on the next
+	// iteration. Return 0 to continue normally.
+	// This is nil for subscribers that don't need walkback (e.g. async block retriever).
+	WalkbackChecker func(daHeight uint64, events []common.DAHeightEvent) uint64
 }
 
 // Subscriber is a shared DA subscription primitive that encapsulates the
@@ -48,9 +61,10 @@ type SubscriberConfig struct {
 //
 // Used by both DAFollower (syncing) and asyncBlockRetriever (forced inclusion).
 type Subscriber struct {
-	client  Client
-	logger  zerolog.Logger
-	handler SubscriberHandler
+	client          Client
+	logger          zerolog.Logger
+	handler         SubscriberHandler
+	walkbackChecker func(daHeight uint64, events []common.DAHeightEvent) uint64
 
 	// namespaces to subscribe on. When multiple, they are merged.
 	namespaces [][]byte
@@ -91,6 +105,7 @@ func NewSubscriber(cfg SubscriberConfig) *Subscriber {
 		client:              cfg.Client,
 		logger:              cfg.Logger,
 		handler:             cfg.Handler,
+		walkbackChecker:     cfg.WalkbackChecker,
 		namespaces:          cfg.Namespaces,
 		catchupSignal:       make(chan struct{}, 1),
 		daBlockTime:         cfg.DABlockTime,
@@ -373,7 +388,7 @@ func (s *Subscriber) runCatchup(ctx context.Context) {
 			continue
 		}
 
-		if err := s.handler.HandleCatchup(ctx, local); err != nil {
+		if events, err := s.handler.HandleCatchup(ctx, local); err != nil {
 			// Roll back so we can retry after backoff.
 			s.localDAHeight.Store(local)
 			if errors.Is(err, datypes.ErrHeightFromFuture) && local >= highest {
@@ -382,6 +397,10 @@ func (s *Subscriber) runCatchup(ctx context.Context) {
 			}
 			if !s.shouldContinueCatchup(ctx, err, local) {
 				return
+			}
+		} else if s.walkbackChecker != nil {
+			if rewindTo := s.walkbackChecker(local, events); rewindTo > 0 {
+				s.RewindTo(rewindTo)
 			}
 		}
 	}

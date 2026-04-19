@@ -1454,3 +1454,122 @@ func TestSyncer_Stop_DrainWorksWithoutCriticalError(t *testing.T) {
 		mockExec.AssertExpectations(t)
 	})
 }
+
+func TestSyncer_walkbackCheck(t *testing.T) {
+	makeEvents := func(heights ...uint64) []common.DAHeightEvent {
+		events := make([]common.DAHeightEvent, len(heights))
+		for i, h := range heights {
+			events[i] = common.DAHeightEvent{Header: makeHeader(h)}
+		}
+		return events
+	}
+
+	t.Run("returns_zero_when_p2p_not_stalled", func(t *testing.T) {
+		s := &Syncer{
+			ctx: t.Context(),
+		}
+		s.daRetrieverHeight = &atomic.Uint64{}
+		s.daRetrieverHeight.Store(1)
+
+		got := s.walkbackCheck(100, makeEvents(50))
+		assert.Equal(t, uint64(0), got)
+		assert.False(t, s.walkbackActive.Load())
+	})
+
+	t.Run("returns_zero_at_startDAHeight", func(t *testing.T) {
+		s := &Syncer{
+			ctx: t.Context(),
+		}
+		s.daRetrieverHeight = &atomic.Uint64{}
+		s.daRetrieverHeight.Store(1)
+		s.p2pStalled.Store(true)
+
+		ds := dssync.MutexWrap(datastore.NewMapDatastore())
+		st := store.New(ds)
+		cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+		require.NoError(t, err)
+		s.store = st
+		s.cache = cm
+
+		got := s.walkbackCheck(1, makeEvents(50))
+		assert.Equal(t, uint64(0), got)
+	})
+
+	t.Run("activates_walkback_when_gap_detected", func(t *testing.T) {
+		ds := dssync.MutexWrap(datastore.NewMapDatastore())
+		st := store.New(ds)
+		batch, err := st.NewBatch(t.Context())
+		require.NoError(t, err)
+		require.NoError(t, batch.SetHeight(40))
+		require.NoError(t, batch.Commit())
+
+		s := &Syncer{
+			ctx:   t.Context(),
+			store: st,
+		}
+		s.daRetrieverHeight = &atomic.Uint64{}
+		s.daRetrieverHeight.Store(1)
+		s.p2pStalled.Store(true)
+
+		got := s.walkbackCheck(100, makeEvents(50))
+		assert.Equal(t, uint64(99), got)
+		assert.True(t, s.walkbackActive.Load())
+	})
+
+	t.Run("continues_walkback_on_empty_events", func(t *testing.T) {
+		ds := dssync.MutexWrap(datastore.NewMapDatastore())
+		st := store.New(ds)
+		batch, err := st.NewBatch(t.Context())
+		require.NoError(t, err)
+		require.NoError(t, batch.SetHeight(40))
+		require.NoError(t, batch.Commit())
+
+		s := &Syncer{
+			ctx:   t.Context(),
+			store: st,
+		}
+		s.daRetrieverHeight = &atomic.Uint64{}
+		s.daRetrieverHeight.Store(1)
+		s.p2pStalled.Store(true)
+		s.walkbackActive.Store(true)
+
+		got := s.walkbackCheck(99, nil)
+		assert.Equal(t, uint64(98), got)
+		assert.True(t, s.walkbackActive.Load())
+	})
+
+	t.Run("stops_walkback_when_contiguous", func(t *testing.T) {
+		ds := dssync.MutexWrap(datastore.NewMapDatastore())
+		st := store.New(ds)
+		batch, err := st.NewBatch(t.Context())
+		require.NoError(t, err)
+		require.NoError(t, batch.SetHeight(40))
+		require.NoError(t, batch.Commit())
+
+		s := &Syncer{
+			ctx:   t.Context(),
+			store: st,
+		}
+		s.daRetrieverHeight = &atomic.Uint64{}
+		s.daRetrieverHeight.Store(1)
+		s.p2pStalled.Store(true)
+		s.walkbackActive.Store(true)
+
+		got := s.walkbackCheck(95, makeEvents(41))
+		assert.Equal(t, uint64(0), got)
+		assert.False(t, s.walkbackActive.Load())
+	})
+
+	t.Run("clears_walkback_when_p2p_recovers", func(t *testing.T) {
+		s := &Syncer{
+			ctx: t.Context(),
+		}
+		s.daRetrieverHeight = &atomic.Uint64{}
+		s.daRetrieverHeight.Store(1)
+		s.walkbackActive.Store(true)
+
+		got := s.walkbackCheck(100, nil)
+		assert.Equal(t, uint64(0), got)
+		assert.False(t, s.walkbackActive.Load())
+	})
+}

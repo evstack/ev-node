@@ -5,7 +5,6 @@ import (
 	"errors"
 	"slices"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -23,6 +22,10 @@ type DAFollower interface {
 	HasReachedHead() bool
 	// QueuePriorityHeight queues a DA height for priority retrieval (from P2P hints).
 	QueuePriorityHeight(daHeight uint64)
+	// RewindTo moves the subscriber back to a lower DA height so it
+	// re-fetches from there. Used by the syncer for walkback when a gap
+	// is detected between the node height and the DA events.
+	RewindTo(daHeight uint64)
 }
 
 // daFollower is the concrete implementation of DAFollower.
@@ -31,15 +34,7 @@ type daFollower struct {
 	retriever     DARetriever
 	eventSink     common.EventSink
 	logger        zerolog.Logger
-	nodeHeightFn  func() uint64
-	p2pStalledFn  func() bool
 	startDAHeight uint64
-
-	// walkbackActive is set when the follower detects a gap between the
-	// DA events it just processed and the node's current block height.
-	// While active, every DA height (even empty ones) triggers a rewind
-	// so the subscriber walks backwards until the gap is filled.
-	walkbackActive atomic.Bool
 
 	// Priority queue for P2P hint heights (absorbed from DARetriever refactoring #2).
 	priorityMu      sync.Mutex
@@ -58,12 +53,9 @@ type DAFollowerConfig struct {
 	DataNamespace []byte // may be nil or equal to Namespace
 	StartDAHeight uint64
 	DABlockTime   time.Duration
-	// NodeHeight returns the node's current block height. Used together
-	// with P2PStalled to detect gaps that need a DA walkback.
-	NodeHeight func() uint64
-	// P2PStalled returns true when the P2P sync worker has failed to
-	// deliver blocks. The follower only walks back when P2P is stalled.
-	P2PStalled func() bool
+	// WalkbackChecker is forwarded to the underlying Subscriber.
+	// See da.SubscriberConfig.WalkbackChecker for details.
+	WalkbackChecker func(daHeight uint64, events []common.DAHeightEvent) uint64
 }
 
 // NewDAFollower creates a new daFollower.
@@ -77,19 +69,18 @@ func NewDAFollower(cfg DAFollowerConfig) DAFollower {
 		retriever:       cfg.Retriever,
 		eventSink:       cfg.EventSink,
 		logger:          cfg.Logger.With().Str("component", "da_follower").Logger(),
-		nodeHeightFn:    cfg.NodeHeight,
-		p2pStalledFn:    cfg.P2PStalled,
 		startDAHeight:   cfg.StartDAHeight,
 		priorityHeights: make([]uint64, 0),
 	}
 
 	f.subscriber = da.NewSubscriber(da.SubscriberConfig{
-		Client:      cfg.Client,
-		Logger:      cfg.Logger,
-		Namespaces:  [][]byte{cfg.Namespace, dataNs},
-		DABlockTime: cfg.DABlockTime,
-		Handler:     f,
-		StartHeight: cfg.StartDAHeight,
+		Client:          cfg.Client,
+		Logger:          cfg.Logger,
+		Namespaces:      [][]byte{cfg.Namespace, dataNs},
+		DABlockTime:     cfg.DABlockTime,
+		Handler:         f,
+		StartHeight:     cfg.StartDAHeight,
+		WalkbackChecker: cfg.WalkbackChecker,
 	})
 
 	return f
@@ -108,6 +99,11 @@ func (f *daFollower) Stop() {
 // HasReachedHead returns whether the follower has caught up to DA head.
 func (f *daFollower) HasReachedHead() bool {
 	return f.subscriber.HasReachedHead()
+}
+
+// RewindTo moves the subscriber back to a lower DA height for re-fetching.
+func (f *daFollower) RewindTo(daHeight uint64) {
+	f.subscriber.RewindTo(daHeight)
 }
 
 // HandleEvent processes a subscription event. When the follower is
@@ -142,14 +138,7 @@ func (f *daFollower) HandleEvent(ctx context.Context, ev datypes.SubscriptionEve
 
 // HandleCatchup retrieves events at a single DA height and pipes them
 // to the event sink. Checks priority heights first.
-//
-// When a node-height callback is configured, HandleCatchup detects gaps
-// between the block heights it just fetched and the node's current height.
-// If the smallest block height is above nodeHeight+1 the subscriber is
-// rewound by one DA height so it re-fetches the previous height on the
-// next iteration. This "walk-back" continues automatically through empty
-// DA heights until blocks contiguous with the node are found.
-func (f *daFollower) HandleCatchup(ctx context.Context, daHeight uint64) error {
+func (f *daFollower) HandleCatchup(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error) {
 	// 1. Drain stale or future priority heights from P2P hints
 	for priorityHeight := f.popPriorityHeight(); priorityHeight != 0; priorityHeight = f.popPriorityHeight() {
 		if priorityHeight < daHeight {
@@ -166,53 +155,18 @@ func (f *daFollower) HandleCatchup(ctx context.Context, daHeight uint64) error {
 					Msg("priority hint is from future, ignoring")
 				continue
 			}
-			return err
+			return nil, err
 		}
-		break // continue with daHeight
+		break
 	}
 
 	// 2. Normal sequential fetch
 	events, err := f.fetchAndPipeHeight(ctx, daHeight)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	// 3. Self-correction: walk back when P2P has stalled and DA blocks skip
-	//    past the node height. Only active when P2P is confirmed stalled to
-	//    avoid unnecessary rewinds during normal DA catchup.
-	p2pStalled := f.p2pStalledFn != nil && f.p2pStalledFn()
-	if p2pStalled && f.nodeHeightFn != nil && daHeight > f.startDAHeight {
-		nodeHeight := f.nodeHeightFn()
-
-		needsWalkback := f.walkbackActive.Load()
-		if len(events) > 0 {
-			minHeight := events[0].Header.Height()
-			for _, e := range events[1:] {
-				if e.Header.Height() < minHeight {
-					minHeight = e.Header.Height()
-				}
-			}
-			if minHeight <= nodeHeight+1 {
-				f.walkbackActive.Store(false)
-				return nil
-			}
-			needsWalkback = true
-		}
-
-		if needsWalkback {
-			f.walkbackActive.Store(true)
-			f.logger.Info().
-				Uint64("da_height", daHeight).
-				Uint64("node_height", nodeHeight).
-				Int("events", len(events)).
-				Msg("P2P stalled with gap between DA blocks and node height, walking DA follower back")
-			f.subscriber.RewindTo(daHeight - 1)
-		}
-	} else if !p2pStalled {
-		f.walkbackActive.Store(false)
-	}
-
-	return nil
+	return events, nil
 }
 
 // fetchAndPipeHeight retrieves events at a single DA height and pipes them.

@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
+	"github.com/evstack/ev-node/block/internal/common"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	testmocks "github.com/evstack/ev-node/test/mocks"
 )
@@ -24,9 +25,9 @@ func (m *MockSubscriberHandler) HandleEvent(ctx context.Context, ev datypes.Subs
 	return args.Error(0)
 }
 
-func (m *MockSubscriberHandler) HandleCatchup(ctx context.Context, height uint64) error {
+func (m *MockSubscriberHandler) HandleCatchup(ctx context.Context, height uint64) ([]common.DAHeightEvent, error) {
 	args := m.Called(ctx, height)
-	return args.Error(0)
+	return args.Get(0).([]common.DAHeightEvent), args.Error(1)
 }
 
 func TestSubscriber_RunCatchup(t *testing.T) {
@@ -49,8 +50,8 @@ func TestSubscriber_RunCatchup(t *testing.T) {
 		// It should process observed heights [100..101] then stop when local passes highestSeen.
 		sub.updateHighest(101)
 		sub.seenSubscriptionEvent.Store(true)
-		mockHandler.On("HandleCatchup", mock.Anything, uint64(100)).Return(nil).Once()
-		mockHandler.On("HandleCatchup", mock.Anything, uint64(101)).Return(nil).Once()
+		mockHandler.On("HandleCatchup", mock.Anything, uint64(100)).Return([]common.DAHeightEvent(nil), nil).Once()
+		mockHandler.On("HandleCatchup", mock.Anything, uint64(101)).Return([]common.DAHeightEvent(nil), nil).Once()
 
 		sub.runCatchup(ctx)
 
@@ -84,13 +85,13 @@ func TestSubscriber_RunCatchup(t *testing.T) {
 			Run(func(args mock.Arguments) {
 				callCount++
 			}).
-			Return(errors.New("network failure")).Once()
+			Return([]common.DAHeightEvent(nil), errors.New("network failure")).Once()
 
 		mockHandler.On("HandleCatchup", mock.Anything, uint64(100)).
 			Run(func(args mock.Arguments) {
 				callCount++
 			}).
-			Return(nil).Once()
+			Return([]common.DAHeightEvent(nil), nil).Once()
 
 		sub.runCatchup(ctx)
 
