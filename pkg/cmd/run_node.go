@@ -15,7 +15,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 
-	"github.com/evstack/ev-node/block"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/node"
@@ -26,6 +25,8 @@ import (
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	pkgsigner "github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/telemetry"
+
+	"github.com/evstack/ev-node/block"
 )
 
 // ParseConfig is an helpers that loads the node configuration and validates it.
@@ -86,6 +87,7 @@ func StartNode(
 	nodeConfig rollconf.Config,
 	genesis genesispkg.Genesis,
 	nodeOptions node.NodeOptions,
+	fiberClient block.FiberClient,
 ) error {
 	ctx, cancel := context.WithCancel(cmd.Context())
 	defer cancel()
@@ -149,12 +151,20 @@ func StartNode(
 		}
 	}
 
-	blobClient, err := blobrpc.NewWSClient(ctx, logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
-	if err != nil {
-		return fmt.Errorf("failed to create blob client: %w", err)
+	var daClient block.FullDAClient
+	if nodeConfig.DA.IsFiberEnabled() {
+		if fiberClient == nil {
+			return fmt.Errorf("fiber DA is enabled but no fiber client was provided")
+		}
+		daClient = block.NewFiberDAClient(fiberClient, nodeConfig, logger)
+	} else {
+		blobClient, err := blobrpc.NewWSClient(ctx, logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
+		if err != nil {
+			return fmt.Errorf("failed to create blob client: %w", err)
+		}
+		defer blobClient.Close()
+		daClient = block.NewDAClient(blobClient, nodeConfig, logger)
 	}
-	defer blobClient.Close()
-	daClient := block.NewDAClient(blobClient, nodeConfig, logger)
 
 	// sanity check for based sequencer
 	if nodeConfig.Node.BasedSequencer && genesis.DAStartHeight == 0 {

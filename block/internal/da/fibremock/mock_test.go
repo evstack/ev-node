@@ -5,6 +5,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/evstack/ev-node/block/internal/da/fiber"
 )
 
 func TestMockDA_UploadDownload(t *testing.T) {
@@ -41,7 +43,7 @@ func TestMockDA_UploadEmpty(t *testing.T) {
 
 func TestMockDA_DownloadNotFound(t *testing.T) {
 	m := NewMockDA(DefaultMockDAConfig())
-	_, err := m.Download(context.Background(), BlobID{0, 1, 2})
+	_, err := m.Download(context.Background(), fiber.BlobID{0, 1, 2})
 	if err != ErrBlobNotFound {
 		t.Fatalf("expected ErrBlobNotFound, got %v", err)
 	}
@@ -129,7 +131,7 @@ func TestMockDA_MaxBlobsEviction(t *testing.T) {
 	m := NewMockDA(MockDAConfig{MaxBlobs: 3})
 	ctx := context.Background()
 
-	var ids []BlobID
+	var ids []fiber.BlobID
 	for i := range 5 {
 		r, err := m.Upload(ctx, nil, []byte{byte(i), 1, 2, 3})
 		if err != nil {
@@ -194,4 +196,4 @@ func TestMockDA_DeterministicBlobID(t *testing.T) {
 }
 
 // Verify MockDA satisfies the DA interface at compile time.
-var _ DA = (*MockDA)(nil)
+var _ fiber.DA = (*MockDA)(nil)

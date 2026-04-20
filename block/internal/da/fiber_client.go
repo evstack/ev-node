@@ -11,7 +11,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block/internal/common"
-	"github.com/evstack/ev-node/block/internal/da/fibremock"
+	"github.com/evstack/ev-node/block/internal/da/fiber"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
@@ -22,10 +22,10 @@ const (
 )
 
 type (
-	FiberClient  = fibremock.DA
-	BlobID       = fibremock.BlobID
-	UploadResult = fibremock.UploadResult
-	BlobEvent    = fibremock.BlobEvent
+	FiberClient  = fiber.DA
+	BlobID       = fiber.BlobID
+	UploadResult = fiber.UploadResult
+	BlobEvent    = fiber.BlobEvent
 )
 
 type FiberConfig struct {

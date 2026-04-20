@@ -59,13 +59,18 @@ var RunCmd = &cobra.Command{
 			return err
 		}
 
-		blobClient, err := blobrpc.NewWSClient(cmd.Context(), logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
-		if err != nil {
-			return fmt.Errorf("failed to create blob client: %w", err)
+		var daClient block.FullDAClient
+		if nodeConfig.DA.IsFiberEnabled() {
+			return fmt.Errorf("fiber DA client requires celestia-app fibre.Client construction with cosmos-sdk keyring (keyring_path=%s, key_name=%s)",
+				nodeConfig.DA.Fiber.KeyringPath, nodeConfig.DA.Fiber.KeyName)
+		} else {
+			blobClient, err := blobrpc.NewWSClient(cmd.Context(), logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
+			if err != nil {
+				return fmt.Errorf("failed to create blob client: %w", err)
+			}
+			defer blobClient.Close()
+			daClient = block.NewDAClient(blobClient, nodeConfig, logger)
 		}
-		defer blobClient.Close()
-
-		daClient := block.NewDAClient(blobClient, nodeConfig, logger)
 
 		headerNamespace := da.NamespaceFromString(nodeConfig.DA.GetNamespace())
 		dataNamespace := da.NamespaceFromString(nodeConfig.DA.GetDataNamespace())
@@ -131,7 +136,7 @@ var RunCmd = &cobra.Command{
 			}()
 		}
 
-		return rollcmd.StartNode(logger, cmd, executor, sequencer, nodeKey, datastore, nodeConfig, genesis, node.NodeOptions{})
+		return rollcmd.StartNode(logger, cmd, executor, sequencer, nodeKey, datastore, nodeConfig, genesis, node.NodeOptions{}, nil)
 	},
 }
 

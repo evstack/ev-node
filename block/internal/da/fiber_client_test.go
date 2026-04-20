@@ -10,6 +10,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
+	"github.com/evstack/ev-node/block/internal/da/fiber"
 	"github.com/evstack/ev-node/block/internal/da/fibremock"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
@@ -581,9 +582,9 @@ type faultInjector struct {
 
 func (f *faultInjector) SetError(err error) { f.err = err }
 
-func (f *faultInjector) Upload(ctx context.Context, namespace, data []byte) (fibremock.UploadResult, error) {
+func (f *faultInjector) Upload(ctx context.Context, namespace, data []byte) (fiber.UploadResult, error) {
 	if f.err != nil {
-		return fibremock.UploadResult{}, f.err
+		return fiber.UploadResult{}, f.err
 	}
 	return f.FiberClient.Upload(ctx, namespace, data)
 }
@@ -595,10 +596,10 @@ type failOnNthUpload struct {
 	callCount atomic.Uint64
 }
 
-func (f *failOnNthUpload) Upload(ctx context.Context, namespace, data []byte) (fibremock.UploadResult, error) {
+func (f *failOnNthUpload) Upload(ctx context.Context, namespace, data []byte) (fiber.UploadResult, error) {
 	n := f.callCount.Add(1)
 	if n == f.failAt {
-		return fibremock.UploadResult{}, f.err
+		return fiber.UploadResult{}, f.err
 	}
 	return f.FiberClient.Upload(ctx, namespace, data)
 }

@@ -87,7 +87,7 @@ The execution client must implement the Evolve execution gRPC interface.`,
 		}
 
 		// Start the node
-		return rollcmd.StartNode(logger, cmd, executor, sequencer, nodeKey, datastore, nodeConfig, genesis, node.NodeOptions{})
+		return rollcmd.StartNode(logger, cmd, executor, sequencer, nodeKey, datastore, nodeConfig, genesis, node.NodeOptions{}, nil)
 	},
 }
 
@@ -108,12 +108,17 @@ func createSequencer(
 	genesis genesis.Genesis,
 	executor execution.Executor,
 ) (coresequencer.Sequencer, error) {
-	blobClient, err := blobrpc.NewWSClient(ctx, logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create blob client: %w", err)
+	var daClient block.FullDAClient
+	if nodeConfig.DA.IsFiberEnabled() {
+		return nil, fmt.Errorf("fiber DA client requires celestia-app fibre.Client construction with cosmos-sdk keyring (keyring_path=%s, key_name=%s)",
+			nodeConfig.DA.Fiber.KeyringPath, nodeConfig.DA.Fiber.KeyName)
+	} else {
+		blobClient, err := blobrpc.NewWSClient(ctx, logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
+		if err != nil {
+			return nil, fmt.Errorf("failed to create blob client: %w", err)
+		}
+		daClient = block.NewDAClient(blobClient, nodeConfig, logger)
 	}
-
-	daClient := block.NewDAClient(blobClient, nodeConfig, logger)
 
 	if nodeConfig.Node.BasedSequencer {
 		// Based sequencer mode - fetch transactions only from DA

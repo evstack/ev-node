@@ -24,6 +24,7 @@ import (
 	"github.com/evstack/ev-node/pkg/sequencers/single"
 	"github.com/evstack/ev-node/pkg/sequencers/solo"
 	"github.com/evstack/ev-node/pkg/store"
+	localfiber "github.com/evstack/ev-node/tools/local-fiber"
 )
 
 const testDbName = "testapp"
@@ -91,13 +92,29 @@ var RunCmd = &cobra.Command{
 			logger.Warn().Msg("da_start_height is not set in genesis.json, ask your chain developer")
 		}
 
+		// Create fiber client if fiber DA is enabled (shared between sequencer and node)
+		var fiberAdapter block.FiberClient
+		if nodeConfig.DA.IsFiberEnabled() {
+			fiberClient, err := localfiber.NewFiberClient(ctx, localfiber.Config{
+				KeyringPath:      nodeConfig.DA.Fiber.KeyringPath,
+				KeyName:          nodeConfig.DA.Fiber.KeyName,
+				StateAddress:     nodeConfig.DA.Fiber.StateAddress,
+				UploadConc:       nodeConfig.DA.Fiber.UploadConcurrency,
+				DownloadConc:     nodeConfig.DA.Fiber.DownloadConcurrency,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to create fiber client: %w", err)
+			}
+			fiberAdapter = localfiber.NewAdapter(fiberClient)
+		}
+
 		// Create sequencer based on configuration
-		sequencer, err := createSequencer(ctx, command, logger, datastore, nodeConfig, genesis, executor)
+		sequencer, err := createSequencer(ctx, command, logger, datastore, nodeConfig, genesis, executor, fiberAdapter)
 		if err != nil {
 			return err
 		}
 
-		return cmd.StartNode(logger, command, executor, sequencer, nodeKey, datastore, nodeConfig, genesis, node.NodeOptions{})
+		return cmd.StartNode(logger, command, executor, sequencer, nodeKey, datastore, nodeConfig, genesis, node.NodeOptions{}, fiberAdapter)
 	},
 }
 
@@ -112,6 +129,7 @@ func createSequencer(
 	nodeConfig config.Config,
 	genesis genesis.Genesis,
 	executor execution.Executor,
+	fiberClient block.FiberClient,
 ) (coresequencer.Sequencer, error) {
 	if enabled, _ := cmd.Flags().GetBool(flagSoloSequencer); enabled {
 		if nodeConfig.Node.BasedSequencer {
@@ -121,12 +139,16 @@ func createSequencer(
 		return solo.NewSoloSequencer(logger, []byte(genesis.ChainID), executor), nil
 	}
 
-	blobClient, err := blobrpc.NewWSClient(ctx, logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create blob client: %w", err)
+	var daClient block.FullDAClient
+	if nodeConfig.DA.IsFiberEnabled() {
+		daClient = block.NewFiberDAClient(fiberClient, nodeConfig, logger)
+	} else {
+		blobClient, err := blobrpc.NewWSClient(ctx, logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
+		if err != nil {
+			return nil, fmt.Errorf("failed to create blob client: %w", err)
+		}
+		daClient = block.NewDAClient(blobClient, nodeConfig, logger)
 	}
-
-	daClient := block.NewDAClient(blobClient, nodeConfig, logger)
 
 	if nodeConfig.Node.BasedSequencer {
 		// Based sequencer mode - fetch transactions only from DA

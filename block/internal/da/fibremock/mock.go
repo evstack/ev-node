@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/evstack/ev-node/block/internal/da/fiber"
 )
 
 var (
@@ -48,7 +50,7 @@ type storedBlob struct {
 // subscriber tracks a Listen subscription.
 type subscriber struct {
 	namespace []byte
-	ch        chan BlobEvent
+	ch        chan fiber.BlobEvent
 }
 
 // MockDA is an in-memory mock implementation of the DA interface.
@@ -73,9 +75,9 @@ func NewMockDA(cfg MockDAConfig) *MockDA {
 }
 
 // Upload stores the blob in memory and notifies listeners.
-func (m *MockDA) Upload(ctx context.Context, namespace []byte, data []byte) (UploadResult, error) {
+func (m *MockDA) Upload(ctx context.Context, namespace []byte, data []byte) (fiber.UploadResult, error) {
 	if len(data) == 0 {
-		return UploadResult{}, ErrDataEmpty
+		return fiber.UploadResult{}, ErrDataEmpty
 	}
 
 	blobID := mockBlobID(data)
@@ -112,7 +114,7 @@ func (m *MockDA) Upload(ctx context.Context, namespace []byte, data []byte) (Upl
 	m.order = append(m.order, key)
 
 	// Notify subscribers (non-blocking)
-	event := BlobEvent{
+	event := fiber.BlobEvent{
 		BlobID:   blobID,
 		Height:   height,
 		DataSize: uint64(len(data)),
@@ -129,14 +131,14 @@ func (m *MockDA) Upload(ctx context.Context, namespace []byte, data []byte) (Upl
 
 	m.mu.Unlock()
 
-	return UploadResult{
+	return fiber.UploadResult{
 		BlobID:    blobID,
 		ExpiresAt: expiresAt,
 	}, nil
 }
 
 // Download retrieves a blob by ID.
-func (m *MockDA) Download(ctx context.Context, blobID BlobID) ([]byte, error) {
+func (m *MockDA) Download(ctx context.Context, blobID fiber.BlobID) ([]byte, error) {
 	key := fmt.Sprintf("%x", blobID)
 
 	m.mu.RLock()
@@ -156,8 +158,8 @@ func (m *MockDA) Download(ctx context.Context, blobID BlobID) ([]byte, error) {
 
 // Listen returns a channel that receives events when blobs matching the
 // namespace are uploaded. The channel is closed when ctx is cancelled.
-func (m *MockDA) Listen(ctx context.Context, namespace []byte) (<-chan BlobEvent, error) {
-	ch := make(chan BlobEvent, 64)
+func (m *MockDA) Listen(ctx context.Context, namespace []byte) (<-chan fiber.BlobEvent, error) {
+	ch := make(chan fiber.BlobEvent, 64)
 
 	m.mu.Lock()
 	idx := len(m.subscribers)
@@ -237,7 +239,7 @@ func namespaceMatch(subNS, blobNS []byte) bool {
 
 // mockBlobID produces a deterministic blob ID from the data.
 // Format: 1 byte version (0) + 32 bytes SHA256 hash.
-func mockBlobID(data []byte) BlobID {
+func mockBlobID(data []byte) fiber.BlobID {
 	hash := sha256.Sum256(data)
 	id := make([]byte, 33)
 	id[0] = 0 // version byte

@@ -42,6 +42,17 @@ type DAVerifier = da.Verifier
 // This is the complete interface implemented by the concrete DA client.
 type FullDAClient = da.FullClient
 
+// FiberClient is the interface for Fiber DA backends. Implementations
+// handle upload, download and listen operations against a Fiber network.
+type FiberClient = da.FiberClient
+
+// Fiber types exposed for external adapters (e.g. tools/local-fiber).
+type (
+	FiberBlobID       = da.BlobID
+	FiberUploadResult = da.UploadResult
+	FiberBlobEvent    = da.BlobEvent
+)
+
 // NewDAClient creates a new DA client backed by the blob JSON-RPC API.
 // The returned client implements both DAClient and DAVerifier interfaces.
 func NewDAClient(
