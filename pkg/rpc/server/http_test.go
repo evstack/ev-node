@@ -8,14 +8,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/evstack/ev-node/pkg/config"
+	"github.com/evstack/ev-node/test/mocks"
+	"github.com/evstack/ev-node/types"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-
-	"github.com/evstack/ev-node/pkg/config"
-	"github.com/evstack/ev-node/test/mocks"
-	"github.com/evstack/ev-node/types"
 )
 
 func TestRegisterCustomHTTPEndpoints(t *testing.T) {
@@ -65,85 +64,82 @@ func (t testRaftNodeSource) NodeID() string {
 }
 
 func TestRegisterCustomHTTPEndpoints_RaftNodeStatus(t *testing.T) {
-	mux := http.NewServeMux()
-	logger := zerolog.Nop()
-
-	raftNode := testRaftNodeSource{
-		isLeader: false,
-		leaderID: "node-a",
-		nodeID:   "node-a",
-	}
-
-	RegisterCustomHTTPEndpoints(mux, nil, nil, config.DefaultConfig(), nil, logger, raftNode)
-
-	ts := httptest.NewServer(mux)
-	t.Cleanup(ts.Close)
-
-	req, err := http.NewRequest(http.MethodGet, ts.URL+"/raft/node", nil)
-	require.NoError(t, err)
-	resp, err := http.DefaultClient.Do(req) //nolint:gosec // test-only request to httptest server
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = resp.Body.Close() })
-
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-
-	var body struct {
+	type bodyShape struct {
 		IsLeader bool   `json:"is_leader"`
 		NodeID   string `json:"node_id"`
 	}
-	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
-	assert.True(t, body.IsLeader)
-	assert.Equal(t, "node-a", body.NodeID)
-}
 
-func TestRegisterCustomHTTPEndpoints_RaftNodeStatusFallsBackWithoutLeaderID(t *testing.T) {
-	mux := http.NewServeMux()
-	logger := zerolog.Nop()
-
-	raftNode := testRaftNodeSource{
-		isLeader: false,
-		leaderID: "",
-		nodeID:   "node-a",
+	cases := []struct {
+		name           string
+		node           testRaftNodeSource
+		method         string
+		wantStatus     int
+		wantIsLeader   bool
+		wantNodeID     string
+		skipBodyDecode bool
+	}{
+		{
+			// leaderID == nodeID: handler derives is_leader=true from LeaderID(),
+			// regardless of the IsLeader() field on testRaftNodeSource.
+			name:         "leader matches — is_leader true",
+			node:         testRaftNodeSource{leaderID: "node-a", nodeID: "node-a"},
+			method:       http.MethodGet,
+			wantStatus:   http.StatusOK,
+			wantIsLeader: true,
+			wantNodeID:   "node-a",
+		},
+		{
+			// leaderID != nodeID: handler derives is_leader=false.
+			name:         "leader differs — is_leader false",
+			node:         testRaftNodeSource{leaderID: "node-b", nodeID: "node-a"},
+			method:       http.MethodGet,
+			wantStatus:   http.StatusOK,
+			wantIsLeader: false,
+			wantNodeID:   "node-a",
+		},
+		{
+			// empty leaderID: fallback — is_leader=false (no elected leader known).
+			name:         "empty leaderID fallback — is_leader false",
+			node:         testRaftNodeSource{leaderID: "", nodeID: "node-a"},
+			method:       http.MethodGet,
+			wantStatus:   http.StatusOK,
+			wantIsLeader: false,
+			wantNodeID:   "node-a",
+		},
+		{
+			name:           "non-GET method — 405",
+			node:           testRaftNodeSource{},
+			method:         http.MethodPost,
+			wantStatus:     http.StatusMethodNotAllowed,
+			skipBodyDecode: true,
+		},
 	}
 
-	RegisterCustomHTTPEndpoints(mux, nil, nil, config.DefaultConfig(), nil, logger, raftNode)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mux := http.NewServeMux()
+			RegisterCustomHTTPEndpoints(mux, nil, nil, config.DefaultConfig(), nil, zerolog.Nop(), tc.node)
 
-	ts := httptest.NewServer(mux)
-	t.Cleanup(ts.Close)
+			ts := httptest.NewServer(mux)
+			t.Cleanup(ts.Close)
 
-	req, err := http.NewRequest(http.MethodGet, ts.URL+"/raft/node", nil)
-	require.NoError(t, err)
-	resp, err := http.DefaultClient.Do(req) //nolint:gosec // test-only request to httptest server
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = resp.Body.Close() })
+			req, err := http.NewRequest(tc.method, ts.URL+"/raft/node", nil)
+			require.NoError(t, err)
+			resp, err := http.DefaultClient.Do(req) //nolint:gosec // test-only request to httptest server
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = resp.Body.Close() })
 
-	require.Equal(t, http.StatusOK, resp.StatusCode)
+			require.Equal(t, tc.wantStatus, resp.StatusCode)
+			if tc.skipBodyDecode {
+				return
+			}
 
-	var body struct {
-		IsLeader bool   `json:"is_leader"`
-		NodeID   string `json:"node_id"`
+			var body bodyShape
+			require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+			assert.Equal(t, tc.wantIsLeader, body.IsLeader)
+			assert.Equal(t, tc.wantNodeID, body.NodeID)
+		})
 	}
-	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
-	assert.False(t, body.IsLeader)
-	assert.Equal(t, "node-a", body.NodeID)
-}
-
-func TestRegisterCustomHTTPEndpoints_RaftNodeStatusMethodNotAllowed(t *testing.T) {
-	mux := http.NewServeMux()
-	logger := zerolog.Nop()
-
-	RegisterCustomHTTPEndpoints(mux, nil, nil, config.DefaultConfig(), nil, logger, testRaftNodeSource{})
-
-	ts := httptest.NewServer(mux)
-	t.Cleanup(ts.Close)
-
-	req, err := http.NewRequest(http.MethodPost, ts.URL+"/raft/node", nil)
-	require.NoError(t, err)
-	resp, err := http.DefaultClient.Do(req) //nolint:gosec // test-only request to httptest server
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = resp.Body.Close() })
-
-	assert.Equal(t, http.StatusMethodNotAllowed, resp.StatusCode)
 }
 
 func TestHealthReady_aggregatorBlockDelay(t *testing.T) {

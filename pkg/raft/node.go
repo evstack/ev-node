@@ -257,6 +257,11 @@ func (n *Node) NodeID() string {
 	return n.config.NodeID
 }
 
+// LeaderID returns the server ID of the current cluster leader.
+// Returns an empty string if the receiver is nil, raft is uninitialized, or no
+// leader has been elected yet. The value may be momentarily stale between raft
+// leadership changes; callers that need a strong guarantee should cross-check
+// with HasQuorum.
 func (n *Node) LeaderID() string {
 	if n == nil || n.raft == nil {
 		return ""
