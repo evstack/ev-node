@@ -41,13 +41,13 @@ Evolve uses a modular architecture where each component has a well-defined inter
 
 The block package is the heart of ev-node. It's organized into specialized components:
 
-| Component | Responsibility | Runs On |
-|-----------|---------------|---------|
-| **Executor** | Produces blocks by getting batches from sequencer and executing via execution layer | Aggregator only |
-| **Reaper** | Scrapes transactions from execution layer mempool and submits to sequencer | Aggregator only |
-| **Syncer** | Coordinates block sync from DA layer and P2P network | All nodes |
-| **Submitter** | Submits blocks to DA layer and tracks inclusion | Aggregator only |
-| **Cache** | Manages in-memory state for headers, data, and pending submissions | All nodes |
+| Component     | Responsibility                                                                      | Runs On         |
+| ------------- | ----------------------------------------------------------------------------------- | --------------- |
+| **Executor**  | Produces blocks by getting batches from sequencer and executing via execution layer | Aggregator only |
+| **Reaper**    | Scrapes transactions from execution layer mempool and submits to sequencer          | Aggregator only |
+| **Syncer**    | Coordinates block sync from DA layer and P2P network                                | All nodes       |
+| **Submitter** | Submits blocks to DA layer and tracks inclusion                                     | Aggregator only |
+| **Cache**     | Manages in-memory state for headers, data, and pending submissions                  | All nodes       |
 
 ### Component Interaction
 
@@ -81,12 +81,12 @@ The block package is the heart of ev-node. It's organized into specialized compo
 
 Evolve supports several node configurations:
 
-| Type | Block Production | Full Validation | DA Submission | Use Case |
-|------|-----------------|-----------------|---------------|----------|
-| **Aggregator** | Yes | Yes | Yes | Block producer (sequencer) |
-| **Full Node** | No | Yes | No | RPC provider, validator |
-| **Light Node** | No | Headers only | No | Mobile, embedded clients |
-| **Attester** | No | Yes | No | Soft consensus participant |
+| Type           | Block Production | Full Validation | DA Submission | Use Case                   |
+| -------------- | ---------------- | --------------- | ------------- | -------------------------- |
+| **Aggregator** | Yes              | Yes             | Yes           | Block producer (sequencer) |
+| **Full Node**  | No               | Yes             | No            | RPC provider, validator    |
+| **Light Node** | No               | Headers only    | No            | Mobile, embedded clients   |
+| **Attester**   | No               | Yes             | No            | Soft consensus participant |
 
 ### Aggregator
 
@@ -158,7 +158,7 @@ User Tx → Execution Layer Mempool
 
 Built on libp2p with:
 
-- **GossipSub** for transaction and block propagation
+- **FloodSub** for transaction and block propagation
 - **Kademlia DHT** for peer discovery
 - **Topics**: `{chainID}-tx`, `{chainID}-header`, `{chainID}-data`
 

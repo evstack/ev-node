@@ -51,12 +51,12 @@ type P2PConfig struct {
 
 ### Configuration Parameters
 
-| Parameter | Description | Default | Example |
-|-----------|-------------|---------|---------|
-| ListenAddress | The address where the node listens for incoming P2P connections | `/ip4/0.0.0.0/tcp/7676` | `/ip4/0.0.0.0/tcp/7676` |
-| Seeds | Comma-separated list of seed nodes (bootstrap nodes) | "" | `/ip4/1.2.3.4/tcp/7676/p2p/12D3KooWA8EXV3KjBxEU...,/ip4/5.6.7.8/tcp/7676/p2p/12D3KooWJN9ByvD...` |
-| BlockedPeers | Comma-separated list of peer IDs to block | "" | `12D3KooWA8EXV3KjBxEU...,12D3KooWJN9ByvD...` |
-| AllowedPeers | Comma-separated list of peer IDs to explicitly allow | "" | `12D3KooWA8EXV3KjBxEU...,12D3KooWJN9ByvD...` |
+| Parameter     | Description                                                     | Default                 | Example                                                                                          |
+| ------------- | --------------------------------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------ |
+| ListenAddress | The address where the node listens for incoming P2P connections | `/ip4/0.0.0.0/tcp/7676` | `/ip4/0.0.0.0/tcp/7676`                                                                          |
+| Seeds         | Comma-separated list of seed nodes (bootstrap nodes)            | ""                      | `/ip4/1.2.3.4/tcp/7676/p2p/12D3KooWA8EXV3KjBxEU...,/ip4/5.6.7.8/tcp/7676/p2p/12D3KooWJN9ByvD...` |
+| BlockedPeers  | Comma-separated list of peer IDs to block                       | ""                      | `12D3KooWA8EXV3KjBxEU...,12D3KooWJN9ByvD...`                                                     |
+| AllowedPeers  | Comma-separated list of peer IDs to explicitly allow            | ""                      | `12D3KooWA8EXV3KjBxEU...,12D3KooWJN9ByvD...`                                                     |
 
 ## libp2p Components
 
@@ -69,7 +69,7 @@ graph LR
     Client --> DHT["Kademlia DHT"]
     Client --> Discovery["Routing Discovery"]
     Client --> Gater["Connection Gater"]
-    Client --> PubSub["GossipSub PubSub"]
+    Client --> PubSub["FloodSub PubSub"]
 
     Host --> Transport["Transport Protocols"]
     Host --> Security["Security Protocols"]
@@ -96,7 +96,7 @@ graph LR
    - Used for finding other peers within the same network
    - Bootstrapped with seed nodes defined in configuration
 
-3. **GossipSub**: Publish-subscribe protocol for message dissemination
+3. **FloodSub**: Publish-subscribe protocol for message dissemination
    - Used for gossiping transactions, headers, and blocks
    - Provides efficient message propagation with reduced bandwidth overhead
    - Supports message validation through custom validators
@@ -118,7 +118,7 @@ sequenceDiagram
     participant P as P2P Client
     participant H as libp2p Host
     participant D as DHT
-    participant G as GossipSub
+    participant G as FloodSub
     participant N as Network/Other Peers
 
     A->>P: NewClient(config, chainID, datastore, logger, metrics)
@@ -163,7 +163,7 @@ The P2P clients in full and light nodes handle transaction validation differentl
 
 ## Message Gossiping
 
-Messages (transactions, blocks, etc.) are gossiped through the network using GossipSub topics. The topic format is:
+Messages (transactions, blocks, etc.) are gossiped through the network using FloodSub topics. The topic format is:
 
 `<chainID>+<topicSuffix>`
 
