@@ -9,9 +9,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
+	hclog "github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb"
 	"github.com/rs/zerolog"
@@ -35,28 +37,65 @@ type Config struct {
 	Peers              []string
 	SnapCount          uint64
 	SendTimeout        time.Duration
+	ShutdownTimeout    time.Duration
 	HeartbeatTimeout   time.Duration
 	LeaderLeaseTimeout time.Duration
+	ElectionTimeout    time.Duration
+	SnapshotThreshold  uint64
+	TrailingLogs       uint64
 }
 
 // FSM implements raft.FSM for block state
 type FSM struct {
 	logger  zerolog.Logger
 	state   *atomic.Pointer[RaftBlockState]
+	applyMu sync.RWMutex
 	applyCh chan<- RaftApplyMsg
 }
 
-// NewNode creates a new raft node
+// buildRaftConfig converts a Node Config into a hashicorp/raft Config.
+// logger is used to bridge hashicorp/raft's internal hclog output to zerolog.
+func buildRaftConfig(cfg *Config, logger zerolog.Logger) *raft.Config {
+	raftConfig := raft.DefaultConfig()
+	raftConfig.LocalID = raft.ServerID(cfg.NodeID)
+	// Route raft's internal hclog messages through zerolog so all log output is
+	// consistent. hclog writes formatted text lines; zerolog receives them via
+	// its io.Writer implementation and emits them as structured JSON.
+	raftConfig.Logger = hclog.New(&hclog.LoggerOptions{
+		Name:        "raft",
+		Level:       hclog.Info,
+		Output:      logger.With().Str("component", "raft-hashicorp").Logger(),
+		DisableTime: true, // zerolog adds its own timestamp
+	})
+	raftConfig.HeartbeatTimeout = cfg.HeartbeatTimeout
+	raftConfig.LeaderLeaseTimeout = cfg.LeaderLeaseTimeout
+	if cfg.ElectionTimeout > 0 {
+		raftConfig.ElectionTimeout = cfg.ElectionTimeout
+	}
+	if cfg.SnapshotThreshold > 0 {
+		raftConfig.SnapshotThreshold = cfg.SnapshotThreshold
+	}
+	if cfg.TrailingLogs > 0 {
+		raftConfig.TrailingLogs = cfg.TrailingLogs
+	}
+	return raftConfig
+}
+
 func NewNode(cfg *Config, logger zerolog.Logger) (*Node, error) {
+	// Clamp ShutdownTimeout so waitForMsgsLanded never receives a zero or
+	// negative interval (which would panic in time.NewTicker). Callers such as
+	// initRaftNode already set this, but direct callers in tests may not.
+	if cfg.ShutdownTimeout <= 0 {
+		cfgCopy := *cfg
+		cfgCopy.ShutdownTimeout = 5 * cfg.SendTimeout
+		cfg = &cfgCopy
+	}
+
 	if err := os.MkdirAll(cfg.RaftDir, 0755); err != nil {
 		return nil, fmt.Errorf("create raft dir: %w", err)
 	}
 
-	raftConfig := raft.DefaultConfig()
-	raftConfig.LocalID = raft.ServerID(cfg.NodeID)
-	raftConfig.LogLevel = "INFO"
-	raftConfig.HeartbeatTimeout = cfg.HeartbeatTimeout
-	raftConfig.LeaderLeaseTimeout = cfg.LeaderLeaseTimeout
+	raftConfig := buildRaftConfig(cfg, logger)
 
 	startPointer := new(atomic.Pointer[RaftBlockState])
 	startPointer.Store(&RaftBlockState{})
@@ -146,18 +185,26 @@ func (n *Node) waitForMsgsLanded(timeout time.Duration) error {
 	if n == nil {
 		return nil
 	}
-	timeoutTicker := time.NewTicker(timeout)
-	defer timeoutTicker.Stop()
-	ticker := time.NewTicker(min(n.config.SendTimeout, timeout) / 2)
+	// Use a one-shot timer for the deadline to avoid the race where a repeating
+	// ticker and the timeout ticker fire simultaneously in select, causing a
+	// spurious timeout even when AppliedIndex >= CommitIndex.
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	pollInterval := min(50*time.Millisecond, timeout/4)
+	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			if n.raft.AppliedIndex() >= n.raft.LastIndex() {
+			if n.raft.AppliedIndex() >= n.raft.CommitIndex() {
 				return nil
 			}
-		case <-timeoutTicker.C:
+		case <-deadline.C:
+			// Final check after deadline before giving up.
+			if n.raft.AppliedIndex() >= n.raft.CommitIndex() {
+				return nil
+			}
 			return errors.New("max wait time reached")
 		}
 	}
@@ -169,11 +216,13 @@ func (n *Node) Stop() error {
 	}
 	// Wait for FSM to apply all committed logs before shutdown to prevent state loss.
 	// This ensures pending raft messages are processed before the node stops.
-	if err := n.waitForMsgsLanded(n.config.SendTimeout); err != nil {
+	if err := n.waitForMsgsLanded(n.config.ShutdownTimeout); err != nil {
 		n.logger.Warn().Err(err).Msg("timed out waiting for raft messages to land during shutdown")
 	}
 	if n.IsLeader() {
-		_ = n.leadershipTransfer()
+		if err := n.leadershipTransfer(); err != nil {
+			n.logger.Warn().Err(err).Msg("leadership transfer on shutdown failed")
+		}
 	}
 	return n.raft.Shutdown().Error()
 }
@@ -219,6 +268,25 @@ func (n *Node) leaderCh() <-chan bool {
 
 func (n *Node) leadershipTransfer() error {
 	return n.raft.LeadershipTransfer().Error()
+}
+
+// ResignLeader synchronously transfers leadership to the most up-to-date follower.
+// It is a no-op when the node is nil or not currently the leader.
+// Call this before cancelling the node context on graceful shutdown to minimise
+// the window where a dying leader could still serve blocks.
+// The transfer is abandoned and ctx.Err() is returned if ctx expires first.
+func (n *Node) ResignLeader(ctx context.Context) error {
+	if n == nil || !n.IsLeader() {
+		return nil
+	}
+	done := make(chan error, 1)
+	go func() { done <- n.leadershipTransfer() }()
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (n *Node) Config() Config {
@@ -297,6 +365,8 @@ func (n *Node) Shutdown() error {
 // The channel must have sufficient buffer space since updates are published only once without blocking.
 // If the channel is full, state updates will be skipped to prevent blocking the raft cluster.
 func (n *Node) SetApplyCallback(ch chan<- RaftApplyMsg) {
+	n.fsm.applyMu.Lock()
+	defer n.fsm.applyMu.Unlock()
 	n.fsm.applyCh = ch
 }
 
@@ -313,15 +383,20 @@ func (f *FSM) Apply(log *raft.Log) any {
 	f.state.Store(&state)
 	f.logger.Debug().
 		Uint64("height", state.Height).
+		Uint64("raft_term", log.Term).
+		Uint64("raft_index", log.Index).
 		Hex("hash", state.Hash).
 		Uint64("timestamp", state.Timestamp).
 		Int("header_bytes", len(state.Header)).
 		Int("data_bytes", len(state.Data)).
 		Msg("applied raft block state")
 
-	if f.applyCh != nil {
+	f.applyMu.RLock()
+	ch := f.applyCh
+	f.applyMu.RUnlock()
+	if ch != nil {
 		select {
-		case f.applyCh <- RaftApplyMsg{Index: log.Index, State: &state}:
+		case ch <- RaftApplyMsg{Index: log.Index, Term: log.Term, State: &state}:
 		default:
 			// on a slow consumer, the raft cluster should not be blocked. Followers can sync from DA or other peers, too.
 			f.logger.Warn().Msg("apply channel full, dropping message")

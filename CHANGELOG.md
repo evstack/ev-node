@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Raft HA production hardening: leader fencing on SIGTERM, FSM data race, follower restart crash, log compaction config, and election timeout validation [#3230](https://github.com/evstack/ev-node/pull/3230)
+
 ### Changes
 
 - Improve P2P gossiping by switching pubsub internals from `GossipSub` to `FloodSub` [#3263](https://github.com/evstack/ev-node/pull/3263)
