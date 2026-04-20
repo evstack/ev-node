@@ -300,10 +300,10 @@ func (d *DynamicLeaderElection) IsRunning() bool {
 type syncResult int
 
 const (
-	syncResultSynced          syncResult = iota // block store is within 1 block of raft FSM
-	syncResultTimeout                           // deadline elapsed and store still lagging
-	syncResultLostLeadership                    // lost leadership while waiting
-	syncResultCanceled                          // context was canceled
+	syncResultSynced         syncResult = iota // block store is within 1 block of raft FSM
+	syncResultTimeout                          // deadline elapsed and store still lagging
+	syncResultLostLeadership                   // lost leadership while waiting
+	syncResultCanceled                         // context was canceled
 )
 
 // waitForBlockStoreSync polls IsSynced until the block store is within 1 block
