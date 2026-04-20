@@ -208,6 +208,13 @@ func (n *Node) NodeID() string {
 	return n.config.NodeID
 }
 
+func (n *Node) LeaderID() string {
+	if n == nil || n.raft == nil {
+		return ""
+	}
+	return n.leaderID()
+}
+
 func (n *Node) leaderID() string {
 	_, id := n.raft.LeaderWithID()
 	return string(id)
