@@ -4,7 +4,6 @@ package node
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
@@ -21,16 +20,6 @@ func TestBasicExecutionFlow(t *testing.T) {
 
 	node, cleanup := createNodeWithCleanup(t, getTestConfig(t, 1))
 	defer cleanup()
-
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	go func() {
-		_ = node.Run(ctx)
-	}()
-
-	// Wait for node initialization
-	err := waitForNodeInitialization(node)
-	require.NoError(err)
 
 	// Get the original executor to retrieve transactions
 	executor := getExecutorFromNode(t, node)
@@ -64,27 +53,6 @@ func TestBasicExecutionFlow(t *testing.T) {
 	finalizeExecution(t, mockExec, t.Context())
 
 	require.NotEmpty(newStateRoot)
-	cancel()
-	time.Sleep(100 * time.Millisecond) // grace period for node shutdown and cleanup
-}
-
-func waitForNodeInitialization(node *FullNode) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			if node.IsRunning() {
-				return nil
-			}
-		case <-ctx.Done():
-			return errors.New("timeout waiting for node initialization")
-		}
-	}
 }
 
 func getExecutorFromNode(t *testing.T, node *FullNode) coreexecutor.Executor {
