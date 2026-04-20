@@ -247,6 +247,11 @@ func (s *Syncer) Stop(ctx context.Context) error {
 	if s.daFollower != nil {
 		s.daFollower.Stop()
 	}
+
+	if s.raftRetriever != nil {
+		s.raftRetriever.Stop()
+	}
+
 	s.wg.Wait()
 
 	// Skip draining if we're shutting down due to a critical error (e.g. execution
@@ -1240,7 +1245,26 @@ func (s *Syncer) RecoverFromRaft(ctx context.Context, raftState *raft.RaftBlockS
 	}
 
 	if currentState.LastBlockHeight > raftState.Height {
-		return fmt.Errorf("invalid block height: %d (expected %d)", raftState.Height, currentState.LastBlockHeight+1)
+		// Local EVM is ahead of the raft snapshot. This is expected on restart when
+		// the raft FSM hasn't finished replaying log entries yet (stale snapshot height),
+		// or when log entries were compacted and the FSM is awaiting a new snapshot from
+		// the leader. Verify that our local block at raftState.Height has the same hash
+		// to confirm shared history before skipping recovery.
+		localHeader, err := s.store.GetHeader(ctx, raftState.Height)
+		if err != nil {
+			return fmt.Errorf("local state ahead of raft snapshot (local=%d raft=%d), cannot verify hash: %w",
+				currentState.LastBlockHeight, raftState.Height, err)
+		}
+		localHash := localHeader.Hash()
+		if !bytes.Equal(localHash, raftState.Hash) {
+			return fmt.Errorf("local state diverged from raft at height %d: local hash %x != raft hash %x",
+				raftState.Height, localHash, raftState.Hash)
+		}
+		s.logger.Info().
+			Uint64("local_height", currentState.LastBlockHeight).
+			Uint64("raft_height", raftState.Height).
+			Msg("local state ahead of stale raft snapshot with matching hash; skipping recovery, raft will catch up")
+		return nil
 	}
 
 	return nil
