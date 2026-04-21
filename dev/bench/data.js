@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1776776896590,
+  "lastUpdate": 1776776899345,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -770,6 +770,102 @@ window.BENCHMARK_DATA = {
             "value": 54,
             "unit": "allocs/op",
             "extra": "29521 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "c1d4996ca8e76b459aa9a6eb5e5a955013303607",
+          "message": "build(deps): Bump the all-go group across 5 directories with 14 updates (#3271)\n\n* build(deps): Bump the all-go group across 5 directories with 14 updates\n\nBumps the all-go group with 9 updates in the / directory:\n\n| Package | From | To |\n| --- | --- | --- |\n| [cloud.google.com/go/kms](https://github.com/googleapis/google-cloud-go) | `1.27.0` | `1.29.0` |\n| [connectrpc.com/connect](https://github.com/connectrpc/connect-go) | `1.19.1` | `1.19.2` |\n| [github.com/aws/aws-sdk-go-v2](https://github.com/aws/aws-sdk-go-v2) | `1.41.5` | `1.41.6` |\n| [github.com/aws/aws-sdk-go-v2/config](https://github.com/aws/aws-sdk-go-v2) | `1.32.14` | `1.32.16` |\n| [github.com/aws/aws-sdk-go-v2/service/kms](https://github.com/aws/aws-sdk-go-v2) | `1.50.4` | `1.50.5` |\n| [github.com/celestiaorg/nmt](https://github.com/celestiaorg/nmt) | `0.24.2` | `0.24.3` |\n| [github.com/libp2p/go-libp2p-kad-dht](https://github.com/libp2p/go-libp2p-kad-dht) | `0.39.0` | `0.39.1` |\n| [golang.org/x/crypto](https://github.com/golang/crypto) | `0.49.0` | `0.50.0` |\n| [golang.org/x/net](https://github.com/golang/net) | `0.52.0` | `0.53.0` |\n\nBumps the all-go group with 1 update in the /execution/evm directory: [github.com/evstack/ev-node](https://github.com/evstack/ev-node).\nBumps the all-go group with 3 updates in the /execution/grpc directory: [connectrpc.com/connect](https://github.com/connectrpc/connect-go), [golang.org/x/net](https://github.com/golang/net) and [github.com/evstack/ev-node](https://github.com/evstack/ev-node).\nBumps the all-go group with 2 updates in the /test/docker-e2e directory: [github.com/celestiaorg/tastora](https://github.com/celestiaorg/tastora) and [github.com/evstack/ev-node/execution/evm](https://github.com/evstack/ev-node).\nBumps the all-go group with 1 update in the /test/e2e directory: [github.com/celestiaorg/tastora](https://github.com/celestiaorg/tastora).\n\n\nUpdates `cloud.google.com/go/kms` from 1.27.0 to 1.29.0\n- [Release notes](https://github.com/googleapis/google-cloud-go/releases)\n- [Changelog](https://github.com/googleapis/google-cloud-go/blob/main/documentai/CHANGES.md)\n- [Commits](https://github.com/googleapis/google-cloud-go/compare/kms/v1.27.0...dlp/v1.29.0)\n\nUpdates `connectrpc.com/connect` from 1.19.1 to 1.19.2\n- [Release notes](https://github.com/connectrpc/connect-go/releases)\n- [Changelog](https://github.com/connectrpc/connect-go/blob/main/RELEASE.md)\n- [Commits](https://github.com/connectrpc/connect-go/compare/v1.19.1...v1.19.2)\n\nUpdates `github.com/aws/aws-sdk-go-v2` from 1.41.5 to 1.41.6\n- [Release notes](https://github.com/aws/aws-sdk-go-v2/releases)\n- [Commits](https://github.com/aws/aws-sdk-go-v2/compare/v1.41.5...v1.41.6)\n\nUpdates `github.com/aws/aws-sdk-go-v2/config` from 1.32.14 to 1.32.16\n- [Release notes](https://github.com/aws/aws-sdk-go-v2/releases)\n- [Commits](https://github.com/aws/aws-sdk-go-v2/compare/config/v1.32.14...config/v1.32.16)\n\nUpdates `github.com/aws/aws-sdk-go-v2/service/kms` from 1.50.4 to 1.50.5\n- [Release notes](https://github.com/aws/aws-sdk-go-v2/releases)\n- [Commits](https://github.com/aws/aws-sdk-go-v2/compare/service/ssm/v1.50.4...service/ssm/v1.50.5)\n\nUpdates `github.com/aws/smithy-go` from 1.24.3 to 1.25.0\n- [Release notes](https://github.com/aws/smithy-go/releases)\n- [Changelog](https://github.com/aws/smithy-go/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/aws/smithy-go/compare/v1.24.3...v1.25.0)\n\nUpdates `github.com/celestiaorg/nmt` from 0.24.2 to 0.24.3\n- [Release notes](https://github.com/celestiaorg/nmt/releases)\n- [Commits](https://github.com/celestiaorg/nmt/compare/v0.24.2...v0.24.3)\n\nUpdates `github.com/libp2p/go-libp2p-kad-dht` from 0.39.0 to 0.39.1\n- [Release notes](https://github.com/libp2p/go-libp2p-kad-dht/releases)\n- [Commits](https://github.com/libp2p/go-libp2p-kad-dht/compare/v0.39.0...v0.39.1)\n\nUpdates `golang.org/x/crypto` from 0.49.0 to 0.50.0\n- [Commits](https://github.com/golang/crypto/compare/v0.49.0...v0.50.0)\n\nUpdates `golang.org/x/net` from 0.52.0 to 0.53.0\n- [Commits](https://github.com/golang/net/compare/v0.52.0...v0.53.0)\n\nUpdates `google.golang.org/api` from 0.273.1 to 0.274.0\n- [Release notes](https://github.com/googleapis/google-api-go-client/releases)\n- [Changelog](https://github.com/googleapis/google-api-go-client/blob/main/CHANGES.md)\n- [Commits](https://github.com/googleapis/google-api-go-client/compare/v0.273.1...v0.274.0)\n\nUpdates `github.com/evstack/ev-node` from 1.0.0 to 1.1.0\n- [Release notes](https://github.com/evstack/ev-node/releases)\n- [Changelog](https://github.com/evstack/ev-node/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/evstack/ev-node/compare/v1.0.0...v1.1.0)\n\nUpdates `connectrpc.com/connect` from 1.19.1 to 1.19.2\n- [Release notes](https://github.com/connectrpc/connect-go/releases)\n- [Changelog](https://github.com/connectrpc/connect-go/blob/main/RELEASE.md)\n- [Commits](https://github.com/connectrpc/connect-go/compare/v1.19.1...v1.19.2)\n\nUpdates `golang.org/x/net` from 0.52.0 to 0.53.0\n- [Commits](https://github.com/golang/net/compare/v0.52.0...v0.53.0)\n\nUpdates `github.com/evstack/ev-node` from 1.0.0 to 1.1.0\n- [Release notes](https://github.com/evstack/ev-node/releases)\n- [Changelog](https://github.com/evstack/ev-node/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/evstack/ev-node/compare/v1.0.0...v1.1.0)\n\nUpdates `github.com/celestiaorg/tastora` from 0.17.0 to 0.19.0\n- [Release notes](https://github.com/celestiaorg/tastora/releases)\n- [Commits](https://github.com/celestiaorg/tastora/compare/v0.17.0...v0.19.0)\n\nUpdates `github.com/evstack/ev-node/execution/evm` from 1.0.0 to 1.0.1\n- [Release notes](https://github.com/evstack/ev-node/releases)\n- [Changelog](https://github.com/evstack/ev-node/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/evstack/ev-node/compare/v1.0.0...execution/evm/v1.0.1)\n\nUpdates `github.com/celestiaorg/tastora` from 0.16.1-0.20260312082036-2ee1b0a2ac4e to 0.19.0\n- [Release notes](https://github.com/celestiaorg/tastora/releases)\n- [Commits](https://github.com/celestiaorg/tastora/compare/v0.17.0...v0.19.0)\n\n---\nupdated-dependencies:\n- dependency-name: cloud.google.com/go/kms\n  dependency-version: 1.29.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: connectrpc.com/connect\n  dependency-version: 1.19.2\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/aws/aws-sdk-go-v2\n  dependency-version: 1.41.6\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/aws/aws-sdk-go-v2/config\n  dependency-version: 1.32.16\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/aws/aws-sdk-go-v2/service/kms\n  dependency-version: 1.50.5\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/aws/smithy-go\n  dependency-version: 1.25.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: github.com/celestiaorg/nmt\n  dependency-version: 0.24.3\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/libp2p/go-libp2p-kad-dht\n  dependency-version: 0.39.1\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: golang.org/x/crypto\n  dependency-version: 0.50.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: golang.org/x/net\n  dependency-version: 0.53.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: google.golang.org/api\n  dependency-version: 0.274.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: github.com/evstack/ev-node\n  dependency-version: 1.1.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: connectrpc.com/connect\n  dependency-version: 1.19.2\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: golang.org/x/net\n  dependency-version: 0.53.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: github.com/evstack/ev-node\n  dependency-version: 1.1.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: github.com/celestiaorg/tastora\n  dependency-version: 0.19.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: github.com/evstack/ev-node/execution/evm\n  dependency-version: 1.0.1\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/celestiaorg/tastora\n  dependency-version: 0.19.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\n\n* downgrade tastora\n\n---------\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\nCo-authored-by: Julien Robert <julien@rbrt.fr>",
+          "timestamp": "2026-04-21T12:45:24Z",
+          "tree_id": "af1e4168064c00d22c4221b5c0afb5a0db4b55db",
+          "url": "https://github.com/evstack/ev-node/commit/c1d4996ca8e76b459aa9a6eb5e5a955013303607"
+        },
+        "date": 1776776898516,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 39283,
+            "unit": "ns/op\t    4798 B/op\t      50 allocs/op",
+            "extra": "30992 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 39283,
+            "unit": "ns/op",
+            "extra": "30992 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 4798,
+            "unit": "B/op",
+            "extra": "30992 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 50,
+            "unit": "allocs/op",
+            "extra": "30992 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 39704,
+            "unit": "ns/op\t    5005 B/op\t      54 allocs/op",
+            "extra": "30444 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 39704,
+            "unit": "ns/op",
+            "extra": "30444 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 5005,
+            "unit": "B/op",
+            "extra": "30444 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 54,
+            "unit": "allocs/op",
+            "extra": "30444 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 45841,
+            "unit": "ns/op\t   10294 B/op\t      54 allocs/op",
+            "extra": "26593 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 45841,
+            "unit": "ns/op",
+            "extra": "26593 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 10294,
+            "unit": "B/op",
+            "extra": "26593 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 54,
+            "unit": "allocs/op",
+            "extra": "26593 times\n4 procs"
           }
         ]
       }
