@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -43,6 +44,103 @@ func TestRegisterCustomHTTPEndpoints(t *testing.T) {
 	assert.Equal(t, "OK\n", string(body))
 
 	mockStore.AssertExpectations(t)
+}
+
+type testRaftNodeSource struct {
+	isLeader bool
+	leaderID string
+	nodeID   string
+}
+
+func (t testRaftNodeSource) IsLeader() bool {
+	return t.isLeader
+}
+
+func (t testRaftNodeSource) LeaderID() string {
+	return t.leaderID
+}
+
+func (t testRaftNodeSource) NodeID() string {
+	return t.nodeID
+}
+
+func TestRegisterCustomHTTPEndpoints_RaftNodeStatus(t *testing.T) {
+	type bodyShape struct {
+		IsLeader bool   `json:"is_leader"`
+		NodeID   string `json:"node_id"`
+	}
+
+	cases := []struct {
+		name           string
+		node           testRaftNodeSource
+		method         string
+		wantStatus     int
+		wantIsLeader   bool
+		wantNodeID     string
+		skipBodyDecode bool
+	}{
+		{
+			// leaderID == nodeID: handler derives is_leader=true from LeaderID(),
+			// regardless of the IsLeader() field on testRaftNodeSource.
+			name:         "leader matches — is_leader true",
+			node:         testRaftNodeSource{leaderID: "node-a", nodeID: "node-a"},
+			method:       http.MethodGet,
+			wantStatus:   http.StatusOK,
+			wantIsLeader: true,
+			wantNodeID:   "node-a",
+		},
+		{
+			// leaderID != nodeID: handler derives is_leader=false.
+			name:         "leader differs — is_leader false",
+			node:         testRaftNodeSource{leaderID: "node-b", nodeID: "node-a"},
+			method:       http.MethodGet,
+			wantStatus:   http.StatusOK,
+			wantIsLeader: false,
+			wantNodeID:   "node-a",
+		},
+		{
+			// empty leaderID: fallback — is_leader=false (no elected leader known).
+			name:         "empty leaderID fallback — is_leader false",
+			node:         testRaftNodeSource{leaderID: "", nodeID: "node-a"},
+			method:       http.MethodGet,
+			wantStatus:   http.StatusOK,
+			wantIsLeader: false,
+			wantNodeID:   "node-a",
+		},
+		{
+			name:           "non-GET method — 405",
+			node:           testRaftNodeSource{},
+			method:         http.MethodPost,
+			wantStatus:     http.StatusMethodNotAllowed,
+			skipBodyDecode: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mux := http.NewServeMux()
+			RegisterCustomHTTPEndpoints(mux, nil, nil, config.DefaultConfig(), nil, zerolog.Nop(), tc.node)
+
+			ts := httptest.NewServer(mux)
+			t.Cleanup(ts.Close)
+
+			req, err := http.NewRequest(tc.method, ts.URL+"/raft/node", nil)
+			require.NoError(t, err)
+			resp, err := http.DefaultClient.Do(req) //nolint:gosec // test-only request to httptest server
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = resp.Body.Close() })
+
+			require.Equal(t, tc.wantStatus, resp.StatusCode)
+			if tc.skipBodyDecode {
+				return
+			}
+
+			var body bodyShape
+			require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+			assert.Equal(t, tc.wantIsLeader, body.IsLeader)
+			assert.Equal(t, tc.wantNodeID, body.NodeID)
+		})
+	}
 }
 
 func TestHealthReady_aggregatorBlockDelay(t *testing.T) {
