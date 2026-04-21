@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1776758022472,
+  "lastUpdate": 1776766665748,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -190,6 +190,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 140006,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "27022259+auricom@users.noreply.github.com",
+            "name": "auricom",
+            "username": "auricom"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": false,
+          "id": "c753c0bb2193faa5bd0b713bb7787757221c59de",
+          "message": "fix(rpc): derive /raft/node leadership from raft leader ID (#3266)\n\n* fix(rpc): derive /raft/node leadership from raft leader ID\n\n* fix(raft): add LeaderID doc comment; consolidate raft-status tests\n\n- Add Go doc comment to Node.LeaderID() describing return value, nil-safety,\n  and staleness semantics, consistent with IsLeader/HasQuorum style.\n- Consolidate three near-duplicate TestRegisterCustomHTTPEndpoints_RaftNodeStatus*\n  tests into a single table-driven test covering: leaderID==nodeID (is_leader\n  true), leaderID!=nodeID (is_leader false), empty leaderID fallback, and\n  non-GET method (405). Clarifies that is_leader is derived from LeaderID(),\n  not the IsLeader() field on testRaftNodeSource.\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n* fix(rpc): fix gci import grouping in http_test.go\n\nSeparate third-party imports from evstack/ev-node-prefixed imports\nper project gci custom-order config.\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n---------\n\nCo-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>",
+          "timestamp": "2026-04-21T09:58:26Z",
+          "tree_id": "12fe1920fc341aee1aa3071ced43d8f90ee95838",
+          "url": "https://github.com/evstack/ev-node/commit/c753c0bb2193faa5bd0b713bb7787757221c59de"
+        },
+        "date": 1776766661769,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 913180694,
+            "unit": "ns/op\t33180400 B/op\t  186529 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 913180694,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 33180400,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 186529,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
