@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1776776899345,
+  "lastUpdate": 1776788039282,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -286,6 +286,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 176476,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "cd76eab72c0d432b031101253508b0b9549e95d0",
+          "message": "build(deps): Bump rustls-webpki from 0.103.10 to 0.103.13 in the cargo group across 1 directory (#3272)\n\nbuild(deps): Bump rustls-webpki in the cargo group across 1 directory\n\nBumps the cargo group with 1 update in the / directory: [rustls-webpki](https://github.com/rustls/webpki).\n\n\nUpdates `rustls-webpki` from 0.103.10 to 0.103.13\n- [Release notes](https://github.com/rustls/webpki/releases)\n- [Commits](https://github.com/rustls/webpki/compare/v/0.103.10...v/0.103.13)\n\n---\nupdated-dependencies:\n- dependency-name: rustls-webpki\n  dependency-version: 0.103.13\n  dependency-type: indirect\n  dependency-group: cargo\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-04-21T18:09:48+02:00",
+          "tree_id": "eae97f0f87e36c0e0b78e358fc3bae96d818dc55",
+          "url": "https://github.com/evstack/ev-node/commit/cd76eab72c0d432b031101253508b0b9549e95d0"
+        },
+        "date": 1776788034116,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 921215948,
+            "unit": "ns/op\t33446980 B/op\t  190880 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 921215948,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 33446980,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 190880,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
