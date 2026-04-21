@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1776766665748,
+  "lastUpdate": 1776766667848,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -626,6 +626,102 @@ window.BENCHMARK_DATA = {
             "value": 54,
             "unit": "allocs/op",
             "extra": "30948 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "27022259+auricom@users.noreply.github.com",
+            "name": "auricom",
+            "username": "auricom"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": false,
+          "id": "c753c0bb2193faa5bd0b713bb7787757221c59de",
+          "message": "fix(rpc): derive /raft/node leadership from raft leader ID (#3266)\n\n* fix(rpc): derive /raft/node leadership from raft leader ID\n\n* fix(raft): add LeaderID doc comment; consolidate raft-status tests\n\n- Add Go doc comment to Node.LeaderID() describing return value, nil-safety,\n  and staleness semantics, consistent with IsLeader/HasQuorum style.\n- Consolidate three near-duplicate TestRegisterCustomHTTPEndpoints_RaftNodeStatus*\n  tests into a single table-driven test covering: leaderID==nodeID (is_leader\n  true), leaderID!=nodeID (is_leader false), empty leaderID fallback, and\n  non-GET method (405). Clarifies that is_leader is derived from LeaderID(),\n  not the IsLeader() field on testRaftNodeSource.\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n* fix(rpc): fix gci import grouping in http_test.go\n\nSeparate third-party imports from evstack/ev-node-prefixed imports\nper project gci custom-order config.\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n---------\n\nCo-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>",
+          "timestamp": "2026-04-21T09:58:26Z",
+          "tree_id": "12fe1920fc341aee1aa3071ced43d8f90ee95838",
+          "url": "https://github.com/evstack/ev-node/commit/c753c0bb2193faa5bd0b713bb7787757221c59de"
+        },
+        "date": 1776766667311,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 34675,
+            "unit": "ns/op\t    4706 B/op\t      50 allocs/op",
+            "extra": "34920 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 34675,
+            "unit": "ns/op",
+            "extra": "34920 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 4706,
+            "unit": "B/op",
+            "extra": "34920 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 50,
+            "unit": "allocs/op",
+            "extra": "34920 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 35156,
+            "unit": "ns/op\t    4910 B/op\t      54 allocs/op",
+            "extra": "34400 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 35156,
+            "unit": "ns/op",
+            "extra": "34400 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 4910,
+            "unit": "B/op",
+            "extra": "34400 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 54,
+            "unit": "allocs/op",
+            "extra": "34400 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 40754,
+            "unit": "ns/op\t   10199 B/op\t      54 allocs/op",
+            "extra": "29521 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 40754,
+            "unit": "ns/op",
+            "extra": "29521 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 10199,
+            "unit": "B/op",
+            "extra": "29521 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 54,
+            "unit": "allocs/op",
+            "extra": "29521 times\n4 procs"
           }
         ]
       }
