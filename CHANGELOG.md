@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Replace persistent P2P connection gater with a no-op variant so stale blocklist entries can no longer prevent peers from connecting after a restart [#3273](https://github.com/evstack/ev-node/pull/3273)
 - Raft HA production hardening: leader fencing on SIGTERM, FSM data race, follower restart crash, log compaction config, and election timeout validation [#3230](https://github.com/evstack/ev-node/pull/3230)
 
 ### Changes
