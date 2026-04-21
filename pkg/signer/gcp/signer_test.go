@@ -164,12 +164,12 @@ func TestSign_RetryBehavior(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			_, publicKeyPEM := generateTestEd25519PEM(t)
 
-			var calls int32
+			var calls atomic.Int32
 			signer := newTestSigner(t, &mockKMSClient{
 				keyID:        myKeyID,
 				publicKeyPEM: publicKeyPEM,
 				signFn: func(_ context.Context, _ *kmspb.AsymmetricSignRequest) (*kmspb.AsymmetricSignResponse, error) {
-					atomic.AddInt32(&calls, 1)
+					calls.Add(1)
 					return nil, spec.signErr
 				},
 			}, spec.opts)
@@ -177,7 +177,7 @@ func TestSign_RetryBehavior(t *testing.T) {
 			_, err := signer.Sign(t.Context(), []byte("hello world"))
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), spec.errSubstr)
-			assert.Equal(t, spec.expectedCall, atomic.LoadInt32(&calls))
+			assert.Equal(t, spec.expectedCall, calls.Load())
 		})
 	}
 }
@@ -228,12 +228,12 @@ func TestSign_IntegrityFailures_RetryAndFail(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			_, publicKeyPEM := generateTestEd25519PEM(t)
 
-			var calls int32
+			var calls atomic.Int32
 			signer := newTestSigner(t, &mockKMSClient{
 				keyID:        myKeyID,
 				publicKeyPEM: publicKeyPEM,
 				signFn: func(_ context.Context, _ *kmspb.AsymmetricSignRequest) (*kmspb.AsymmetricSignResponse, error) {
-					atomic.AddInt32(&calls, 1)
+					calls.Add(1)
 					return spec.responseFn(), nil
 				},
 			}, &Options{MaxRetries: 1})
@@ -241,7 +241,7 @@ func TestSign_IntegrityFailures_RetryAndFail(t *testing.T) {
 			_, err := signer.Sign(t.Context(), []byte("hello world"))
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), spec.expectedErrSubstr)
-			assert.Equal(t, int32(2), atomic.LoadInt32(&calls), "integrity failures should be retried")
+			assert.Equal(t, int32(2), calls.Load(), "integrity failures should be retried")
 		})
 	}
 }
@@ -249,13 +249,13 @@ func TestSign_IntegrityFailures_RetryAndFail(t *testing.T) {
 func TestSign_IntegrityCheckRecoversOnRetry(t *testing.T) {
 	_, publicKeyPEM := generateTestEd25519PEM(t)
 
-	var calls int32
+	var calls atomic.Int32
 	expectedSig := []byte("valid-signature")
 	mock := &mockKMSClient{
 		keyID:        myKeyID,
 		publicKeyPEM: publicKeyPEM,
 		signFn: func(_ context.Context, _ *kmspb.AsymmetricSignRequest) (*kmspb.AsymmetricSignResponse, error) {
-			attempt := atomic.AddInt32(&calls, 1)
+			attempt := calls.Add(1)
 			if attempt == 1 {
 				return &kmspb.AsymmetricSignResponse{
 					Name:               myKeyID,
@@ -278,7 +278,7 @@ func TestSign_IntegrityCheckRecoversOnRetry(t *testing.T) {
 	got, err := s.Sign(t.Context(), []byte("hello world"))
 	require.NoError(t, err)
 	assert.Equal(t, expectedSig, got)
-	assert.Equal(t, int32(2), atomic.LoadInt32(&calls), "second attempt should succeed")
+	assert.Equal(t, int32(2), calls.Load(), "second attempt should succeed")
 }
 
 func TestRetryBackoff_Capped(t *testing.T) {
