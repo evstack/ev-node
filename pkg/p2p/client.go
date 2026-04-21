@@ -82,7 +82,11 @@ func NewClient(
 	metrics *Metrics,
 ) (*Client, error) {
 
-	gater, err := conngater.NewBasicConnectionGater(ds)
+	// No-op gater: never persists or blocks any peer. The gater instance is kept
+	// only because go-header's Exchange requires a *conngater.BasicConnectionGater
+	// parameter. libp2p itself is not given this gater, so no connection is ever
+	// filtered at the host level either.
+	gater, err := conngater.NewBasicConnectionGater(nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create connection gater: %w", err)
 	}
@@ -154,16 +158,6 @@ func (c *Client) startWithHost(ctx context.Context, h host.Host) error {
 	c.ctx, c.cancel = context.WithCancel(ctx)
 	for _, a := range c.host.Addrs() {
 		c.logger.Info().Str("address", fmt.Sprintf("%s/p2p/%s", a, c.host.ID())).Msg("listening on address")
-	}
-
-	c.logger.Debug().Str("blacklist", c.conf.BlockedPeers).Msg("blocking blacklisted peers")
-	if err := c.setupBlockedPeers(c.parseAddrInfoList(c.conf.BlockedPeers)); err != nil {
-		return err
-	}
-
-	c.logger.Debug().Str("whitelist", c.conf.AllowedPeers).Msg("allowing whitelisted peers")
-	if err := c.setupAllowedPeers(c.parseAddrInfoList(c.conf.AllowedPeers)); err != nil {
-		return err
 	}
 
 	c.logger.Debug().Msg("setting up gossiping")
@@ -340,7 +334,7 @@ func (c *Client) listen() (host.Host, error) {
 		return nil, err
 	}
 
-	return libp2p.New(libp2p.ListenAddrs(maddr), libp2p.Identity(c.privKey), libp2p.ConnectionGater(c.gater))
+	return libp2p.New(libp2p.ListenAddrs(maddr), libp2p.Identity(c.privKey))
 }
 
 func (c *Client) setupDHT(ctx context.Context) error {
