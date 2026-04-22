@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1776816279615,
+  "lastUpdate": 1776816281651,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -1058,6 +1058,102 @@ window.BENCHMARK_DATA = {
             "value": 54,
             "unit": "allocs/op",
             "extra": "28549 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "27022259+auricom@users.noreply.github.com",
+            "name": "auricom",
+            "username": "auricom"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "a0bc9d16f7883924e91c9a56a3d68cb55c7b0782",
+          "message": "fix(pkg/p2p): replace persistent gater with no-op gater (#3273)\n\n* docs(adr): add ADR-023 P2P connection gater blocklist\n\nDefines the full TTLConnectionGater feature: TTL-based peer blocklist\nwith config/dynamic block sources, startup reconciliation, background\nsweep, and Prometheus metrics for blocklist observability.\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n* fix(pkg/p2p): replace persistent gater with no-op gater\n\nStale blocklist entries in the Badger datastore were causing the\nedennet-2 incident (evstack/ev-node#3267): fullnodes rejected every\nbinary builder peer, header sync never initialized, and nodes fell back\nto DA-only sync.\n\nReplace the persistent BasicConnectionGater with a no-op variant:\n- Nil datastore → purely in-memory, nothing survives restart\n- Removed from libp2p host → no connection-level filtering\n- Removed setupBlockedPeers / setupAllowedPeers → nothing ever blocks\n- Instance kept only to satisfy go-header's Exchange API requirement\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n* docs(adr): remove ADR-023 P2P gater blocklist\n\nThe no-op gater implementation resolves the edennet-2 incident\n(evstack/ev-node#3267) without the TTL wrapper described in the ADR.\nThe ADR is no longer relevant.\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n* docs(changelog): add no-op P2P gater entry\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n* feat(pkg/p2p): add disable_connection_gater flag to toggle no-op gater\n\nAdds p2p.disable_connection_gater (default: true) so operators can\nre-enable peer-level connection filtering without redeploying a patched\nbinary. When set to false, the connection gater is registered with the\nlibp2p host and blocked_peers / allowed_peers config entries are\nenforced — useful when experiencing P2P flooding.\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n---------\n\nCo-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>",
+          "timestamp": "2026-04-21T23:46:15Z",
+          "tree_id": "babc7064c2192320248c6d46bee2ce743af39637",
+          "url": "https://github.com/evstack/ev-node/commit/a0bc9d16f7883924e91c9a56a3d68cb55c7b0782"
+        },
+        "date": 1776816281274,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 37150,
+            "unit": "ns/op\t    4767 B/op\t      50 allocs/op",
+            "extra": "32197 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 37150,
+            "unit": "ns/op",
+            "extra": "32197 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 4767,
+            "unit": "B/op",
+            "extra": "32197 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 50,
+            "unit": "allocs/op",
+            "extra": "32197 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 37069,
+            "unit": "ns/op\t    4943 B/op\t      54 allocs/op",
+            "extra": "32882 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 37069,
+            "unit": "ns/op",
+            "extra": "32882 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 4943,
+            "unit": "B/op",
+            "extra": "32882 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 54,
+            "unit": "allocs/op",
+            "extra": "32882 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 43246,
+            "unit": "ns/op\t   10239 B/op\t      54 allocs/op",
+            "extra": "28218 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 43246,
+            "unit": "ns/op",
+            "extra": "28218 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 10239,
+            "unit": "B/op",
+            "extra": "28218 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 54,
+            "unit": "allocs/op",
+            "extra": "28218 times\n4 procs"
           }
         ]
       }
