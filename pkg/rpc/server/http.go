@@ -139,11 +139,16 @@ func RegisterCustomHTTPEndpoints(mux *http.ServeMux, s store.Store, pm p2p.P2PRP
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
 			}
+			leaderID := raftNode.LeaderID()
+			isLeader := raftNode.IsLeader()
+			if leaderID != "" {
+				isLeader = leaderID == raftNode.NodeID()
+			}
 			rsp := struct {
 				IsLeader bool   `json:"is_leader"`
 				NodeID   string `json:"node_id"`
 			}{
-				IsLeader: raftNode.IsLeader(),
+				IsLeader: isLeader,
 				NodeID:   raftNode.NodeID(),
 			}
 			w.Header().Set("Content-Type", "application/json")

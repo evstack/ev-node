@@ -368,6 +368,7 @@ func (p *P2PServer) GetNetInfo(
 
 type RaftNodeSource interface {
 	IsLeader() bool
+	LeaderID() string
 	NodeID() string
 }
 

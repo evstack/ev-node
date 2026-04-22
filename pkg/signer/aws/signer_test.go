@@ -154,12 +154,12 @@ func TestSign_RetryBehavior(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			_, der := generateTestEd25519DER(t)
 
-			var calls int32
+			var calls atomic.Int32
 			signer := newTestSigner(t, &mockKMSClient{
 				keyID:     awsTestKeyID,
 				pubKeyDER: der,
 				signFn: func(_ context.Context, _ *kms.SignInput) (*kms.SignOutput, error) {
-					atomic.AddInt32(&calls, 1)
+					calls.Add(1)
 					return nil, spec.signErr
 				},
 			}, spec.opts)
@@ -167,7 +167,7 @@ func TestSign_RetryBehavior(t *testing.T) {
 			_, err := signer.Sign(t.Context(), []byte("hello world"))
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), spec.errSubstr)
-			assert.Equal(t, spec.expectedCall, atomic.LoadInt32(&calls))
+			assert.Equal(t, spec.expectedCall, calls.Load())
 		})
 	}
 }

@@ -96,6 +96,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagP2PPeers, DefaultConfig().P2P.Peers)
 	assertFlagValue(t, flags, FlagP2PBlockedPeers, DefaultConfig().P2P.BlockedPeers)
 	assertFlagValue(t, flags, FlagP2PAllowedPeers, DefaultConfig().P2P.AllowedPeers)
+	assertFlagValue(t, flags, FlagP2PDisableConnectionGater, DefaultConfig().P2P.DisableConnectionGater)
 
 	// Instrumentation flags
 	instrDef := DefaultInstrumentationConfig()
@@ -145,6 +146,9 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagRaftSendTimeout, DefaultConfig().Raft.SendTimeout)
 	assertFlagValue(t, flags, FlagRaftHeartbeatTimeout, DefaultConfig().Raft.HeartbeatTimeout)
 	assertFlagValue(t, flags, FlagRaftLeaderLeaseTimeout, DefaultConfig().Raft.LeaderLeaseTimeout)
+	assertFlagValue(t, flags, FlagRaftElectionTimeout, DefaultConfig().Raft.ElectionTimeout)
+	assertFlagValue(t, flags, FlagRaftSnapshotThreshold, DefaultConfig().Raft.SnapshotThreshold)
+	assertFlagValue(t, flags, FlagRaftTrailingLogs, DefaultConfig().Raft.TrailingLogs)
 
 	// Pruning flags
 	assertFlagValue(t, flags, FlagPruningMode, DefaultConfig().Pruning.Mode)
@@ -415,6 +419,7 @@ func TestRaftConfig_Validate(t *testing.T) {
 			SendTimeout:        1 * time.Second,
 			HeartbeatTimeout:   1 * time.Second,
 			LeaderLeaseTimeout: 1 * time.Second,
+			ElectionTimeout:    2 * time.Second,
 		}
 	}
 
@@ -451,6 +456,17 @@ func TestRaftConfig_Validate(t *testing.T) {
 		"non-positive leader lease timeout": {
 			mutate: func(c *RaftConfig) { c.LeaderLeaseTimeout = 0 },
 			expErr: "leader lease timeout must be positive",
+		},
+		"negative election timeout rejected": {
+			mutate: func(c *RaftConfig) { c.ElectionTimeout = -1 * time.Second },
+			expErr: "election timeout (-1s) must be >= 0",
+		},
+		"election timeout less than heartbeat timeout": {
+			mutate: func(c *RaftConfig) { c.ElectionTimeout = 500 * time.Millisecond },
+			expErr: "election timeout (500ms) must be >= heartbeat timeout (1s)",
+		},
+		"zero election timeout skips check": {
+			mutate: func(c *RaftConfig) { c.ElectionTimeout = 0 },
 		},
 		"multiple invalid returns last": {
 			mutate: func(c *RaftConfig) {

@@ -6,6 +6,7 @@ import (
 	"crypto/sha512"
 	"errors"
 	"math"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -34,6 +35,30 @@ import (
 	extmocks "github.com/evstack/ev-node/test/mocks/external"
 	"github.com/evstack/ev-node/types"
 )
+
+// stubRaftNode is a minimal RaftNode stub that records SetApplyCallback calls.
+type stubRaftNode struct {
+	mu        sync.Mutex
+	callbacks []chan<- raft.RaftApplyMsg
+}
+
+func (s *stubRaftNode) IsLeader() bool                                        { return false }
+func (s *stubRaftNode) HasQuorum() bool                                       { return false }
+func (s *stubRaftNode) GetState() *raft.RaftBlockState                        { return nil }
+func (s *stubRaftNode) Broadcast(context.Context, *raft.RaftBlockState) error { return nil }
+func (s *stubRaftNode) SetApplyCallback(ch chan<- raft.RaftApplyMsg) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.callbacks = append(s.callbacks, ch)
+}
+
+func (s *stubRaftNode) recordedCallbacks() []chan<- raft.RaftApplyMsg {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]chan<- raft.RaftApplyMsg, len(s.callbacks))
+	copy(out, s.callbacks)
+	return out
+}
 
 // helper to create a signer, pubkey and address for tests
 func buildSyncTestSigner(tb testing.TB) (addr []byte, pub crypto.PubKey, signer signerpkg.Signer) {
@@ -420,6 +445,171 @@ func TestSyncer_RecoverFromRaft_KeepsStrictValidationAfterStateExists(t *testing
 	})
 	require.Error(t, err)
 	require.ErrorContains(t, err, "invalid chain ID")
+}
+
+// TestSyncer_RecoverFromRaft_LocalAheadOfStaleSnapshot tests Bug A: when the node
+// restarts and the EVM is ahead of the raft FSM snapshot (stale snapshot due to
+// timing or log compaction), RecoverFromRaft should skip recovery if the local
+// block at raftState.Height has a matching hash, rather than crashing.
+func TestSyncer_RecoverFromRaft_LocalAheadOfStaleSnapshot(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	require.NoError(t, err)
+
+	addr, pub, signer := buildSyncTestSigner(t)
+	gen := genesis.Genesis{
+		ChainID:         "1234",
+		InitialHeight:   1,
+		StartTime:       time.Now().Add(-time.Second),
+		ProposerAddress: addr,
+	}
+
+	mockExec := testmocks.NewMockExecutor(t)
+	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
+	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
+	s := NewSyncer(
+		st,
+		mockExec,
+		nil,
+		cm,
+		common.NopMetrics(),
+		config.DefaultConfig(),
+		gen,
+		mockHeaderStore,
+		mockDataStore,
+		zerolog.Nop(),
+		common.DefaultBlockOptions(),
+		make(chan error, 1),
+		nil,
+	)
+
+	// Build block at height 1 and persist it (simulates EVM block persisted before SIGTERM).
+	data1 := makeData(gen.ChainID, 1, 0)
+	headerBz1, hdr1 := makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, []byte("app1"), data1, nil)
+	dataBz1, err := data1.MarshalBinary()
+	require.NoError(t, err)
+
+	batch, err := st.NewBatch(t.Context())
+	require.NoError(t, err)
+	require.NoError(t, batch.SaveBlockDataFromBytes(hdr1, headerBz1, dataBz1, &hdr1.Signature))
+	require.NoError(t, batch.SetHeight(1))
+	require.NoError(t, batch.UpdateState(types.State{
+		ChainID:         gen.ChainID,
+		InitialHeight:   1,
+		LastBlockHeight: 1,
+		LastHeaderHash:  hdr1.Hash(),
+	}))
+	require.NoError(t, batch.Commit())
+
+	// Simulate EVM at height 1, raft snapshot stale at height 0 — but there is no
+	// block 0 to check, so use height 1 EVM vs stale snapshot at height 0.
+	// More realistic: EVM at height 2, raft snapshot at height 1.
+	// Build a second block and advance the store state to height 2.
+	data2 := makeData(gen.ChainID, 2, 0)
+	headerBz2, hdr2 := makeSignedHeaderBytes(t, gen.ChainID, 2, addr, pub, signer, []byte("app2"), data2, hdr1.Hash())
+	dataBz2, err := data2.MarshalBinary()
+	require.NoError(t, err)
+
+	batch2, err := st.NewBatch(t.Context())
+	require.NoError(t, err)
+	require.NoError(t, batch2.SaveBlockDataFromBytes(hdr2, headerBz2, dataBz2, &hdr2.Signature))
+	require.NoError(t, batch2.SetHeight(2))
+	require.NoError(t, batch2.UpdateState(types.State{
+		ChainID:         gen.ChainID,
+		InitialHeight:   1,
+		LastBlockHeight: 2,
+		LastHeaderHash:  hdr2.Hash(),
+	}))
+	require.NoError(t, batch2.Commit())
+
+	// Set lastState to height 2 (EVM is at 2).
+	s.SetLastState(types.State{
+		ChainID:         gen.ChainID,
+		InitialHeight:   1,
+		LastBlockHeight: 2,
+		LastHeaderHash:  hdr2.Hash(),
+	})
+
+	t.Run("matching hash skips recovery", func(t *testing.T) {
+		// raft snapshot is stale at height 1 (EVM is at 2); hash matches local block 1.
+		err := s.RecoverFromRaft(t.Context(), &raft.RaftBlockState{
+			Height: 1,
+			Hash:   hdr1.Hash(),
+			Header: headerBz1,
+			Data:   dataBz1,
+		})
+		require.NoError(t, err, "local ahead of stale raft snapshot with matching hash should not error")
+	})
+
+	t.Run("diverged hash returns error", func(t *testing.T) {
+		wrongHash := make([]byte, len(hdr1.Hash()))
+		copy(wrongHash, hdr1.Hash())
+		wrongHash[0] ^= 0xFF // flip a byte to produce a different hash
+
+		err := s.RecoverFromRaft(t.Context(), &raft.RaftBlockState{
+			Height: 1,
+			Hash:   wrongHash,
+			Header: headerBz1,
+			Data:   dataBz1,
+		})
+		require.Error(t, err)
+		require.ErrorContains(t, err, "diverged from raft")
+	})
+
+	t.Run("get header fails returns error", func(t *testing.T) {
+		// lastState is at height 2; raft snapshot at height 0.
+		// No block is stored at height 0, so GetHeader fails.
+		err := s.RecoverFromRaft(t.Context(), &raft.RaftBlockState{
+			Height: 0,
+			Hash:   make([]byte, 32),
+			Header: headerBz1,
+			Data:   dataBz1,
+		})
+		require.Error(t, err)
+		require.ErrorContains(t, err, "cannot verify hash")
+	})
+}
+
+func TestSyncer_Stop_CallsRaftRetrieverStop(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	require.NoError(t, err)
+
+	raftNode := &stubRaftNode{}
+	s := NewSyncer(
+		st,
+		nil,
+		nil,
+		cm,
+		common.NopMetrics(),
+		config.DefaultConfig(),
+		genesis.Genesis{},
+		nil,
+		nil,
+		zerolog.Nop(),
+		common.DefaultBlockOptions(),
+		make(chan error, 1),
+		raftNode,
+	)
+
+	require.NotNil(t, s.raftRetriever, "raftRetriever should be set when raftNode is provided")
+
+	// Manually set cancel so Stop() doesn't bail out early (simulates having been started).
+	ctx, cancel := context.WithCancel(t.Context())
+	s.ctx = ctx
+	s.cancel = cancel
+
+	require.NoError(t, s.Stop(t.Context()))
+
+	// raftRetriever.Stop clears the apply callback (sets it to nil).
+	// The stub records each SetApplyCallback call; the last one should be nil.
+	callbacks := raftNode.recordedCallbacks()
+	require.NotEmpty(t, callbacks, "expected at least one callback registration")
+	assert.Nil(t, callbacks[len(callbacks)-1], "last callback should be nil after Stop")
 }
 
 func TestSyncer_processPendingEvents(t *testing.T) {

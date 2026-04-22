@@ -35,6 +35,7 @@ const (
 )
 
 var _ Node = &FullNode{}
+var _ LeaderResigner = &FullNode{}
 
 type leaderElection interface {
 	Run(ctx context.Context) error
@@ -154,8 +155,12 @@ func initRaftNode(nodeConfig config.Config, logger zerolog.Logger) (*raftpkg.Nod
 		Bootstrap:          nodeConfig.Raft.Bootstrap,
 		SnapCount:          nodeConfig.Raft.SnapCount,
 		SendTimeout:        nodeConfig.Raft.SendTimeout,
+		ShutdownTimeout:    5 * nodeConfig.Raft.SendTimeout,
 		HeartbeatTimeout:   nodeConfig.Raft.HeartbeatTimeout,
 		LeaderLeaseTimeout: nodeConfig.Raft.LeaderLeaseTimeout,
+		ElectionTimeout:    nodeConfig.Raft.ElectionTimeout,
+		SnapshotThreshold:  nodeConfig.Raft.SnapshotThreshold,
+		TrailingLogs:       nodeConfig.Raft.TrailingLogs,
 	}
 
 	if nodeConfig.Raft.Peers != "" {
@@ -383,4 +388,13 @@ func (n *FullNode) GetGenesisChunks() ([]string, error) {
 // IsRunning returns true if the node is running.
 func (n *FullNode) IsRunning() bool {
 	return n.leaderElection.IsRunning()
+}
+
+// ResignLeader transfers raft leadership before the node shuts down.
+// It is a no-op when raft is not enabled or this node is not the leader.
+func (n *FullNode) ResignLeader(ctx context.Context) error {
+	if n.raftNode == nil {
+		return nil
+	}
+	return n.raftNode.ResignLeader(ctx)
 }
