@@ -22,14 +22,19 @@ type DAFollower interface {
 	HasReachedHead() bool
 	// QueuePriorityHeight queues a DA height for priority retrieval (from P2P hints).
 	QueuePriorityHeight(daHeight uint64)
+	// RewindTo moves the subscriber back to a lower DA height so it
+	// re-fetches from there. Used by the syncer for walkback when a gap
+	// is detected between the node height and the DA events.
+	RewindTo(daHeight uint64)
 }
 
 // daFollower is the concrete implementation of DAFollower.
 type daFollower struct {
-	subscriber *da.Subscriber
-	retriever  DARetriever
-	eventSink  common.EventSink
-	logger     zerolog.Logger
+	subscriber    *da.Subscriber
+	retriever     DARetriever
+	eventSink     common.EventSink
+	logger        zerolog.Logger
+	startDAHeight uint64
 
 	// Priority queue for P2P hint heights (absorbed from DARetriever refactoring #2).
 	priorityMu      sync.Mutex
@@ -48,6 +53,9 @@ type DAFollowerConfig struct {
 	DataNamespace []byte // may be nil or equal to Namespace
 	StartDAHeight uint64
 	DABlockTime   time.Duration
+	// WalkbackChecker is forwarded to the underlying Subscriber.
+	// See da.SubscriberConfig.WalkbackChecker for details.
+	WalkbackChecker func(daHeight uint64, events []common.DAHeightEvent) uint64
 }
 
 // NewDAFollower creates a new daFollower.
@@ -61,16 +69,18 @@ func NewDAFollower(cfg DAFollowerConfig) DAFollower {
 		retriever:       cfg.Retriever,
 		eventSink:       cfg.EventSink,
 		logger:          cfg.Logger.With().Str("component", "da_follower").Logger(),
+		startDAHeight:   cfg.StartDAHeight,
 		priorityHeights: make([]uint64, 0),
 	}
 
 	f.subscriber = da.NewSubscriber(da.SubscriberConfig{
-		Client:      cfg.Client,
-		Logger:      cfg.Logger,
-		Namespaces:  [][]byte{cfg.Namespace, dataNs},
-		DABlockTime: cfg.DABlockTime,
-		Handler:     f,
-		StartHeight: cfg.StartDAHeight,
+		Client:          cfg.Client,
+		Logger:          cfg.Logger,
+		Namespaces:      [][]byte{cfg.Namespace, dataNs},
+		DABlockTime:     cfg.DABlockTime,
+		Handler:         f,
+		StartHeight:     cfg.StartDAHeight,
+		WalkbackChecker: cfg.WalkbackChecker,
 	})
 
 	return f
@@ -89,6 +99,11 @@ func (f *daFollower) Stop() {
 // HasReachedHead returns whether the follower has caught up to DA head.
 func (f *daFollower) HasReachedHead() bool {
 	return f.subscriber.HasReachedHead()
+}
+
+// RewindTo moves the subscriber back to a lower DA height for re-fetching.
+func (f *daFollower) RewindTo(daHeight uint64) {
+	f.subscriber.RewindTo(daHeight)
 }
 
 // HandleEvent processes a subscription event. When the follower is
@@ -123,7 +138,7 @@ func (f *daFollower) HandleEvent(ctx context.Context, ev datypes.SubscriptionEve
 
 // HandleCatchup retrieves events at a single DA height and pipes them
 // to the event sink. Checks priority heights first.
-func (f *daFollower) HandleCatchup(ctx context.Context, daHeight uint64) error {
+func (f *daFollower) HandleCatchup(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error) {
 	// 1. Drain stale or future priority heights from P2P hints
 	for priorityHeight := f.popPriorityHeight(); priorityHeight != 0; priorityHeight = f.popPriorityHeight() {
 		if priorityHeight < daHeight {
@@ -134,46 +149,46 @@ func (f *daFollower) HandleCatchup(ctx context.Context, daHeight uint64) error {
 			Uint64("da_height", priorityHeight).
 			Msg("fetching priority DA height from P2P hint")
 
-		if err := f.fetchAndPipeHeight(ctx, priorityHeight); err != nil {
+		if _, err := f.fetchAndPipeHeight(ctx, priorityHeight); err != nil {
 			if errors.Is(err, datypes.ErrHeightFromFuture) {
-				// Priority hint points to a future height — silently ignore.
 				f.logger.Debug().Uint64("priority_da_height", priorityHeight).
 					Msg("priority hint is from future, ignoring")
 				continue
 			}
-			// Roll back so daHeight is attempted again next cycle after backoff.
-			return err
+			return nil, err
 		}
-		break // continue with daHeight
+		break
 	}
 
 	// 2. Normal sequential fetch
-	if err := f.fetchAndPipeHeight(ctx, daHeight); err != nil {
-		return err
+	events, err := f.fetchAndPipeHeight(ctx, daHeight)
+	if err != nil {
+		return nil, err
 	}
-	return nil
+
+	return events, nil
 }
 
 // fetchAndPipeHeight retrieves events at a single DA height and pipes them.
 // It does NOT handle ErrHeightFromFuture — callers must decide how to react
 // because the correct response depends on whether this is a normal sequential
 // catchup or a priority-hint fetch.
-func (f *daFollower) fetchAndPipeHeight(ctx context.Context, daHeight uint64) error {
+func (f *daFollower) fetchAndPipeHeight(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error) {
 	events, err := f.retriever.RetrieveFromDA(ctx, daHeight)
 	if err != nil {
 		if errors.Is(err, datypes.ErrBlobNotFound) {
-			return nil
+			return nil, nil
 		}
-		return err
+		return nil, err
 	}
 
 	for _, event := range events {
 		if err := f.eventSink.PipeEvent(ctx, event); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
-	return nil
+	return events, nil
 }
 
 // QueuePriorityHeight queues a DA height for priority retrieval.

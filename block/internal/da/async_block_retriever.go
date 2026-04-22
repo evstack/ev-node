@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/evstack/ev-node/block/internal/common"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
@@ -186,31 +187,31 @@ func (f *asyncBlockRetriever) HandleEvent(ctx context.Context, ev datypes.Subscr
 
 // HandleCatchup fetches a single height via Retrieve and caches it.
 // Also applies the prefetch window for speculative forward fetching.
-func (f *asyncBlockRetriever) HandleCatchup(ctx context.Context, daHeight uint64) error {
+func (f *asyncBlockRetriever) HandleCatchup(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error) {
 	if err := ctx.Err(); err != nil {
-		return err
+		return nil, err
 	}
 
 	if _, err := f.cache.Get(ctx, newBlockDataKey(daHeight)); err != nil {
 		if err := f.fetchAndCacheBlock(ctx, daHeight); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	// Speculatively prefetch ahead.
 	target := daHeight + f.prefetchWindow
 	for h := daHeight + 1; h <= target; h++ {
 		if err := ctx.Err(); err != nil {
-			return err
+			return nil, err
 		}
 		if _, err := f.cache.Get(ctx, newBlockDataKey(h)); err == nil {
 			continue // Already cached.
 		}
 		if err := f.fetchAndCacheBlock(ctx, h); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
-	return nil
+	return nil, nil
 }
 
 // fetchAndCacheBlock fetches a block via Retrieve and caches it.

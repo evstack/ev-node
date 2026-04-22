@@ -82,6 +82,17 @@ type Syncer struct {
 
 	daFollower DAFollower
 
+	// p2pStalled is set by p2pWorkerLoop when P2P genuinely fails (not
+	// cancelled by a DA event). Used by the walkback check to decide
+	// whether to rewind the DA follower.
+	p2pStalled atomic.Bool
+
+	// walkbackActive is set when the syncer detects a gap between the
+	// node's block height and the DA events being processed. While active,
+	// the DA follower is rewound one height at a time until the gap is
+	// filled.
+	walkbackActive atomic.Bool
+
 	// Forced inclusion tracking
 	forcedInclusionMu    sync.RWMutex
 	seenBlockTxs         map[string]struct{} // SHA-256 hex of every tx seen in a DA-sourced block
@@ -212,14 +223,15 @@ func (s *Syncer) Start(ctx context.Context) (err error) {
 
 	// Start the DA follower (subscribe + catchup) and other workers
 	s.daFollower = NewDAFollower(DAFollowerConfig{
-		Client:        s.daClient,
-		Retriever:     s.daRetriever,
-		Logger:        s.logger,
-		EventSink:     s,
-		Namespace:     s.daClient.GetHeaderNamespace(),
-		DataNamespace: s.daClient.GetDataNamespace(),
-		StartDAHeight: s.daRetrieverHeight.Load(),
-		DABlockTime:   s.config.DA.BlockTime.Duration,
+		Client:          s.daClient,
+		Retriever:       s.daRetriever,
+		Logger:          s.logger,
+		EventSink:       s,
+		Namespace:       s.daClient.GetHeaderNamespace(),
+		DataNamespace:   s.daClient.GetDataNamespace(),
+		StartDAHeight:   s.daRetrieverHeight.Load(),
+		DABlockTime:     s.config.DA.BlockTime.Duration,
+		WalkbackChecker: s.walkbackCheck,
 	})
 	if err = s.daFollower.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start DA follower: %w", err)
@@ -493,6 +505,7 @@ func (s *Syncer) p2pWorkerLoop(ctx context.Context) {
 			}
 
 			if waitCtx.Err() == nil {
+				s.p2pStalled.Store(true)
 				logger.Warn().Err(err).Uint64("height", targetHeight).Msg("P2P handler failed to process height")
 			}
 
@@ -502,6 +515,8 @@ func (s *Syncer) p2pWorkerLoop(ctx context.Context) {
 			continue
 		}
 
+		s.p2pStalled.Store(false)
+
 		if err := s.waitForStoreHeight(ctx, targetHeight); err != nil {
 			if errors.Is(err, context.Canceled) {
 				return
@@ -509,6 +524,55 @@ func (s *Syncer) p2pWorkerLoop(ctx context.Context) {
 			logger.Error().Err(err).Uint64("height", targetHeight).Msg("failed waiting for height commit")
 		}
 	}
+}
+
+// walkbackCheck is the WalkbackChecker callback for the DA follower's
+// subscriber. It decides whether the subscriber should rewind to re-fetch
+// previous DA heights, based on the gap between the node's block height
+// and the block heights found in the DA events.
+//
+// Returns a DA height to rewind to, or 0 to continue normally.
+func (s *Syncer) walkbackCheck(daHeight uint64, events []common.DAHeightEvent) uint64 {
+	if !s.p2pStalled.Load() {
+		s.walkbackActive.Store(false)
+		return 0
+	}
+
+	if daHeight <= s.daRetrieverHeight.Load() {
+		return 0
+	}
+
+	nodeHeight, err := s.store.Height(s.ctx)
+	if err != nil {
+		return 0
+	}
+
+	needsWalkback := s.walkbackActive.Load()
+	if len(events) > 0 {
+		minHeight := events[0].Header.Height()
+		for _, e := range events[1:] {
+			if e.Header.Height() < minHeight {
+				minHeight = e.Header.Height()
+			}
+		}
+		if minHeight <= nodeHeight+1 {
+			s.walkbackActive.Store(false)
+			return 0
+		}
+		needsWalkback = true
+	}
+
+	if needsWalkback {
+		s.walkbackActive.Store(true)
+		s.logger.Info().
+			Uint64("da_height", daHeight).
+			Uint64("node_height", nodeHeight).
+			Int("events", len(events)).
+			Msg("P2P stalled with gap between DA blocks and node height, walking DA follower back")
+		return daHeight - 1
+	}
+
+	return 0
 }
 
 func (s *Syncer) waitForGenesis() bool {
