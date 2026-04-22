@@ -15,12 +15,6 @@ import (
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
-const (
-	fiberIndexRetainHeights = 4096
-	fiberSubscribePollFreq  = 1 * time.Second
-	fiberSubscribeChanSize  = 16
-)
-
 type (
 	FiberClient  = fiber.DA
 	BlobID       = fiber.BlobID
@@ -47,9 +41,6 @@ type fiberDAClient struct {
 	hasForcedNamespace bool
 
 	mu           sync.RWMutex
-	index        map[uint64][]fiberIndexedBlob
-	indexTail    uint64
-	indexWindow  uint64
 	latestHeight uint64
 }
 
@@ -62,10 +53,11 @@ type fiberIndexedBlob struct {
 
 var _ FullClient = (*fiberDAClient)(nil)
 
-func NewFiberClient(cfg FiberConfig) FullClient {
+func NewFiberClient(cfg FiberConfig) (FullClient, error) {
 	if cfg.Client == nil {
-		return nil
+		return nil, fmt.Errorf("fiber client in config is nil")
 	}
+
 	if cfg.DefaultTimeout == 0 {
 		cfg.DefaultTimeout = 60 * time.Second
 	}
@@ -84,9 +76,7 @@ func NewFiberClient(cfg FiberConfig) FullClient {
 		dataNamespaceBz:    datypes.NamespaceFromString(cfg.DataNamespace).Bytes(),
 		forcedNamespaceBz:  forcedBz,
 		hasForcedNamespace: hasForced,
-		index:              make(map[uint64][]fiberIndexedBlob),
-		indexWindow:        fiberIndexRetainHeights,
-	}
+	}, nil
 }
 
 func makeFiberID(height uint64, blobID []byte) datypes.ID {
@@ -103,18 +93,6 @@ func splitFiberID(id datypes.ID) (uint64, []byte) {
 	return binary.LittleEndian.Uint64(id[:8]), id[8:]
 }
 
-func (c *fiberDAClient) pruneIndexLocked() {
-	if c.indexWindow == 0 || c.indexTail == 0 || c.indexTail < c.indexWindow {
-		return
-	}
-	cutoff := c.indexTail - c.indexWindow + 1
-	for h := range c.index {
-		if h < cutoff {
-			delete(c.index, h)
-		}
-	}
-}
-
 func (c *fiberDAClient) Submit(ctx context.Context, data [][]byte, _ float64, namespace []byte, _ []byte) datypes.ResultSubmit {
 	var blobSize uint64
 	for _, b := range data {
@@ -122,6 +100,7 @@ func (c *fiberDAClient) Submit(ctx context.Context, data [][]byte, _ float64, na
 	}
 
 	uploaded := make([]fiberUploadResult, 0, len(data))
+	submitHeight := uint64(0)
 
 	for i, raw := range data {
 		if uint64(len(raw)) > common.DefaultMaxBlobSize {
@@ -147,10 +126,6 @@ func (c *fiberDAClient) Submit(ctx context.Context, data [][]byte, _ float64, na
 
 			c.logger.Error().Err(err).Int("blob_index", i).Msg("fiber upload failed")
 
-			if len(uploaded) > 0 {
-				c.indexUploaded(uploaded, namespace)
-			}
-
 			return datypes.ResultSubmit{
 				BaseResult: datypes.BaseResult{
 					Code:           code,
@@ -164,12 +139,12 @@ func (c *fiberDAClient) Submit(ctx context.Context, data [][]byte, _ float64, na
 
 		c.mu.Lock()
 		c.latestHeight++
-		h := c.latestHeight
+		submitHeight = c.latestHeight
 		c.mu.Unlock()
 
 		uploaded = append(uploaded, fiberUploadResult{
 			blobID: result.BlobID,
-			height: h,
+			height: submitHeight,
 			data:   raw,
 		})
 	}
@@ -184,16 +159,16 @@ func (c *fiberDAClient) Submit(ctx context.Context, data [][]byte, _ float64, na
 		}
 	}
 
-	ids := c.indexUploaded(uploaded, namespace)
+	ids := makeIDs(uploaded)
 
-	c.logger.Debug().Int("num_ids", len(ids)).Uint64("height", uploaded[len(uploaded)-1].height).Msg("fiber DA submission successful")
+	c.logger.Debug().Int("num_ids", len(uploaded)).Uint64("height", submitHeight).Msg("fiber DA submission successful")
 
 	return datypes.ResultSubmit{
 		BaseResult: datypes.BaseResult{
 			Code:           datypes.StatusSuccess,
 			IDs:            ids,
 			SubmittedCount: uint64(len(ids)),
-			Height:         uploaded[len(uploaded)-1].height,
+			Height:         submitHeight,
 			BlobSize:       blobSize,
 			Timestamp:      time.Now(),
 		},
@@ -206,27 +181,12 @@ type fiberUploadResult struct {
 	data   []byte
 }
 
-func (c *fiberDAClient) indexUploaded(uploaded []fiberUploadResult, namespace []byte) []datypes.ID {
+func makeIDs(uploaded []fiberUploadResult) []datypes.ID {
 	submitHeight := uploaded[len(uploaded)-1].height
 	ids := make([]datypes.ID, len(uploaded))
-
-	c.mu.Lock()
 	for i, u := range uploaded {
-		id := makeFiberID(submitHeight, u.blobID)
-		ids[i] = id
-		c.index[submitHeight] = append(c.index[submitHeight], fiberIndexedBlob{
-			id:        id,
-			namespace: namespace,
-			data:      u.data,
-			blobID:    u.blobID,
-		})
+		ids[i] = makeFiberID(submitHeight, u.blobID)
 	}
-	if submitHeight > c.indexTail {
-		c.indexTail = submitHeight
-	}
-	c.pruneIndexLocked()
-	c.mu.Unlock()
-
 	return ids
 }
 
@@ -239,67 +199,16 @@ func (c *fiberDAClient) RetrieveBlobs(ctx context.Context, height uint64, namesp
 }
 
 func (c *fiberDAClient) retrieve(_ context.Context, height uint64, namespace []byte, _ bool) datypes.ResultRetrieve {
-	c.mu.RLock()
-	allBlobs, ok := c.index[height]
-	c.mu.RUnlock()
-
-	if !ok || len(allBlobs) == 0 {
-		return datypes.ResultRetrieve{
-			BaseResult: datypes.BaseResult{
-				Code:      datypes.StatusNotFound,
-				Message:   "no blobs found at height in fiber index",
-				Height:    height,
-				Timestamp: time.Now(),
-			},
-		}
-	}
-
-	var matching []fiberIndexedBlob
-	for _, b := range allBlobs {
-		if nsEqual(b.namespace, namespace) {
-			matching = append(matching, b)
-		}
-	}
-
-	if len(matching) == 0 {
-		return datypes.ResultRetrieve{
-			BaseResult: datypes.BaseResult{
-				Code:      datypes.StatusNotFound,
-				Message:   "no blobs found at height for given namespace in fiber index",
-				Height:    height,
-				Timestamp: time.Now(),
-			},
-		}
-	}
-
-	ids := make([]datypes.ID, len(matching))
-	data := make([]datypes.Blob, len(matching))
-	for i, b := range matching {
-		ids[i] = b.id
-		data[i] = b.data
-	}
-
+	// not implemented, we cannot get block from on specific fiber height.
 	return datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{
-			Code:      datypes.StatusSuccess,
+			Code:      datypes.StatusNotFound,
+			Message:   "no blobs found at height for given namespace in fiber index",
 			Height:    height,
-			IDs:       ids,
 			Timestamp: time.Now(),
 		},
-		Data: data,
+		Data: nil,
 	}
-}
-
-func nsEqual(a, b []byte) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }
 
 func (c *fiberDAClient) Get(ctx context.Context, ids []datypes.ID, _ []byte) ([]datypes.Blob, error) {
@@ -326,54 +235,43 @@ func (c *fiberDAClient) Get(ctx context.Context, ids []datypes.ID, _ []byte) ([]
 	return res, nil
 }
 
-func (c *fiberDAClient) Subscribe(ctx context.Context, _ []byte, _ bool) (<-chan datypes.SubscriptionEvent, error) {
+const fiberSubscribeChanSize = 42
+
+func (c *fiberDAClient) Subscribe(ctx context.Context, namespace []byte, _ bool) (<-chan datypes.SubscriptionEvent, error) {
 	out := make(chan datypes.SubscriptionEvent, fiberSubscribeChanSize)
 
 	go func() {
 		defer close(out)
 
-		ticker := time.NewTicker(fiberSubscribePollFreq)
-		defer ticker.Stop()
-
-		var lastHeight uint64
+		blobCh, err := c.fiber.Listen(ctx, namespace)
+		if err != nil {
+			c.logger.Error().Err(err).Msg("fiber listen failed")
+			return
+		}
 
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-ticker.C:
-				c.mu.RLock()
-				height := c.latestHeight
-				c.mu.RUnlock()
-
-				if height <= lastHeight {
-					continue
+			case event, ok := <-blobCh:
+				if !ok {
+					return
 				}
 
-				for h := lastHeight + 1; h <= height; h++ {
-					c.mu.RLock()
-					blobs, ok := c.index[h]
-					c.mu.RUnlock()
-					if !ok || len(blobs) == 0 {
-						continue
-					}
-
-					blobData := make([][]byte, len(blobs))
-					for i, b := range blobs {
-						blobData[i] = b.data
-					}
-
-					select {
-					case out <- datypes.SubscriptionEvent{
-						Height:    h,
-						Timestamp: time.Now(),
-						Blobs:     blobData,
-					}:
-					case <-ctx.Done():
-						return
-					}
+				blobData, err := c.fiber.Download(ctx, event.BlobID)
+				if err != nil {
+					c.logger.Error().Err(err).Bytes("blob_id", event.BlobID).Msg("failed to retrier blob id")
 				}
-				lastHeight = height
+
+				select {
+				case out <- datypes.SubscriptionEvent{
+					Height:    event.Height,
+					Timestamp: time.Now(),
+					Blobs:     [][]byte{blobData},
+				}:
+				case <-ctx.Done():
+					return
+				}
 			}
 		}
 	}()
@@ -388,27 +286,8 @@ func (c *fiberDAClient) GetLatestDAHeight(context.Context) (uint64, error) {
 }
 
 func (c *fiberDAClient) GetProofs(_ context.Context, ids []datypes.ID, _ []byte) ([]datypes.Proof, error) {
-	if len(ids) == 0 {
-		return []datypes.Proof{}, nil
-	}
-
-	proofs := make([]datypes.Proof, len(ids))
-	for i, id := range ids {
-		height, _ := splitFiberID(id)
-
-		c.mu.RLock()
-		blobs := c.index[height]
-		c.mu.RUnlock()
-
-		for _, b := range blobs {
-			if string(b.id) == string(id) {
-				proofs[i] = b.blobID
-				break
-			}
-		}
-	}
-
-	return proofs, nil
+	// not implemented.
+	return []datypes.Proof{}, nil
 }
 
 func (c *fiberDAClient) Validate(_ context.Context, ids []datypes.ID, proofs []datypes.Proof, _ []byte) ([]bool, error) {
@@ -420,19 +299,10 @@ func (c *fiberDAClient) Validate(_ context.Context, ids []datypes.ID, proofs []d
 	}
 
 	results := make([]bool, len(ids))
-	for i, id := range ids {
-		height, _ := splitFiberID(id)
 
-		c.mu.RLock()
-		blobs := c.index[height]
-		c.mu.RUnlock()
-
-		for _, b := range blobs {
-			if string(b.id) == string(id) {
-				results[i] = len(proofs[i]) > 0 && string(proofs[i]) == string(b.blobID)
-				break
-			}
-		}
+	// not implemented.
+	for i := range results {
+		results[i] = true
 	}
 
 	return results, nil

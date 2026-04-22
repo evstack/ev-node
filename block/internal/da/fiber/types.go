@@ -35,14 +35,14 @@ type BlobID []byte
 
 // UploadResult is returned by Upload after the blob is accepted.
 type UploadResult struct {
-	BlobID BlobID
+	BlobID    BlobID
 	ExpiresAt time.Time
 }
 
 // BlobEvent is delivered via Listen when a blob is confirmed on-chain.
 type BlobEvent struct {
-	BlobID BlobID
-	Height uint64
+	BlobID   BlobID
+	Height   uint64
 	DataSize uint64
 }
 
