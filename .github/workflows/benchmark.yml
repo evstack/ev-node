@@ -96,9 +96,15 @@ jobs:
         run: just build-evm build-da
       - name: Run ERC20 throughput test
         run: |
-          cd test/e2e && go test -tags evm \
+          cd test/e2e && BENCH_RESULT_OUTPUT=benchmark/erc20_run_result.json \
+            BENCH_OBJECTIVE='ERC-20 token transfer throughput in isolation' go test -tags evm \
             -run='^TestSpamoorSuite$/^TestERC20Throughput$' -v -timeout=15m \
             ./benchmark/ --evm-binary=../../../build/evm
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: erc20-benchmark-results
+          path: test/e2e/benchmark/erc20_run_result.json
 
   defi-benchmark:
     name: DeFi Simulation Benchmark
@@ -118,9 +124,15 @@ jobs:
         run: just build-evm build-da
       - name: Run DeFi simulation test
         run: |
-          cd test/e2e && go test -tags evm \
+          cd test/e2e && BENCH_RESULT_OUTPUT=benchmark/defi_run_result.json \
+            BENCH_OBJECTIVE='Uniswap V2 swap throughput under a DeFi workload' go test -tags evm \
             -run='^TestSpamoorSuite$/^TestDeFiSimulation$' -v -timeout=15m \
             ./benchmark/ --evm-binary=../../../build/evm
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: defi-benchmark-results
+          path: test/e2e/benchmark/defi_run_result.json
 
   # TODO: wire up to publish results once additional tests are in place.
   state-pressure-benchmark:
@@ -141,9 +153,15 @@ jobs:
         run: just build-evm build-da
       - name: Run state pressure test
         run: |
-          cd test/e2e && go test -tags evm \
+          cd test/e2e && BENCH_RESULT_OUTPUT=benchmark/state_pressure_run_result.json \
+            BENCH_OBJECTIVE='Storage-heavy throughput under maximum state growth pressure' go test -tags evm \
             -run='^TestSpamoorSuite$/^TestStatePressure$' -v -timeout=15m \
             ./benchmark/ --evm-binary=../../../build/evm
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: state-pressure-benchmark-results
+          path: test/e2e/benchmark/state_pressure_run_result.json
 
   # single job to push all results to gh-pages sequentially, avoiding race conditions
   publish-benchmarks:

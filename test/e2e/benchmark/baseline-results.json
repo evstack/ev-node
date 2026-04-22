@@ -1,0 +1,447 @@
+{
+  "schema_version": 1,
+  "captured_from": {
+    "workflow": ".github/workflows/benchmark.yml",
+    "workflow_name": "Benchmarks",
+    "run_id": 24774299929,
+    "run_url": "https://github.com/evstack/ev-node/actions/runs/24774299929",
+    "branch": "main",
+    "head_sha": "36a7f15519fe295515f7325abba7e2c63316945f",
+    "created_at": "2026-04-22T10:50:52Z",
+    "updated_at": "2026-04-22T10:56:27Z"
+  },
+  "benchmarks": {
+    "evm_contract_roundtrip": {
+      "name": "EVM Contract Roundtrip",
+      "kind": "go_benchmark",
+      "source": {
+        "job_name": "EVM Contract Benchmark",
+        "job_id": 72488470293,
+        "artifact_name": "evm-benchmark-results",
+        "artifact_file": "test/e2e/output.txt"
+      },
+      "context": {
+        "goos": "linux",
+        "goarch": "amd64",
+        "pkg": "github.com/evstack/ev-node/test/e2e",
+        "cpu": "AMD EPYC 7763 64-Core Processor"
+      },
+      "metrics": {
+        "iterations": 2,
+        "ns_per_op": 923069340,
+        "bytes_per_op": 29933668,
+        "allocs_per_op": 156707
+      }
+    },
+    "block_executor_produce_block": {
+      "name": "Block Executor Benchmark",
+      "kind": "go_benchmark_suite",
+      "source": {
+        "job_name": "EVM Contract Benchmark",
+        "job_id": 72488470293,
+        "artifact_name": "evm-benchmark-results",
+        "artifact_file": "block_executor_output.txt"
+      },
+      "context": {
+        "goos": "linux",
+        "goarch": "amd64",
+        "pkg": "github.com/evstack/ev-node/block/internal/executing",
+        "cpu": "AMD EPYC 7763 64-Core Processor"
+      },
+      "cases": {
+        "empty_batch": {
+          "iterations": 32458,
+          "ns_per_op": 37792,
+          "bytes_per_op": 4761,
+          "allocs_per_op": 50
+        },
+        "single_tx": {
+          "iterations": 32019,
+          "ns_per_op": 38102,
+          "bytes_per_op": 4964,
+          "allocs_per_op": 54
+        },
+        "100_txs": {
+          "iterations": 27620,
+          "ns_per_op": 44232,
+          "bytes_per_op": 10258,
+          "allocs_per_op": 54
+        }
+      }
+    },
+    "spamoor_trace": {
+      "name": "Spamoor Trace Benchmark",
+      "kind": "trace_avg_entries",
+      "source": {
+        "job_name": "Spamoor Trace Benchmark",
+        "job_id": 72488470343,
+        "artifact_name": "spamoor-benchmark-results",
+        "artifact_file": "spamoor_bench.json"
+      },
+      "config": {
+        "service_name": "ev-node-smoke",
+        "sleep_before_collection_sec": 60,
+        "workloads": {
+          "eoatx": {
+            "throughput": 100,
+            "total_count": 3000,
+            "max_pending": 4000,
+            "max_wallets": 300,
+            "base_fee": 20,
+            "tip_fee": 2
+          },
+          "gasburner": {
+            "throughput": 25,
+            "total_count": 2000,
+            "max_pending": 8000,
+            "max_wallets": 500,
+            "gas_units_to_burn": 3000000,
+            "base_fee": 20,
+            "tip_fee": 5,
+            "rebroadcast": 5
+          }
+        }
+      },
+      "entries": [
+        {
+          "name": "SpamoorSmoke - Batch.Commit (avg)",
+          "unit": "us",
+          "value": 67.20608695652174
+        },
+        {
+          "name": "SpamoorSmoke - Batch.Put (avg)",
+          "unit": "us",
+          "value": 2.226086956521739
+        },
+        {
+          "name": "SpamoorSmoke - Batch.SaveBlockData (avg)",
+          "unit": "us",
+          "value": 24.064347826086955
+        },
+        {
+          "name": "SpamoorSmoke - Batch.SetHeight (avg)",
+          "unit": "us",
+          "value": 18.881739130434784
+        },
+        {
+          "name": "SpamoorSmoke - Batch.UpdateState (avg)",
+          "unit": "us",
+          "value": 9.429565217391305
+        },
+        {
+          "name": "SpamoorSmoke - BlockExecutor.ApplyBlock (avg)",
+          "unit": "us",
+          "value": 32301.786086956523
+        },
+        {
+          "name": "SpamoorSmoke - BlockExecutor.CreateBlock (avg)",
+          "unit": "us",
+          "value": 8.457391304347826
+        },
+        {
+          "name": "SpamoorSmoke - BlockExecutor.ProduceBlock (avg)",
+          "unit": "us",
+          "value": 33532.0818815331
+        },
+        {
+          "name": "SpamoorSmoke - BlockExecutor.RetrieveBatch (avg)",
+          "unit": "us",
+          "value": 61.361739130434785
+        },
+        {
+          "name": "SpamoorSmoke - DA.Submit (avg)",
+          "unit": "us",
+          "value": 1121.9463087248323
+        },
+        {
+          "name": "SpamoorSmoke - DASubmitter.SubmitData (avg)",
+          "unit": "us",
+          "value": 1664.4205607476636
+        },
+        {
+          "name": "SpamoorSmoke - DASubmitter.SubmitHeaders (avg)",
+          "unit": "us",
+          "value": 1319.8798283261804
+        },
+        {
+          "name": "SpamoorSmoke - Engine.ForkchoiceUpdated (avg)",
+          "unit": "us",
+          "value": 1417.1223312175418
+        },
+        {
+          "name": "SpamoorSmoke - Engine.GetPayload (avg)",
+          "unit": "us",
+          "value": 11985.655652173913
+        },
+        {
+          "name": "SpamoorSmoke - Engine.NewPayload (avg)",
+          "unit": "us",
+          "value": 13708.801739130435
+        },
+        {
+          "name": "SpamoorSmoke - Eth.GetBlockByNumber (avg)",
+          "unit": "us",
+          "value": 1751.8499711482978
+        },
+        {
+          "name": "SpamoorSmoke - Executor.ExecuteTxs (avg)",
+          "unit": "us",
+          "value": 32279.12
+        },
+        {
+          "name": "SpamoorSmoke - Executor.GetTxs (avg)",
+          "unit": "us",
+          "value": 30540.43063583815
+        },
+        {
+          "name": "SpamoorSmoke - Executor.SetFinal (avg)",
+          "unit": "us",
+          "value": 3193.770154373928
+        },
+        {
+          "name": "SpamoorSmoke - ForcedInclusionRetriever.RetrieveForcedIncludedTxs (avg)",
+          "unit": "us",
+          "value": 5.116521739130435
+        },
+        {
+          "name": "SpamoorSmoke - Sequencer.GetNextBatch (avg)",
+          "unit": "us",
+          "value": 54.47304347826087
+        },
+        {
+          "name": "SpamoorSmoke - Sequencer.SubmitBatchTxs (avg)",
+          "unit": "us",
+          "value": 47.99382716049383
+        },
+        {
+          "name": "SpamoorSmoke - Store.GetBlockData (avg)",
+          "unit": "us",
+          "value": 8.606888361045131
+        },
+        {
+          "name": "SpamoorSmoke - Store.GetHeader (avg)",
+          "unit": "us",
+          "value": 6.54416449464234
+        },
+        {
+          "name": "SpamoorSmoke - Store.GetMetadata (avg)",
+          "unit": "us",
+          "value": 9.182059447983015
+        },
+        {
+          "name": "SpamoorSmoke - Store.Height (avg)",
+          "unit": "us",
+          "value": 13.021027231988969
+        },
+        {
+          "name": "SpamoorSmoke - Store.NewBatch (avg)",
+          "unit": "us",
+          "value": 16.40695652173913
+        },
+        {
+          "name": "SpamoorSmoke - Store.SetMetadata (avg)",
+          "unit": "us",
+          "value": 26.951024042742652
+        },
+        {
+          "name": "SpamoorSmoke - TxPool.GetTxs (avg)",
+          "unit": "us",
+          "value": 30106.29479768786
+        }
+      ]
+    },
+    "erc20_throughput": {
+      "name": "ERC20 Throughput Benchmark",
+      "kind": "throughput_summary",
+      "source": {
+        "job_name": "ERC20 Throughput Benchmark",
+        "job_id": 72488470294,
+        "source_type": "workflow_job_log_summary"
+      },
+      "config": {
+        "service_name": "ev-node-erc20",
+        "scenario": "ERC20TX",
+        "block_time": "100ms",
+        "slot_duration": "250ms",
+        "gas_limit": "",
+        "scrape_interval": "1s",
+        "num_spammers": 4,
+        "count_per_spammer": 5000,
+        "target_total_transactions": 20000,
+        "throughput_per_spammer_tps": 200,
+        "warmup_txs": 200,
+        "gas_units_to_burn": 1000000,
+        "max_wallets": 500,
+        "max_pending": 50000,
+        "rebroadcast": 0,
+        "base_fee": 20,
+        "tip_fee": 2,
+        "wait_timeout": "10m0s"
+      },
+      "summary": {
+        "block_range": {
+          "start": 47,
+          "end": 206,
+          "total": 160,
+          "non_empty": 71
+        },
+        "non_empty_ratio_pct": 44.4,
+        "block_intervals": {
+          "avg_ms": 138,
+          "p50_ms": 0,
+          "p99_ms": 1000,
+          "max_ms": 1000
+        },
+        "gas_per_non_empty_block": {
+          "avg": 11736445,
+          "p50": 7335324,
+          "p99": 73866396
+        },
+        "tx_per_non_empty_block": {
+          "avg": 276.3,
+          "p50": 155,
+          "p99": 1829
+        },
+        "throughput": {
+          "mgas_per_sec": 43.86,
+          "tps": 1032.5,
+          "steady_state_sec": 19,
+          "wall_clock_sec": 22.405
+        },
+        "ev_node_overhead_pct": 2.1,
+        "ev_reth_ggas_per_sec": 0.197,
+        "produce_block_avg_ms": 97,
+        "seconds_per_gigagas": 22.8013
+      }
+    },
+    "defi_simulation": {
+      "name": "DeFi Simulation Benchmark",
+      "kind": "throughput_summary",
+      "source": {
+        "job_name": "DeFi Simulation Benchmark",
+        "job_id": 72488470322,
+        "source_type": "workflow_job_log_summary"
+      },
+      "config": {
+        "service_name": "ev-node-defi",
+        "scenario": "UniswapSwaps",
+        "pair_count": 1,
+        "block_time": "100ms",
+        "slot_duration": "250ms",
+        "gas_limit": "",
+        "scrape_interval": "1s",
+        "num_spammers": 4,
+        "count_per_spammer": 5000,
+        "target_total_transactions": 20000,
+        "throughput_per_spammer_tps": 200,
+        "warmup_txs": 200,
+        "gas_units_to_burn": 1000000,
+        "max_wallets": 500,
+        "max_pending": 50000,
+        "rebroadcast": 0,
+        "base_fee": 20,
+        "tip_fee": 2,
+        "wait_timeout": "10m0s"
+      },
+      "summary": {
+        "block_range": {
+          "start": 208,
+          "end": 397,
+          "total": 190,
+          "non_empty": 147
+        },
+        "non_empty_ratio_pct": 77.4,
+        "block_intervals": {
+          "avg_ms": 180,
+          "p50_ms": 0,
+          "p99_ms": 1000,
+          "max_ms": 1000
+        },
+        "gas_per_non_empty_block": {
+          "avg": 7099944,
+          "p50": 3381760,
+          "p99": 39062140
+        },
+        "tx_per_non_empty_block": {
+          "avg": 146.6,
+          "p50": 76,
+          "p99": 752
+        },
+        "throughput": {
+          "mgas_per_sec": 32.62,
+          "tps": 673.5,
+          "steady_state_sec": 32,
+          "wall_clock_sec": 34.205
+        },
+        "ev_node_overhead_pct": 2.3,
+        "ev_reth_ggas_per_sec": 0.119,
+        "produce_block_avg_ms": 152,
+        "seconds_per_gigagas": 30.6604
+      }
+    },
+    "state_pressure": {
+      "name": "State Pressure Benchmark",
+      "kind": "throughput_summary",
+      "source": {
+        "job_name": "State Pressure Benchmark",
+        "job_id": 72488470291,
+        "source_type": "workflow_job_log_summary"
+      },
+      "config": {
+        "service_name": "ev-node-state-pressure",
+        "scenario": "StorageSpam",
+        "block_time": "100ms",
+        "slot_duration": "250ms",
+        "gas_limit": "",
+        "scrape_interval": "1s",
+        "num_spammers": 4,
+        "count_per_spammer": 5000,
+        "target_total_transactions": 20000,
+        "throughput_per_spammer_tps": 200,
+        "warmup_txs": 200,
+        "gas_units_to_burn": 1000000,
+        "max_wallets": 500,
+        "max_pending": 50000,
+        "rebroadcast": 0,
+        "base_fee": 20,
+        "tip_fee": 2,
+        "wait_timeout": "10m0s"
+      },
+      "summary": {
+        "block_range": {
+          "start": 155,
+          "end": 223,
+          "total": 69,
+          "non_empty": 50
+        },
+        "non_empty_ratio_pct": 72.5,
+        "block_intervals": {
+          "avg_ms": 426,
+          "p50_ms": 0,
+          "p99_ms": 1330,
+          "max_ms": 2000
+        },
+        "gas_per_non_empty_block": {
+          "avg": 376732449,
+          "p50": 254408064,
+          "p99": 1179379427
+        },
+        "tx_per_non_empty_block": {
+          "avg": 361.3,
+          "p50": 244,
+          "p99": 1131
+        },
+        "throughput": {
+          "mgas_per_sec": 724.49,
+          "tps": 694.8,
+          "steady_state_sec": 26,
+          "wall_clock_sec": 28.204
+        },
+        "ev_node_overhead_pct": 2.1,
+        "ev_reth_ggas_per_sec": 2.193,
+        "produce_block_avg_ms": 463,
+        "seconds_per_gigagas": 1.3803
+      }
+    }
+  }
+}
