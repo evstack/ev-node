@@ -83,12 +83,11 @@ func NewFiberDAClient(
 	logger zerolog.Logger,
 ) FullDAClient {
 	base, err := da.NewFiberClient(da.FiberConfig{
-		Client:                   fiberClient,
-		Logger:                   logger,
-		DefaultTimeout:           config.DA.RequestTimeout.Duration,
-		Namespace:                config.DA.GetNamespace(),
-		DataNamespace:            config.DA.GetDataNamespace(),
-		ForcedInclusionNamespace: config.DA.GetForcedInclusionNamespace(),
+		Client:         fiberClient,
+		Logger:         logger,
+		DefaultTimeout: config.DA.RequestTimeout.Duration,
+		Namespace:      config.DA.GetNamespace(),
+		DataNamespace:  config.DA.GetDataNamespace(),
 	})
 	if err != nil {
 		panic(err)

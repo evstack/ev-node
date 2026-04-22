@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -28,6 +29,7 @@ type FiberConfig struct {
 	DefaultTimeout time.Duration
 	Namespace      string
 	DataNamespace  string
+	UploadWorkers  int
 }
 
 type fiberDAClient struct {
@@ -36,16 +38,8 @@ type fiberDAClient struct {
 	defaultTimeout  time.Duration
 	namespaceBz     []byte
 	dataNamespaceBz []byte
-
-	mu           sync.RWMutex
-	latestHeight uint64
-}
-
-type fiberIndexedBlob struct {
-	id        datypes.ID
-	namespace []byte
-	data      []byte
-	blobID    []byte
+	uploadWorkers   int
+	latestHeight    atomic.Uint64
 }
 
 var _ FullClient = (*fiberDAClient)(nil)
@@ -59,12 +53,17 @@ func NewFiberClient(cfg FiberConfig) (FullClient, error) {
 		cfg.DefaultTimeout = 60 * time.Second
 	}
 
+	if cfg.UploadWorkers == 0 {
+		cfg.UploadWorkers = 8
+	}
+
 	return &fiberDAClient{
 		fiber:           cfg.Client,
 		logger:          cfg.Logger.With().Str("component", "fiber_da_client").Logger(),
 		defaultTimeout:  cfg.DefaultTimeout,
 		namespaceBz:     datypes.NamespaceFromString(cfg.Namespace).Bytes(),
 		dataNamespaceBz: datypes.NamespaceFromString(cfg.DataNamespace).Bytes(),
+		uploadWorkers:   cfg.UploadWorkers,
 	}, nil
 }
 
@@ -88,9 +87,6 @@ func (c *fiberDAClient) Submit(ctx context.Context, data [][]byte, _ float64, na
 		blobSize += uint64(len(b))
 	}
 
-	uploaded := make([]fiberUploadResult, 0, len(data))
-	submitHeight := uint64(0)
-
 	for i, raw := range data {
 		if uint64(len(raw)) > common.DefaultMaxBlobSize {
 			return datypes.ResultSubmit{
@@ -100,57 +96,78 @@ func (c *fiberDAClient) Submit(ctx context.Context, data [][]byte, _ float64, na
 				},
 			}
 		}
+	}
 
-		uploadCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
-		result, err := c.fiber.Upload(uploadCtx, namespace, raw)
-		cancel()
-		if err != nil {
+	type uploadTask struct {
+		index int
+		data  []byte
+	}
+
+	type uploadResponse struct {
+		index  int
+		blobID []byte
+		err    error
+	}
+
+	taskCh := make(chan uploadTask, len(data))
+	respCh := make(chan uploadResponse, len(data))
+
+	var wg sync.WaitGroup
+	for range c.uploadWorkers {
+		wg.Go(func() {
+			for task := range taskCh {
+				uploadCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
+				result, err := c.fiber.Upload(uploadCtx, namespace, task.data)
+				cancel()
+				respCh <- uploadResponse{
+					index:  task.index,
+					blobID: result.BlobID,
+					err:    err,
+				}
+			}
+		})
+	}
+
+	for i, raw := range data {
+		taskCh <- uploadTask{index: i, data: raw}
+	}
+	close(taskCh)
+
+	results := make([]uploadResponse, 0, len(data))
+	for range len(data) {
+		resp := <-respCh
+		results = append(results, resp)
+		if resp.err != nil {
 			code := datypes.StatusError
 			switch {
-			case errors.Is(err, context.Canceled):
+			case errors.Is(resp.err, context.Canceled):
 				code = datypes.StatusContextCanceled
-			case errors.Is(err, context.DeadlineExceeded):
+			case errors.Is(resp.err, context.DeadlineExceeded):
 				code = datypes.StatusContextDeadline
 			}
 
-			c.logger.Error().Err(err).Int("blob_index", i).Msg("fiber upload failed")
+			c.logger.Error().Err(resp.err).Int("blob_index", resp.index).Msg("fiber upload failed")
 
 			return datypes.ResultSubmit{
 				BaseResult: datypes.BaseResult{
 					Code:           code,
-					Message:        fmt.Sprintf("fiber upload failed for blob %d: %v", i, err),
-					SubmittedCount: uint64(len(uploaded)),
+					Message:        fmt.Sprintf("fiber upload failed for blob %d: %v", resp.index, resp.err),
+					SubmittedCount: uint64(len(results) - 1),
 					BlobSize:       blobSize,
 					Timestamp:      time.Now(),
 				},
 			}
 		}
-
-		c.mu.Lock()
-		c.latestHeight++
-		submitHeight = c.latestHeight
-		c.mu.Unlock()
-
-		uploaded = append(uploaded, fiberUploadResult{
-			blobID: result.BlobID,
-			height: submitHeight,
-			data:   raw,
-		})
 	}
 
-	if len(uploaded) == 0 {
-		return datypes.ResultSubmit{
-			BaseResult: datypes.BaseResult{
-				Code:      datypes.StatusSuccess,
-				BlobSize:  blobSize,
-				Timestamp: time.Now(),
-			},
-		}
+	submitHeight := c.latestHeight.Add(1)
+
+	ids := make([]datypes.ID, len(data))
+	for _, r := range results {
+		ids[r.index] = makeFiberID(submitHeight, r.blobID)
 	}
 
-	ids := makeIDs(uploaded)
-
-	c.logger.Debug().Int("num_ids", len(uploaded)).Uint64("height", submitHeight).Msg("fiber DA submission successful")
+	c.logger.Debug().Int("num_ids", len(data)).Uint64("height", submitHeight).Msg("fiber DA submission successful")
 
 	return datypes.ResultSubmit{
 		BaseResult: datypes.BaseResult{
@@ -162,21 +179,6 @@ func (c *fiberDAClient) Submit(ctx context.Context, data [][]byte, _ float64, na
 			Timestamp:      time.Now(),
 		},
 	}
-}
-
-type fiberUploadResult struct {
-	blobID []byte
-	height uint64
-	data   []byte
-}
-
-func makeIDs(uploaded []fiberUploadResult) []datypes.ID {
-	submitHeight := uploaded[len(uploaded)-1].height
-	ids := make([]datypes.ID, len(uploaded))
-	for i, u := range uploaded {
-		ids[i] = makeFiberID(submitHeight, u.blobID)
-	}
-	return ids
 }
 
 func (c *fiberDAClient) Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
@@ -269,9 +271,7 @@ func (c *fiberDAClient) Subscribe(ctx context.Context, namespace []byte, _ bool)
 }
 
 func (c *fiberDAClient) GetLatestDAHeight(context.Context) (uint64, error) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.latestHeight, nil
+	return c.latestHeight.Load(), nil
 }
 
 func (c *fiberDAClient) GetProofs(_ context.Context, ids []datypes.ID, _ []byte) ([]datypes.Proof, error) {
