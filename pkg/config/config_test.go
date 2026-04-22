@@ -84,6 +84,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagP2PPeers, DefaultConfig().P2P.Peers)
 	assertFlagValue(t, flags, FlagP2PBlockedPeers, DefaultConfig().P2P.BlockedPeers)
 	assertFlagValue(t, flags, FlagP2PAllowedPeers, DefaultConfig().P2P.AllowedPeers)
+	assertFlagValue(t, flags, FlagP2PDisableConnectionGater, DefaultConfig().P2P.DisableConnectionGater)
 
 	// Instrumentation flags
 	instrDef := DefaultInstrumentationConfig()
@@ -143,7 +144,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagPruningInterval, DefaultConfig().Pruning.Interval.Duration)
 
 	// Count the number of flags we're explicitly checking
-	expectedFlagCount := 81 // Update this number if you add more flag checks above
+	expectedFlagCount := 82 // Update this number if you add more flag checks above
 
 	// Get the actual number of flags (both regular and persistent)
 	actualFlagCount := 0

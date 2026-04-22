@@ -102,6 +102,9 @@ const (
 	FlagP2PBlockedPeers = FlagPrefixEvnode + "p2p.blocked_peers"
 	// FlagP2PAllowedPeers is a flag for specifying the P2P allowed peers
 	FlagP2PAllowedPeers = FlagPrefixEvnode + "p2p.allowed_peers"
+	// FlagP2PDisableConnectionGater disables the P2P connection gater (no-op mode).
+	// Enabled by default; set to false to activate peer filtering when experiencing P2P flooding.
+	FlagP2PDisableConnectionGater = FlagPrefixEvnode + "p2p.disable_connection_gater"
 
 	// Instrumentation configuration flags
 
@@ -313,10 +316,11 @@ type LogConfig struct {
 
 // P2PConfig contains all peer-to-peer networking configuration parameters
 type P2PConfig struct {
-	ListenAddress string `mapstructure:"listen_address" yaml:"listen_address" comment:"Address to listen for incoming connections (host:port)"`
-	Peers         string `mapstructure:"peers" yaml:"peers" comment:"Comma-separated list of peers to connect to"`
-	BlockedPeers  string `mapstructure:"blocked_peers" yaml:"blocked_peers" comment:"Comma-separated list of peer IDs to block from connecting"`
-	AllowedPeers  string `mapstructure:"allowed_peers" yaml:"allowed_peers" comment:"Comma-separated list of peer IDs to allow connections from"`
+	ListenAddress          string `mapstructure:"listen_address" yaml:"listen_address" comment:"Address to listen for incoming connections (host:port)"`
+	Peers                  string `mapstructure:"peers" yaml:"peers" comment:"Comma-separated list of peers to connect to"`
+	BlockedPeers           string `mapstructure:"blocked_peers" yaml:"blocked_peers" comment:"Comma-separated list of peer IDs to block from connecting"`
+	AllowedPeers           string `mapstructure:"allowed_peers" yaml:"allowed_peers" comment:"Comma-separated list of peer IDs to allow connections from"`
+	DisableConnectionGater bool   `mapstructure:"disable_connection_gater" yaml:"disable_connection_gater" comment:"Disable the P2P connection gater (no-op mode). Set to false to enforce peer filtering when experiencing P2P flooding."`
 }
 
 // SignerConfig contains all signer configuration parameters
@@ -621,6 +625,7 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().String(FlagP2PPeers, def.P2P.Peers, "Comma separated list of seed nodes to connect to")
 	cmd.Flags().String(FlagP2PBlockedPeers, def.P2P.BlockedPeers, "Comma separated list of nodes to ignore")
 	cmd.Flags().String(FlagP2PAllowedPeers, def.P2P.AllowedPeers, "Comma separated list of nodes to whitelist")
+	cmd.Flags().Bool(FlagP2PDisableConnectionGater, def.P2P.DisableConnectionGater, "Disable P2P connection gater (no-op mode); set to false to enforce peer filtering when experiencing P2P flooding")
 
 	// RPC configuration flags
 	cmd.Flags().String(FlagRPCAddress, def.RPC.Address, "RPC server address (host:port)")
