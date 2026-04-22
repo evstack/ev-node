@@ -344,19 +344,17 @@ func TestFiberClient_Validate_EmptyProof(t *testing.T) {
 func TestFiberClient_Namespaces(t *testing.T) {
 	mock := fibremock.NewMockDA(fibremock.DefaultMockDAConfig())
 	cl, err := NewFiberClient(FiberConfig{
-		Client:                   mock,
-		Logger:                   zerolog.Nop(),
-		Namespace:                "header-ns",
-		DataNamespace:            "data-ns",
-		ForcedInclusionNamespace: "forced-ns",
+		Client:        mock,
+		Logger:        zerolog.Nop(),
+		Namespace:     "header-ns",
+		DataNamespace: "data-ns",
 	})
 	require.NotNil(t, cl)
 	require.NoError(t, err)
 
 	require.Equal(t, datypes.NamespaceFromString("header-ns").Bytes(), cl.GetHeaderNamespace())
 	require.Equal(t, datypes.NamespaceFromString("data-ns").Bytes(), cl.GetDataNamespace())
-	require.Equal(t, datypes.NamespaceFromString("forced-ns").Bytes(), cl.GetForcedInclusionNamespace())
-	require.True(t, cl.HasForcedInclusionNamespace())
+	require.False(t, cl.HasForcedInclusionNamespace())
 }
 
 func TestFiberClient_NoForcedNamespace(t *testing.T) {

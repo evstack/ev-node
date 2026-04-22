@@ -23,22 +23,19 @@ type (
 )
 
 type FiberConfig struct {
-	Client                   FiberClient
-	Logger                   zerolog.Logger
-	DefaultTimeout           time.Duration
-	Namespace                string
-	DataNamespace            string
-	ForcedInclusionNamespace string
+	Client         FiberClient
+	Logger         zerolog.Logger
+	DefaultTimeout time.Duration
+	Namespace      string
+	DataNamespace  string
 }
 
 type fiberDAClient struct {
-	fiber              FiberClient
-	logger             zerolog.Logger
-	defaultTimeout     time.Duration
-	namespaceBz        []byte
-	dataNamespaceBz    []byte
-	forcedNamespaceBz  []byte
-	hasForcedNamespace bool
+	fiber           FiberClient
+	logger          zerolog.Logger
+	defaultTimeout  time.Duration
+	namespaceBz     []byte
+	dataNamespaceBz []byte
 
 	mu           sync.RWMutex
 	latestHeight uint64
@@ -62,20 +59,12 @@ func NewFiberClient(cfg FiberConfig) (FullClient, error) {
 		cfg.DefaultTimeout = 60 * time.Second
 	}
 
-	hasForced := cfg.ForcedInclusionNamespace != ""
-	var forcedBz []byte
-	if hasForced {
-		forcedBz = datypes.NamespaceFromString(cfg.ForcedInclusionNamespace).Bytes()
-	}
-
 	return &fiberDAClient{
-		fiber:              cfg.Client,
-		logger:             cfg.Logger.With().Str("component", "fiber_da_client").Logger(),
-		defaultTimeout:     cfg.DefaultTimeout,
-		namespaceBz:        datypes.NamespaceFromString(cfg.Namespace).Bytes(),
-		dataNamespaceBz:    datypes.NamespaceFromString(cfg.DataNamespace).Bytes(),
-		forcedNamespaceBz:  forcedBz,
-		hasForcedNamespace: hasForced,
+		fiber:           cfg.Client,
+		logger:          cfg.Logger.With().Str("component", "fiber_da_client").Logger(),
+		defaultTimeout:  cfg.DefaultTimeout,
+		namespaceBz:     datypes.NamespaceFromString(cfg.Namespace).Bytes(),
+		dataNamespaceBz: datypes.NamespaceFromString(cfg.DataNamespace).Bytes(),
 	}, nil
 }
 
@@ -308,7 +297,9 @@ func (c *fiberDAClient) Validate(_ context.Context, ids []datypes.ID, proofs []d
 	return results, nil
 }
 
-func (c *fiberDAClient) GetHeaderNamespace() []byte          { return c.namespaceBz }
-func (c *fiberDAClient) GetDataNamespace() []byte            { return c.dataNamespaceBz }
-func (c *fiberDAClient) GetForcedInclusionNamespace() []byte { return c.forcedNamespaceBz }
-func (c *fiberDAClient) HasForcedInclusionNamespace() bool   { return c.hasForcedNamespace }
+func (c *fiberDAClient) GetHeaderNamespace() []byte { return c.namespaceBz }
+func (c *fiberDAClient) GetDataNamespace() []byte   { return c.dataNamespaceBz }
+
+// Force Inclusion is disabled for Fiber PoC.
+func (c *fiberDAClient) HasForcedInclusionNamespace() bool   { return false }
+func (c *fiberDAClient) GetForcedInclusionNamespace() []byte { return nil }
