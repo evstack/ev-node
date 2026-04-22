@@ -132,6 +132,49 @@ func (d *DynamicLeaderElection) Run(ctx context.Context) error {
 					if err != nil {
 						return err
 					}
+					if diff < -1 {
+						// Store is more than 1 block behind raft state.
+						// RecoverFromRaft can only apply the single latest block
+						// from the raft snapshot; it cannot replay a larger gap.
+						//
+						// Before abdicating, wait for p2p block-store sync to close
+						// the gap. If all nodes restart simultaneously with lagging
+						// block stores, immediate abdication causes a leadership
+						// hot-potato: every elected node abdicates at once and the
+						// cluster never stabilises. Waiting gives the fastest-syncing
+						// peer a chance to stay as leader.
+						d.logger.Warn().
+							Int("store_lag_blocks", -diff).
+							Uint64("raft_height", raftState.Height).
+							Msg("became leader but store is significantly behind raft state; waiting for block-store sync")
+						switch d.waitForBlockStoreSync(ctx, runnable) {
+						case syncResultCanceled:
+							return ctx.Err()
+						case syncResultLostLeadership:
+							d.logger.Info().Msg("lost leadership while waiting for block-store sync; skipping abdication")
+							continue
+						case syncResultTimeout:
+							d.logger.Warn().
+								Int("store_lag_blocks", -diff).
+								Uint64("raft_height", raftState.Height).
+								Msg("store still significantly behind raft state after wait; abdicating to prevent stalled block production")
+							if tErr := d.node.leadershipTransfer(); tErr != nil {
+								d.logger.Error().Err(tErr).Msg("leadership transfer failed after store-lag abdication")
+								return fmt.Errorf("leadership transfer failed after store-lag abdication: %w", tErr)
+							}
+							continue
+						case syncResultSynced:
+							// Block store caught up — refresh state so the recovery
+							// check below works with the latest values.
+							d.logger.Info().Msg("block store caught up after wait; proceeding as leader")
+							raftState = d.node.GetState()
+							var syncErr error
+							diff, syncErr = runnable.IsSynced(raftState)
+							if syncErr != nil {
+								return syncErr
+							}
+						}
+					}
 					if diff != 0 {
 						d.logger.Info().Msg("became leader but not synced, attempting recovery")
 						if err := runnable.Recover(ctx, raftState); err != nil {
@@ -252,4 +295,49 @@ func (d *DynamicLeaderElection) verifyState(ctx context.Context, runnable Runnab
 
 func (d *DynamicLeaderElection) IsRunning() bool {
 	return d.running.Load()
+}
+
+type syncResult int
+
+const (
+	syncResultSynced         syncResult = iota // block store is within 1 block of raft FSM
+	syncResultTimeout                          // deadline elapsed and store still lagging
+	syncResultLostLeadership                   // lost leadership while waiting
+	syncResultCanceled                         // context was canceled
+)
+
+// waitForBlockStoreSync polls IsSynced until the block store is within 1 block
+// of the current raft FSM height, leadership is lost, or the context expires.
+func (d *DynamicLeaderElection) waitForBlockStoreSync(ctx context.Context, r Runnable) syncResult {
+	cfg := d.node.Config()
+	timeout := cfg.ShutdownTimeout
+	if timeout <= 0 {
+		timeout = 5 * cfg.SendTimeout
+	}
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	pollInterval := min(100*time.Millisecond, timeout/10)
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return syncResultCanceled
+		case <-deadline.C:
+			// Final check before giving up.
+			diff, err := r.IsSynced(d.node.GetState())
+			if err == nil && diff >= -1 {
+				return syncResultSynced
+			}
+			return syncResultTimeout
+		case <-ticker.C:
+			if d.node.leaderID() != d.node.NodeID() {
+				return syncResultLostLeadership
+			}
+			diff, err := r.IsSynced(d.node.GetState())
+			if err == nil && diff >= -1 {
+				return syncResultSynced
+			}
+		}
+	}
 }

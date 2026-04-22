@@ -102,6 +102,9 @@ const (
 	FlagP2PBlockedPeers = FlagPrefixEvnode + "p2p.blocked_peers"
 	// FlagP2PAllowedPeers is a flag for specifying the P2P allowed peers
 	FlagP2PAllowedPeers = FlagPrefixEvnode + "p2p.allowed_peers"
+	// FlagP2PDisableConnectionGater disables the P2P connection gater (no-op mode).
+	// Enabled by default; set to false to activate peer filtering when experiencing P2P flooding.
+	FlagP2PDisableConnectionGater = FlagPrefixEvnode + "p2p.disable_connection_gater"
 
 	// Instrumentation configuration flags
 
@@ -187,7 +190,7 @@ const (
 	FlagRaftBootstrap = FlagPrefixEvnode + "raft.bootstrap"
 	// FlagRaftPeers is a flag for specifying Raft peer addresses
 	FlagRaftPeers = FlagPrefixEvnode + "raft.peers"
-	// FlagRaftSnapCount is a flag for specifying snapshot frequency
+	// FlagRaftSnapCount is a flag for specifying how many snapshot files to retain on disk
 	FlagRaftSnapCount = FlagPrefixEvnode + "raft.snap_count"
 	// FlagRaftSendTimeout max time to wait for a message to be sent to a peer
 	FlagRaftSendTimeout = FlagPrefixEvnode + "raft.send_timeout"
@@ -195,7 +198,12 @@ const (
 	FlagRaftHeartbeatTimeout = FlagPrefixEvnode + "raft.heartbeat_timeout"
 	// FlagRaftLeaderLeaseTimeout is a flag for specifying leader lease timeout
 	FlagRaftLeaderLeaseTimeout = FlagPrefixEvnode + "raft.leader_lease_timeout"
-
+	// FlagRaftElectionTimeout is the flag for the raft election timeout.
+	FlagRaftElectionTimeout = FlagPrefixEvnode + "raft.election_timeout"
+	// FlagRaftSnapshotThreshold is the flag for the raft snapshot threshold.
+	FlagRaftSnapshotThreshold = FlagPrefixEvnode + "raft.snapshot_threshold"
+	// FlagRaftTrailingLogs is the flag for the number of trailing logs after a snapshot.
+	FlagRaftTrailingLogs = FlagPrefixEvnode + "raft.trailing_logs"
 	// Pruning configuration flags
 	FlagPruningMode       = FlagPrefixEvnode + "pruning.pruning_mode"
 	FlagPruningKeepRecent = FlagPrefixEvnode + "pruning.pruning_keep_recent"
@@ -308,10 +316,11 @@ type LogConfig struct {
 
 // P2PConfig contains all peer-to-peer networking configuration parameters
 type P2PConfig struct {
-	ListenAddress string `mapstructure:"listen_address" yaml:"listen_address" comment:"Address to listen for incoming connections (host:port)"`
-	Peers         string `mapstructure:"peers" yaml:"peers" comment:"Comma-separated list of peers to connect to"`
-	BlockedPeers  string `mapstructure:"blocked_peers" yaml:"blocked_peers" comment:"Comma-separated list of peer IDs to block from connecting"`
-	AllowedPeers  string `mapstructure:"allowed_peers" yaml:"allowed_peers" comment:"Comma-separated list of peer IDs to allow connections from"`
+	ListenAddress          string `mapstructure:"listen_address" yaml:"listen_address" comment:"Address to listen for incoming connections (host:port)"`
+	Peers                  string `mapstructure:"peers" yaml:"peers" comment:"Comma-separated list of peers to connect to"`
+	BlockedPeers           string `mapstructure:"blocked_peers" yaml:"blocked_peers" comment:"Comma-separated list of peer IDs to block from connecting"`
+	AllowedPeers           string `mapstructure:"allowed_peers" yaml:"allowed_peers" comment:"Comma-separated list of peer IDs to allow connections from"`
+	DisableConnectionGater bool   `mapstructure:"disable_connection_gater" yaml:"disable_connection_gater" comment:"Disable the P2P connection gater (no-op mode). Set to false to enforce peer filtering when experiencing P2P flooding."`
 }
 
 // SignerConfig contains all signer configuration parameters
@@ -402,10 +411,13 @@ type RaftConfig struct {
 	RaftDir            string        `mapstructure:"raft_dir" yaml:"raft_dir" comment:"Directory for Raft logs and snapshots"`
 	Bootstrap          bool          `mapstructure:"bootstrap" yaml:"bootstrap" comment:"Bootstrap a new static Raft cluster during initial bring-up"`
 	Peers              string        `mapstructure:"peers" yaml:"peers" comment:"Comma-separated list of peer Raft addresses (nodeID@host:port)"`
-	SnapCount          uint64        `mapstructure:"snap_count" yaml:"snap_count" comment:"Number of log entries between snapshots"`
+	SnapCount          uint64        `mapstructure:"snap_count" yaml:"snap_count" comment:"Number of snapshot files to retain on disk"`
 	SendTimeout        time.Duration `mapstructure:"send_timeout" yaml:"send_timeout" comment:"Max duration to wait for a message to be sent to a peer"`
 	HeartbeatTimeout   time.Duration `mapstructure:"heartbeat_timeout" yaml:"heartbeat_timeout" comment:"Time between leader heartbeats to followers"`
 	LeaderLeaseTimeout time.Duration `mapstructure:"leader_lease_timeout" yaml:"leader_lease_timeout" comment:"Duration of the leader lease"`
+	ElectionTimeout    time.Duration `mapstructure:"election_timeout" yaml:"election_timeout" comment:"Time a candidate waits for votes before restarting election; must be >= heartbeat_timeout"`
+	SnapshotThreshold  uint64        `mapstructure:"snapshot_threshold" yaml:"snapshot_threshold" comment:"Number of outstanding log entries that trigger an automatic snapshot"`
+	TrailingLogs       uint64        `mapstructure:"trailing_logs" yaml:"trailing_logs" comment:"Number of log entries to retain after a snapshot (controls rejoin catch-up cost)"`
 }
 
 func (c RaftConfig) Validate() error {
@@ -433,6 +445,12 @@ func (c RaftConfig) Validate() error {
 
 	if c.LeaderLeaseTimeout <= 0 {
 		multiErr = errors.Join(multiErr, fmt.Errorf("leader lease timeout must be positive"))
+	}
+
+	if c.ElectionTimeout < 0 {
+		multiErr = errors.Join(multiErr, fmt.Errorf("election timeout (%v) must be >= 0", c.ElectionTimeout))
+	} else if c.ElectionTimeout > 0 && c.ElectionTimeout < c.HeartbeatTimeout {
+		multiErr = errors.Join(multiErr, fmt.Errorf("election timeout (%v) must be >= heartbeat timeout (%v)", c.ElectionTimeout, c.HeartbeatTimeout))
 	}
 
 	return multiErr
@@ -607,6 +625,7 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().String(FlagP2PPeers, def.P2P.Peers, "Comma separated list of seed nodes to connect to")
 	cmd.Flags().String(FlagP2PBlockedPeers, def.P2P.BlockedPeers, "Comma separated list of nodes to ignore")
 	cmd.Flags().String(FlagP2PAllowedPeers, def.P2P.AllowedPeers, "Comma separated list of nodes to whitelist")
+	cmd.Flags().Bool(FlagP2PDisableConnectionGater, def.P2P.DisableConnectionGater, "Disable P2P connection gater (no-op mode); set to false to enforce peer filtering when experiencing P2P flooding")
 
 	// RPC configuration flags
 	cmd.Flags().String(FlagRPCAddress, def.RPC.Address, "RPC server address (host:port)")
@@ -648,10 +667,13 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().String(FlagRaftDir, def.Raft.RaftDir, "directory for Raft logs and snapshots")
 	cmd.Flags().Bool(FlagRaftBootstrap, def.Raft.Bootstrap, "bootstrap a new static Raft cluster during initial bring-up")
 	cmd.Flags().String(FlagRaftPeers, def.Raft.Peers, "comma-separated list of peer Raft addresses (nodeID@host:port)")
-	cmd.Flags().Uint64(FlagRaftSnapCount, def.Raft.SnapCount, "number of log entries between snapshots")
+	cmd.Flags().Uint64(FlagRaftSnapCount, def.Raft.SnapCount, "number of snapshot files to retain on disk")
 	cmd.Flags().Duration(FlagRaftSendTimeout, def.Raft.SendTimeout, "max duration to wait for a message to be sent to a peer")
 	cmd.Flags().Duration(FlagRaftHeartbeatTimeout, def.Raft.HeartbeatTimeout, "time between leader heartbeats to followers")
 	cmd.Flags().Duration(FlagRaftLeaderLeaseTimeout, def.Raft.LeaderLeaseTimeout, "duration of the leader lease")
+	cmd.Flags().Duration(FlagRaftElectionTimeout, def.Raft.ElectionTimeout, "time a candidate waits for votes before restarting election")
+	cmd.Flags().Uint64(FlagRaftSnapshotThreshold, def.Raft.SnapshotThreshold, "number of outstanding log entries that trigger an automatic snapshot")
+	cmd.Flags().Uint64(FlagRaftTrailingLogs, def.Raft.TrailingLogs, "number of log entries to retain after a snapshot")
 	cmd.MarkFlagsMutuallyExclusive(FlagCatchupTimeout, FlagRaftEnable)
 
 	// Pruning configuration flags

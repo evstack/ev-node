@@ -4,11 +4,42 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/raft"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestBuildRaftConfig_ElectionTimeout(t *testing.T) {
+	specs := map[string]struct {
+		cfg                     *Config
+		expectedElectionTimeout time.Duration
+	}{
+		"custom election timeout is applied": {
+			cfg: &Config{
+				NodeID:          "node1",
+				ElectionTimeout: 500 * time.Millisecond,
+			},
+			expectedElectionTimeout: 500 * time.Millisecond,
+		},
+		"zero election timeout uses default": {
+			cfg: &Config{
+				NodeID:          "node1",
+				ElectionTimeout: 0,
+			},
+			expectedElectionTimeout: raft.DefaultConfig().ElectionTimeout,
+		},
+	}
+
+	for name, spec := range specs {
+		t.Run(name, func(t *testing.T) {
+			rc := buildRaftConfig(spec.cfg, zerolog.Nop())
+			assert.Equal(t, spec.expectedElectionTimeout, rc.ElectionTimeout)
+		})
+	}
+}
 
 func TestSplitPeerAddr(t *testing.T) {
 	specs := map[string]struct {
@@ -113,4 +144,50 @@ func TestDeduplicateServers(t *testing.T) {
 func TestNodeStartNilNoop(t *testing.T) {
 	var node *Node
 	require.NoError(t, node.Start(context.Background()))
+}
+
+func TestNodeResignLeader_NilNoop(t *testing.T) {
+	var n *Node
+	assert.NoError(t, n.ResignLeader(context.Background()))
+}
+
+func TestNodeResignLeader_NotLeaderNoop(t *testing.T) {
+	// Non-nil node with nil raft field — IsLeader() returns false, no transfer attempted.
+	n := &Node{}
+	assert.NoError(t, n.ResignLeader(context.Background()))
+}
+
+func TestBuildRaftConfig_SnapshotConfigApplied(t *testing.T) {
+	specs := map[string]struct {
+		cfg                       *Config
+		expectedSnapshotThreshold uint64
+		expectedTrailingLogs      uint64
+	}{
+		"custom values applied": {
+			cfg: &Config{
+				NodeID:            "node1",
+				SnapshotThreshold: 1000,
+				TrailingLogs:      500,
+			},
+			expectedSnapshotThreshold: 1000,
+			expectedTrailingLogs:      500,
+		},
+		"zero values use defaults": {
+			cfg: &Config{
+				NodeID:            "node1",
+				SnapshotThreshold: 0,
+				TrailingLogs:      0,
+			},
+			expectedSnapshotThreshold: raft.DefaultConfig().SnapshotThreshold,
+			expectedTrailingLogs:      raft.DefaultConfig().TrailingLogs,
+		},
+	}
+
+	for name, spec := range specs {
+		t.Run(name, func(t *testing.T) {
+			rc := buildRaftConfig(spec.cfg, zerolog.Nop())
+			assert.Equal(t, spec.expectedSnapshotThreshold, rc.SnapshotThreshold)
+			assert.Equal(t, spec.expectedTrailingLogs, rc.TrailingLogs)
+		})
+	}
 }

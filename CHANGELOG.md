@@ -9,13 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## v1.1.1
+
 ### Changes
 
 - Add automatic DA retriever walkback when P2P stalls and DA blocks too far ahead [#3262](https://github.com/evstack/ev-node/pull/3262)
+- Improve P2P gossiping by switching pubsub internals from `GossipSub` to `FloodSub` [#3263](https://github.com/evstack/ev-node/pull/3263)
 - Add `sequencer_blocks_synchronized_total` Prometheus counter metric tracking blocks synced by source (DA/P2P) [#3259](https://github.com/evstack/ev-node/pull/3259)
 - Make it easier to override `DefaultMaxBlobSize` by ldflags [#3235](https://github.com/evstack/ev-node/pull/3235)
 - Add solo sequencer (simple in memory single sequencer without force inclusion) [#3235](https://github.com/evstack/ev-node/pull/3235)
 - Improve reaper to sustain txs burst better [#3236](https://github.com/evstack/ev-node/pull/3236)
+
+### Fixed
+
+- Replace persistent P2P connection gater with a no-op variant so stale blocklist entries can no longer prevent peers from connecting after a restart. The new `p2p.disable_connection_gater` flag (default `true`) can be set to `false` to re-enable peer filtering when experiencing P2P flooding [#3273](https://github.com/evstack/ev-node/pull/3273)
+- Raft HA production hardening: leader fencing on SIGTERM, FSM data race, follower restart crash, log compaction config, and election timeout validation [#3230](https://github.com/evstack/ev-node/pull/3230)
 
 ## v1.1.0
 

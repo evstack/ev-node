@@ -82,7 +82,17 @@ func NewClient(
 	metrics *Metrics,
 ) (*Client, error) {
 
-	gater, err := conngater.NewBasicConnectionGater(ds)
+	// When DisableConnectionGater is true (default) the gater is a no-op: it
+	// uses an ephemeral in-memory store, is not registered with the libp2p host,
+	// and never blocks any peer. The instance is kept only because go-header's
+	// Exchange requires a *conngater.BasicConnectionGater parameter.
+	// Set DisableConnectionGater=false to activate peer filtering (e.g. when
+	// experiencing P2P flooding).
+	var gaterDS datastore.Datastore
+	if !conf.DisableConnectionGater {
+		gaterDS = datastore.NewMapDatastore()
+	}
+	gater, err := conngater.NewBasicConnectionGater(gaterDS)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create connection gater: %w", err)
 	}
@@ -156,14 +166,15 @@ func (c *Client) startWithHost(ctx context.Context, h host.Host) error {
 		c.logger.Info().Str("address", fmt.Sprintf("%s/p2p/%s", a, c.host.ID())).Msg("listening on address")
 	}
 
-	c.logger.Debug().Str("blacklist", c.conf.BlockedPeers).Msg("blocking blacklisted peers")
-	if err := c.setupBlockedPeers(c.parseAddrInfoList(c.conf.BlockedPeers)); err != nil {
-		return err
-	}
-
-	c.logger.Debug().Str("whitelist", c.conf.AllowedPeers).Msg("allowing whitelisted peers")
-	if err := c.setupAllowedPeers(c.parseAddrInfoList(c.conf.AllowedPeers)); err != nil {
-		return err
+	if !c.conf.DisableConnectionGater {
+		c.logger.Debug().Str("blacklist", c.conf.BlockedPeers).Msg("blocking blacklisted peers")
+		if err := c.setupBlockedPeers(c.parseAddrInfoList(c.conf.BlockedPeers)); err != nil {
+			return err
+		}
+		c.logger.Debug().Str("whitelist", c.conf.AllowedPeers).Msg("allowing whitelisted peers")
+		if err := c.setupAllowedPeers(c.parseAddrInfoList(c.conf.AllowedPeers)); err != nil {
+			return err
+		}
 	}
 
 	c.logger.Debug().Msg("setting up gossiping")
@@ -340,7 +351,11 @@ func (c *Client) listen() (host.Host, error) {
 		return nil, err
 	}
 
-	return libp2p.New(libp2p.ListenAddrs(maddr), libp2p.Identity(c.privKey), libp2p.ConnectionGater(c.gater))
+	opts := []libp2p.Option{libp2p.ListenAddrs(maddr), libp2p.Identity(c.privKey)}
+	if !c.conf.DisableConnectionGater {
+		opts = append(opts, libp2p.ConnectionGater(c.gater))
+	}
+	return libp2p.New(opts...)
 }
 
 func (c *Client) setupDHT(ctx context.Context) error {
@@ -450,7 +465,7 @@ func (c *Client) tryConnect(ctx context.Context, peer peer.AddrInfo) {
 
 func (c *Client) setupGossiping(ctx context.Context) error {
 	var err error
-	c.ps, err = pubsub.NewGossipSub(ctx, c.host)
+	c.ps, err = pubsub.NewFloodSub(ctx, c.host)
 	if err != nil {
 		return err
 	}
