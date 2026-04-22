@@ -13,7 +13,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changes
 
-- Add automatic DA retriever walkback when P2P stalls and DA blocks too far ahead [#3262](https://github.com/evstack/ev-node/pull/3262)
 - Improve P2P gossiping by switching pubsub internals from `GossipSub` to `FloodSub` [#3263](https://github.com/evstack/ev-node/pull/3263)
 - Add `sequencer_blocks_synchronized_total` Prometheus counter metric tracking blocks synced by source (DA/P2P) [#3259](https://github.com/evstack/ev-node/pull/3259)
 - Make it easier to override `DefaultMaxBlobSize` by ldflags [#3235](https://github.com/evstack/ev-node/pull/3235)
