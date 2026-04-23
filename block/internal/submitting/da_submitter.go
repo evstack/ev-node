@@ -1,7 +1,6 @@
 package submitting
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -476,10 +475,6 @@ func (s *DASubmitter) signData(ctx context.Context, unsignedDataList []*types.Si
 		return nil, nil, fmt.Errorf("failed to get address: %w", err)
 	}
 
-	if len(genesis.ProposerAddress) > 0 && !bytes.Equal(addr, genesis.ProposerAddress) {
-		return nil, nil, fmt.Errorf("signer address mismatch with genesis proposer")
-	}
-
 	signerInfo := types.Signer{
 		PubKey:  pubKey,
 		Address: addr,
@@ -492,6 +487,10 @@ func (s *DASubmitter) signData(ctx context.Context, unsignedDataList []*types.Si
 		// Skip empty data
 		if len(unsignedData.Txs) == 0 {
 			continue
+		}
+
+		if err := genesis.ValidateProposer(unsignedData.Height(), addr, pubKey); err != nil {
+			return nil, nil, fmt.Errorf("signer does not match proposer schedule for data at height %d: %w", unsignedData.Height(), err)
 		}
 
 		signature, err := signer.Sign(ctx, unsignedDataListBz[i])

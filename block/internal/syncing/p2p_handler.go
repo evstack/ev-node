@@ -81,7 +81,7 @@ func (h *P2PHandler) ProcessHeight(ctx context.Context, height uint64, heightInC
 		}
 		return err
 	}
-	if err := h.assertExpectedProposer(p2pHeader.ProposerAddress); err != nil {
+	if err := h.assertExpectedProposer(p2pHeader.SignedHeader); err != nil {
 		h.logger.Debug().Uint64("height", height).Err(err).Msg("invalid header from P2P")
 		return err
 	}
@@ -125,11 +125,11 @@ func (h *P2PHandler) ProcessHeight(ctx context.Context, height uint64, heightInC
 	return nil
 }
 
-// assertExpectedProposer validates the proposer address.
-func (h *P2PHandler) assertExpectedProposer(proposerAddr []byte) error {
-	if !bytes.Equal(h.genesis.ProposerAddress, proposerAddr) {
-		return fmt.Errorf("proposer address mismatch: got %x, expected %x",
-			proposerAddr, h.genesis.ProposerAddress)
+// assertExpectedProposer validates the proposer schedule entry for the header height.
+func (h *P2PHandler) assertExpectedProposer(header *types.SignedHeader) error {
+	if err := assertExpectedProposer(h.genesis, header.Height(), header.ProposerAddress, header.Signer); err != nil {
+		return err
 	}
+
 	return nil
 }

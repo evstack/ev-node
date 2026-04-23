@@ -1,7 +1,6 @@
 package syncing
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 
@@ -9,11 +8,11 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-func assertExpectedProposer(genesis genesis.Genesis, proposerAddr []byte) error {
-	if !bytes.Equal(proposerAddr, genesis.ProposerAddress) {
-		return fmt.Errorf("unexpected proposer: got %x, expected %x",
-			proposerAddr, genesis.ProposerAddress)
+func assertExpectedProposer(genesis genesis.Genesis, height uint64, proposerAddr []byte, signer types.Signer) error {
+	if err := genesis.ValidateProposer(height, proposerAddr, signer.PubKey); err != nil {
+		return fmt.Errorf("unexpected proposer at height %d: %w", height, err)
 	}
+
 	return nil
 }
 
@@ -22,7 +21,7 @@ func assertValidSignedData(signedData *types.SignedData, genesis genesis.Genesis
 		return errors.New("empty signed data")
 	}
 
-	if err := assertExpectedProposer(genesis, signedData.Signer.Address); err != nil {
+	if err := assertExpectedProposer(genesis, signedData.Height(), signedData.Signer.Address, signedData.Signer); err != nil {
 		return err
 	}
 

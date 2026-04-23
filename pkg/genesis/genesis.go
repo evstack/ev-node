@@ -1,6 +1,7 @@
 package genesis
 
 import (
+	"bytes"
 	"fmt"
 	"time"
 )
@@ -11,10 +12,11 @@ const ChainIDFlag = "chain_id"
 // This genesis struct only contains the fields required by evolve.
 // The app state or other fields are not included here.
 type Genesis struct {
-	ChainID         string    `json:"chain_id"`
-	StartTime       time.Time `json:"start_time"`
-	InitialHeight   uint64    `json:"initial_height"`
-	ProposerAddress []byte    `json:"proposer_address"`
+	ChainID          string                  `json:"chain_id"`
+	StartTime        time.Time               `json:"start_time"`
+	InitialHeight    uint64                  `json:"initial_height"`
+	ProposerAddress  []byte                  `json:"proposer_address"`
+	ProposerSchedule []ProposerScheduleEntry `json:"proposer_schedule,omitempty"`
 	// DAStartHeight corresponds to the height at which the first DA header/data has been published.
 	// This value is meant to be updated after genesis and shared to all syncing nodes for speeding up syncing via DA.
 	DAStartHeight uint64 `json:"da_start_height"`
@@ -56,8 +58,28 @@ func (g Genesis) Validate() error {
 		return fmt.Errorf("start_time cannot be zero time")
 	}
 
-	if g.ProposerAddress == nil {
-		return fmt.Errorf("proposer_address cannot be nil")
+	if len(g.ProposerSchedule) == 0 {
+		if len(g.ProposerAddress) == 0 {
+			return fmt.Errorf("proposer_address cannot be empty when proposer_schedule is unset")
+		}
+	} else {
+		if err := g.ProposerSchedule[0].validate(g.InitialHeight, true); err != nil {
+			return fmt.Errorf("invalid proposer_schedule[0]: %w", err)
+		}
+		if g.ProposerSchedule[0].StartHeight != g.InitialHeight {
+			return fmt.Errorf("proposer_schedule[0].start_height must equal initial_height (%d), got %d", g.InitialHeight, g.ProposerSchedule[0].StartHeight)
+		}
+		for i := 1; i < len(g.ProposerSchedule); i++ {
+			if err := g.ProposerSchedule[i].validate(g.InitialHeight, true); err != nil {
+				return fmt.Errorf("invalid proposer_schedule[%d]: %w", i, err)
+			}
+			if g.ProposerSchedule[i].StartHeight <= g.ProposerSchedule[i-1].StartHeight {
+				return fmt.Errorf("proposer_schedule must be strictly increasing: entry %d start_height %d is not greater than previous %d", i, g.ProposerSchedule[i].StartHeight, g.ProposerSchedule[i-1].StartHeight)
+			}
+		}
+		if len(g.ProposerAddress) > 0 && !bytes.Equal(g.ProposerAddress, g.ProposerSchedule[0].Address) {
+			return fmt.Errorf("proposer_address must match proposer_schedule[0].address")
+		}
 	}
 
 	if g.DAEpochForcedInclusion < 1 {

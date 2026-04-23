@@ -38,6 +38,12 @@ May require state migration or coordinated network upgrade.
 5. Run any migration scripts
 6. Restart
 
+### Proposer Key Rotation
+
+Rotating the proposer key is a coordinated upgrade even when the chain does not restart. All nodes must receive the same updated `genesis.json`, restart to load it, and be ready before the scheduled activation height.
+
+Use [Rotate proposer key](./proposer-key-rotation.md) for the exact `proposer_schedule` format, genesis update steps, and cutover procedure.
+
 ## ev-node Upgrades
 
 ### Check Current Version

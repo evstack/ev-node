@@ -125,6 +125,10 @@ Before doing so, add a `da_start_height` field to the genesis file, that corresp
 jq '.da_start_height = 1' ~/.$CHAIN_ID/config/genesis.json > temp.json && mv temp.json ~/.$CHAIN_ID/config/genesis.json
 ```
 
+:::tip
+If you want to plan a future proposer key migration without restarting the chain, define a `proposer_schedule` in your genesis and roll it out as a coordinated upgrade. See [Rotate proposer key](./operations/proposer-key-rotation.md).
+:::
+
 ## Summary
 
 By following these steps, you will set up the genesis for your chain, initialize the validator, add a genesis account, and start the chain. This guide provides a basic framework for configuring and starting your chain using the gm-world binary. Make sure you initialized your chain correctly, and use the `gmd` command for all operations.

@@ -126,7 +126,7 @@ func NewExecutor(
 			return nil, fmt.Errorf("failed to get address: %w", err)
 		}
 
-		if !bytes.Equal(addr, genesis.ProposerAddress) {
+		if !genesis.HasScheduledProposer(addr) {
 			return nil, common.ErrNotProposer
 		}
 	}
@@ -696,6 +696,10 @@ func (e *Executor) RetrieveBatch(ctx context.Context) (*BatchData, error) {
 func (e *Executor) CreateBlock(ctx context.Context, height uint64, batchData *BatchData) (*types.SignedHeader, *types.Data, error) {
 	currentState := e.getLastState()
 	headerTime := uint64(e.genesis.StartTime.UnixNano())
+	proposer, err := e.genesis.ProposerAtHeight(height)
+	if err != nil {
+		return nil, nil, fmt.Errorf("resolve proposer for height %d: %w", height, err)
+	}
 
 	var lastHeaderHash types.Hash
 	var lastDataHash types.Hash
@@ -728,22 +732,30 @@ func (e *Executor) CreateBlock(ctx context.Context, height uint64, batchData *Ba
 
 	// Get signer info and validator hash
 	var pubKey crypto.PubKey
+	var signerAddress []byte
 	var validatorHash types.Hash
 
 	if e.signer != nil {
-		var err error
 		pubKey, err = e.signer.GetPublic()
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to get public key: %w", err)
 		}
 
-		validatorHash, err = e.options.ValidatorHasherProvider(e.genesis.ProposerAddress, pubKey)
+		signerAddress, err = e.signer.GetAddress()
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get signer address: %w", err)
+		}
+
+		if err := e.genesis.ValidateProposer(height, signerAddress, pubKey); err != nil {
+			return nil, nil, fmt.Errorf("signer does not match proposer schedule: %w", err)
+		}
+
+		validatorHash, err = e.options.ValidatorHasherProvider(proposer.Address, pubKey)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to get validator hash: %w", err)
 		}
 	} else {
-		var err error
-		validatorHash, err = e.options.ValidatorHasherProvider(e.genesis.ProposerAddress, nil)
+		validatorHash, err = e.options.ValidatorHasherProvider(proposer.Address, nil)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to get validator hash: %w", err)
 		}
@@ -763,13 +775,13 @@ func (e *Executor) CreateBlock(ctx context.Context, height uint64, batchData *Ba
 			},
 			LastHeaderHash:  lastHeaderHash,
 			AppHash:         currentState.AppHash,
-			ProposerAddress: e.genesis.ProposerAddress,
+			ProposerAddress: proposer.Address,
 			ValidatorHash:   validatorHash,
 		},
 		Signature: lastSignature,
 		Signer: types.Signer{
 			PubKey:  pubKey,
-			Address: e.genesis.ProposerAddress,
+			Address: proposer.Address,
 		},
 	}
 

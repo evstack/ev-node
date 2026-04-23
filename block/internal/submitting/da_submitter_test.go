@@ -343,6 +343,97 @@ func TestDASubmitter_SubmitData_Success(t *testing.T) {
 	assert.True(t, ok)
 }
 
+func TestDASubmitter_SubmitData_UsesScheduledProposerForHeight(t *testing.T) {
+	submitter, st, cm, mockDA, gen := setupDASubmitterTest(t)
+	ctx := context.Background()
+	dataNamespace := datypes.NamespaceFromString(testDataNamespace).Bytes()
+
+	mockDA.On(
+		"Submit",
+		mock.Anything,
+		mock.AnythingOfType("[][]uint8"),
+		mock.AnythingOfType("float64"),
+		dataNamespace,
+		mock.Anything,
+	).Return(func(_ context.Context, blobs [][]byte, _ float64, _ []byte, _ []byte) datypes.ResultSubmit {
+		return datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, SubmittedCount: uint64(len(blobs)), Height: 2}}
+	}).Once()
+
+	oldAddr, oldPub, _ := createTestSigner(t)
+	nextAddr, nextPub, nextSigner := createTestSigner(t)
+
+	entry1, err := genesis.NewProposerScheduleEntry(gen.InitialHeight, oldPub)
+	require.NoError(t, err)
+	entry2, err := genesis.NewProposerScheduleEntry(2, nextPub)
+	require.NoError(t, err)
+
+	gen.ProposerAddress = entry1.Address
+	gen.ProposerSchedule = []genesis.ProposerScheduleEntry{entry1, entry2}
+	submitter.genesis = gen
+
+	data1 := &types.Data{
+		Metadata: &types.Metadata{
+			ChainID: gen.ChainID,
+			Height:  1,
+			Time:    uint64(time.Now().UnixNano()),
+		},
+		Txs: types.Txs{},
+	}
+
+	header1 := &types.SignedHeader{
+		Header: types.Header{
+			BaseHeader: types.BaseHeader{
+				ChainID: gen.ChainID,
+				Height:  1,
+				Time:    uint64(time.Now().UnixNano()),
+			},
+			ProposerAddress: oldAddr,
+			DataHash:        common.DataHashForEmptyTxs,
+		},
+		Signer: types.Signer{PubKey: oldPub, Address: oldAddr},
+	}
+
+	data := &types.Data{
+		Metadata: &types.Metadata{
+			ChainID: gen.ChainID,
+			Height:  2,
+			Time:    uint64(time.Now().UnixNano()),
+		},
+		Txs: types.Txs{types.Tx("rotated-key-tx")},
+	}
+
+	header := &types.SignedHeader{
+		Header: types.Header{
+			BaseHeader: types.BaseHeader{
+				ChainID: gen.ChainID,
+				Height:  2,
+				Time:    uint64(time.Now().UnixNano()),
+			},
+			ProposerAddress: nextAddr,
+			DataHash:        data.DACommitment(),
+		},
+		Signer: types.Signer{PubKey: nextPub, Address: nextAddr},
+	}
+
+	sig1 := types.Signature([]byte("sig-1"))
+	sig2 := types.Signature([]byte("sig-2"))
+	batch, err := st.NewBatch(ctx)
+	require.NoError(t, err)
+	require.NoError(t, batch.SaveBlockData(header1, data1, &sig1))
+	require.NoError(t, batch.SaveBlockData(header, data, &sig2))
+	require.NoError(t, batch.SetHeight(2))
+	require.NoError(t, batch.Commit())
+
+	signedDataList, marshalledData, err := cm.GetPendingData(ctx)
+	require.NoError(t, err)
+	err = submitter.SubmitData(ctx, signedDataList, marshalledData, cm, nextSigner, gen)
+	require.NoError(t, err)
+
+	_, ok := cm.GetDataDAIncludedByHeight(2)
+	assert.True(t, ok)
+	assert.NotEqual(t, oldAddr, nextAddr)
+}
+
 func TestDASubmitter_SubmitData_SkipsEmptyData(t *testing.T) {
 	submitter, st, cm, mockDA, gen := setupDASubmitterTest(t)
 	ctx := context.Background()

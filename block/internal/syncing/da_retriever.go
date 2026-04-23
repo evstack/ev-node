@@ -299,7 +299,7 @@ func (r *daRetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedH
 		return nil
 	}
 
-	if err := r.assertExpectedProposer(header.ProposerAddress); err != nil {
+	if err := r.assertExpectedProposer(header); err != nil {
 		r.logger.Debug().Err(err).Msg("unexpected proposer")
 		return nil
 	}
@@ -355,9 +355,9 @@ func (r *daRetriever) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
 	return &signedData.Data
 }
 
-// assertExpectedProposer validates the proposer address
-func (r *daRetriever) assertExpectedProposer(proposerAddr []byte) error {
-	return assertExpectedProposer(r.genesis, proposerAddr)
+// assertExpectedProposer validates the proposer schedule entry for the header height.
+func (r *daRetriever) assertExpectedProposer(header *types.SignedHeader) error {
+	return assertExpectedProposer(r.genesis, header.Height(), header.ProposerAddress, header.Signer)
 }
 
 // assertValidSignedData validates signed data using the configured signature provider

@@ -78,7 +78,7 @@ func newFullNode(
 	logger zerolog.Logger,
 	nodeOpts NodeOptions,
 ) (fn *FullNode, err error) {
-	logger.Debug().Hex("address", genesis.ProposerAddress).Msg("Proposer address")
+	logger.Debug().Hex("address", genesis.InitialProposerAddress()).Msg("Initial proposer address")
 
 	blockMetrics, _ := metricsProvider(genesis.ChainID)
 
