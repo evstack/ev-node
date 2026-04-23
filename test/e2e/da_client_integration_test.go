@@ -58,7 +58,7 @@ func TestClient_SubmitAndGetBlobAgainstRealNode(t *testing.T) {
 
 	chainImage := container.Image{
 		Repository: "ghcr.io/celestiaorg/celestia-app",
-		Version:    "v5.0.10",
+		Version:    "v8.0.1-mocha",
 		UIDGID:     "10001:10001",
 	}
 
@@ -93,7 +93,7 @@ func TestClient_SubmitAndGetBlobAgainstRealNode(t *testing.T) {
 
 	daImage := container.Image{
 		Repository: "ghcr.io/celestiaorg/celestia-node",
-		Version:    "v0.26.4",
+		Version:    "v0.30.2-mocha",
 		UIDGID:     "10001:10001",
 	}
 

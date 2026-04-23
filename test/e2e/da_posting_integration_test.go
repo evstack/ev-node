@@ -60,7 +60,7 @@ func TestEvNode_PostsToDA(t *testing.T) {
 	// 1) Start celestia-app chain
 	chainImage := container.Image{
 		Repository: "ghcr.io/celestiaorg/celestia-app",
-		Version:    "v5.0.10",
+		Version:    "v8.0.1-mocha",
 		UIDGID:     "10001:10001",
 	}
 
@@ -95,7 +95,7 @@ func TestEvNode_PostsToDA(t *testing.T) {
 	// 2) Start celestia-node (bridge)
 	daImage := container.Image{
 		Repository: "ghcr.io/celestiaorg/celestia-node",
-		Version:    "v0.28.4-mocha",
+		Version:    "v0.30.2-mocha",
 		UIDGID:     "10001:10001",
 	}
 
