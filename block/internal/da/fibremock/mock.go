@@ -157,17 +157,61 @@ func (m *MockDA) Download(ctx context.Context, blobID fiber.BlobID) ([]byte, err
 }
 
 // Listen returns a channel that receives events when blobs matching the
-// namespace are uploaded. The channel is closed when ctx is cancelled.
-func (m *MockDA) Listen(ctx context.Context, namespace []byte) (<-chan fiber.BlobEvent, error) {
+// namespace are uploaded, starting at fromHeight.
+//
+// fromHeight == 0 subscribes to future uploads only. fromHeight > 0 first
+// replays every matching blob still in the store with height >= fromHeight,
+// then attaches a live subscriber for subsequent uploads. The replay may
+// interleave with live events emitted between the Listen call and the
+// replay goroutine's drain; consumers should dedupe by BlobID.
+//
+// The channel is closed when ctx is cancelled.
+func (m *MockDA) Listen(ctx context.Context, namespace []byte, fromHeight uint64) (<-chan fiber.BlobEvent, error) {
 	ch := make(chan fiber.BlobEvent, 64)
 
 	m.mu.Lock()
+	// Snapshot matching historicals under the lock to avoid racing with
+	// concurrent Upload calls; the replay goroutine emits them after.
+	var replay []fiber.BlobEvent
+	if fromHeight > 0 {
+		for _, key := range m.order {
+			b, ok := m.blobs[key]
+			if !ok {
+				continue
+			}
+			if !namespaceMatch(namespace, b.namespace) {
+				continue
+			}
+			if b.height < fromHeight {
+				continue
+			}
+			replay = append(replay, fiber.BlobEvent{
+				BlobID:   mockBlobID(b.data),
+				Height:   b.height,
+				DataSize: uint64(len(b.data)),
+			})
+		}
+	}
 	idx := len(m.subscribers)
 	m.subscribers = append(m.subscribers, subscriber{
 		namespace: namespace,
 		ch:        ch,
 	})
 	m.mu.Unlock()
+
+	// Replay historical events in a goroutine so the caller isn't
+	// blocked if the buffer fills. Live events may interleave.
+	if len(replay) > 0 {
+		go func() {
+			for _, ev := range replay {
+				select {
+				case ch <- ev:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+	}
 
 	// Clean up when context is done.
 	go func() {

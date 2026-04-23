@@ -14,9 +14,14 @@ import (
 )
 
 // Listen implements fiber.DA.Listen. It subscribes to blob.Subscribe on the
-// bridge node for the given namespace and forwards only share-version-2
+// bridge node starting at fromHeight and forwards only share-version-2
 // (Fibre) blobs as BlobEvents. PFB blobs (v0/v1) sharing the namespace are
 // dropped so consumers see a pure Fibre event stream.
+//
+// fromHeight == 0 starts the stream at the chain head (live follow).
+// fromHeight > 0 replays from that block forward via the node's
+// WaitForHeight loop so a subscriber can resume after a restart without
+// missing blobs.
 //
 // DataSize on emitted events is the original payload byte length — matching
 // the fibermock contract ev-node consumers code against. The v2 share only
@@ -25,12 +30,12 @@ import (
 // to recover the size before forwarding. This adds one FSP round-trip per
 // blob. If that cost becomes material we can expose an opt-out mode, but for
 // now correctness over latency.
-func (a *Adapter) Listen(ctx context.Context, namespace []byte) (<-chan block.FiberBlobEvent, error) {
+func (a *Adapter) Listen(ctx context.Context, namespace []byte, fromHeight uint64) (<-chan block.FiberBlobEvent, error) {
 	ns, err := toV0Namespace(namespace)
 	if err != nil {
 		return nil, fmt.Errorf("namespace: %w", err)
 	}
-	sub, err := a.blob.Subscribe(ctx, ns)
+	sub, err := a.blob.Subscribe(ctx, ns, fromHeight)
 	if err != nil {
 		return nil, fmt.Errorf("subscribing to blob stream: %w", err)
 	}
