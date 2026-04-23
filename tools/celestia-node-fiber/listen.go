@@ -84,6 +84,14 @@ func resolveHeight(resp *blob.SubscriptionResponse) uint64 {
 // fibreBlobToEvent reconstructs the Fibre BlobID (version byte + 32-byte
 // commitment) from a share-version-2 libshare.Blob and wraps it as a
 // BlobEvent.
+//
+// DataSize caveat: a v2 share carries only (fibre_blob_version + commitment),
+// not the original blob payload, so b.DataLen() is the on-chain share size
+// (a fixed constant), not the user-facing "how big is this blob" number
+// that ev-node's fibermock and its consumers typically expect. Reporting
+// the true payload size requires an on-chain query against x/fibre's
+// PaymentPromise keyed by commitment. Tracked as a follow-up; for now we
+// report the share size so the field is non-zero.
 func fibreBlobToEvent(b *libshare.Blob, height uint64) (block.FiberBlobEvent, error) {
 	version, err := b.FibreBlobVersion()
 	if err != nil {
