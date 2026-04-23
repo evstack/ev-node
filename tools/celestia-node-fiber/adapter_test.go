@@ -74,7 +74,7 @@ func (f *fakeFibre) PendingWithdrawals(context.Context, string) ([]celfibre.Pend
 // fakeBlob is a minimal stand-in for blobapi.Module. Only Subscribe is
 // exercised by the adapter, so the rest return errors if called.
 type fakeBlob struct {
-	subscribeFn func(context.Context, libshare.Namespace) (<-chan *nodeblob.SubscriptionResponse, error)
+	subscribeFn func(context.Context, libshare.Namespace, uint64) (<-chan *nodeblob.SubscriptionResponse, error)
 }
 
 var _ blobapi.Module = (*fakeBlob)(nil)
@@ -103,8 +103,8 @@ func (b *fakeBlob) GetCommitmentProof(context.Context, uint64, libshare.Namespac
 	return nil, errors.New("fakeBlob.GetCommitmentProof not implemented")
 }
 
-func (b *fakeBlob) Subscribe(ctx context.Context, ns libshare.Namespace) (<-chan *nodeblob.SubscriptionResponse, error) {
-	return b.subscribeFn(ctx, ns)
+func (b *fakeBlob) Subscribe(ctx context.Context, ns libshare.Namespace, fromHeight uint64) (<-chan *nodeblob.SubscriptionResponse, error) {
+	return b.subscribeFn(ctx, ns, fromHeight)
 }
 
 // TestAdapterSatisfiesDA is a compile-time assertion that the adapter
@@ -205,9 +205,11 @@ func TestListen_FiltersFibreOnlyAndEmitsEvent(t *testing.T) {
 	close(ch)
 
 	var seenNs libshare.Namespace
+	var seenFromHeight uint64
 	blob := &fakeBlob{
-		subscribeFn: func(_ context.Context, sub libshare.Namespace) (<-chan *nodeblob.SubscriptionResponse, error) {
+		subscribeFn: func(_ context.Context, sub libshare.Namespace, fromHeight uint64) (<-chan *nodeblob.SubscriptionResponse, error) {
 			seenNs = sub
+			seenFromHeight = fromHeight
 			return ch, nil
 		},
 	}
@@ -223,9 +225,10 @@ func TestListen_FiltersFibreOnlyAndEmitsEvent(t *testing.T) {
 		},
 	}
 	a := cnfiber.FromModules(fibre, blob, 0)
-	events, err := a.Listen(context.Background(), namespaceBytes())
+	events, err := a.Listen(context.Background(), namespaceBytes(), 0)
 	require.NoError(t, err)
 	require.Equal(t, ns, seenNs)
+	require.Equal(t, uint64(0), seenFromHeight, "fromHeight=0 must be forwarded to blob.Subscribe")
 
 	select {
 	case ev, ok := <-events:
@@ -253,7 +256,7 @@ func TestListen_CancelledContextClosesOutput(t *testing.T) {
 	ns := namespace(t)
 	upstream := make(chan *nodeblob.SubscriptionResponse)
 	blob := &fakeBlob{
-		subscribeFn: func(_ context.Context, arg libshare.Namespace) (<-chan *nodeblob.SubscriptionResponse, error) {
+		subscribeFn: func(_ context.Context, arg libshare.Namespace, _ uint64) (<-chan *nodeblob.SubscriptionResponse, error) {
 			require.Equal(t, ns, arg)
 			return upstream, nil
 		},
@@ -261,7 +264,7 @@ func TestListen_CancelledContextClosesOutput(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	a := cnfiber.FromModules(&fakeFibre{}, blob, 0)
-	events, err := a.Listen(ctx, namespaceBytes())
+	events, err := a.Listen(ctx, namespaceBytes(), 0)
 	require.NoError(t, err)
 
 	cancel()

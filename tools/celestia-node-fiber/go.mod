@@ -32,7 +32,7 @@ replace github.com/evstack/ev-node => ../../.
 require (
 	cosmossdk.io/math v1.5.3
 	github.com/celestiaorg/celestia-app/v8 v8.0.0-20260408095837-ab08b6d5e54e
-	github.com/celestiaorg/celestia-node v0.0.0-20260423103931-b07242fbfec8
+	github.com/celestiaorg/celestia-node v0.0.0-20260423143400-194cc74ce99c
 	github.com/celestiaorg/go-square/v4 v4.0.0-rc4.0.20260318002530-1ca8ff7b42ea
 	github.com/cometbft/cometbft v1.0.1
 	github.com/cosmos/cosmos-sdk v0.50.13

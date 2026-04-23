@@ -57,7 +57,13 @@ type DA interface {
 	// Returns the original data that was passed to Upload.
 	Download(ctx context.Context, blobID BlobID) ([]byte, error)
 
-	// Listen streams confirmed blob events for the given namespace.
-	// The returned channel is closed when the context is cancelled.
-	Listen(ctx context.Context, namespace []byte) (<-chan BlobEvent, error)
+	// Listen streams confirmed blob events for the given namespace,
+	// starting at fromHeight.
+	//
+	// fromHeight == 0 starts the stream from the current chain head; any
+	// positive value replays events from that block forward so a
+	// subscriber can resume after a restart without missing blobs (the
+	// DA backend is expected to block, not error, on future heights).
+	// The returned channel is closed when ctx is cancelled.
+	Listen(ctx context.Context, namespace []byte, fromHeight uint64) (<-chan BlobEvent, error)
 }

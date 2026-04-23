@@ -234,7 +234,11 @@ func (c *fiberDAClient) Subscribe(ctx context.Context, namespace []byte, _ bool)
 	go func() {
 		defer close(out)
 
-		blobCh, err := c.fiber.Listen(ctx, namespace)
+		// The outer DA Subscribe entry point does not expose a starting
+		// height, so start from the live tip (fromHeight=0). A future
+		// refactor that plumbs resume-from-height through datypes.DA can
+		// thread the value here.
+		blobCh, err := c.fiber.Listen(ctx, namespace, 0)
 		if err != nil {
 			c.logger.Error().Err(err).Msg("fiber listen failed")
 			return
