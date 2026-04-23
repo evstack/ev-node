@@ -189,16 +189,78 @@ func (c *fiberDAClient) RetrieveBlobs(ctx context.Context, height uint64, namesp
 	return c.retrieve(ctx, height, namespace, false)
 }
 
-func (c *fiberDAClient) retrieve(_ context.Context, height uint64, namespace []byte, _ bool) datypes.ResultRetrieve {
-	// not implemented, we cannot get block from on specific fiber height.
+func (c *fiberDAClient) retrieve(ctx context.Context, height uint64, namespace []byte, _ bool) datypes.ResultRetrieve {
+	listenCtx, listenCancel := context.WithTimeout(ctx, c.defaultTimeout)
+	defer listenCancel()
+
+	blobCh, err := c.fiber.Listen(listenCtx, namespace, height)
+	if err != nil {
+		return datypes.ResultRetrieve{
+			BaseResult: datypes.BaseResult{
+				Code:      datypes.StatusError,
+				Message:   fmt.Sprintf("fiber listen failed: %v", err),
+				Height:    height,
+				Timestamp: time.Now(),
+			},
+		}
+	}
+
+	var blobIDs []BlobID
+loop:
+	for {
+		select {
+		case <-listenCtx.Done():
+			break loop
+		case event, ok := <-blobCh:
+			if !ok {
+				break loop
+			}
+			if event.Height > height {
+				break loop
+			}
+			blobIDs = append(blobIDs, event.BlobID)
+		}
+	}
+
+	if len(blobIDs) == 0 {
+		return datypes.ResultRetrieve{
+			BaseResult: datypes.BaseResult{
+				Code:      datypes.StatusNotFound,
+				Message:   "no blobs found at height for given namespace",
+				Height:    height,
+				Timestamp: time.Now(),
+			},
+		}
+	}
+
+	ids := make([]datypes.ID, len(blobIDs))
+	data := make([][]byte, len(blobIDs))
+	for i, blobID := range blobIDs {
+		dlCtx, dlCancel := context.WithTimeout(ctx, c.defaultTimeout)
+		blobData, dlErr := c.fiber.Download(dlCtx, blobID)
+		dlCancel()
+		if dlErr != nil {
+			return datypes.ResultRetrieve{
+				BaseResult: datypes.BaseResult{
+					Code:      datypes.StatusError,
+					Message:   fmt.Sprintf("fiber download failed for blob %x: %v", blobID, dlErr),
+					Height:    height,
+					Timestamp: time.Now(),
+				},
+			}
+		}
+		ids[i] = makeFiberID(height, blobID)
+		data[i] = blobData
+	}
+
 	return datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{
-			Code:      datypes.StatusNotFound,
-			Message:   "no blobs found at height for given namespace in fiber index",
+			Code:      datypes.StatusSuccess,
 			Height:    height,
+			IDs:       ids,
 			Timestamp: time.Now(),
 		},
-		Data: nil,
+		Data: data,
 	}
 }
 
@@ -255,7 +317,8 @@ func (c *fiberDAClient) Subscribe(ctx context.Context, namespace []byte, _ bool)
 
 				blobData, err := c.fiber.Download(ctx, event.BlobID)
 				if err != nil {
-					c.logger.Error().Err(err).Bytes("blob_id", event.BlobID).Msg("failed to retrier blob id")
+					c.logger.Error().Err(err).Bytes("blob_id", event.BlobID).Msg("failed to retrieve blob")
+					continue
 				}
 
 				select {

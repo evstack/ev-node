@@ -133,8 +133,6 @@ func TestFiberClient_Submit_BlobTooLarge(t *testing.T) {
 }
 
 func TestFiberClient_Retrieve_Success(t *testing.T) {
-	t.Skip() // not implemented
-
 	_, cl := makeTestFiberClient(t)
 
 	ns := datypes.NamespaceFromString("test-ns").Bytes()
@@ -173,8 +171,6 @@ func TestFiberClient_Retrieve_NotFound(t *testing.T) {
 }
 
 func TestFiberClient_Retrieve_NamespaceFiltering(t *testing.T) {
-	t.Skip() // not implemented
-
 	_, cl := makeTestFiberClient(t)
 
 	ns1 := datypes.NamespaceFromString("ns-a").Bytes()
@@ -293,8 +289,6 @@ func TestFiberClient_Validate_Success(t *testing.T) {
 }
 
 func TestFiberClient_Validate_MismatchedLengths(t *testing.T) {
-	t.Skip() // not implemented
-
 	_, cl := makeTestFiberClient(t)
 
 	_, err := cl.Validate(context.Background(), make([]datypes.ID, 3), make([]datypes.Proof, 2), nil)

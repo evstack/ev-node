@@ -55,7 +55,7 @@ func TestMockDA_Listen(t *testing.T) {
 	defer cancel()
 
 	ns := []byte("test-ns")
-	ch, err := m.Listen(ctx, ns)
+	ch, err := m.Listen(ctx, ns, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestMockDA_ListenNamespaceFilter(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	ch, err := m.Listen(ctx, []byte("ns-A"))
+	ch, err := m.Listen(ctx, []byte("ns-A"), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestMockDA_ListenWildcard(t *testing.T) {
 	defer cancel()
 
 	// Empty namespace = wildcard
-	ch, err := m.Listen(ctx, nil)
+	ch, err := m.Listen(ctx, nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
