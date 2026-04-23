@@ -100,8 +100,6 @@ const (
 	FlagDAFiberStateAddress = FlagPrefixEvnode + "da.fiber.state_address"
 	// FlagDAFiberBridgeAddress is the gRPC address of the bridge node for Fiber state queries
 	FlagDAFiberBridgeAddress = FlagPrefixEvnode + "da.fiber.bridge_address"
-	// FlagDAFiberKeyringPath is the path to the keyring directory for Fiber payment promise signing
-	FlagDAFiberKeyringPath = FlagPrefixEvnode + "da.fiber.keyring_path"
 	// FlagDAFiberKeyName is the key name in the keyring to use for signing payment promises
 	FlagDAFiberKeyName = FlagPrefixEvnode + "da.fiber.key_name"
 
@@ -665,7 +663,6 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(FlagDAFiberEnabled, def.DA.Fiber.Enabled, "enable the Fiber DA client for direct validator communication")
 	cmd.Flags().String(FlagDAFiberStateAddress, def.DA.Fiber.StateAddress, "gRPC address of the celestia-app node for Fiber state queries (host:port)")
 	cmd.Flags().String(FlagDAFiberBridgeAddress, def.DA.Fiber.BridgeAddress, "json rpc of the bridge node")
-	cmd.Flags().String(FlagDAFiberKeyringPath, def.DA.Fiber.KeyringPath, "path to the keyring directory for Fiber payment promise signing")
 	cmd.Flags().String(FlagDAFiberKeyName, def.DA.Fiber.KeyName, "name of the key in the keyring for signing Fiber payment promises")
 
 	// P2P configuration flags
