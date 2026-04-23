@@ -357,7 +357,7 @@ func (r *daRetriever) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
 
 // assertExpectedProposer validates the proposer schedule entry for the header height.
 func (r *daRetriever) assertExpectedProposer(header *types.SignedHeader) error {
-	return assertExpectedProposer(r.genesis, header.Height(), header.ProposerAddress, header.Signer)
+	return assertExpectedProposer(r.genesis, header.Height(), header.ProposerAddress, header.Signer.PubKey)
 }
 
 // assertValidSignedData validates signed data using the configured signature provider

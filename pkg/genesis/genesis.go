@@ -63,14 +63,14 @@ func (g Genesis) Validate() error {
 			return fmt.Errorf("proposer_address cannot be empty when proposer_schedule is unset")
 		}
 	} else {
-		if err := g.ProposerSchedule[0].validate(g.InitialHeight, true); err != nil {
+		if err := g.ProposerSchedule[0].validate(g.InitialHeight); err != nil {
 			return fmt.Errorf("invalid proposer_schedule[0]: %w", err)
 		}
 		if g.ProposerSchedule[0].StartHeight != g.InitialHeight {
 			return fmt.Errorf("proposer_schedule[0].start_height must equal initial_height (%d), got %d", g.InitialHeight, g.ProposerSchedule[0].StartHeight)
 		}
 		for i := 1; i < len(g.ProposerSchedule); i++ {
-			if err := g.ProposerSchedule[i].validate(g.InitialHeight, true); err != nil {
+			if err := g.ProposerSchedule[i].validate(g.InitialHeight); err != nil {
 				return fmt.Errorf("invalid proposer_schedule[%d]: %w", i, err)
 			}
 			if g.ProposerSchedule[i].StartHeight <= g.ProposerSchedule[i-1].StartHeight {

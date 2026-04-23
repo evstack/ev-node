@@ -51,7 +51,7 @@ func TestGenesisProposerAtHeight(t *testing.T) {
 	require.Equal(t, entry2.Address, proposer.Address)
 }
 
-func TestGenesisValidateProposerSchedule(t *testing.T) {
+func TestGenesisValidateProposerScheduleWithPinnedPubKey(t *testing.T) {
 	entry1, pubKey1 := makeProposerScheduleEntry(t, 1)
 	entry2, pubKey2 := makeProposerScheduleEntry(t, 20)
 
@@ -67,6 +67,25 @@ func TestGenesisValidateProposerSchedule(t *testing.T) {
 	require.NoError(t, genesis.ValidateProposer(1, entry1.Address, pubKey1))
 	require.NoError(t, genesis.ValidateProposer(21, entry2.Address, pubKey2))
 	require.Error(t, genesis.ValidateProposer(21, entry2.Address, pubKey1))
+}
+
+func TestGenesisValidateAddressOnlyProposerSchedule(t *testing.T) {
+	entry1, pubKey1 := makeProposerScheduleEntry(t, 1)
+	entry2, pubKey2 := makeProposerScheduleEntry(t, 20)
+	entry1.PubKey = nil
+	entry2.PubKey = nil
+
+	genesis := Genesis{
+		ChainID:                "test-chain",
+		StartTime:              time.Now().UTC(),
+		InitialHeight:          1,
+		ProposerSchedule:       []ProposerScheduleEntry{entry1, entry2},
+		DAEpochForcedInclusion: 1,
+	}
+
+	require.NoError(t, genesis.Validate())
+	require.NoError(t, genesis.ValidateProposer(1, entry1.Address, pubKey1))
+	require.NoError(t, genesis.ValidateProposer(21, entry2.Address, pubKey2))
 }
 
 func TestLoadGenesisNormalizesLegacyProposerAddressFromSchedule(t *testing.T) {

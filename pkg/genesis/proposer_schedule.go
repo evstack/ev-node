@@ -8,7 +8,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 )
 
-// ProposerScheduleEntry declares the proposer key that becomes active at start_height.
+// ProposerScheduleEntry declares the proposer address that becomes active at start_height.
+// PubKey is optional and can be used to pin the exact key material for a schedule entry.
 type ProposerScheduleEntry struct {
 	StartHeight uint64 `json:"start_height"`
 	Address     []byte `json:"address"`
@@ -33,8 +34,8 @@ func NewProposerScheduleEntry(startHeight uint64, pubKey crypto.PubKey) (Propose
 	}, nil
 }
 
-// PublicKey unmarshals the configured proposer public key. Legacy single-proposer
-// configs may omit the pubkey and will return nil, nil here.
+// PublicKey unmarshals the configured proposer public key. Address-only schedule
+// entries may omit the pubkey and will return nil, nil here.
 func (e ProposerScheduleEntry) PublicKey() (crypto.PubKey, error) {
 	if len(e.PubKey) == 0 {
 		return nil, nil
@@ -48,7 +49,7 @@ func (e ProposerScheduleEntry) PublicKey() (crypto.PubKey, error) {
 	return pubKey, nil
 }
 
-func (e ProposerScheduleEntry) validate(initialHeight uint64, requirePubKey bool) error {
+func (e ProposerScheduleEntry) validate(initialHeight uint64) error {
 	if e.StartHeight < initialHeight {
 		return fmt.Errorf("proposer schedule start_height must be >= initial_height (%d), got %d", initialHeight, e.StartHeight)
 	}
@@ -58,9 +59,6 @@ func (e ProposerScheduleEntry) validate(initialHeight uint64, requirePubKey bool
 	}
 
 	if len(e.PubKey) == 0 {
-		if requirePubKey {
-			return fmt.Errorf("proposer schedule pub_key cannot be empty")
-		}
 		return nil
 	}
 
@@ -92,7 +90,7 @@ func (g Genesis) EffectiveProposerSchedule() []ProposerScheduleEntry {
 
 	return []ProposerScheduleEntry{{
 		StartHeight: g.InitialHeight,
-		Address:     cloneBytes(g.ProposerAddress),
+		Address:     bytes.Clone(g.ProposerAddress),
 	}}
 }
 
@@ -104,7 +102,7 @@ func (g Genesis) InitialProposerAddress() []byte {
 		return nil
 	}
 
-	return cloneBytes(entry.Address)
+	return bytes.Clone(entry.Address)
 }
 
 func (g Genesis) normalized() Genesis {
@@ -146,8 +144,8 @@ func (g Genesis) ProposerAtHeight(height uint64) (ProposerScheduleEntry, error) 
 
 	return ProposerScheduleEntry{
 		StartHeight: entry.StartHeight,
-		Address:     cloneBytes(entry.Address),
-		PubKey:      cloneBytes(entry.PubKey),
+		Address:     bytes.Clone(entry.Address),
+		PubKey:      bytes.Clone(entry.PubKey),
 	}, nil
 }
 
@@ -181,16 +179,6 @@ func (g Genesis) ValidateProposer(height uint64, address []byte, pubKey crypto.P
 	}
 
 	return nil
-}
-
-func cloneBytes(src []byte) []byte {
-	if src == nil {
-		return nil
-	}
-
-	out := make([]byte, len(src))
-	copy(out, src)
-	return out
 }
 
 func proposerKeyAddress(pubKey crypto.PubKey) []byte {

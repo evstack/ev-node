@@ -11,7 +11,7 @@ Use this guide to rotate a sequencer proposer key without restarting the chain. 
 
 ## How proposer rotation is stored in genesis
 
-`proposer_address`, `proposer_schedule[].address`, and `proposer_schedule[].pub_key` are base64-encoded strings in JSON.
+`proposer_address` and `proposer_schedule[].address` are base64-encoded strings in JSON.
 
 ```json
 {
@@ -20,13 +20,11 @@ Use this guide to rotate a sequencer proposer key without restarting the chain. 
   "proposer_schedule": [
     {
       "start_height": 1,
-      "address": "0FQmA4Hn9dn8m4ZpM4+fV4e8KhkWjI4V2Vt1j9Qm5pA=",
-      "pub_key": "5l6vM0b0GqQYQw4x0cI6q7N2vD1cE+oV6rN5eQ7v6dM="
+      "address": "0FQmA4Hn9dn8m4ZpM4+fV4e8KhkWjI4V2Vt1j9Qm5pA="
     },
     {
       "start_height": 125000,
-      "address": "Y7z5v9mQm4Nw6mD0a2yR9kD2B0qv5iJj1Q1R7gD4B7Q=",
-      "pub_key": "9r5mM4XjKx6h6sJv2Jf6dB5nQ0eU9l8cM1qT2wV3yZQ="
+      "address": "Y7z5v9mQm4Nw6mD0a2yR9kD2B0qv5iJj1Q1R7gD4B7Q="
     }
   ]
 }
@@ -36,7 +34,6 @@ Rules enforced by `ev-node`:
 
 - `proposer_schedule[0].start_height` must equal `initial_height`
 - schedule entries must be strictly increasing by `start_height`
-- every `address` must match its `pub_key`
 - if `proposer_address` is set, it must match the first schedule entry
 
 Keep all earlier schedule entries. Fresh full nodes need them to validate historical blocks.
@@ -53,7 +50,7 @@ INITIAL_HEIGHT="$(jq -r '.initial_height' "$GENESIS")"
 
 ## 2. Get the current and replacement proposer public keys
 
-For a file-based signer, the signer public key is stored in `signer.json` as base64:
+For a file-based signer, the signer public key is stored in `signer.json` as base64. You only put the derived address into genesis, but you still need the public key once to compute that address.
 
 ```bash
 OLD_SIGNER_DIR="$HOME/.evnode/config"
@@ -95,9 +92,7 @@ Create an explicit schedule with the current proposer at `initial_height` and th
 ```bash
 jq \
   --arg old_addr "$OLD_PROPOSER_ADDRESS" \
-  --arg old_pub "$OLD_PROPOSER_PUBKEY" \
   --arg new_addr "$NEW_PROPOSER_ADDRESS" \
-  --arg new_pub "$NEW_PROPOSER_PUBKEY" \
   --argjson initial_height "$INITIAL_HEIGHT" \
   --argjson activation_height "$ACTIVATION_HEIGHT" \
   '
@@ -105,13 +100,11 @@ jq \
   | .proposer_schedule = [
       {
         start_height: $initial_height,
-        address: $old_addr,
-        pub_key: $old_pub
+        address: $old_addr
       },
       {
         start_height: $activation_height,
-        address: $new_addr,
-        pub_key: $new_pub
+        address: $new_addr
       }
     ]
   ' "$GENESIS" > "$GENESIS.tmp" && mv "$GENESIS.tmp" "$GENESIS"
@@ -124,14 +117,12 @@ Append the new entry. Do not replace older entries, and make sure `ACTIVATION_HE
 ```bash
 jq \
   --arg new_addr "$NEW_PROPOSER_ADDRESS" \
-  --arg new_pub "$NEW_PROPOSER_PUBKEY" \
   --argjson activation_height "$ACTIVATION_HEIGHT" \
   '
   .proposer_schedule += [
     {
       start_height: $activation_height,
-      address: $new_addr,
-      pub_key: $new_pub
+      address: $new_addr
     }
   ]
   ' "$GENESIS" > "$GENESIS.tmp" && mv "$GENESIS.tmp" "$GENESIS"

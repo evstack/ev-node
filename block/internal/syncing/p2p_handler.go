@@ -127,9 +127,5 @@ func (h *P2PHandler) ProcessHeight(ctx context.Context, height uint64, heightInC
 
 // assertExpectedProposer validates the proposer schedule entry for the header height.
 func (h *P2PHandler) assertExpectedProposer(header *types.SignedHeader) error {
-	if err := assertExpectedProposer(h.genesis, header.Height(), header.ProposerAddress, header.Signer); err != nil {
-		return err
-	}
-
-	return nil
+	return assertExpectedProposer(h.genesis, header.Height(), header.ProposerAddress, header.Signer.PubKey)
 }
