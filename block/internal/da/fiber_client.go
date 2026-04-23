@@ -2,11 +2,9 @@ package da
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -39,7 +37,6 @@ type fiberDAClient struct {
 	namespaceBz     []byte
 	dataNamespaceBz []byte
 	uploadWorkers   int
-	latestHeight    atomic.Uint64
 }
 
 var _ FullClient = (*fiberDAClient)(nil)
@@ -65,20 +62,6 @@ func NewFiberClient(cfg FiberConfig) (FullClient, error) {
 		dataNamespaceBz: datypes.NamespaceFromString(cfg.DataNamespace).Bytes(),
 		uploadWorkers:   cfg.UploadWorkers,
 	}, nil
-}
-
-func makeFiberID(height uint64, blobID []byte) datypes.ID {
-	id := make([]byte, 8+len(blobID))
-	binary.LittleEndian.PutUint64(id, height)
-	copy(id[8:], blobID)
-	return id
-}
-
-func splitFiberID(id datypes.ID) (uint64, []byte) {
-	if len(id) <= 8 {
-		return 0, nil
-	}
-	return binary.LittleEndian.Uint64(id[:8]), id[8:]
 }
 
 func (c *fiberDAClient) Submit(ctx context.Context, data [][]byte, _ float64, namespace []byte, _ []byte) datypes.ResultSubmit {
@@ -160,21 +143,19 @@ func (c *fiberDAClient) Submit(ctx context.Context, data [][]byte, _ float64, na
 		}
 	}
 
-	submitHeight := c.latestHeight.Add(1)
-
 	ids := make([]datypes.ID, len(data))
 	for _, r := range results {
-		ids[r.index] = makeFiberID(submitHeight, r.blobID)
+		ids[r.index] = r.blobID
 	}
 
-	c.logger.Debug().Int("num_ids", len(data)).Uint64("height", submitHeight).Msg("fiber DA submission successful")
+	c.logger.Debug().Int("num_ids", len(data)).Uint64("height", 0 /* TODO */).Msg("fiber DA submission successful")
 
 	return datypes.ResultSubmit{
 		BaseResult: datypes.BaseResult{
 			Code:           datypes.StatusSuccess,
 			IDs:            ids,
 			SubmittedCount: uint64(len(ids)),
-			Height:         submitHeight,
+			Height:         0, /* TODO */
 			BlobSize:       blobSize,
 			Timestamp:      time.Now(),
 		},
@@ -249,7 +230,7 @@ loop:
 				},
 			}
 		}
-		ids[i] = makeFiberID(height, blobID)
+		ids[i] = blobID
 		data[i] = blobData
 	}
 
@@ -271,16 +252,11 @@ func (c *fiberDAClient) Get(ctx context.Context, ids []datypes.ID, _ []byte) ([]
 
 	res := make([]datypes.Blob, 0, len(ids))
 	for _, id := range ids {
-		_, blobID := splitFiberID(id)
-		if blobID == nil {
-			return nil, fmt.Errorf("invalid fiber blob id: %x", id)
-		}
-
 		downloadCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
-		data, err := c.fiber.Download(downloadCtx, blobID)
+		data, err := c.fiber.Download(downloadCtx, id)
 		cancel()
 		if err != nil {
-			return nil, fmt.Errorf("fiber download failed for blob %x: %w", blobID, err)
+			return nil, fmt.Errorf("fiber download failed for blob %x: %w", id, err)
 		}
 		res = append(res, data)
 	}
@@ -338,12 +314,11 @@ func (c *fiberDAClient) Subscribe(ctx context.Context, namespace []byte, _ bool)
 }
 
 func (c *fiberDAClient) GetLatestDAHeight(context.Context) (uint64, error) {
-	return c.latestHeight.Load(), nil
+	panic(fmt.Errorf("p2p should not be enabled"))
 }
 
 func (c *fiberDAClient) GetProofs(_ context.Context, ids []datypes.ID, _ []byte) ([]datypes.Proof, error) {
-	// not implemented.
-	return []datypes.Proof{}, nil
+	return []datypes.Proof{}, fmt.Errorf("not implemented")
 }
 
 func (c *fiberDAClient) Validate(_ context.Context, ids []datypes.ID, proofs []datypes.Proof, _ []byte) ([]bool, error) {
