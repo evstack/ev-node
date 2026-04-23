@@ -80,7 +80,13 @@ func (e ProposerScheduleEntry) validate(initialHeight uint64) error {
 func (g Genesis) EffectiveProposerSchedule() []ProposerScheduleEntry {
 	if len(g.ProposerSchedule) > 0 {
 		out := make([]ProposerScheduleEntry, len(g.ProposerSchedule))
-		copy(out, g.ProposerSchedule)
+		for i, entry := range g.ProposerSchedule {
+			out[i] = ProposerScheduleEntry{
+				StartHeight: entry.StartHeight,
+				Address:     bytes.Clone(entry.Address),
+				PubKey:      bytes.Clone(entry.PubKey),
+			}
+		}
 		return out
 	}
 
@@ -162,6 +168,17 @@ func (g Genesis) ValidateProposer(height uint64, address []byte, pubKey crypto.P
 	}
 
 	if len(entry.PubKey) == 0 {
+		// Address-only schedule entry. Without a pinned pubkey we still
+		// have to bind the caller-provided pubkey to the scheduled
+		// address, otherwise a forger can pair the scheduled address
+		// with an arbitrary key and later satisfy signature checks that
+		// trust Signer.PubKey.
+		if pubKey != nil {
+			derived := proposerKeyAddress(pubKey)
+			if !bytes.Equal(entry.Address, derived) {
+				return fmt.Errorf("proposer pub_key does not match scheduled address at height %d", height)
+			}
+		}
 		return nil
 	}
 

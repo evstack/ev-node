@@ -27,17 +27,31 @@ and validation become ambiguous.
 
 ### 2. Re-issue a new genesis on each rotation
 
-This treats every proposer rotation like a chain restart. It is operationally heavy, conflates upgrades with
-rotations, and breaks continuity for nodes syncing historical data.
+This treats every proposer rotation like a chain restart: a new `chain_id`, state reset back to `initial_height`,
+and existing block history discarded. It is operationally heavy, conflates upgrades with rotations, and breaks
+continuity for nodes syncing historical data.
 
 ### 3. Height-indexed proposer schedule in genesis (Chosen)
 
-Record proposer changes as an ordered schedule indexed by activation height. This preserves chain continuity while
-making rotation rules explicit and replayable from genesis.
+Record proposer changes as an ordered schedule indexed by activation height. The `genesis.json` file is updated
+with a new schedule entry and redistributed, but the chain keeps its `chain_id`, continues from the current
+height, preserves all block history, and fresh nodes can still validate the entire chain end-to-end across
+rotation boundaries. The rollout is still coordinated — every node must receive the updated `genesis.json` and
+restart before the activation height — but none of the chain's state or provenance is reset.
 
 ## Decision
 
 ev-node now supports proposer rotation through a `proposer_schedule` field in genesis.
+
+### What this is not
+
+This is **not** a re-genesis. Re-genesis — in the sense we mean it above — would involve issuing a new `chain_id`,
+resetting height to `initial_height`, and discarding existing block history. Proposer key rotation does none of
+that: the `chain_id` is unchanged, block height keeps progressing, all previous blocks remain valid, and fresh
+nodes can sync the chain from genesis across any number of rotation boundaries.
+
+The `genesis.json` file itself is updated (a new `proposer_schedule` entry is appended) and operators must
+restart every node to reload it. The file changes; the chain's state does not.
 
 Each entry declares:
 
@@ -137,7 +151,7 @@ Implemented
 
 - proposer schedule changes are consensus-visible and require coordinated rollout
 - operators must distribute updated genesis/config before activation height
-- emergency rotation still requires preplanned scheduling or a later authority-based mechanism
+- emergency rotation still requires prior scheduling or a later authority-based mechanism
 
 ### Neutral
 
