@@ -98,14 +98,12 @@ const (
 	FlagDAFiberEnabled = FlagPrefixEvnode + "da.fiber.enabled"
 	// FlagDAFiberStateAddress is the gRPC address of the celestia-app node for Fiber state queries
 	FlagDAFiberStateAddress = FlagPrefixEvnode + "da.fiber.state_address"
+	// FlagDAFiberBridgeAddress is the gRPC address of the bridge node for Fiber state queries
+	FlagDAFiberBridgeAddress = FlagPrefixEvnode + "da.fiber.bridge_address"
 	// FlagDAFiberKeyringPath is the path to the keyring directory for Fiber payment promise signing
 	FlagDAFiberKeyringPath = FlagPrefixEvnode + "da.fiber.keyring_path"
 	// FlagDAFiberKeyName is the key name in the keyring to use for signing payment promises
 	FlagDAFiberKeyName = FlagPrefixEvnode + "da.fiber.key_name"
-	// FlagDAFiberUploadConcurrency limits concurrent Fiber uploads to validators
-	FlagDAFiberUploadConcurrency = FlagPrefixEvnode + "da.fiber.upload_concurrency"
-	// FlagDAFiberDownloadConcurrency limits concurrent Fiber downloads from validators
-	FlagDAFiberDownloadConcurrency = FlagPrefixEvnode + "da.fiber.download_concurrency"
 
 	// P2P configuration flags
 
@@ -296,17 +294,14 @@ type FiberDAConfig struct {
 	// StateAddress is the gRPC address of the celestia-app node used for
 	// state queries (validator set, chain ID, promise verification).
 	StateAddress string `mapstructure:"state_address" yaml:"state_address" comment:"gRPC address of the celestia-app node for Fiber state queries (host:port)"`
+	// BridgeAddress is the address of the bridge node.
+	BridgeAddress string `mapstructure:"bridge_address" yaml:"bridge_address" comment:"Bridge Node Address for Fiber"`
 	// KeyringPath is the directory path containing the keyring for signing
 	// Fiber payment promises.
 	KeyringPath string `mapstructure:"keyring_path" yaml:"keyring_path" comment:"Path to the keyring directory for Fiber payment promise signing"`
 	// KeyName is the name of the key in the keyring to use for signing.
 	KeyName string `mapstructure:"key_name" yaml:"key_name" comment:"Name of the key in the keyring to use for signing Fiber payment promises"`
 	// UploadConcurrency limits the number of concurrent upload connections
-	// to validators.
-	UploadConcurrency int `mapstructure:"upload_concurrency" yaml:"upload_concurrency" comment:"Maximum number of concurrent upload connections to Fiber validators"`
-	// DownloadConcurrency limits the number of concurrent download connections
-	// from validators.
-	DownloadConcurrency int `mapstructure:"download_concurrency" yaml:"download_concurrency" comment:"Maximum number of concurrent download connections from Fiber validators"`
 }
 
 // IsFiberEnabled returns true if the Fiber DA client is configured and enabled.
@@ -669,10 +664,9 @@ func AddFlags(cmd *cobra.Command) {
 	// Fiber DA configuration flags
 	cmd.Flags().Bool(FlagDAFiberEnabled, def.DA.Fiber.Enabled, "enable the Fiber DA client for direct validator communication")
 	cmd.Flags().String(FlagDAFiberStateAddress, def.DA.Fiber.StateAddress, "gRPC address of the celestia-app node for Fiber state queries (host:port)")
+	cmd.Flags().String(FlagDAFiberBridgeAddress, def.DA.Fiber.BridgeAddress, "json rpc of the bridge node")
 	cmd.Flags().String(FlagDAFiberKeyringPath, def.DA.Fiber.KeyringPath, "path to the keyring directory for Fiber payment promise signing")
 	cmd.Flags().String(FlagDAFiberKeyName, def.DA.Fiber.KeyName, "name of the key in the keyring for signing Fiber payment promises")
-	cmd.Flags().Int(FlagDAFiberUploadConcurrency, def.DA.Fiber.UploadConcurrency, "maximum concurrent uploads to Fiber validators")
-	cmd.Flags().Int(FlagDAFiberDownloadConcurrency, def.DA.Fiber.DownloadConcurrency, "maximum concurrent downloads from Fiber validators")
 
 	// P2P configuration flags
 	cmd.Flags().String(FlagP2PListenAddress, def.P2P.ListenAddress, "P2P listen address (host:port)")
