@@ -131,18 +131,16 @@ func TestShowcase(t *testing.T) {
 		}
 	}
 
-	// Every event must carry a real block height. DataSize is
-	// intentionally not asserted against the payload length: the v2 share
-	// contains only (fibre_blob_version + commitment), not the original
-	// payload bytes, so b.DataLen() — what the adapter reports today — is
-	// always the fixed share-data size, not len(payload). Fixing that
-	// needs a PaymentPromise chain lookup; tracked as a TODO on the
-	// adapter's Listen path.
+	// Every event must carry the right DataSize and a non-zero block
+	// height. DataSize matches the original payload length because the
+	// adapter's Listen issues a Download per event to recover it (see
+	// listen.go). A silent byte truncation anywhere upstream would
+	// surface here before we even get to the Download round-trip.
 	for key, ev := range seen {
 		require.Greater(t, ev.Height, uint64(0),
 			"BlobEvent %s must carry a real block height", key)
-		require.Greater(t, ev.DataSize, uint64(0),
-			"BlobEvent %s must report a non-zero DataSize", key)
+		require.Equal(t, uint64(len(expected[key])), ev.DataSize,
+			"BlobEvent %s DataSize must match original payload length", key)
 	}
 
 	// Round-trip every blob through Download and diff bytes. Walking

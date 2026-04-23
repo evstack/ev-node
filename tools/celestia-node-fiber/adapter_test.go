@@ -211,7 +211,18 @@ func TestListen_FiltersFibreOnlyAndEmitsEvent(t *testing.T) {
 			return ch, nil
 		},
 	}
-	a := cnfiber.FromModules(&fakeFibre{}, blob, 0)
+
+	// Listen now issues a Download per v2 blob to recover the original
+	// payload size for BlobEvent.DataSize (see Listen's doc comment).
+	// Feed a deterministic payload back; the test asserts DataSize
+	// matches its length.
+	originalPayload := []byte("this is the original blob payload")
+	fibre := &fakeFibre{
+		downloadFn: func(_ context.Context, _ appfibre.BlobID) (*fibreapi.GetBlobResult, error) {
+			return &fibreapi.GetBlobResult{Data: originalPayload}, nil
+		},
+	}
+	a := cnfiber.FromModules(fibre, blob, 0)
 	events, err := a.Listen(context.Background(), namespaceBytes())
 	require.NoError(t, err)
 	require.Equal(t, ns, seenNs)
@@ -224,7 +235,8 @@ func TestListen_FiltersFibreOnlyAndEmitsEvent(t *testing.T) {
 		expectedID := appfibre.NewBlobID(0, expectedCommit)
 		require.Equal(t, block.FiberBlobID(expectedID), ev.BlobID)
 		require.Equal(t, uint64(42), ev.Height)
-		require.Equal(t, uint64(v2Lib.DataLen()), ev.DataSize)
+		require.Equal(t, uint64(len(originalPayload)), ev.DataSize,
+			"DataSize must match the original payload length resolved via Download")
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for blob event")
 	}
