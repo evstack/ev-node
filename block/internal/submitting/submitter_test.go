@@ -235,8 +235,7 @@ func TestSubmitter_initializeDAIncludedHeight(t *testing.T) {
 }
 
 func TestSubmitter_processDAInclusionLoop_advances(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	// Clean up any existing visualization server
 	defer server.SetDAVisualizationServer(nil)
@@ -448,8 +447,7 @@ func (f *fakeSigner) GetPublic() (crypto.PubKey, error) { return nil, nil }
 func (f *fakeSigner) GetAddress() ([]byte, error)       { return []byte("addr"), nil }
 
 func TestSubmitter_CacheClearedOnHeightInclusion(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	cm, st := newTestCacheAndStore(t)
 
