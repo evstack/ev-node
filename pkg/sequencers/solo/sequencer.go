@@ -16,6 +16,12 @@ import (
 
 var ErrInvalidID = errors.New("invalid chain id")
 
+var (
+	emptyBatch        = &coresequencer.Batch{}
+	submitBatchResp   = &coresequencer.SubmitBatchTxsResponse{}
+	verifyBatchOKResp = &coresequencer.VerifyBatchResponse{Status: true}
+)
+
 var _ coresequencer.Sequencer = (*SoloSequencer)(nil)
 
 // SoloSequencer is a single-leader sequencer without forced inclusion
@@ -55,14 +61,14 @@ func (s *SoloSequencer) SubmitBatchTxs(ctx context.Context, req coresequencer.Su
 	}
 
 	if req.Batch == nil || len(req.Batch.Transactions) == 0 {
-		return &coresequencer.SubmitBatchTxsResponse{}, nil
+		return submitBatchResp, nil
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.queue = append(s.queue, req.Batch.Transactions...)
-	return &coresequencer.SubmitBatchTxsResponse{}, nil
+	return submitBatchResp, nil
 }
 
 func (s *SoloSequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextBatchRequest) (*coresequencer.GetNextBatchResponse, error) {
@@ -77,7 +83,7 @@ func (s *SoloSequencer) GetNextBatch(ctx context.Context, req coresequencer.GetN
 
 	if len(txs) == 0 {
 		return &coresequencer.GetNextBatchResponse{
-			Batch:     &coresequencer.Batch{},
+			Batch:     emptyBatch,
 			Timestamp: time.Now().UTC(),
 			BatchData: req.LastBatchData,
 		}, nil
@@ -94,21 +100,22 @@ func (s *SoloSequencer) GetNextBatch(ctx context.Context, req coresequencer.GetN
 	filterStatuses, err := s.executor.FilterTxs(ctx, txs, req.MaxBytes, maxGas, false)
 	if err != nil {
 		s.logger.Warn().Err(err).Msg("failed to filter transactions, proceeding with unfiltered")
-		filterStatuses = make([]execution.FilterStatus, len(txs))
-		for i := range filterStatuses {
-			filterStatuses[i] = execution.FilterOK
-		}
+		return &coresequencer.GetNextBatchResponse{
+			Batch:     &coresequencer.Batch{Transactions: txs},
+			Timestamp: time.Now().UTC(),
+			BatchData: req.LastBatchData,
+		}, nil
 	}
 
-	var validTxs [][]byte
+	write := 0
 	var postponedTxs [][]byte
 	for i, status := range filterStatuses {
 		switch status {
 		case execution.FilterOK:
-			validTxs = append(validTxs, txs[i])
+			txs[write] = txs[i]
+			write++
 		case execution.FilterPostpone:
 			postponedTxs = append(postponedTxs, txs[i])
-		case execution.FilterRemove:
 		}
 	}
 
@@ -119,7 +126,7 @@ func (s *SoloSequencer) GetNextBatch(ctx context.Context, req coresequencer.GetN
 	}
 
 	return &coresequencer.GetNextBatchResponse{
-		Batch:     &coresequencer.Batch{Transactions: validTxs},
+		Batch:     &coresequencer.Batch{Transactions: txs[:write]},
 		Timestamp: time.Now().UTC(),
 		BatchData: req.LastBatchData,
 	}, nil
@@ -130,7 +137,7 @@ func (s *SoloSequencer) VerifyBatch(ctx context.Context, req coresequencer.Verif
 		return nil, ErrInvalidID
 	}
 
-	return &coresequencer.VerifyBatchResponse{Status: true}, nil
+	return verifyBatchOKResp, nil
 }
 
 func (s *SoloSequencer) SetDAHeight(height uint64) {

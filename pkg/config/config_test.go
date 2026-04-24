@@ -78,6 +78,16 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagDAMempoolTTL, DefaultConfig().DA.MempoolTTL)
 	assertFlagValue(t, flags, FlagDAMaxSubmitAttempts, DefaultConfig().DA.MaxSubmitAttempts)
 	assertFlagValue(t, flags, FlagDARequestTimeout, DefaultConfig().DA.RequestTimeout.Duration)
+	assertFlagValue(t, flags, FlagDABatchingStrategy, DefaultConfig().DA.BatchingStrategy)
+	assertFlagValue(t, flags, FlagDABatchSizeThreshold, DefaultConfig().DA.BatchSizeThreshold)
+	assertFlagValue(t, flags, FlagDABatchMaxDelay, DefaultConfig().DA.BatchMaxDelay.Duration)
+	assertFlagValue(t, flags, FlagDABatchMinItems, DefaultConfig().DA.BatchMinItems)
+
+	// DA Fiber flags
+	assertFlagValue(t, flags, FlagDAFiberEnabled, DefaultConfig().DA.Fiber.Enabled)
+	assertFlagValue(t, flags, FlagDAFiberConsensusAddress, DefaultConfig().DA.Fiber.ConsensusAddress)
+	assertFlagValue(t, flags, FlagDAFiberConsensusChainID, DefaultConfig().DA.Fiber.ConsensusChainID)
+	assertFlagValue(t, flags, FlagDAFiberKeyName, DefaultConfig().DA.Fiber.KeyName)
 
 	// P2P flags
 	assertFlagValue(t, flags, FlagP2PListenAddress, DefaultConfig().P2P.ListenAddress)
@@ -144,7 +154,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagPruningInterval, DefaultConfig().Pruning.Interval.Duration)
 
 	// Count the number of flags we're explicitly checking
-	expectedFlagCount := 82 // Update this number if you add more flag checks above
+	expectedFlagCount := 84 // Update this number if you add more flag checks above
 
 	// Get the actual number of flags (both regular and persistent)
 	actualFlagCount := 0

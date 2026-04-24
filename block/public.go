@@ -42,6 +42,17 @@ type DAVerifier = da.Verifier
 // This is the complete interface implemented by the concrete DA client.
 type FullDAClient = da.FullClient
 
+// FiberClient is the interface for Fiber DA backends. Implementations
+// handle upload, download and listen operations against a Fiber network.
+type FiberClient = da.FiberClient
+
+// Fiber types exposed for external adapters (e.g. tools/local-fiber).
+type (
+	FiberBlobID       = da.BlobID
+	FiberUploadResult = da.UploadResult
+	FiberBlobEvent    = da.BlobEvent
+)
+
 // NewDAClient creates a new DA client backed by the blob JSON-RPC API.
 // The returned client implements both DAClient and DAVerifier interfaces.
 func NewDAClient(
@@ -60,6 +71,34 @@ func NewDAClient(
 	if config.Instrumentation.IsTracingEnabled() {
 		return da.WithTracingClient(base)
 	}
+	return base
+}
+
+// NewFiberDAClient creates a new DA client backed by the Fiber protocol.
+// The fiberClient parameter must implement the da.FiberClient interface.
+// The returned client implements both DAClient and DAVerifier interfaces.
+func NewFiberDAClient(
+	fiberClient da.FiberClient,
+	config config.Config,
+	logger zerolog.Logger,
+	lastKnownDaHeight uint64,
+) FullDAClient {
+	base, err := da.NewFiberClient(da.FiberConfig{
+		Client:            fiberClient,
+		Logger:            logger,
+		DefaultTimeout:    config.DA.RequestTimeout.Duration,
+		Namespace:         config.DA.GetNamespace(),
+		DataNamespace:     config.DA.GetDataNamespace(),
+		LastKnownDAHeight: lastKnownDaHeight,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	if config.Instrumentation.IsTracingEnabled() {
+		return da.WithTracingClient(base)
+	}
+
 	return base
 }
 
