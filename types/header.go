@@ -1,7 +1,6 @@
 package types
 
 import (
-	"bytes"
 	"context"
 	"encoding"
 	"errors"
@@ -43,7 +42,8 @@ var (
 	// ErrNoProposerAddress is returned when the proposer address is not set.
 	ErrNoProposerAddress = errors.New("no proposer address")
 
-	// ErrProposerVerificationFailed is returned when the proposer verification fails.
+	// ErrProposerVerificationFailed is deprecated. Proposer authorization is
+	// enforced through State validation because proposer rotation is execution-owned.
 	ErrProposerVerificationFailed = errors.New("proposer verification failed")
 
 	// ErrInvalidTimestamp is returned when the timestamp is invalid.
@@ -81,11 +81,6 @@ type Header struct {
 	// We keep this in case users choose another signature format where the
 	// pubkey can't be recovered by the signature (e.g. ed25519).
 	ProposerAddress []byte // original proposer of the block
-
-	// NextProposerAddress is selected by executing this block and becomes the
-	// proposer expected for the next block. Empty means the current proposer
-	// remains active.
-	NextProposerAddress []byte
 
 	// Legacy holds fields that were removed from the canonical header JSON/Go
 	// representation but may still be required for backwards compatible binary
@@ -129,19 +124,9 @@ func (h *Header) Time() time.Time {
 
 // Verify verifies the header.
 func (h *Header) Verify(untrstH *Header) error {
-	expectedProposer := h.ProposerAddress
-	if len(h.NextProposerAddress) > 0 {
-		expectedProposer = h.NextProposerAddress
-	}
-	if !bytes.Equal(untrstH.ProposerAddress, expectedProposer) {
-		return &header.VerifyError{
-			Reason: fmt.Errorf("%w: expected proposer (%X) got (%X)",
-				ErrProposerVerificationFailed,
-				expectedProposer,
-				untrstH.ProposerAddress,
-			),
-		}
-	}
+	// Proposer rotation is execution/state-owned. The trusted header alone no
+	// longer contains enough information to authorize the signer of the next
+	// header, so full nodes enforce proposer validity through State validation.
 	return nil
 }
 
@@ -279,7 +264,6 @@ func (h Header) Clone() Header {
 	clone.AppHash = cloneBytes(h.AppHash)
 	clone.ValidatorHash = cloneBytes(h.ValidatorHash)
 	clone.ProposerAddress = cloneBytes(h.ProposerAddress)
-	clone.NextProposerAddress = cloneBytes(h.NextProposerAddress)
 	clone.Legacy = h.Legacy.Clone()
 	clone.cachedHash = nil
 

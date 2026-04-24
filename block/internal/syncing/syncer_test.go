@@ -214,17 +214,15 @@ func TestSyncer_ValidateBlock_UsesStateNextProposer(t *testing.T) {
 	require.Contains(t, err.Error(), "unexpected proposer")
 }
 
-func TestSyncer_ApplyBlockRejectsExecutionNextProposerMismatch(t *testing.T) {
+func TestSyncer_ApplyBlockPersistsExecutionNextProposer(t *testing.T) {
 	addr, _, _ := buildSyncTestSigner(t)
-	headerNext := []byte("header-next-proposer")
 	execNext := []byte("execution-next-proposer")
 
 	mockExec := testmocks.NewMockExecutor(t)
 	data := makeData("tchain", 1, 1)
 	header := types.Header{
-		BaseHeader:          types.BaseHeader{ChainID: "tchain", Height: 1, Time: uint64(time.Now().UnixNano())},
-		ProposerAddress:     addr,
-		NextProposerAddress: headerNext,
+		BaseHeader:      types.BaseHeader{ChainID: "tchain", Height: 1, Time: uint64(time.Now().UnixNano())},
+		ProposerAddress: addr,
 	}
 	currentState := types.State{AppHash: []byte("app0"), NextProposerAddress: addr}
 
@@ -240,9 +238,9 @@ func TestSyncer_ApplyBlockRejectsExecutionNextProposerMismatch(t *testing.T) {
 		logger: zerolog.Nop(),
 	}
 
-	_, err := s.ApplyBlock(t.Context(), header, data, currentState)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "next proposer mismatch")
+	newState, err := s.ApplyBlock(t.Context(), header, data, currentState)
+	require.NoError(t, err)
+	require.Equal(t, execNext, newState.NextProposerAddress)
 }
 
 func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {

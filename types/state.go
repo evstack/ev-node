@@ -45,7 +45,7 @@ type State struct {
 
 func (s *State) NextState(header Header, stateRoot []byte, nextProposerAddress ...[]byte) (State, error) {
 	height := header.Height()
-	nextProposer := header.NextProposerAddress
+	nextProposer := s.NextProposerAddress
 	if len(nextProposerAddress) > 0 && len(nextProposerAddress[0]) > 0 {
 		nextProposer = nextProposerAddress[0]
 	}

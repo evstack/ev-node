@@ -89,7 +89,6 @@ func (h *Header) MarshalBinary() ([]byte, error) {
 	ph.AppHash = h.AppHash
 	ph.ProposerAddress = h.ProposerAddress
 	ph.ValidatorHash = h.ValidatorHash
-	ph.NextProposerAddress = h.NextProposerAddress
 	if unknown := encodeLegacyUnknownFields(h.Legacy); len(unknown) > 0 {
 		ph.ProtoReflect().SetUnknown(unknown)
 	}
@@ -239,7 +238,6 @@ func (sh *SignedHeader) MarshalBinary() ([]byte, error) {
 	ph.DataHash = sh.DataHash
 	ph.AppHash = sh.AppHash
 	ph.ProposerAddress = sh.ProposerAddress
-	ph.NextProposerAddress = sh.NextProposerAddress
 	ph.ValidatorHash = sh.ValidatorHash
 	if unknown := encodeLegacyUnknownFields(sh.Legacy); len(unknown) > 0 {
 		ph.ProtoReflect().SetUnknown(unknown)
@@ -380,15 +378,14 @@ func (h *Header) ToProto() *pb.Header {
 			Block: h.Version.Block,
 			App:   h.Version.App,
 		},
-		Height:              h.BaseHeader.Height,
-		Time:                h.BaseHeader.Time,
-		LastHeaderHash:      h.LastHeaderHash[:],
-		DataHash:            h.DataHash[:],
-		AppHash:             h.AppHash[:],
-		ProposerAddress:     h.ProposerAddress[:],
-		ChainId:             h.BaseHeader.ChainID,
-		ValidatorHash:       h.ValidatorHash,
-		NextProposerAddress: h.NextProposerAddress,
+		Height:          h.BaseHeader.Height,
+		Time:            h.BaseHeader.Time,
+		LastHeaderHash:  h.LastHeaderHash[:],
+		DataHash:        h.DataHash[:],
+		AppHash:         h.AppHash[:],
+		ProposerAddress: h.ProposerAddress[:],
+		ChainId:         h.BaseHeader.ChainID,
+		ValidatorHash:   h.ValidatorHash,
 	}
 	if unknown := encodeLegacyUnknownFields(h.Legacy); len(unknown) > 0 {
 		pHeader.ProtoReflect().SetUnknown(unknown)
@@ -439,12 +436,6 @@ func (h *Header) FromProto(other *pb.Header) error {
 	} else {
 		h.ValidatorHash = nil
 	}
-	if other.NextProposerAddress != nil {
-		h.NextProposerAddress = append([]byte(nil), other.NextProposerAddress...)
-	} else {
-		h.NextProposerAddress = nil
-	}
-
 	legacy, err := decodeLegacyHeaderFields(other)
 	if err != nil {
 		return err
@@ -901,11 +892,6 @@ func marshalLegacyHeader(h *Header) ([]byte, error) {
 		payload = protowire.AppendTag(payload, 12, protowire.BytesType)
 		payload = protowire.AppendVarint(payload, uint64(len(clone.BaseHeader.ChainID)))
 		payload = append(payload, clone.BaseHeader.ChainID...)
-	}
-
-	// next proposer address
-	if len(clone.NextProposerAddress) > 0 {
-		payload = appendBytesField(payload, 13, clone.NextProposerAddress)
 	}
 
 	return payload, nil

@@ -27,11 +27,11 @@ An empty `NextProposerAddress` from `ExecuteTxs` means the proposer is unchanged
 
 When execution returns a non-empty next proposer:
 
-- The producing node commits it to `Header.NextProposerAddress` before signing the header.
-- Syncing nodes require the signed header value to match the execution result.
 - `State.NextProposerAddress` is updated and used as the expected signer for `LastBlockHeight + 1`.
+- Full nodes validate the next block signer against the previous state's `NextProposerAddress`.
+- Header encoding remains unchanged. `Header.ProposerAddress` continues to identify the signer of the current block only.
 
-`Header.NextProposerAddress` lets header-only paths and DA envelope validation see proposer transitions without replaying execution first. The execution result remains the authority; mismatches between the signed header and execution are invalid.
+The execution result is the authority for proposer rotation. Header-only paths cannot derive proposer transitions without either replaying execution or using a future proof/certificate mechanism. This preserves header compatibility while keeping the rotation rule deterministic for full nodes.
 
 ## EVM System Contract Model
 
@@ -47,7 +47,7 @@ The security council or multisig becomes the authority for proposer updates. It 
 
 The system contract must restrict writes to the configured authority. Unauthorized proposer updates are consensus-critical because they determine who can sign the next block.
 
-ev-node validates the execution output against the signed header. A malicious proposer cannot advertise one next proposer in the header while execution derives another.
+ev-node validates each block's signer against the proposer address stored in the previous state. A malicious proposer cannot rotate the next signer through node-local configuration; the rotation must be derived from execution.
 
 If the execution interface returns an empty proposer, ev-node treats the proposer as unchanged. At startup, empty execution info falls back to genesis so existing execution implementations remain usable.
 
@@ -60,13 +60,14 @@ Positive:
 - Proposer rotation becomes deterministic execution state.
 - EVM chains can use a system contract and multisig-controlled rotation.
 - Existing chains keep working when execution returns an empty proposer.
-- Header verification can follow rotations once the rotating block is known.
+- Existing header encoding remains compatible because no new header field is required.
 
 Negative:
 
 - The execution API changes and all execution adapters must return `ExecuteResult`.
 - Proposer updates become consensus-critical execution outputs.
 - ev-reth needs a separate system-contract design and implementation.
+- Header-only/light-client paths cannot follow proposer rotation without execution replay or a later proof design.
 
 ## Alternatives Considered
 
@@ -78,6 +79,6 @@ Node-local proposer configuration:
 
 - Rejected. Nodes could disagree about the active proposer unless every operator updates configuration at the same time.
 
-Execution-only proposer without header commitment:
+Header commitment for next proposer:
 
-- Rejected. Syncing nodes can replay execution, but header and DA envelope paths benefit from having the selected next proposer committed in the signed header when it changes.
+- Rejected for the first version. It would expose rotations to header-only paths, but it changes the signed header and hash encoding. Keeping rotation in execution/state avoids a header compatibility break.

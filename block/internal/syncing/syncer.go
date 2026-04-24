@@ -837,19 +837,9 @@ func (s *Syncer) ApplyBlock(ctx context.Context, header types.Header, data *type
 		s.sendCriticalError(fmt.Errorf("failed to execute transactions: %w", err))
 		return types.State{}, fmt.Errorf("failed to execute transactions: %w", err)
 	}
-	if len(result.NextProposerAddress) > 0 {
-		if len(header.NextProposerAddress) == 0 {
-			return types.State{}, fmt.Errorf("next proposer mismatch: header empty, execution %x", result.NextProposerAddress)
-		}
-		if !bytes.Equal(header.NextProposerAddress, result.NextProposerAddress) {
-			return types.State{}, fmt.Errorf("next proposer mismatch: header %x, execution %x", header.NextProposerAddress, result.NextProposerAddress)
-		}
-	} else if len(header.NextProposerAddress) > 0 && !bytes.Equal(header.NextProposerAddress, header.ProposerAddress) {
-		return types.State{}, fmt.Errorf("next proposer mismatch: header %x, execution unchanged", header.NextProposerAddress)
-	}
 
 	// Create new state
-	newState, err := currentState.NextState(header, result.UpdatedStateRoot)
+	newState, err := currentState.NextState(header, result.UpdatedStateRoot, result.NextProposerAddress)
 	if err != nil {
 		return types.State{}, fmt.Errorf("failed to create next state: %w", err)
 	}

@@ -102,11 +102,9 @@ type Header struct {
 	// validatorhash for compatibility with tendermint light client.
 	ValidatorHash []byte `protobuf:"bytes,11,opt,name=validator_hash,json=validatorHash,proto3" json:"validator_hash,omitempty"`
 	// Chain ID the block belongs to
-	ChainId string `protobuf:"bytes,12,opt,name=chain_id,json=chainId,proto3" json:"chain_id,omitempty"`
-	// Proposer address selected by this block's execution result for the next block.
-	NextProposerAddress []byte `protobuf:"bytes,13,opt,name=next_proposer_address,json=nextProposerAddress,proto3" json:"next_proposer_address,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	ChainId       string `protobuf:"bytes,12,opt,name=chain_id,json=chainId,proto3" json:"chain_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Header) Reset() {
@@ -200,13 +198,6 @@ func (x *Header) GetChainId() string {
 		return x.ChainId
 	}
 	return ""
-}
-
-func (x *Header) GetNextProposerAddress() []byte {
-	if x != nil {
-		return x.NextProposerAddress
-	}
-	return nil
 }
 
 // SignedHeader is a header with a signature and a signer.
@@ -801,7 +792,7 @@ const file_evnode_v1_evnode_proto_rawDesc = "" +
 	"\x16evnode/v1/evnode.proto\x12\tevnode.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"1\n" +
 	"\aVersion\x12\x14\n" +
 	"\x05block\x18\x01 \x01(\x04R\x05block\x12\x10\n" +
-	"\x03app\x18\x02 \x01(\x04R\x03app\"\xf7\x02\n" +
+	"\x03app\x18\x02 \x01(\x04R\x03app\"\xc9\x02\n" +
 	"\x06Header\x12,\n" +
 	"\aversion\x18\x01 \x01(\v2\x12.evnode.v1.VersionR\aversion\x12\x16\n" +
 	"\x06height\x18\x02 \x01(\x04R\x06height\x12\x12\n" +
@@ -812,9 +803,8 @@ const file_evnode_v1_evnode_proto_rawDesc = "" +
 	"\x10proposer_address\x18\n" +
 	" \x01(\fR\x0fproposerAddress\x12%\n" +
 	"\x0evalidator_hash\x18\v \x01(\fR\rvalidatorHash\x12\x19\n" +
-	"\bchain_id\x18\f \x01(\tR\achainId\x122\n" +
-	"\x15next_proposer_address\x18\r \x01(\fR\x13nextProposerAddressJ\x04\b\x05\x10\x06J\x04\b\a\x10\bJ\x04\b\t\x10\n" +
-	"\"\x88\x01\n" +
+	"\bchain_id\x18\f \x01(\tR\achainIdJ\x04\b\x05\x10\x06J\x04\b\a\x10\bJ\x04\b\t\x10\n" +
+	"J\x04\b\r\x10\x0e\"\x88\x01\n" +
 	"\fSignedHeader\x12)\n" +
 	"\x06header\x18\x01 \x01(\v2\x11.evnode.v1.HeaderR\x06header\x12\x1c\n" +
 	"\tsignature\x18\x02 \x01(\fR\tsignature\x12)\n" +

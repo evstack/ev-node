@@ -65,9 +65,6 @@ pub struct Header {
     /// Chain ID the block belongs to
     #[prost(string, tag = "12")]
     pub chain_id: ::prost::alloc::string::String,
-    /// Proposer address selected by this block's execution result for the next block.
-    #[prost(bytes = "vec", tag = "13")]
-    pub next_proposer_address: ::prost::alloc::vec::Vec<u8>,
 }
 /// SignedHeader is a header with a signature and a signer.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]

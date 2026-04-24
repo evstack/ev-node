@@ -69,14 +69,13 @@ func TestProduceBlock_EmptyBatch_SetsEmptyDataHash(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 0, len(data.Txs))
 	assert.EqualValues(t, common.DataHashForEmptyTxs, sh.DataHash)
-	assert.Empty(t, sh.NextProposerAddress)
 
 	state, err := fx.MemStore.GetState(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, fx.Exec.genesis.ProposerAddress, state.NextProposerAddress)
 }
 
-func TestProduceBlock_CommitsExecutionNextProposer(t *testing.T) {
+func TestProduceBlock_PersistsExecutionNextProposer(t *testing.T) {
 	fx := setupTestExecutor(t, 1000)
 	defer fx.Cancel()
 
@@ -100,7 +99,6 @@ func TestProduceBlock_CommitsExecutionNextProposer(t *testing.T) {
 	header, data, err := fx.MemStore.GetBlockData(context.Background(), 1)
 	require.NoError(t, err)
 	require.NoError(t, header.ValidateBasicWithData(data))
-	assert.Equal(t, nextAddr, header.NextProposerAddress)
 
 	state, err := fx.MemStore.GetState(context.Background())
 	require.NoError(t, err)

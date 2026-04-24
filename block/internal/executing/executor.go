@@ -572,13 +572,6 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to apply block: %w", err)
 	}
-	if !bytes.Equal(newState.NextProposerAddress, header.ProposerAddress) {
-		header.NextProposerAddress = append([]byte(nil), newState.NextProposerAddress...)
-		header.InvalidateHash()
-	} else if len(header.NextProposerAddress) > 0 {
-		header.NextProposerAddress = nil
-		header.InvalidateHash()
-	}
 
 	// set the DA height in the sequencer
 	newState.DAHeight = e.sequencer.GetDAHeight()
@@ -861,19 +854,9 @@ func (e *Executor) ApplyBlock(ctx context.Context, header types.Header, data *ty
 		e.sendCriticalError(fmt.Errorf("failed to execute transactions: %w", err))
 		return types.State{}, fmt.Errorf("failed to execute transactions: %w", err)
 	}
-	if len(result.NextProposerAddress) > 0 {
-		if len(header.NextProposerAddress) == 0 {
-			header.NextProposerAddress = append([]byte(nil), result.NextProposerAddress...)
-		} else if !bytes.Equal(header.NextProposerAddress, result.NextProposerAddress) {
-			return types.State{}, fmt.Errorf("next proposer mismatch: header %x, execution %x", header.NextProposerAddress, result.NextProposerAddress)
-		}
-		header.InvalidateHash()
-	} else if len(header.NextProposerAddress) > 0 && !bytes.Equal(header.NextProposerAddress, header.ProposerAddress) {
-		return types.State{}, fmt.Errorf("next proposer mismatch: header %x, execution unchanged", header.NextProposerAddress)
-	}
 
 	// Create new state
-	newState, err := currentState.NextState(header, result.UpdatedStateRoot)
+	newState, err := currentState.NextState(header, result.UpdatedStateRoot, result.NextProposerAddress)
 	if err != nil {
 		return types.State{}, fmt.Errorf("failed to create next state: %w", err)
 	}
