@@ -85,8 +85,14 @@ func TestAddFlags(t *testing.T) {
 
 	// DA Fiber flags
 	assertFlagValue(t, flags, FlagDAFiberEnabled, DefaultConfig().DA.Fiber.Enabled)
-	assertFlagValue(t, flags, FlagDAFiberStateAddress, DefaultConfig().DA.Fiber.StateAddress)
+	assertFlagValue(t, flags, FlagDAFiberConsensusAddress, DefaultConfig().DA.Fiber.ConsensusAddress)
+	assertFlagValue(t, flags, FlagDAFiberConsensusTLS, DefaultConfig().DA.Fiber.ConsensusTLS)
+	assertFlagValue(t, flags, FlagDAFiberConsensusAuthToken, DefaultConfig().DA.Fiber.ConsensusAuthToken)
+	assertFlagValue(t, flags, FlagDAFiberBridgeAddress, DefaultConfig().DA.Fiber.BridgeAddress)
+	assertFlagValue(t, flags, FlagDAFiberBridgeAuthToken, DefaultConfig().DA.Fiber.BridgeAuthToken)
 	assertFlagValue(t, flags, FlagDAFiberKeyName, DefaultConfig().DA.Fiber.KeyName)
+	assertFlagValue(t, flags, FlagDAFiberUploadConcurrency, DefaultConfig().DA.Fiber.UploadConcurrency)
+	assertFlagValue(t, flags, FlagDAFiberDownloadConcurrency, DefaultConfig().DA.Fiber.DownloadConcurrency)
 
 	// P2P flags
 	assertFlagValue(t, flags, FlagP2PListenAddress, DefaultConfig().P2P.ListenAddress)
@@ -153,7 +159,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagPruningInterval, DefaultConfig().Pruning.Interval.Duration)
 
 	// Count the number of flags we're explicitly checking
-	expectedFlagCount := 84 // Update this number if you add more flag checks above
+	expectedFlagCount := 91 // Update this number if you add more flag checks above
 
 	// Get the actual number of flags (both regular and persistent)
 	actualFlagCount := 0
