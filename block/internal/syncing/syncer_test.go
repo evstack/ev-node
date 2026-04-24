@@ -146,7 +146,7 @@ func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 	addr, pub, signer := buildSyncTestSigner(t)
 
 	cfg := config.DefaultConfig()
-	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second)}
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), nil).Once()
 
@@ -189,6 +189,60 @@ func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 	_, header = makeSignedHeaderBytes(t, gen.ChainID, 2, addr, pub, signer, nil, nil, nil)
 	err = s.ValidateBlock(t.Context(), s.getLastState(), data, header)
 	require.Error(t, err)
+}
+
+func TestSyncer_ValidateBlock_UsesStateNextProposer(t *testing.T) {
+	addr, _, _ := buildSyncTestSigner(t)
+	badAddr, badPub, badSigner := buildSyncTestSigner(t)
+
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second)}
+	data := makeData(gen.ChainID, 1, 1)
+	_, header := makeSignedHeaderBytes(t, gen.ChainID, 1, badAddr, badPub, badSigner, []byte("app0"), data, nil)
+
+	s := &Syncer{logger: zerolog.Nop()}
+	state := types.State{
+		ChainID:             gen.ChainID,
+		InitialHeight:       gen.InitialHeight,
+		LastBlockHeight:     gen.InitialHeight - 1,
+		LastBlockTime:       gen.StartTime,
+		AppHash:             []byte("app0"),
+		NextProposerAddress: addr,
+	}
+
+	err := s.ValidateBlock(t.Context(), state, data, header)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unexpected proposer")
+}
+
+func TestSyncer_ApplyBlockRejectsExecutionNextProposerMismatch(t *testing.T) {
+	addr, _, _ := buildSyncTestSigner(t)
+	headerNext := []byte("header-next-proposer")
+	execNext := []byte("execution-next-proposer")
+
+	mockExec := testmocks.NewMockExecutor(t)
+	data := makeData("tchain", 1, 1)
+	header := types.Header{
+		BaseHeader:          types.BaseHeader{ChainID: "tchain", Height: 1, Time: uint64(time.Now().UnixNano())},
+		ProposerAddress:     addr,
+		NextProposerAddress: headerNext,
+	}
+	currentState := types.State{AppHash: []byte("app0"), NextProposerAddress: addr}
+
+	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.Anything, currentState.AppHash).
+		Return(execution.ExecuteResult{
+			UpdatedStateRoot:    []byte("app1"),
+			NextProposerAddress: execNext,
+		}, nil).Once()
+
+	s := &Syncer{
+		exec:   mockExec,
+		ctx:    t.Context(),
+		logger: zerolog.Nop(),
+	}
+
+	_, err := s.ApplyBlock(t.Context(), header, data, currentState)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "next proposer mismatch")
 }
 
 func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
@@ -936,7 +990,7 @@ func TestSyncer_executeTxsWithRetry(t *testing.T) {
 
 				if tt.expectSuccess {
 					require.NoError(t, err)
-					assert.Equal(t, tt.expectHash, result)
+					assert.Equal(t, tt.expectHash, result.UpdatedStateRoot)
 				} else {
 					require.Error(t, err)
 					if tt.expectError != "" {

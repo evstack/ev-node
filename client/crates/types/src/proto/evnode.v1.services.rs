@@ -439,6 +439,9 @@ pub struct Header {
     /// Chain ID the block belongs to
     #[prost(string, tag = "12")]
     pub chain_id: ::prost::alloc::string::String,
+    /// Proposer address selected by this block's execution result for the next block.
+    #[prost(bytes = "vec", tag = "13")]
+    pub next_proposer_address: ::prost::alloc::vec::Vec<u8>,
 }
 /// SignedHeader is a header with a signature and a signer.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -449,6 +452,19 @@ pub struct SignedHeader {
     pub signature: ::prost::alloc::vec::Vec<u8>,
     #[prost(message, optional, tag = "3")]
     pub signer: ::core::option::Option<Signer>,
+}
+/// DAHeaderEnvelope is a wrapper around SignedHeader for DA submission.
+/// It is binary compatible with SignedHeader (fields 1-3) but adds an envelope signature.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct DaHeaderEnvelope {
+    #[prost(message, optional, tag = "1")]
+    pub header: ::core::option::Option<Header>,
+    #[prost(bytes = "vec", tag = "2")]
+    pub signature: ::prost::alloc::vec::Vec<u8>,
+    #[prost(message, optional, tag = "3")]
+    pub signer: ::core::option::Option<Signer>,
+    #[prost(bytes = "vec", tag = "4")]
+    pub envelope_signature: ::prost::alloc::vec::Vec<u8>,
 }
 /// Signer is a signer of a block in the blockchain.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -513,6 +529,28 @@ pub struct Vote {
     #[prost(bytes = "vec", tag = "5")]
     pub validator_address: ::prost::alloc::vec::Vec<u8>,
 }
+/// P2PSignedHeader
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct P2pSignedHeader {
+    #[prost(message, optional, tag = "1")]
+    pub header: ::core::option::Option<Header>,
+    #[prost(bytes = "vec", tag = "2")]
+    pub signature: ::prost::alloc::vec::Vec<u8>,
+    #[prost(message, optional, tag = "3")]
+    pub signer: ::core::option::Option<Signer>,
+    #[prost(uint64, optional, tag = "4")]
+    pub da_height_hint: ::core::option::Option<u64>,
+}
+/// P2PData
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct P2pData {
+    #[prost(message, optional, tag = "1")]
+    pub metadata: ::core::option::Option<Metadata>,
+    #[prost(bytes = "vec", repeated, tag = "2")]
+    pub txs: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
+    #[prost(uint64, optional, tag = "3")]
+    pub da_height_hint: ::core::option::Option<u64>,
+}
 /// State is the state of the blockchain.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct State {
@@ -532,6 +570,26 @@ pub struct State {
     pub app_hash: ::prost::alloc::vec::Vec<u8>,
     #[prost(bytes = "vec", tag = "9")]
     pub last_header_hash: ::prost::alloc::vec::Vec<u8>,
+    #[prost(bytes = "vec", tag = "10")]
+    pub next_proposer_address: ::prost::alloc::vec::Vec<u8>,
+}
+/// RaftBlockState represents a replicated block state
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct RaftBlockState {
+    #[prost(uint64, tag = "1")]
+    pub height: u64,
+    #[prost(uint64, tag = "2")]
+    pub last_submitted_da_header_height: u64,
+    #[prost(uint64, tag = "3")]
+    pub last_submitted_da_data_height: u64,
+    #[prost(bytes = "vec", tag = "4")]
+    pub hash: ::prost::alloc::vec::Vec<u8>,
+    #[prost(uint64, tag = "5")]
+    pub timestamp: u64,
+    #[prost(bytes = "vec", tag = "6")]
+    pub header: ::prost::alloc::vec::Vec<u8>,
+    #[prost(bytes = "vec", tag = "7")]
+    pub data: ::prost::alloc::vec::Vec<u8>,
 }
 /// SequencerDACheckpoint tracks the position in the DA where transactions were last processed
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
@@ -957,6 +1015,17 @@ pub struct Batch {
     #[prost(bytes = "vec", repeated, tag = "1")]
     pub txs: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
 }
+/// BlockData contains data retrieved from a single DA height.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct BlockData {
+    #[prost(uint64, tag = "1")]
+    pub height: u64,
+    /// Unix timestamp in nanoseconds
+    #[prost(int64, tag = "2")]
+    pub timestamp: i64,
+    #[prost(bytes = "vec", repeated, tag = "3")]
+    pub blobs: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
+}
 /// InitChainRequest contains the genesis parameters for chain initialization
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct InitChainRequest {
@@ -976,9 +1045,6 @@ pub struct InitChainResponse {
     /// Hash representing initial state
     #[prost(bytes = "vec", tag = "1")]
     pub state_root: ::prost::alloc::vec::Vec<u8>,
-    /// Maximum allowed bytes for transactions in a block
-    #[prost(uint64, tag = "2")]
-    pub max_bytes: u64,
 }
 /// GetTxsRequest is the request for fetching transactions
 ///
@@ -1017,6 +1083,10 @@ pub struct ExecuteTxsResponse {
     /// Maximum allowed transaction size (may change with protocol updates)
     #[prost(uint64, tag = "2")]
     pub max_bytes: u64,
+    /// Proposer address that should sign the next block.
+    /// Empty means the current proposer remains active.
+    #[prost(bytes = "vec", tag = "3")]
+    pub next_proposer_address: ::prost::alloc::vec::Vec<u8>,
 }
 /// SetFinalRequest marks a block as finalized
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
@@ -1030,6 +1100,77 @@ pub struct SetFinalRequest {
 /// Empty response, errors are returned via gRPC status
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SetFinalResponse {}
+/// GetExecutionInfoRequest requests execution layer parameters
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetExecutionInfoRequest {}
+/// GetExecutionInfoResponse contains execution layer parameters
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetExecutionInfoResponse {
+    /// Maximum gas allowed for transactions in a block
+    /// For non-gas-based execution layers, this should be 0
+    #[prost(uint64, tag = "1")]
+    pub max_gas: u64,
+    /// Proposer address that should sign the next block from the execution
+    /// layer's current view. Empty means unchanged or unavailable.
+    #[prost(bytes = "vec", tag = "2")]
+    pub next_proposer_address: ::prost::alloc::vec::Vec<u8>,
+}
+/// FilterTxsRequest contains transactions to validate and filter
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct FilterTxsRequest {
+    /// All transactions (force-included + mempool)
+    #[prost(bytes = "vec", repeated, tag = "1")]
+    pub txs: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
+    /// Maximum cumulative size allowed (0 means no size limit)
+    #[prost(uint64, tag = "2")]
+    pub max_bytes: u64,
+    /// Maximum cumulative gas allowed (0 means no gas limit)
+    #[prost(uint64, tag = "3")]
+    pub max_gas: u64,
+    /// Whether force-included transactions are present
+    #[prost(bool, tag = "4")]
+    pub has_force_included_transaction: bool,
+}
+/// FilterTxsResponse contains the filter status for each transaction
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct FilterTxsResponse {
+    /// Filter status for each transaction (same length as txs in request)
+    #[prost(enumeration = "FilterStatus", repeated, tag = "1")]
+    pub statuses: ::prost::alloc::vec::Vec<i32>,
+}
+/// FilterStatus represents the result of filtering a transaction
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum FilterStatus {
+    /// Transaction will make it to the next batch
+    FilterOk = 0,
+    /// Transaction will be filtered out because invalid (too big, malformed, etc.)
+    FilterRemove = 1,
+    /// Transaction is valid but postponed for later processing due to size/gas constraint
+    FilterPostpone = 2,
+}
+impl FilterStatus {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::FilterOk => "FILTER_OK",
+            Self::FilterRemove => "FILTER_REMOVE",
+            Self::FilterPostpone => "FILTER_POSTPONE",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "FILTER_OK" => Some(Self::FilterOk),
+            "FILTER_REMOVE" => Some(Self::FilterRemove),
+            "FILTER_POSTPONE" => Some(Self::FilterPostpone),
+            _ => None,
+        }
+    }
+}
 /// Generated client implementations.
 pub mod executor_service_client {
     #![allow(
@@ -1219,6 +1360,58 @@ pub mod executor_service_client {
                 .insert(GrpcMethod::new("evnode.v1.ExecutorService", "SetFinal"));
             self.inner.unary(req, path, codec).await
         }
+        /// GetExecutionInfo returns current execution layer parameters
+        pub async fn get_execution_info(
+            &mut self,
+            request: impl tonic::IntoRequest<super::GetExecutionInfoRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetExecutionInfoResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/evnode.v1.ExecutorService/GetExecutionInfo",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new("evnode.v1.ExecutorService", "GetExecutionInfo"),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+        /// FilterTxs validates force-included transactions and calculates gas for all transactions
+        pub async fn filter_txs(
+            &mut self,
+            request: impl tonic::IntoRequest<super::FilterTxsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::FilterTxsResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/evnode.v1.ExecutorService/FilterTxs",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("evnode.v1.ExecutorService", "FilterTxs"));
+            self.inner.unary(req, path, codec).await
+        }
     }
 }
 /// Generated server implementations.
@@ -1261,6 +1454,22 @@ pub mod executor_service_server {
             request: tonic::Request<super::SetFinalRequest>,
         ) -> std::result::Result<
             tonic::Response<super::SetFinalResponse>,
+            tonic::Status,
+        >;
+        /// GetExecutionInfo returns current execution layer parameters
+        async fn get_execution_info(
+            &self,
+            request: tonic::Request<super::GetExecutionInfoRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetExecutionInfoResponse>,
+            tonic::Status,
+        >;
+        /// FilterTxs validates force-included transactions and calculates gas for all transactions
+        async fn filter_txs(
+            &self,
+            request: tonic::Request<super::FilterTxsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::FilterTxsResponse>,
             tonic::Status,
         >;
     }
@@ -1506,6 +1715,97 @@ pub mod executor_service_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let method = SetFinalSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/evnode.v1.ExecutorService/GetExecutionInfo" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetExecutionInfoSvc<T: ExecutorService>(pub Arc<T>);
+                    impl<
+                        T: ExecutorService,
+                    > tonic::server::UnaryService<super::GetExecutionInfoRequest>
+                    for GetExecutionInfoSvc<T> {
+                        type Response = super::GetExecutionInfoResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::GetExecutionInfoRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as ExecutorService>::get_execution_info(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetExecutionInfoSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/evnode.v1.ExecutorService/FilterTxs" => {
+                    #[allow(non_camel_case_types)]
+                    struct FilterTxsSvc<T: ExecutorService>(pub Arc<T>);
+                    impl<
+                        T: ExecutorService,
+                    > tonic::server::UnaryService<super::FilterTxsRequest>
+                    for FilterTxsSvc<T> {
+                        type Response = super::FilterTxsResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::FilterTxsRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as ExecutorService>::filter_txs(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = FilterTxsSvc(inner);
                         let codec = tonic_prost::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(

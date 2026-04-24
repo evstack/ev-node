@@ -4,27 +4,16 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/libp2p/go-libp2p/core/crypto"
-
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/types"
 )
-
-func assertExpectedProposer(genesis genesis.Genesis, height uint64, proposerAddr []byte, pubKey crypto.PubKey) error {
-	if err := genesis.ValidateProposer(height, proposerAddr, pubKey); err != nil {
-		return fmt.Errorf("unexpected proposer at height %d: %w", height, err)
-	}
-
-	return nil
-}
 
 func assertValidSignedData(signedData *types.SignedData, genesis genesis.Genesis) error {
 	if signedData == nil || signedData.Txs == nil {
 		return errors.New("empty signed data")
 	}
-
-	if err := assertExpectedProposer(genesis, signedData.Height(), signedData.Signer.Address, signedData.Signer.PubKey); err != nil {
-		return err
+	if signedData.Signer.PubKey == nil {
+		return errors.New("missing signer public key in signed data")
 	}
 
 	dataBytes, err := signedData.Data.MarshalBinary()

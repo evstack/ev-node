@@ -142,11 +142,12 @@ func (s *StoreServer) GetState(
 
 	// Convert state to protobuf type
 	pbState := &pb.State{
-		AppHash:         state.AppHash,
-		LastBlockHeight: state.LastBlockHeight,
-		LastBlockTime:   timestamppb.New(state.LastBlockTime),
-		DaHeight:        state.DAHeight,
-		ChainId:         state.ChainID,
+		AppHash:             state.AppHash,
+		LastBlockHeight:     state.LastBlockHeight,
+		LastBlockTime:       timestamppb.New(state.LastBlockTime),
+		DaHeight:            state.DAHeight,
+		ChainId:             state.ChainID,
+		NextProposerAddress: state.NextProposerAddress,
 		Version: &pb.Version{
 			Block: state.Version.Block,
 			App:   state.Version.App,

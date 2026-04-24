@@ -152,11 +152,12 @@ func (s *Replayer) replayBlock(ctx context.Context, height uint64) error {
 	if height == s.genesis.InitialHeight {
 		// For the first block, use genesis state.
 		prevState = types.State{
-			ChainID:         s.genesis.ChainID,
-			InitialHeight:   s.genesis.InitialHeight,
-			LastBlockHeight: s.genesis.InitialHeight - 1,
-			LastBlockTime:   s.genesis.StartTime,
-			AppHash:         header.AppHash, // Genesis app hash (input to first block execution)
+			ChainID:             s.genesis.ChainID,
+			InitialHeight:       s.genesis.InitialHeight,
+			LastBlockHeight:     s.genesis.InitialHeight - 1,
+			LastBlockTime:       s.genesis.StartTime,
+			AppHash:             header.AppHash, // Genesis app hash (input to first block execution)
+			NextProposerAddress: append([]byte(nil), s.genesis.ProposerAddress...),
 		}
 	} else {
 		// GetStateAtHeight(height-1) returns the state AFTER block height-1 was executed,
@@ -179,9 +180,24 @@ func (s *Replayer) replayBlock(ctx context.Context, height uint64) error {
 		Int("tx_count", len(rawTxs)).
 		Msg("executing transactions on execution layer")
 
-	newAppHash, err := s.exec.ExecuteTxs(ctx, rawTxs, height, header.Time(), prevState.AppHash)
+	result, err := s.exec.ExecuteTxs(ctx, rawTxs, height, header.Time(), prevState.AppHash)
 	if err != nil {
 		return fmt.Errorf("failed to execute transactions: %w", err)
+	}
+	newAppHash := result.UpdatedStateRoot
+	if len(result.NextProposerAddress) > 0 {
+		if len(header.NextProposerAddress) == 0 {
+			return fmt.Errorf("next proposer mismatch at height %d: header empty, execution %x", height, result.NextProposerAddress)
+		}
+		if !bytes.Equal(header.NextProposerAddress, result.NextProposerAddress) {
+			return fmt.Errorf("next proposer mismatch at height %d: header %x, execution %x",
+				height,
+				header.NextProposerAddress,
+				result.NextProposerAddress,
+			)
+		}
+	} else if len(header.NextProposerAddress) > 0 && !bytes.Equal(header.NextProposerAddress, header.ProposerAddress) {
+		return fmt.Errorf("next proposer mismatch at height %d: header %x, execution unchanged", height, header.NextProposerAddress)
 	}
 
 	// The result of ExecuteTxs (newAppHash) should match the stored state at this height.
@@ -206,6 +222,22 @@ func (s *Replayer) replayBlock(ctx context.Context, height uint64) error {
 				Err(err).
 				Msg("app hash mismatch during replay")
 			return err
+		}
+		if len(expectedState.NextProposerAddress) > 0 {
+			expectedNextProposer := header.NextProposerAddress
+			if len(expectedNextProposer) == 0 {
+				expectedNextProposer = result.NextProposerAddress
+			}
+			if len(expectedNextProposer) == 0 {
+				expectedNextProposer = header.ProposerAddress
+			}
+			if !bytes.Equal(expectedNextProposer, expectedState.NextProposerAddress) {
+				return fmt.Errorf("next proposer mismatch at height %d: expected %x got %x",
+					height,
+					expectedState.NextProposerAddress,
+					expectedNextProposer,
+				)
+			}
 		}
 		s.logger.Debug().
 			Uint64("height", height).

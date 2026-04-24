@@ -139,7 +139,7 @@ func setupFailoverState(
 		headerSyncService.Store(),
 		dataSyncService.Store(),
 		p2pClient,
-		genesis.InitialProposerAddress(),
+		genesis.ProposerAddress,
 		logger,
 		nodeConfig,
 		bestKnownHeightProvider,

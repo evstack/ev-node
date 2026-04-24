@@ -102,7 +102,7 @@ func (s *Server) ExecuteTxs(
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("prev_state_root is required"))
 	}
 
-	updatedStateRoot, err := s.executor.ExecuteTxs(
+	result, err := s.executor.ExecuteTxs(
 		ctx,
 		req.Msg.Txs,
 		req.Msg.BlockHeight,
@@ -114,7 +114,8 @@ func (s *Server) ExecuteTxs(
 	}
 
 	return connect.NewResponse(&pb.ExecuteTxsResponse{
-		UpdatedStateRoot: updatedStateRoot,
+		UpdatedStateRoot:    result.UpdatedStateRoot,
+		NextProposerAddress: result.NextProposerAddress,
 	}), nil
 }
 
@@ -150,7 +151,8 @@ func (s *Server) GetExecutionInfo(
 	}
 
 	return connect.NewResponse(&pb.GetExecutionInfoResponse{
-		MaxGas: info.MaxGas,
+		MaxGas:              info.MaxGas,
+		NextProposerAddress: info.NextProposerAddress,
 	}), nil
 }
 

@@ -194,7 +194,7 @@ func TestP2PHandler_ProcessHeight_SkipsWhenHeaderMissing(t *testing.T) {
 	p.DataStore.AssertNotCalled(t, "GetByHeight", mock.Anything, uint64(9))
 }
 
-func TestP2PHandler_ProcessHeight_SkipsOnProposerMismatch(t *testing.T) {
+func TestP2PHandler_ProcessHeight_AcceptsNonGenesisProposer(t *testing.T) {
 	p := setupP2P(t)
 	ctx := context.Background()
 	var err error
@@ -203,58 +203,11 @@ func TestP2PHandler_ProcessHeight_SkipsOnProposerMismatch(t *testing.T) {
 	require.NotEqual(t, string(p.Genesis.ProposerAddress), string(badAddr))
 
 	header := p2pMakeSignedHeader(t, p.Genesis.ChainID, 11, badAddr, pub, signer)
-	header.DataHash = common.DataHashForEmptyTxs
-
-	p.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(11)).Return(header, nil).Once()
-
-	ch := make(chan common.DAHeightEvent, 1)
-	err = p.Handler.ProcessHeight(ctx, 11, ch)
-	require.Error(t, err)
-
-	require.Empty(t, collectEvents(t, ch, 50*time.Millisecond))
-	p.DataStore.AssertNotCalled(t, "GetByHeight", mock.Anything, uint64(11))
-}
-
-func TestP2PHandler_ProcessHeight_RejectsHeaderHeightMismatch(t *testing.T) {
-	p := setupP2P(t)
-	ctx := context.Background()
-
-	header := p2pMakeSignedHeader(t, p.Genesis.ChainID, 12, p.ProposerAddr, p.ProposerPub, p.Signer)
-
-	p.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(10)).Return(header, nil).Once()
-
-	ch := make(chan common.DAHeightEvent, 1)
-	err := p.Handler.ProcessHeight(ctx, 10, ch)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "header height mismatch")
-
-	require.Empty(t, collectEvents(t, ch, 50*time.Millisecond))
-	p.DataStore.AssertNotCalled(t, "GetByHeight", mock.Anything, uint64(10))
-}
-
-func TestP2PHandler_ProcessHeight_AllowsScheduledProposerRotation(t *testing.T) {
-	p := setupP2P(t)
-	ctx := context.Background()
-
-	nextAddr, nextPub, nextSigner := buildTestSigner(t)
-
-	entry1, err := genesis.NewProposerScheduleEntry(p.Genesis.InitialHeight, p.ProposerPub)
-	require.NoError(t, err)
-	entry2, err := genesis.NewProposerScheduleEntry(11, nextPub)
-	require.NoError(t, err)
-
-	p.Genesis.ProposerAddress = entry1.Address
-	p.Genesis.ProposerSchedule = []genesis.ProposerScheduleEntry{entry1, entry2}
-	p.Genesis.DAEpochForcedInclusion = 1
-	require.NoError(t, p.Genesis.Validate())
-	p.Handler.genesis = p.Genesis
-
-	header := p2pMakeSignedHeader(t, p.Genesis.ChainID, 11, nextAddr, nextPub, nextSigner)
 	data := &types.P2PData{Data: makeData(p.Genesis.ChainID, 11, 1)}
 	header.DataHash = data.DACommitment()
 	bz, err := types.DefaultAggregatorNodeSignatureBytesProvider(&header.Header)
 	require.NoError(t, err)
-	sig, err := nextSigner.Sign(t.Context(), bz)
+	sig, err := signer.Sign(t.Context(), bz)
 	require.NoError(t, err)
 	header.Signature = sig
 
@@ -267,45 +220,7 @@ func TestP2PHandler_ProcessHeight_AllowsScheduledProposerRotation(t *testing.T) 
 
 	events := collectEvents(t, ch, 50*time.Millisecond)
 	require.Len(t, events, 1)
-	require.Equal(t, nextAddr, events[0].Header.ProposerAddress)
-}
-
-// TestP2PHandler_ProcessHeight_RejectsScheduledProposerBeforeActivation verifies
-// the counterpart to the rotation-allows test: a signer that IS in the schedule
-// but only active at a later height must not be accepted for blocks before the
-// activation height. Without the per-height check, any scheduled signer could
-// forge blocks outside their active window.
-func TestP2PHandler_ProcessHeight_RejectsScheduledProposerBeforeActivation(t *testing.T) {
-	p := setupP2P(t)
-	ctx := context.Background()
-
-	nextAddr, nextPub, nextSigner := buildTestSigner(t)
-
-	entry1, err := genesis.NewProposerScheduleEntry(p.Genesis.InitialHeight, p.ProposerPub)
-	require.NoError(t, err)
-	entry2, err := genesis.NewProposerScheduleEntry(11, nextPub)
-	require.NoError(t, err)
-
-	p.Genesis.ProposerAddress = entry1.Address
-	p.Genesis.ProposerSchedule = []genesis.ProposerScheduleEntry{entry1, entry2}
-	p.Genesis.DAEpochForcedInclusion = 1
-	require.NoError(t, p.Genesis.Validate())
-	p.Handler.genesis = p.Genesis
-
-	// entry2 is scheduled but only active at height 11. Height 10 still
-	// belongs to entry1, so a header from the next signer at height 10
-	// must be rejected.
-	header := p2pMakeSignedHeader(t, p.Genesis.ChainID, 10, nextAddr, nextPub, nextSigner)
-	header.DataHash = common.DataHashForEmptyTxs
-
-	p.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(10)).Return(header, nil).Once()
-
-	ch := make(chan common.DAHeightEvent, 1)
-	err = p.Handler.ProcessHeight(ctx, 10, ch)
-	require.Error(t, err)
-
-	require.Empty(t, collectEvents(t, ch, 50*time.Millisecond))
-	p.DataStore.AssertNotCalled(t, "GetByHeight", mock.Anything, uint64(10))
+	require.Equal(t, badAddr, events[0].Header.ProposerAddress)
 }
 
 func TestP2PHandler_ProcessedHeightSkipsPreviouslyHandledBlocks(t *testing.T) {

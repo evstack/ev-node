@@ -320,13 +320,17 @@ func (s *Syncer) initializeState() error {
 		}
 
 		state = types.State{
-			ChainID:         s.genesis.ChainID,
-			InitialHeight:   s.genesis.InitialHeight,
-			LastBlockHeight: s.genesis.InitialHeight - 1,
-			LastBlockTime:   s.genesis.StartTime,
-			DAHeight:        s.genesis.DAStartHeight,
-			AppHash:         stateRoot,
+			ChainID:             s.genesis.ChainID,
+			InitialHeight:       s.genesis.InitialHeight,
+			LastBlockHeight:     s.genesis.InitialHeight - 1,
+			LastBlockTime:       s.genesis.StartTime,
+			DAHeight:            s.genesis.DAStartHeight,
+			AppHash:             stateRoot,
+			NextProposerAddress: s.initialProposerAddress(s.ctx),
 		}
+	}
+	if len(state.NextProposerAddress) == 0 {
+		state.NextProposerAddress = s.initialProposerAddress(s.ctx)
 	}
 	if state.DAHeight != 0 && state.DAHeight < s.genesis.DAStartHeight {
 		return fmt.Errorf("DA height (%d) is lower than DA start height (%d)", state.DAHeight, s.genesis.DAStartHeight)
@@ -396,6 +400,18 @@ func (s *Syncer) initializeState() error {
 	}
 
 	return nil
+}
+
+func (s *Syncer) initialProposerAddress(ctx context.Context) []byte {
+	if s.exec != nil {
+		info, err := s.exec.GetExecutionInfo(ctx)
+		if err != nil {
+			s.logger.Warn().Err(err).Msg("failed to get execution info for proposer, falling back to genesis proposer")
+		} else if len(info.NextProposerAddress) > 0 {
+			return append([]byte(nil), info.NextProposerAddress...)
+		}
+	}
+	return append([]byte(nil), s.genesis.ProposerAddress...)
 }
 
 // processLoop is the main coordination loop for processing events
@@ -816,14 +832,24 @@ func (s *Syncer) ApplyBlock(ctx context.Context, header types.Header, data *type
 
 	// Execute transactions
 	ctx = context.WithValue(ctx, types.HeaderContextKey, header)
-	newAppHash, err := s.executeTxsWithRetry(ctx, rawTxs, header, currentState)
+	result, err := s.executeTxsWithRetry(ctx, rawTxs, header, currentState)
 	if err != nil {
 		s.sendCriticalError(fmt.Errorf("failed to execute transactions: %w", err))
 		return types.State{}, fmt.Errorf("failed to execute transactions: %w", err)
 	}
+	if len(result.NextProposerAddress) > 0 {
+		if len(header.NextProposerAddress) == 0 {
+			return types.State{}, fmt.Errorf("next proposer mismatch: header empty, execution %x", result.NextProposerAddress)
+		}
+		if !bytes.Equal(header.NextProposerAddress, result.NextProposerAddress) {
+			return types.State{}, fmt.Errorf("next proposer mismatch: header %x, execution %x", header.NextProposerAddress, result.NextProposerAddress)
+		}
+	} else if len(header.NextProposerAddress) > 0 && !bytes.Equal(header.NextProposerAddress, header.ProposerAddress) {
+		return types.State{}, fmt.Errorf("next proposer mismatch: header %x, execution unchanged", header.NextProposerAddress)
+	}
 
 	// Create new state
-	newState, err := currentState.NextState(header, newAppHash)
+	newState, err := currentState.NextState(header, result.UpdatedStateRoot)
 	if err != nil {
 		return types.State{}, fmt.Errorf("failed to create next state: %w", err)
 	}
@@ -833,12 +859,12 @@ func (s *Syncer) ApplyBlock(ctx context.Context, header types.Header, data *type
 
 // executeTxsWithRetry executes transactions with retry logic.
 // NOTE: the function retries the execution client call regardless of the error. Some execution clients errors are irrecoverable, and will eventually halt the node, as expected.
-func (s *Syncer) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, header types.Header, currentState types.State) ([]byte, error) {
+func (s *Syncer) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, header types.Header, currentState types.State) (coreexecutor.ExecuteResult, error) {
 	for attempt := 1; attempt <= common.MaxRetriesBeforeHalt; attempt++ {
-		newAppHash, err := s.exec.ExecuteTxs(ctx, rawTxs, header.Height(), header.Time(), currentState.AppHash)
+		result, err := s.exec.ExecuteTxs(ctx, rawTxs, header.Height(), header.Time(), currentState.AppHash)
 		if err != nil {
 			if attempt == common.MaxRetriesBeforeHalt {
-				return nil, fmt.Errorf("failed to execute transactions: %w", err)
+				return coreexecutor.ExecuteResult{}, fmt.Errorf("failed to execute transactions: %w", err)
 			}
 
 			s.logger.Error().Err(err).
@@ -851,14 +877,14 @@ func (s *Syncer) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, heade
 			case <-time.After(common.MaxRetriesTimeout):
 				continue
 			case <-ctx.Done():
-				return nil, fmt.Errorf("context cancelled during retry: %w", ctx.Err())
+				return coreexecutor.ExecuteResult{}, fmt.Errorf("context cancelled during retry: %w", ctx.Err())
 			}
 		}
 
-		return newAppHash, nil
+		return result, nil
 	}
 
-	return nil, nil
+	return coreexecutor.ExecuteResult{}, nil
 }
 
 // ValidateBlock validates a synced block

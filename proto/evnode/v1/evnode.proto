@@ -38,6 +38,8 @@ message Header {
   bytes validator_hash = 11;
   // Chain ID the block belongs to
   string chain_id = 12;
+  // Proposer address selected by this block's execution result for the next block.
+  bytes next_proposer_address = 13;
 
   reserved 5, 7, 9;
 }

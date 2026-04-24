@@ -82,6 +82,11 @@ type Header struct {
 	// pubkey can't be recovered by the signature (e.g. ed25519).
 	ProposerAddress []byte // original proposer of the block
 
+	// NextProposerAddress is selected by executing this block and becomes the
+	// proposer expected for the next block. Empty means the current proposer
+	// remains active.
+	NextProposerAddress []byte
+
 	// Legacy holds fields that were removed from the canonical header JSON/Go
 	// representation but may still be required for backwards compatible binary
 	// serialization (e.g. legacy signing payloads).
@@ -124,11 +129,15 @@ func (h *Header) Time() time.Time {
 
 // Verify verifies the header.
 func (h *Header) Verify(untrstH *Header) error {
-	if !bytes.Equal(untrstH.ProposerAddress, h.ProposerAddress) {
+	expectedProposer := h.ProposerAddress
+	if len(h.NextProposerAddress) > 0 {
+		expectedProposer = h.NextProposerAddress
+	}
+	if !bytes.Equal(untrstH.ProposerAddress, expectedProposer) {
 		return &header.VerifyError{
 			Reason: fmt.Errorf("%w: expected proposer (%X) got (%X)",
 				ErrProposerVerificationFailed,
-				h.ProposerAddress,
+				expectedProposer,
 				untrstH.ProposerAddress,
 			),
 		}
@@ -270,6 +279,7 @@ func (h Header) Clone() Header {
 	clone.AppHash = cloneBytes(h.AppHash)
 	clone.ValidatorHash = cloneBytes(h.ValidatorHash)
 	clone.ProposerAddress = cloneBytes(h.ProposerAddress)
+	clone.NextProposerAddress = cloneBytes(h.NextProposerAddress)
 	clone.Legacy = h.Legacy.Clone()
 	clone.cachedHash = nil
 

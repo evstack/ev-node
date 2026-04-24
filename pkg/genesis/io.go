@@ -72,12 +72,12 @@ func LoadGenesis(genesisPath string) (Genesis, error) {
 		return Genesis{}, err
 	}
 
-	return genesis.normalized(), nil
+	return genesis, nil
 }
 
 // Save saves the genesis state to the specified file path.
 func (g Genesis) Save(genesisPath string) error {
-	genesisJSON, err := json.MarshalIndent(g.normalized(), "", "  ")
+	genesisJSON, err := json.MarshalIndent(g, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal genesis state: %w", err)
 	}

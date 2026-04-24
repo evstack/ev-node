@@ -1,6 +1,7 @@
 package submitting
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -362,6 +363,14 @@ func (s *DASubmitter) signEnvelopesParallel(
 
 // signAndCacheEnvelope signs a single header and caches the result.
 func (s *DASubmitter) signAndCacheEnvelope(ctx context.Context, header *types.SignedHeader, marshalledHeader []byte, signer signer.Signer) ([]byte, error) {
+	addr, err := signer.GetAddress()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get signer address: %w", err)
+	}
+	if len(header.Signer.Address) > 0 && !bytes.Equal(addr, header.Signer.Address) {
+		return nil, fmt.Errorf("envelope signer address mismatch: got %x, expected %x", addr, header.Signer.Address)
+	}
+
 	// Sign the pre-marshalled header content
 	envelopeSignature, err := signer.Sign(ctx, marshalledHeader)
 	if err != nil {
@@ -460,7 +469,7 @@ func (s *DASubmitter) SubmitData(ctx context.Context, unsignedDataList []*types.
 }
 
 // signData signs unsigned SignedData structs returned from cache
-func (s *DASubmitter) signData(ctx context.Context, unsignedDataList []*types.SignedData, unsignedDataListBz [][]byte, signer signer.Signer, genesis genesis.Genesis) ([]*types.SignedData, [][]byte, error) {
+func (s *DASubmitter) signData(ctx context.Context, unsignedDataList []*types.SignedData, unsignedDataListBz [][]byte, signer signer.Signer, _ genesis.Genesis) ([]*types.SignedData, [][]byte, error) {
 	if signer == nil {
 		return nil, nil, fmt.Errorf("signer is nil")
 	}
@@ -487,10 +496,6 @@ func (s *DASubmitter) signData(ctx context.Context, unsignedDataList []*types.Si
 		// Skip empty data
 		if len(unsignedData.Txs) == 0 {
 			continue
-		}
-
-		if err := genesis.ValidateProposer(unsignedData.Height(), addr, pubKey); err != nil {
-			return nil, nil, fmt.Errorf("signer does not match proposer schedule for data at height %d: %w", unsignedData.Height(), err)
 		}
 
 		signature, err := signer.Sign(ctx, unsignedDataListBz[i])

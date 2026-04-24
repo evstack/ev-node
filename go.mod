@@ -51,6 +51,8 @@ require (
 	gotest.tools/v3 v3.5.2
 )
 
+replace github.com/evstack/ev-node/core => ./core
+
 require (
 	cloud.google.com/go v0.123.0 // indirect
 	cloud.google.com/go/auth v0.18.2 // indirect

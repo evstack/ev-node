@@ -298,10 +298,6 @@ function sidebarHome() {
           link: "/guides/create-genesis",
         },
         {
-          text: "Rotate proposer key",
-          link: "/guides/operations/proposer-key-rotation",
-        },
-        {
           text: "Metrics",
           link: "/guides/metrics",
         },
