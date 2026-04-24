@@ -37,6 +37,8 @@ func (m *mockDASubmitterAPI) SubmitData(ctx context.Context, signedDataList []*t
 	return nil
 }
 
+func (m *mockDASubmitterAPI) Close() {}
+
 func setupDASubmitterTrace(t *testing.T, inner DASubmitterAPI) (DASubmitterAPI, *tracetest.SpanRecorder) {
 	t.Helper()
 	sr := tracetest.NewSpanRecorder()

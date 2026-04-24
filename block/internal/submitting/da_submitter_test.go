@@ -35,18 +35,15 @@ const (
 func setupDASubmitterTest(t *testing.T) (*DASubmitter, store.Store, cache.Manager, *mocks.MockClient, genesis.Genesis) {
 	t.Helper()
 
-	// Create store and cache
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
-	// Create config
 	cfg := config.DefaultConfig()
 	cfg.DA.Namespace = testHeaderNamespace
 	cfg.DA.DataNamespace = testDataNamespace
 
-	// Mock DA client
 	mockDA := mocks.NewMockClient(t)
 	headerNamespace := datypes.NamespaceFromString(cfg.DA.Namespace).Bytes()
 	dataNamespace := datypes.NamespaceFromString(cfg.DA.DataNamespace).Bytes()
@@ -55,7 +52,6 @@ func setupDASubmitterTest(t *testing.T) (*DASubmitter, store.Store, cache.Manage
 	mockDA.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 	mockDA.On("HasForcedInclusionNamespace").Return(false).Maybe()
 
-	// Create genesis
 	gen := genesis.Genesis{
 		ChainID:         "test-chain",
 		InitialHeight:   1,
@@ -63,7 +59,6 @@ func setupDASubmitterTest(t *testing.T) (*DASubmitter, store.Store, cache.Manage
 		ProposerAddress: []byte("test-proposer"),
 	}
 
-	// Create DA submitter
 	daSubmitter := NewDASubmitter(
 		mockDA,
 		cfg,
@@ -220,6 +215,8 @@ func TestDASubmitter_SubmitHeaders_Success(t *testing.T) {
 	require.NoError(t, err)
 	err = submitter.SubmitHeaders(ctx, headers, marshalledHeaders, cm, signer)
 	require.NoError(t, err)
+	submitter.Flush()
+	submitter.Close()
 
 	// Verify headers are marked as DA included
 	_, ok1 := cm.GetHeaderDAIncludedByHeight(1)
@@ -335,6 +332,8 @@ func TestDASubmitter_SubmitData_Success(t *testing.T) {
 	require.NoError(t, err)
 	err = submitter.SubmitData(ctx, signedDataList, marshalledData, cm, signer, gen)
 	require.NoError(t, err)
+	submitter.Flush()
+	submitter.Close()
 
 	// Verify data is marked as DA included
 	_, ok := cm.GetDataDAIncludedByHeight(1)

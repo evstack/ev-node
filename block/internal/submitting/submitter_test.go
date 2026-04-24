@@ -437,6 +437,8 @@ func (f *fakeDASubmitter) SubmitData(ctx context.Context, _ []*types.SignedData,
 	return nil
 }
 
+func (f *fakeDASubmitter) Close() {}
+
 // fakeSigner implements signer.Signer with deterministic behavior for tests.
 type fakeSigner struct{}
 
