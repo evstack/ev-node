@@ -215,7 +215,6 @@ func TestDASubmitter_SubmitHeaders_Success(t *testing.T) {
 	require.NoError(t, err)
 	err = submitter.SubmitHeaders(ctx, headers, marshalledHeaders, cm, signer)
 	require.NoError(t, err)
-	submitter.Flush()
 	submitter.Close()
 
 	// Verify headers are marked as DA included
@@ -332,7 +331,6 @@ func TestDASubmitter_SubmitData_Success(t *testing.T) {
 	require.NoError(t, err)
 	err = submitter.SubmitData(ctx, signedDataList, marshalledData, cm, signer, gen)
 	require.NoError(t, err)
-	submitter.Flush()
 	submitter.Close()
 
 	// Verify data is marked as DA included

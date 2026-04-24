@@ -222,20 +222,17 @@ func NewDASubmitter(
 }
 
 func (s *DASubmitter) Close() {
-	if s.workerCancel != nil {
-		s.Flush()
-		s.workerCancel()
-		s.workerWg.Wait()
+	if s.workerCancel == nil {
+		return
 	}
-}
-
-func (s *DASubmitter) Flush() {
 	headerDone := make(chan struct{})
 	s.headerFlushCh <- headerDone
 	dataDone := make(chan struct{})
 	s.dataFlushCh <- dataDone
 	<-headerDone
 	<-dataDone
+	s.workerCancel()
+	s.workerWg.Wait()
 }
 
 func (s *DASubmitter) runNamespaceWorker(ctx context.Context, ch chan *batchGroup, flushCh chan chan struct{}, itemType string, namespace []byte) {
