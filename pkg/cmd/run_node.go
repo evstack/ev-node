@@ -161,12 +161,15 @@ func StartNode(
 		mainKV := store.NewEvNodeKVStore(datastore)
 		baseStore := store.New(mainKV)
 
+		var latestDAHeight uint64
 		latestState, err := baseStore.GetState(cmd.Context())
 		if err != nil {
-			return fmt.Errorf("failed getting latest state to construct fiber client: %w", err)
+			latestDAHeight = genesis.DAStartHeight
+		} else {
+			latestDAHeight = latestState.DAHeight
 		}
 
-		daClient = block.NewFiberDAClient(fiberClient, nodeConfig, logger, latestState.DAHeight)
+		daClient = block.NewFiberDAClient(fiberClient, nodeConfig, logger, latestDAHeight)
 	} else {
 		blobClient, err := blobrpc.NewWSClient(ctx, logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
 		if err != nil {
