@@ -140,7 +140,7 @@ func TestGenesis_Validate(t *testing.T) {
 }
 
 func TestGenesis_ValidateProposerSchedule(t *testing.T) {
-	validTime := time.Now().UTC()
+	validTime := time.Unix(1_700_000_000, 0).UTC()
 
 	newEntry := func(startHeight uint64) (ProposerScheduleEntry, crypto.PubKey) {
 		_, pub, err := crypto.GenerateEd25519Key(rand.Reader)
@@ -230,11 +230,11 @@ func TestGenesis_ValidateProposerSchedule(t *testing.T) {
 					ChainID:                "c",
 					StartTime:              validTime,
 					InitialHeight:          1,
-					ProposerSchedule:       []ProposerScheduleEntry{entry20, entry10},
+					ProposerSchedule:       []ProposerScheduleEntry{entry1, entry20, entry10},
 					DAEpochForcedInclusion: 1,
 				}
 			},
-			wantErr: "start_height must equal initial_height",
+			wantErr: "strictly increasing",
 		},
 		{
 			name: "invalid - entry address does not match pub_key",

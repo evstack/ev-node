@@ -215,6 +215,23 @@ func TestP2PHandler_ProcessHeight_SkipsOnProposerMismatch(t *testing.T) {
 	p.DataStore.AssertNotCalled(t, "GetByHeight", mock.Anything, uint64(11))
 }
 
+func TestP2PHandler_ProcessHeight_RejectsHeaderHeightMismatch(t *testing.T) {
+	p := setupP2P(t)
+	ctx := context.Background()
+
+	header := p2pMakeSignedHeader(t, p.Genesis.ChainID, 12, p.ProposerAddr, p.ProposerPub, p.Signer)
+
+	p.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(10)).Return(header, nil).Once()
+
+	ch := make(chan common.DAHeightEvent, 1)
+	err := p.Handler.ProcessHeight(ctx, 10, ch)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "header height mismatch")
+
+	require.Empty(t, collectEvents(t, ch, 50*time.Millisecond))
+	p.DataStore.AssertNotCalled(t, "GetByHeight", mock.Anything, uint64(10))
+}
+
 func TestP2PHandler_ProcessHeight_AllowsScheduledProposerRotation(t *testing.T) {
 	p := setupP2P(t)
 	ctx := context.Background()

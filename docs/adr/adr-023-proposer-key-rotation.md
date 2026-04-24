@@ -57,7 +57,7 @@ Each entry declares:
 
 - `start_height`
 - `address`
-- `pub_key`
+- `pub_key` (optional; when present, it must match `address`)
 
 The active proposer for block height `h` is the last entry whose `start_height <= h`.
 
@@ -68,8 +68,9 @@ When an explicit schedule is present:
 
 - the first entry must start at `initial_height`
 - entries must be strictly increasing by `start_height`
-- each entry's `address` must match the configured `pub_key`
-- `proposer_address`, when present, must match the first schedule entry
+- if `pub_key` is present, the entry's `address` must match it
+- entries without `pub_key` are interpreted by `address` only
+- `proposer_address`, when present, must match the first schedule entry's `address`
 
 ## Detailed Design
 
@@ -86,8 +87,7 @@ Genesis gains:
   },
   {
     "start_height": 1250000,
-    "address": "...",
-    "pub_key": "..."
+    "address": "..."
   }
 ]
 ```
@@ -121,7 +121,7 @@ The old proposer remains valid for heights `< H`, and the new proposer becomes v
 
 ### Security considerations
 
-This design improves safety over address-only pinning by allowing validation against the scheduled public key.
+This design improves safety by allowing validation against the scheduled public key when one is pinned.
 It does not solve emergency rotation authorization by itself; a future design can add a separate upgrade authority
 or rotation certificate flow if the network needs signer replacement without prior static scheduling.
 

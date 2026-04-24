@@ -270,6 +270,7 @@ func TestEffectiveProposerSchedule_ExplicitScheduleIsDeepCopy(t *testing.T) {
 
 func TestEffectiveProposerSchedule_LegacyFallback(t *testing.T) {
 	addr := []byte("some-address-bytes")
+	origAddr := bytes.Clone(addr)
 	legacy := Genesis{
 		ChainID:         "c",
 		InitialHeight:   7,
@@ -283,7 +284,7 @@ func TestEffectiveProposerSchedule_LegacyFallback(t *testing.T) {
 
 	// mutating the derived slice must not affect the genesis backing data.
 	schedule[0].Address[0] ^= 0xFF
-	require.Equal(t, addr, legacy.ProposerAddress)
+	require.Equal(t, origAddr, legacy.ProposerAddress)
 }
 
 func TestEffectiveProposerSchedule_Empty(t *testing.T) {

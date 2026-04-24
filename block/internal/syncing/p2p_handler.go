@@ -81,6 +81,15 @@ func (h *P2PHandler) ProcessHeight(ctx context.Context, height uint64, heightInC
 		}
 		return err
 	}
+	if headerHeight := p2pHeader.Height(); headerHeight != height {
+		err := fmt.Errorf("header height mismatch: requested %d, got %d", height, headerHeight)
+		h.logger.Warn().
+			Uint64("requested_height", height).
+			Uint64("header_height", headerHeight).
+			Err(err).
+			Msg("discarding mismatched header from P2P")
+		return err
+	}
 	if err := h.assertExpectedProposer(p2pHeader.SignedHeader); err != nil {
 		h.logger.Debug().Uint64("height", height).Err(err).Msg("invalid header from P2P")
 		return err

@@ -7,6 +7,7 @@ import (
 
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
+	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,6 +20,8 @@ import (
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
 )
+
+var fixedExecutorTestStartTime = time.Unix(1_700_000_000, 0).UTC()
 
 func TestExecutor_BroadcasterIntegration(t *testing.T) {
 	// Create in-memory store
@@ -143,7 +146,7 @@ func TestExecutor_CreateBlock_UsesScheduledProposerForHeight(t *testing.T) {
 	gen := genesis.Genesis{
 		ChainID:                "test-chain",
 		InitialHeight:          1,
-		StartTime:              time.Now().Add(-time.Second),
+		StartTime:              fixedExecutorTestStartTime,
 		ProposerAddress:        entry1.Address,
 		ProposerSchedule:       []genesis.ProposerScheduleEntry{entry1, entry2},
 		DAEpochForcedInclusion: 1,
@@ -209,12 +212,91 @@ func TestExecutor_CreateBlock_UsesScheduledProposerForHeight(t *testing.T) {
 
 	header, data, err := executor.CreateBlock(context.Background(), 2, &BatchData{
 		Batch: &coreseq.Batch{},
-		Time:  time.Now(),
+		Time:  fixedExecutorTestStartTime.Add(time.Second),
 	})
 	require.NoError(t, err)
 	require.Equal(t, newAddr, header.ProposerAddress)
 	require.Equal(t, newAddr, header.Signer.Address)
 	require.Equal(t, uint64(2), data.Height())
+}
+
+func TestExecutor_CreateBlock_BasedSequencerUsesScheduledPubKey(t *testing.T) {
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	memStore := store.New(ds)
+
+	cacheManager, err := cache.NewManager(config.DefaultConfig(), memStore, zerolog.Nop())
+	require.NoError(t, err)
+
+	_, signerInfo, _ := buildTestSigner(t)
+	entry, err := genesis.NewProposerScheduleEntry(1, signerInfo.PubKey)
+	require.NoError(t, err)
+
+	gen := genesis.Genesis{
+		ChainID:                "test-chain",
+		InitialHeight:          1,
+		StartTime:              fixedExecutorTestStartTime,
+		ProposerAddress:        entry.Address,
+		ProposerSchedule:       []genesis.ProposerScheduleEntry{entry},
+		DAEpochForcedInclusion: 1,
+	}
+
+	cfg := config.DefaultConfig()
+	cfg.Node.BasedSequencer = true
+
+	wantValidatorHash := types.Hash{0x01}
+	hasherCalled := false
+	options := common.DefaultBlockOptions()
+	options.ValidatorHasherProvider = func(address []byte, pubKey crypto.PubKey) (types.Hash, error) {
+		hasherCalled = true
+		require.Equal(t, entry.Address, address)
+		require.NotNil(t, pubKey)
+
+		marshalledPubKey, err := crypto.MarshalPublicKey(pubKey)
+		require.NoError(t, err)
+		require.Equal(t, entry.PubKey, marshalledPubKey)
+
+		return wantValidatorHash, nil
+	}
+
+	executor, err := NewExecutor(
+		memStore,
+		nil,
+		nil,
+		nil,
+		cacheManager,
+		common.NopMetrics(),
+		cfg,
+		gen,
+		nil,
+		nil,
+		zerolog.Nop(),
+		options,
+		make(chan error, 1),
+		nil,
+	)
+	require.NoError(t, err)
+
+	executor.setLastState(types.State{
+		Version:       types.InitStateVersion,
+		ChainID:       gen.ChainID,
+		InitialHeight: gen.InitialHeight,
+		AppHash:       []byte("state-root-1"),
+	})
+
+	header, data, err := executor.CreateBlock(context.Background(), 1, &BatchData{
+		Batch: &coreseq.Batch{},
+		Time:  fixedExecutorTestStartTime,
+	})
+	require.NoError(t, err)
+	require.True(t, hasherCalled)
+	require.Equal(t, wantValidatorHash, header.ValidatorHash)
+	require.Equal(t, entry.Address, header.Signer.Address)
+	require.NotNil(t, header.Signer.PubKey)
+
+	marshalledPubKey, err := crypto.MarshalPublicKey(header.Signer.PubKey)
+	require.NoError(t, err)
+	require.Equal(t, entry.PubKey, marshalledPubKey)
+	require.Equal(t, uint64(1), data.Height())
 }
 
 // TestNewExecutor_RejectsSignerOutsideSchedule verifies that a signer whose
@@ -237,7 +319,7 @@ func TestNewExecutor_RejectsSignerOutsideSchedule(t *testing.T) {
 	gen := genesis.Genesis{
 		ChainID:                "test-chain",
 		InitialHeight:          1,
-		StartTime:              time.Now(),
+		StartTime:              fixedExecutorTestStartTime,
 		ProposerAddress:        entry.Address,
 		ProposerSchedule:       []genesis.ProposerScheduleEntry{entry},
 		DAEpochForcedInclusion: 1,
@@ -277,7 +359,7 @@ func TestExecutor_CreateBlock_RejectsSignerAtWrongHeight(t *testing.T) {
 	gen := genesis.Genesis{
 		ChainID:                "test-chain",
 		InitialHeight:          1,
-		StartTime:              time.Now().Add(-time.Second),
+		StartTime:              fixedExecutorTestStartTime,
 		ProposerAddress:        entry1.Address,
 		ProposerSchedule:       []genesis.ProposerScheduleEntry{entry1, entry2},
 		DAEpochForcedInclusion: 1,
@@ -300,7 +382,7 @@ func TestExecutor_CreateBlock_RejectsSignerAtWrongHeight(t *testing.T) {
 			BaseHeader: types.BaseHeader{
 				ChainID: gen.ChainID,
 				Height:  4,
-				Time:    uint64(gen.StartTime.UnixNano()),
+				Time:    uint64(fixedExecutorTestStartTime.Add(4 * time.Second).UnixNano()),
 			},
 			AppHash:         []byte("state-root-4"),
 			ProposerAddress: oldAddr,
@@ -337,7 +419,7 @@ func TestExecutor_CreateBlock_RejectsSignerAtWrongHeight(t *testing.T) {
 	// signer must be rejected even though it's a known schedule member.
 	_, _, err = executor.CreateBlock(context.Background(), 5, &BatchData{
 		Batch: &coreseq.Batch{},
-		Time:  time.Now(),
+		Time:  fixedExecutorTestStartTime.Add(5 * time.Second),
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "proposer")

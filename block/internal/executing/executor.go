@@ -755,7 +755,12 @@ func (e *Executor) CreateBlock(ctx context.Context, height uint64, batchData *Ba
 			return nil, nil, fmt.Errorf("failed to get validator hash: %w", err)
 		}
 	} else {
-		validatorHash, err = e.options.ValidatorHasherProvider(proposer.Address, nil)
+		pubKey, err = proposer.PublicKey()
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get scheduled proposer public key: %w", err)
+		}
+
+		validatorHash, err = e.options.ValidatorHasherProvider(proposer.Address, pubKey)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to get validator hash: %w", err)
 		}
