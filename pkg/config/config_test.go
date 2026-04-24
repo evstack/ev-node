@@ -85,7 +85,8 @@ func TestAddFlags(t *testing.T) {
 
 	// DA Fiber flags
 	assertFlagValue(t, flags, FlagDAFiberEnabled, DefaultConfig().DA.Fiber.Enabled)
-	assertFlagValue(t, flags, FlagDAFiberStateAddress, DefaultConfig().DA.Fiber.StateAddress)
+	assertFlagValue(t, flags, FlagDAFiberConsensusAddress, DefaultConfig().DA.Fiber.ConsensusAddress)
+	assertFlagValue(t, flags, FlagDAFiberConsensusChainID, DefaultConfig().DA.Fiber.ConsensusChainID)
 	assertFlagValue(t, flags, FlagDAFiberKeyName, DefaultConfig().DA.Fiber.KeyName)
 
 	// P2P flags

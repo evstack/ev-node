@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -96,8 +97,10 @@ const (
 
 	// FlagDAFiberEnabled enables the Fiber DA client instead of the default JSON-RPC blob client
 	FlagDAFiberEnabled = FlagPrefixEvnode + "da.fiber.enabled"
-	// FlagDAFiberStateAddress is the gRPC address of the celestia-app node for Fiber state queries
-	FlagDAFiberStateAddress = FlagPrefixEvnode + "da.fiber.state_address"
+	// FlagDAFiberConsensusAddress is the gRPC address of the celestia-app node for Fiber state queries
+	FlagDAFiberConsensusAddress = FlagPrefixEvnode + "da.fiber.consensus_address"
+	// FlagConsensusChainID is the Chain ID of the celestia app node
+	FlagDAFiberConsensusChainID = FlagPrefixEvnode + "da.fiber.consensus_chain_id"
 	// FlagDAFiberBridgeAddress is the gRPC address of the bridge node for Fiber state queries
 	FlagDAFiberBridgeAddress = FlagPrefixEvnode + "da.fiber.bridge_address"
 	// FlagDAFiberKeyName is the key name in the keyring to use for signing payment promises
@@ -289,9 +292,10 @@ type FiberDAConfig struct {
 	// Enabled switches the DA backend from the default JSON-RPC blob client
 	// to the Fiber protocol client.
 	Enabled bool `mapstructure:"enabled" yaml:"enabled" comment:"Enable the Fiber DA client for direct validator communication instead of the default JSON-RPC blob client"`
-	// StateAddress is the gRPC address of the celestia-app node used for
-	// state queries (validator set, chain ID, promise verification).
-	StateAddress string `mapstructure:"state_address" yaml:"state_address" comment:"gRPC address of the celestia-app node for Fiber state queries (host:port)"`
+	// ConsensusChainID is the Chain ID of the chain to which data is posted.
+	ConsensusChainID string `mapstructure:"consensus_chain_id" yaml:"consensus_chain_id" comment:"Chain ID of the chain to which data is posted"`
+	// ConsensusAddress is the gRPC address of the celestia-app node used for state queries (validator set, chain ID, promise verification).
+	ConsensusAddress string `mapstructure:"consensus_address" yaml:"consensus_address" comment:"gRPC address of the celestia-app node for Fiber state queries (host:port)"`
 	// BridgeAddress is the address of the bridge node.
 	BridgeAddress string `mapstructure:"bridge_address" yaml:"bridge_address" comment:"Bridge Node Address for Fiber"`
 	// KeyringPath is the directory path containing the keyring for signing
@@ -300,6 +304,38 @@ type FiberDAConfig struct {
 	// KeyName is the name of the key in the keyring to use for signing.
 	KeyName string `mapstructure:"key_name" yaml:"key_name" comment:"Name of the key in the keyring to use for signing Fiber payment promises"`
 	// UploadConcurrency limits the number of concurrent upload connections
+}
+
+// Validate checks that a FiberDAConfig is usable. Only called when enabled;
+// a disabled block is always valid because the Fibre client is not built.
+func (c *FiberDAConfig) Validate() error {
+	if !c.Enabled {
+		return nil
+	}
+	if c.ConsensusAddress == "" {
+		return fmt.Errorf("%s is required when fiber DA is enabled", FlagDAFiberConsensusAddress)
+	}
+
+	if c.BridgeAddress == "" {
+		return fmt.Errorf("%s is required when fiber DA is enabled", FlagDAFiberBridgeAddress)
+	}
+
+	if c.ConsensusChainID == "" {
+		return fmt.Errorf("%s is required when fiber DA is enabled", FlagDAFiberConsensusChainID)
+	}
+
+	u, err := url.Parse(c.BridgeAddress)
+	if err != nil {
+		return fmt.Errorf("%s: %w", FlagDAFiberBridgeAddress, err)
+	}
+	if u.Scheme != "ws" && u.Scheme != "wss" {
+		return fmt.Errorf(
+			"%s must use ws:// or wss:// (got %q) — blob.Subscribe requires WebSocket, HTTP JSON-RPC cannot stream channels",
+			FlagDAFiberBridgeAddress, u.Scheme,
+		)
+	}
+
+	return nil
 }
 
 // IsFiberEnabled returns true if the Fiber DA client is configured and enabled.
@@ -661,8 +697,9 @@ func AddFlags(cmd *cobra.Command) {
 
 	// Fiber DA configuration flags
 	cmd.Flags().Bool(FlagDAFiberEnabled, def.DA.Fiber.Enabled, "enable the Fiber DA client for direct validator communication")
-	cmd.Flags().String(FlagDAFiberStateAddress, def.DA.Fiber.StateAddress, "gRPC address of the celestia-app node for Fiber state queries (host:port)")
-	cmd.Flags().String(FlagDAFiberBridgeAddress, def.DA.Fiber.BridgeAddress, "json rpc of the bridge node")
+	cmd.Flags().String(FlagDAFiberConsensusAddress, def.DA.Fiber.ConsensusAddress, "gRPC address of the celestia-app node for Fiber state queries (host:port)")
+	cmd.Flags().String(FlagDAFiberConsensusChainID, def.DA.Fiber.ConsensusChainID, "Chain ID of the celestia app")
+	cmd.Flags().String(FlagDAFiberBridgeAddress, def.DA.Fiber.BridgeAddress, "JSON RPC of the DA node")
 	cmd.Flags().String(FlagDAFiberKeyName, def.DA.Fiber.KeyName, "name of the key in the keyring for signing Fiber payment promises")
 
 	// P2P configuration flags
