@@ -100,7 +100,7 @@ func (c *fiberDAClient) Submit(ctx context.Context, data [][]byte, _ float64, na
 		wg.Go(func() {
 			for task := range taskCh {
 				uploadCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
-				result, err := c.fiber.Upload(uploadCtx, namespace, task.data)
+				result, err := c.fiber.Upload(uploadCtx, namespace[len(namespace)-10:], task.data)
 				cancel()
 				respCh <- uploadResponse{
 					index:  task.index,
@@ -174,7 +174,7 @@ func (c *fiberDAClient) retrieve(ctx context.Context, height uint64, namespace [
 	listenCtx, listenCancel := context.WithTimeout(ctx, c.defaultTimeout)
 	defer listenCancel()
 
-	blobCh, err := c.fiber.Listen(listenCtx, namespace, height)
+	blobCh, err := c.fiber.Listen(listenCtx, namespace[len(namespace)-10:], height)
 	if err != nil {
 		return datypes.ResultRetrieve{
 			BaseResult: datypes.BaseResult{
@@ -276,7 +276,7 @@ func (c *fiberDAClient) Subscribe(ctx context.Context, namespace []byte, _ bool)
 		// height, so start from the live tip (fromHeight=0). A future
 		// refactor that plumbs resume-from-height through datypes.DA can
 		// thread the value here.
-		blobCh, err := c.fiber.Listen(ctx, namespace, 0)
+		blobCh, err := c.fiber.Listen(ctx, namespace[len(namespace)-10:], 0)
 		if err != nil {
 			c.logger.Error().Err(err).Msg("fiber listen failed")
 			return

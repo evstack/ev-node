@@ -26,6 +26,7 @@ import (
 	"github.com/evstack/ev-node/pkg/signer/file"
 	"github.com/evstack/ev-node/pkg/sequencers/solo"
 	"github.com/evstack/ev-node/pkg/store"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 
 	"github.com/celestiaorg/celestia-node/api/client"
 
@@ -49,8 +50,10 @@ const (
 //   - Starts a single-validator Celestia chain + Fibre server + bridge
 //   - Creates a celestia-node-fiber adapter (block.FiberClient)
 //   - Constructs an ev-node aggregator node that uses the adapter as DA
+//   - Subscribes to the data namespace via adapter.Listen before uploading
 //   - Injects a transaction and waits for block production
-//   - Verifies the executor processed the block (blocksProduced >= 1)
+//   - Confirms the DA submitter pushed blobs to Fiber by receiving events
+//     on the subscription and round-tripping each through Download
 func TestEvNode_FiberDA_Posting(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	t.Cleanup(cancel)
@@ -77,6 +80,16 @@ func TestEvNode_FiberDA_Posting(t *testing.T) {
 	require.NoError(t, err, "constructing adapter")
 	t.Cleanup(func() { _ = adapter.Close() })
 
+	// Subscribe to the header namespace BEFORE starting the node so we
+	// don't race against the first DA submission. fromHeight=0 follows
+	// the live tip. The adapter expects the 10-byte v0 namespace ID
+	// (the last 10 bytes of the full 29-byte namespace), matching what
+	// fiberDAClient.Submit extracts before calling fiber.Upload.
+	fullHeaderNS := datypes.NamespaceFromString(evnodeHeaderNS).Bytes()
+	headerNSID := fullHeaderNS[len(fullHeaderNS)-10:]
+	events, err := adapter.Listen(ctx, headerNSID, 0)
+	require.NoError(t, err, "starting fiber Listen on header namespace")
+
 	rollnode, exec, nodeCleanup := newFiberEvNode(t, ctx, adapter)
 	t.Cleanup(nodeCleanup)
 
@@ -98,6 +111,32 @@ func TestEvNode_FiberDA_Posting(t *testing.T) {
 		t.Logf("blocks=%d txs=%d", stats.BlocksProduced, stats.TotalExecutedTxs)
 		return stats.BlocksProduced >= 1 && stats.TotalExecutedTxs >= 1
 	}, evnodeBlockTimeout, 200*time.Millisecond, "ev-node should produce at least one block with the transaction")
+
+	// Drain at least one Fiber BlobEvent from the subscription to prove
+	// the DA submitter pushed data through the fiber adapter's Upload
+	// path and the settlement landed on-chain.
+	var seen []block.FiberBlobEvent
+	require.Eventually(t, func() bool {
+		select {
+		case ev, ok := <-events:
+			if !ok {
+				return false
+			}
+			seen = append(seen, ev)
+			t.Logf("fiber event: blob_id=%x height=%d data_size=%d",
+				ev.BlobID, ev.Height, ev.DataSize)
+			return true
+		default:
+			return false
+		}
+	}, evnodeBlockTimeout, 500*time.Millisecond, "expected at least one Fiber BlobEvent from DA submission")
+
+	for _, ev := range seen {
+		got, err := adapter.Download(ctx, ev.BlobID)
+		require.NoError(t, err, "adapter.Download blob_id=%x", ev.BlobID)
+		require.NotEmpty(t, got, "downloaded blob must not be empty")
+		t.Logf("download ok: blob_id=%x bytes=%d", ev.BlobID, len(got))
+	}
 
 	select {
 	case err := <-nodeErrCh:
