@@ -101,6 +101,8 @@ func (c *Cache) setSeenBatch(hashes []string, height uint64) {
 		}
 		return
 	}
+
+	// currently not used, but there for compleness against setSeen
 	for _, h := range hashes {
 		if existing, ok := c.hashByHeight[height]; ok && existing == h {
 			c.hashes[existing] = true
