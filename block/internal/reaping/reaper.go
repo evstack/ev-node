@@ -143,11 +143,6 @@ func (r *Reaper) Stop() error {
 	return nil
 }
 
-type pendingTx struct {
-	tx   []byte
-	hash string
-}
-
 func (r *Reaper) drainMempool(cleanupCh <-chan time.Time) (bool, error) {
 	var totalSubmitted int
 
@@ -175,16 +170,32 @@ func (r *Reaper) drainMempool(cleanupCh <-chan time.Time) (bool, error) {
 			break
 		}
 
-		filtered := r.filterNewTxs(txs)
-		if len(filtered) == 0 {
+		hashes := hashTxs(txs)
+		seen := r.cache.AreTxsSeen(hashes)
+
+		newTxs := make([][]byte, 0, len(txs))
+		newHashes := make([]string, 0, len(txs))
+		for i, tx := range txs {
+			if !seen[i] {
+				newTxs = append(newTxs, tx)
+				newHashes = append(newHashes, hashes[i])
+			}
+		}
+
+		if len(newTxs) == 0 {
 			break
 		}
 
-		n, err := r.submitFiltered(filtered)
+		_, err = r.sequencer.SubmitBatchTxs(r.ctx, coresequencer.SubmitBatchTxsRequest{
+			Id:    []byte(r.chainID),
+			Batch: &coresequencer.Batch{Transactions: newTxs},
+		})
 		if err != nil {
-			return totalSubmitted > 0, err
+			return totalSubmitted > 0, fmt.Errorf("failed to submit txs to sequencer: %w", err)
 		}
-		totalSubmitted += n
+
+		r.cache.SetTxsSeen(newHashes)
+		totalSubmitted += len(newTxs)
 	}
 
 	if totalSubmitted > 0 {
@@ -194,38 +205,16 @@ func (r *Reaper) drainMempool(cleanupCh <-chan time.Time) (bool, error) {
 	return totalSubmitted > 0, nil
 }
 
-func (r *Reaper) filterNewTxs(txs [][]byte) []pendingTx {
-	pending := make([]pendingTx, 0, len(txs))
-	for _, tx := range txs {
-		h := hashTx(tx)
-		if !r.cache.IsTxSeen(h) {
-			pending = append(pending, pendingTx{tx: tx, hash: h})
-		}
+func hashTxs(txs [][]byte) []string {
+	hashes := make([]string, len(txs))
+	for i, tx := range txs {
+		h := sha256.Sum256(tx)
+		hashes[i] = hex.EncodeToString(h[:])
 	}
-	return pending
-}
-
-func (r *Reaper) submitFiltered(batch []pendingTx) (int, error) {
-	txs := make([][]byte, len(batch))
-	hashes := make([]string, len(batch))
-	for i, p := range batch {
-		txs[i] = p.tx
-		hashes[i] = p.hash
-	}
-
-	_, err := r.sequencer.SubmitBatchTxs(r.ctx, coresequencer.SubmitBatchTxsRequest{
-		Id:    []byte(r.chainID),
-		Batch: &coresequencer.Batch{Transactions: txs},
-	})
-	if err != nil {
-		return 0, fmt.Errorf("failed to submit txs to sequencer: %w", err)
-	}
-
-	r.cache.SetTxsSeen(hashes)
-	return len(txs), nil
+	return hashes
 }
 
 func hashTx(tx []byte) string {
-	hash := sha256.Sum256(tx)
-	return hex.EncodeToString(hash[:])
+	h := sha256.Sum256(tx)
+	return hex.EncodeToString(h[:])
 }
