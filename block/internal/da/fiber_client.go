@@ -2,6 +2,7 @@ package da
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"time"
@@ -58,6 +59,16 @@ func NewFiberClient(cfg FiberConfig) (FullClient, error) {
 }
 
 func (c *fiberDAClient) Submit(ctx context.Context, data [][]byte, _ float64, namespace []byte, _ []byte) datypes.ResultSubmit {
+	if len(data) == 0 {
+		return datypes.ResultSubmit{
+			BaseResult: datypes.BaseResult{
+				Code:           datypes.StatusSuccess,
+				SubmittedCount: 0,
+				Timestamp:      time.Now(),
+			},
+		}
+	}
+
 	var blobSize uint64
 	for _, b := range data {
 		blobSize += uint64(len(b))
@@ -74,8 +85,9 @@ func (c *fiberDAClient) Submit(ctx context.Context, data [][]byte, _ float64, na
 		}
 	}
 
-	// context background to not cancel the upload. TODO: optimize.
-	result, err := c.fiber.Upload(context.Background(), namespace[len(namespace)-10:], data)
+	flat := flattenBlobs(data)
+
+	result, err := c.fiber.Upload(context.Background(), namespace[len(namespace)-10:], flat)
 	if err != nil {
 		code := datypes.StatusError
 		switch {
@@ -164,9 +176,9 @@ loop:
 		}
 	}
 
-	ids := make([]datypes.ID, len(blobIDs))
-	data := make([][]byte, len(blobIDs))
-	for i, blobID := range blobIDs {
+	ids := make([]datypes.ID, 0, len(blobIDs))
+	data := make([][]byte, 0, len(blobIDs))
+	for _, blobID := range blobIDs {
 		dlCtx, dlCancel := context.WithTimeout(ctx, c.defaultTimeout)
 		blobData, dlErr := c.fiber.Download(dlCtx, blobID)
 		dlCancel()
@@ -180,8 +192,21 @@ loop:
 				},
 			}
 		}
-		ids[i] = blobID
-		data[i] = blobData
+		split, splitErr := splitBlobs(blobData)
+		if splitErr != nil {
+			return datypes.ResultRetrieve{
+				BaseResult: datypes.BaseResult{
+					Code:      datypes.StatusError,
+					Message:   fmt.Sprintf("fiber decode failed for blob %x: %v", blobID, splitErr),
+					Height:    height,
+					Timestamp: time.Now(),
+				},
+			}
+		}
+		for _, b := range split {
+			ids = append(ids, blobID)
+			data = append(data, b)
+		}
 	}
 
 	return datypes.ResultRetrieve{
@@ -208,7 +233,11 @@ func (c *fiberDAClient) Get(ctx context.Context, ids []datypes.ID, _ []byte) ([]
 		if err != nil {
 			return nil, fmt.Errorf("fiber download failed for blob %x: %w", id, err)
 		}
-		res = append(res, data)
+		split, splitErr := splitBlobs(data)
+		if splitErr != nil {
+			return nil, fmt.Errorf("fiber decode failed for blob %x: %w", id, splitErr)
+		}
+		res = append(res, split...)
 	}
 
 	return res, nil
@@ -247,11 +276,17 @@ func (c *fiberDAClient) Subscribe(ctx context.Context, namespace []byte, _ bool)
 					continue
 				}
 
+				split, splitErr := splitBlobs(blobData)
+				if splitErr != nil {
+					c.logger.Error().Err(splitErr).Bytes("blob_id", event.BlobID).Msg("failed to decode blob")
+					continue
+				}
+
 				select {
 				case out <- datypes.SubscriptionEvent{
 					Height:    event.Height,
 					Timestamp: time.Now(),
-					Blobs:     [][]byte{blobData},
+					Blobs:     split,
 				}:
 				case <-ctx.Done():
 					return
@@ -291,6 +326,58 @@ func (c *fiberDAClient) Validate(_ context.Context, ids []datypes.ID, proofs []d
 
 func (c *fiberDAClient) GetHeaderNamespace() []byte { return c.namespaceBz }
 func (c *fiberDAClient) GetDataNamespace() []byte   { return c.dataNamespaceBz }
+
+func flattenBlobs(blobs [][]byte) []byte {
+	if len(blobs) == 0 {
+		return nil
+	}
+
+	var total int
+	for _, b := range blobs {
+		total += 4 + len(b)
+	}
+	total += 4
+
+	buf := make([]byte, total)
+	binary.BigEndian.PutUint32(buf, uint32(len(blobs)))
+	off := 4
+	for _, b := range blobs {
+		binary.BigEndian.PutUint32(buf[off:], uint32(len(b)))
+		off += 4
+		copy(buf[off:], b)
+		off += len(b)
+	}
+	return buf
+}
+
+func splitBlobs(data []byte) ([][]byte, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	if len(data) < 4 {
+		return nil, fmt.Errorf("invalid blob encoding: header too short")
+	}
+
+	count := int(binary.BigEndian.Uint32(data))
+	off := 4
+	blobs := make([][]byte, 0, count)
+	for i := 0; i < count; i++ {
+		if off+4 > len(data) {
+			return nil, fmt.Errorf("invalid blob encoding: truncated length at index %d", i)
+		}
+		size := int(binary.BigEndian.Uint32(data[off:]))
+		off += 4
+		end := off + size
+		if end < off || end > len(data) {
+			return nil, fmt.Errorf("invalid blob encoding: truncated data at index %d", i)
+		}
+		blob := make([]byte, size)
+		copy(blob, data[off:end])
+		off = end
+		blobs = append(blobs, blob)
+	}
+	return blobs, nil
+}
 
 // Force Inclusion is disabled for Fiber PoC.
 func (c *fiberDAClient) HasForcedInclusionNamespace() bool   { return false }
