@@ -354,8 +354,7 @@ func TestFiberClient_Subscribe(t *testing.T) {
 	t.Skip("pending Height tracking from fiber DA")
 	_, cl := makeTestFiberClient(t)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	ch, err := cl.Subscribe(ctx, datypes.NamespaceFromString("test-ns").Bytes(), false)
 	require.NoError(t, err)

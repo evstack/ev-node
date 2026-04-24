@@ -81,13 +81,15 @@ func NewFiberDAClient(
 	fiberClient da.FiberClient,
 	config config.Config,
 	logger zerolog.Logger,
+	lastKnownDaHeight uint64,
 ) FullDAClient {
 	base, err := da.NewFiberClient(da.FiberConfig{
-		Client:         fiberClient,
-		Logger:         logger,
-		DefaultTimeout: config.DA.RequestTimeout.Duration,
-		Namespace:      config.DA.GetNamespace(),
-		DataNamespace:  config.DA.GetDataNamespace(),
+		Client:            fiberClient,
+		Logger:            logger,
+		DefaultTimeout:    config.DA.RequestTimeout.Duration,
+		Namespace:         config.DA.GetNamespace(),
+		DataNamespace:     config.DA.GetDataNamespace(),
+		LastKnownDAHeight: lastKnownDaHeight,
 	})
 	if err != nil {
 		panic(err)
@@ -96,6 +98,7 @@ func NewFiberDAClient(
 	if config.Instrumentation.IsTracingEnabled() {
 		return da.WithTracingClient(base)
 	}
+
 	return base
 }
 

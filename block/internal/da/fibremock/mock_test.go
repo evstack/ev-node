@@ -51,8 +51,7 @@ func TestMockDA_DownloadNotFound(t *testing.T) {
 
 func TestMockDA_Listen(t *testing.T) {
 	m := NewMockDA(DefaultMockDAConfig())
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	ns := []byte("test-ns")
 	ch, err := m.Listen(ctx, ns, 0)
@@ -85,8 +84,7 @@ func TestMockDA_Listen(t *testing.T) {
 
 func TestMockDA_ListenNamespaceFilter(t *testing.T) {
 	m := NewMockDA(DefaultMockDAConfig())
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	ch, err := m.Listen(ctx, []byte("ns-A"), 0)
 	if err != nil {
@@ -106,8 +104,7 @@ func TestMockDA_ListenNamespaceFilter(t *testing.T) {
 
 func TestMockDA_ListenWildcard(t *testing.T) {
 	m := NewMockDA(DefaultMockDAConfig())
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	// Empty namespace = wildcard
 	ch, err := m.Listen(ctx, nil, 0)

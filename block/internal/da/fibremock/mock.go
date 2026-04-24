@@ -203,9 +203,7 @@ func (m *MockDA) Listen(ctx context.Context, namespace []byte, fromHeight uint64
 	// blocked if the buffer fills. Live events may interleave.
 	var replayDone sync.WaitGroup
 	if len(replay) > 0 {
-		replayDone.Add(1)
-		go func() {
-			defer replayDone.Done()
+		replayDone.Go(func() {
 			for _, ev := range replay {
 				select {
 				case ch <- ev:
@@ -213,7 +211,7 @@ func (m *MockDA) Listen(ctx context.Context, namespace []byte, fromHeight uint64
 					return
 				}
 			}
-		}()
+		})
 	}
 
 	// Clean up when context is done.

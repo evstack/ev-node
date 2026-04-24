@@ -19,14 +19,14 @@ import (
 	coreexecution "github.com/evstack/ev-node/core/execution"
 	"github.com/evstack/ev-node/node"
 	"github.com/evstack/ev-node/pkg/config"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
+	"github.com/evstack/ev-node/pkg/sequencers/solo"
 	pkgsigner "github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/signer/file"
-	"github.com/evstack/ev-node/pkg/sequencers/solo"
 	"github.com/evstack/ev-node/pkg/store"
-	datypes "github.com/evstack/ev-node/pkg/da/types"
 
 	"github.com/celestiaorg/celestia-node/api/client"
 
@@ -210,7 +210,7 @@ func (e *inMemExecutor) ExecuteTxs(_ context.Context, txs [][]byte, _ uint64, _ 
 }
 
 func (e *inMemExecutor) SetFinal(_ context.Context, _ uint64) error { return nil }
-func (e *inMemExecutor) Rollback(_ context.Context, _ uint64) error  { return nil }
+func (e *inMemExecutor) Rollback(_ context.Context, _ uint64) error { return nil }
 func (e *inMemExecutor) GetExecutionInfo(_ context.Context) (coreexecution.ExecutionInfo, error) {
 	return coreexecution.ExecutionInfo{MaxGas: 0}, nil
 }
@@ -284,7 +284,7 @@ func newFiberEvNode(t *testing.T, ctx context.Context, fiberClient block.FiberCl
 
 	executor := newInMemExecutor()
 	sequencer := solo.NewSoloSequencer(logger, []byte(genesis.ChainID), executor)
-	daClient := block.NewFiberDAClient(fiberClient, cfg, logger)
+	daClient := block.NewFiberDAClient(fiberClient, cfg, logger, 0)
 	p2pClient, err := p2p.NewClient(cfg.P2P, nodeKey.PrivKey, datastore.NewMapDatastore(), genesis.ChainID, logger, nil)
 	require.NoError(t, err, "creating p2p client")
 

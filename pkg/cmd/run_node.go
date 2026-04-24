@@ -24,6 +24,7 @@ import (
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	pkgsigner "github.com/evstack/ev-node/pkg/signer"
+	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/pkg/telemetry"
 
 	"github.com/evstack/ev-node/block"
@@ -156,7 +157,16 @@ func StartNode(
 		if fiberClient == nil {
 			return fmt.Errorf("fiber DA is enabled but no fiber client was provided")
 		}
-		daClient = block.NewFiberDAClient(fiberClient, nodeConfig, logger)
+
+		mainKV := store.NewEvNodeKVStore(datastore)
+		baseStore := store.New(mainKV)
+
+		latestState, err := baseStore.GetState(cmd.Context())
+		if err != nil {
+			return fmt.Errorf("failed getting latest state to construct fiber client: %w", err)
+		}
+
+		daClient = block.NewFiberDAClient(fiberClient, nodeConfig, logger, latestState.DAHeight)
 	} else {
 		blobClient, err := blobrpc.NewWSClient(ctx, logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
 		if err != nil {

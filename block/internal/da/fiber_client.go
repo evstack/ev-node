@@ -22,20 +22,21 @@ type (
 )
 
 type FiberConfig struct {
-	Client         FiberClient
-	Logger         zerolog.Logger
-	DefaultTimeout time.Duration
-	Namespace      string
-	DataNamespace  string
-	UploadWorkers  int
+	Client            FiberClient
+	Logger            zerolog.Logger
+	DefaultTimeout    time.Duration
+	Namespace         string
+	DataNamespace     string
+	LastKnownDAHeight uint64
 }
 
 type fiberDAClient struct {
-	fiber           FiberClient
-	logger          zerolog.Logger
-	defaultTimeout  time.Duration
-	namespaceBz     []byte
-	dataNamespaceBz []byte
+	fiber             FiberClient
+	logger            zerolog.Logger
+	defaultTimeout    time.Duration
+	namespaceBz       []byte
+	dataNamespaceBz   []byte
+	lastKnownDAHeight uint64
 }
 
 var _ FullClient = (*fiberDAClient)(nil)
@@ -50,11 +51,12 @@ func NewFiberClient(cfg FiberConfig) (FullClient, error) {
 	}
 
 	return &fiberDAClient{
-		fiber:           cfg.Client,
-		logger:          cfg.Logger.With().Str("component", "fiber_da_client").Logger(),
-		defaultTimeout:  cfg.DefaultTimeout,
-		namespaceBz:     datypes.NamespaceFromString(cfg.Namespace).Bytes(),
-		dataNamespaceBz: datypes.NamespaceFromString(cfg.DataNamespace).Bytes(),
+		fiber:             cfg.Client,
+		logger:            cfg.Logger.With().Str("component", "fiber_da_client").Logger(),
+		defaultTimeout:    cfg.DefaultTimeout,
+		lastKnownDAHeight: cfg.LastKnownDAHeight,
+		namespaceBz:       datypes.NamespaceFromString(cfg.Namespace).Bytes(),
+		dataNamespaceBz:   datypes.NamespaceFromString(cfg.DataNamespace).Bytes(),
 	}, nil
 }
 
@@ -255,7 +257,7 @@ func (c *fiberDAClient) Subscribe(ctx context.Context, namespace []byte, _ bool)
 		// height, so start from the live tip (fromHeight=0). A future
 		// refactor that plumbs resume-from-height through datypes.DA can
 		// thread the value here.
-		blobCh, err := c.fiber.Listen(ctx, namespace[len(namespace)-10:], 0)
+		blobCh, err := c.fiber.Listen(ctx, namespace[len(namespace)-10:], c.lastKnownDAHeight)
 		if err != nil {
 			c.logger.Error().Err(err).Msg("fiber listen failed")
 			return
@@ -361,7 +363,7 @@ func splitBlobs(data []byte) ([][]byte, error) {
 	count := int(binary.BigEndian.Uint32(data))
 	off := 4
 	blobs := make([][]byte, 0, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		if off+4 > len(data) {
 			return nil, fmt.Errorf("invalid blob encoding: truncated length at index %d", i)
 		}
