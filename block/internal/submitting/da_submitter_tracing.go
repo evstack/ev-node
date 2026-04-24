@@ -95,3 +95,7 @@ func (t *tracedDASubmitter) SubmitData(ctx context.Context, signedDataList []*ty
 
 	return nil
 }
+
+func (t *tracedDASubmitter) Close() {
+	t.inner.Close()
+}

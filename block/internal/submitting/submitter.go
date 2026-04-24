@@ -23,10 +23,10 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-// DASubmitterAPI defines minimal methods needed by Submitter for DA submissions.
 type DASubmitterAPI interface {
 	SubmitHeaders(ctx context.Context, headers []*types.SignedHeader, marshalledHeaders [][]byte, cache cache.Manager, signer signer.Signer) error
 	SubmitData(ctx context.Context, signedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis) error
+	Close()
 }
 
 // Submitter handles DA submission and inclusion processing for both sync and aggregator nodes
@@ -136,7 +136,6 @@ func (s *Submitter) Start(ctx context.Context) (err error) {
 		return err
 	}
 
-	// Start DA submission loop if signer is available (aggregator nodes only)
 	if s.signer != nil {
 		s.logger.Info().Msg("starting DA submission loop")
 		s.wg.Go(s.daSubmissionLoop)
@@ -153,6 +152,7 @@ func (s *Submitter) Stop() error {
 	if s.cancel != nil {
 		s.cancel()
 	}
+	s.daSubmitter.Close()
 	// Wait for goroutines to finish with a timeout to prevent hanging
 	done := make(chan struct{})
 	go func() {
