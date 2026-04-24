@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -36,7 +35,6 @@ type fiberDAClient struct {
 	defaultTimeout  time.Duration
 	namespaceBz     []byte
 	dataNamespaceBz []byte
-	uploadWorkers   int
 }
 
 var _ FullClient = (*fiberDAClient)(nil)
@@ -50,17 +48,12 @@ func NewFiberClient(cfg FiberConfig) (FullClient, error) {
 		cfg.DefaultTimeout = 60 * time.Second
 	}
 
-	if cfg.UploadWorkers == 0 {
-		cfg.UploadWorkers = 8
-	}
-
 	return &fiberDAClient{
 		fiber:           cfg.Client,
 		logger:          cfg.Logger.With().Str("component", "fiber_da_client").Logger(),
 		defaultTimeout:  cfg.DefaultTimeout,
 		namespaceBz:     datypes.NamespaceFromString(cfg.Namespace).Bytes(),
 		dataNamespaceBz: datypes.NamespaceFromString(cfg.DataNamespace).Bytes(),
-		uploadWorkers:   cfg.UploadWorkers,
 	}, nil
 }
 
@@ -81,71 +74,28 @@ func (c *fiberDAClient) Submit(ctx context.Context, data [][]byte, _ float64, na
 		}
 	}
 
-	type uploadTask struct {
-		index int
-		data  []byte
-	}
-
-	type uploadResponse struct {
-		index  int
-		blobID []byte
-		err    error
-	}
-
-	taskCh := make(chan uploadTask, len(data))
-	respCh := make(chan uploadResponse, len(data))
-
-	var wg sync.WaitGroup
-	for range c.uploadWorkers {
-		wg.Go(func() {
-			for task := range taskCh {
-				uploadCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
-				result, err := c.fiber.Upload(uploadCtx, namespace[len(namespace)-10:], task.data)
-				cancel()
-				respCh <- uploadResponse{
-					index:  task.index,
-					blobID: result.BlobID,
-					err:    err,
-				}
-			}
-		})
-	}
-
-	for i, raw := range data {
-		taskCh <- uploadTask{index: i, data: raw}
-	}
-	close(taskCh)
-
-	results := make([]uploadResponse, 0, len(data))
-	for range len(data) {
-		resp := <-respCh
-		results = append(results, resp)
-		if resp.err != nil {
-			code := datypes.StatusError
-			switch {
-			case errors.Is(resp.err, context.Canceled):
-				code = datypes.StatusContextCanceled
-			case errors.Is(resp.err, context.DeadlineExceeded):
-				code = datypes.StatusContextDeadline
-			}
-
-			c.logger.Error().Err(resp.err).Int("blob_index", resp.index).Msg("fiber upload failed")
-
-			return datypes.ResultSubmit{
-				BaseResult: datypes.BaseResult{
-					Code:           code,
-					Message:        fmt.Sprintf("fiber upload failed for blob %d: %v", resp.index, resp.err),
-					SubmittedCount: uint64(len(results) - 1),
-					BlobSize:       blobSize,
-					Timestamp:      time.Now(),
-				},
-			}
+	// context background to not cancel the upload. TODO: optimize.
+	result, err := c.fiber.Upload(context.Background(), namespace[len(namespace)-10:], data)
+	if err != nil {
+		code := datypes.StatusError
+		switch {
+		case errors.Is(err, context.Canceled):
+			code = datypes.StatusContextCanceled
+		case errors.Is(err, context.DeadlineExceeded):
+			code = datypes.StatusContextDeadline
 		}
-	}
 
-	ids := make([]datypes.ID, len(data))
-	for _, r := range results {
-		ids[r.index] = r.blobID
+		c.logger.Error().Err(err).Msg("fiber upload failed")
+
+		return datypes.ResultSubmit{
+			BaseResult: datypes.BaseResult{
+				Code:           code,
+				Message:        fmt.Sprintf("fiber upload failed for blob: %v", err),
+				SubmittedCount: uint64(len(data) - 1),
+				BlobSize:       blobSize,
+				Timestamp:      time.Now(),
+			},
+		}
 	}
 
 	c.logger.Debug().Int("num_ids", len(data)).Uint64("height", 0 /* TODO */).Msg("fiber DA submission successful")
@@ -153,8 +103,8 @@ func (c *fiberDAClient) Submit(ctx context.Context, data [][]byte, _ float64, na
 	return datypes.ResultSubmit{
 		BaseResult: datypes.BaseResult{
 			Code:           datypes.StatusSuccess,
-			IDs:            ids,
-			SubmittedCount: uint64(len(ids)),
+			IDs:            [][]byte{result.BlobID},
+			SubmittedCount: uint64(len(data)),
 			Height:         0, /* TODO */
 			BlobSize:       blobSize,
 			Timestamp:      time.Now(),
