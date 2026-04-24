@@ -246,6 +246,48 @@ func BenchmarkReaperFlow_Sustained(b *testing.B) {
 	})
 }
 
+func BenchmarkReaperFlow_DrainOnly(b *testing.B) {
+	for _, batchSize := range []int{100, 500, 1000} {
+		for _, txSize := range []int{256, 4096} {
+			name := fmt.Sprintf("batch=%d/txSize=%d", batchSize, txSize)
+			b.Run(name, func(b *testing.B) {
+				exec := &infiniteExecutor{}
+				seq := &countingSequencer{}
+				cm := newBenchCache(b)
+
+				r, err := NewReaper(
+					exec, seq,
+					genesis.Genesis{ChainID: "bench"},
+					zerolog.Nop(), cm,
+					10*time.Millisecond,
+					func() {},
+				)
+				if err != nil {
+					b.Fatal(err)
+				}
+
+				txs := make([][]byte, batchSize)
+				for i := range txs {
+					txs[i] = make([]byte, txSize)
+					_, _ = rand.Read(txs[i])
+				}
+
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					exec.mu.Lock()
+					exec.batch = txs
+					exec.mu.Unlock()
+					r.drainMempool(nil)
+				}
+				b.StopTimer()
+
+				total := seq.submitted.Load()
+				b.ReportMetric(float64(total)/b.Elapsed().Seconds(), "txs/sec")
+			})
+		}
+	}
+}
+
 func BenchmarkReaperFlow_StartStop(b *testing.B) {
 	b.Run("lifecycle", func(b *testing.B) {
 		exec := &infiniteExecutor{}

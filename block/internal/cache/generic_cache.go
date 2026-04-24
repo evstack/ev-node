@@ -58,6 +58,19 @@ func (c *Cache) isSeen(hash string) bool {
 	return c.hashes[hash]
 }
 
+// areSeen checks which hashes have been seen. Returns a boolean slice
+// parallel to the input where result[i] is true if hashes[i] is in the
+// cache. Acquires the read lock once for the entire batch.
+func (c *Cache) areSeen(hashes []string) []bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	result := make([]bool, len(hashes))
+	for i, h := range hashes {
+		result[i] = c.hashes[h]
+	}
+	return result
+}
+
 func (c *Cache) setSeen(hash string, height uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -73,6 +86,29 @@ func (c *Cache) removeSeen(hash string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	delete(c.hashes, hash)
+}
+
+// setSeenBatch marks all hashes as seen under a single write lock.
+// For height 0 (transactions), the hashByHeight bookkeeping is skipped
+// since all txs share the same sentinel height — the map lookup and
+// overwrite on every entry is pure overhead with no benefit.
+func (c *Cache) setSeenBatch(hashes []string, height uint64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if height == 0 {
+		for _, h := range hashes {
+			c.hashes[h] = true
+		}
+		return
+	}
+	for _, h := range hashes {
+		if existing, ok := c.hashByHeight[height]; ok && existing == h {
+			c.hashes[existing] = true
+			continue
+		}
+		c.hashes[h] = true
+		c.hashByHeight[height] = h
+	}
 }
 
 func (c *Cache) getDAIncluded(hash string) (uint64, bool) {
