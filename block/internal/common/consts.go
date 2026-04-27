@@ -2,11 +2,21 @@ package common
 
 import "strconv"
 
-// defaultMaxBlobSizeStr holds the string representation of the default blob
-// size limit. Anchored to Fibre's actual cap: protocol MaxBlobSize
-// (1 << 27 = 128 MiB) minus the 5-byte Fibre blob header (1 byte version +
-// 4 byte data size). See celestia-app/v9/fibre/blob.go (blobHeaderLen)
-// and fibre/protocol_params.go (MaxBlobSize).
+// defaultMaxBlobSizeStr holds the string representation of the default
+// blob size limit. Anchored to Fibre's actual cap: protocol MaxBlobSize
+// (1 << 27 = 128 MiB) minus the 5-byte Fibre blob header (1 byte
+// version + 4 byte data size). See celestia-app/v9/fibre/blob.go
+// (blobHeaderLen) and fibre/protocol_params.go (MaxBlobSize).
+//
+// HACK(fiber-throughput): this default is correct for fiber-enabled
+// deployments but WRONG for the legacy JSON-RPC blob client path —
+// the bridge / chain rejects blobs above its own (much smaller) cap,
+// so a non-fiber node started against this default would fail to
+// submit. The right shape is per-backend: fiber's cap is one number,
+// blob-RPC's cap is another, and DefaultMaxBlobSize shouldn't be a
+// single global. Restructure into config when the throughput-cleanup
+// TODO lands; until then, non-fiber callers should override via
+// ldflag or local config.
 //
 // MUST be a string literal: Go's `-ldflags "-X ..."` only takes effect
 // on variables initialized to a string constant, NOT a function call.

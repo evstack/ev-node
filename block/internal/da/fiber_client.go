@@ -388,29 +388,19 @@ func (c *fiberDAClient) Validate(_ context.Context, ids []datypes.ID, proofs []d
 func (c *fiberDAClient) GetHeaderNamespace() []byte { return c.namespaceBz }
 func (c *fiberDAClient) GetDataNamespace() []byte   { return c.dataNamespaceBz }
 
-func flattenBlobs(blobs [][]byte) []byte {
-	if len(blobs) == 0 {
-		return nil
-	}
-
-	var total int
-	for _, b := range blobs {
-		total += 4 + len(b)
-	}
-	total += 4
-
-	buf := make([]byte, total)
-	binary.BigEndian.PutUint32(buf, uint32(len(blobs)))
-	off := 4
-	for _, b := range blobs {
-		binary.BigEndian.PutUint32(buf[off:], uint32(len(b)))
-		off += 4
-		copy(buf[off:], b)
-		off += len(b)
-	}
-	return buf
-}
-
+// splitBlobs decodes the legacy "count + per-item length" framing that
+// the previous Submit path used to pack multiple blobs into a single
+// Upload. The per-item-concurrent Submit path no longer writes that
+// framing — each item is uploaded raw — so any blob written by this
+// branch's Submit will fail to decode here.
+//
+// Callers (Retrieve / RetrieveBlobs / Get / Subscribe) therefore only
+// work for blobs written by the OLD code path, OR for the multi-item
+// header batches that still use it. Pair the format change with a
+// matching update to the read path before any node on this branch
+// tries to sync from another node on this branch.
+//
+// Tracked alongside the wire-format TODO on Submit (above).
 func splitBlobs(data []byte) ([][]byte, error) {
 	if len(data) == 0 {
 		return nil, nil

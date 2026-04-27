@@ -60,9 +60,16 @@ const defaultBatchItems = 1
 
 // fiberDefaultBatchItems is the upper bound on items packed into a
 // single fiber Submit. Each item gets its own concurrent Upload, so
-// this caps the per-batch goroutine fan-out. 16 covers a 5 min run at
-// 1 b/s production with 4–8 pending blocks while leaving headroom for
-// memory pressure; tunable via config when the cleanup TODO lands.
+// this caps the per-batch goroutine fan-out.
+//
+// HACK(fiber-throughput): hardcoded at 16. The right value depends on
+// memory budget × per-item Upload size × Fibre validator-side
+// throughput, none of which the submitter can know at compile time.
+// Should be a config knob (FiberDAConfig.UploadConcurrency was
+// scaffolded for exactly this earlier — wire it through here when the
+// concurrent-uploads change graduates from prototype). 16 is a
+// pragmatic measurement default that gives meaningful concurrency
+// without overwhelming celestia-node's per-FSP rate.
 const fiberDefaultBatchItems = 16
 
 func defaultRetryPolicy(maxAttempts int, maxDuration time.Duration) retryPolicy {
