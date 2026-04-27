@@ -47,9 +47,15 @@ type retryPolicy struct {
 
 func defaultRetryPolicy(maxAttempts int, maxDuration time.Duration) retryPolicy {
 	return retryPolicy{
-		MaxAttempts:  maxAttempts,
-		MinBackoff:   initialBackoff,
-		MaxBackoff:   maxDuration,
+		MaxAttempts: maxAttempts,
+		MinBackoff:  initialBackoff,
+		MaxBackoff:  maxDuration,
+		// TODO(throughput-cleanup): same value is used by
+		// executing/executor.go::RetrieveBatch as the raw-tx budget
+		// (with a 2% reservation) and again here as the marshaled
+		// blob ceiling. They are semantically different limits;
+		// the duplication is what made packed-block-larger-than-cap
+		// failures non-obvious. See common/consts.go.
 		MaxBlobBytes: common.DefaultMaxBlobSize,
 	}
 }

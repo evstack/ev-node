@@ -672,6 +672,15 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 // FilterTxs) keeps the executor’s view of MaxBytes equal to the raw-tx
 // budget and prevents a fully packed batch from blowing past the
 // submitter’s MaxBlobSize check.
+//
+// TODO(throughput-cleanup): this is the workaround half of a deeper
+// issue — common.DefaultMaxBlobSize is used as both the raw-tx
+// budget AND the marshaled-blob ceiling. The right fix is to derive
+// a MaxBlockTxBytes() value once (= MaxBlobSize - overhead) and have
+// RetrieveBatch / FilterTxs / da_submitter.limitBatchBySize all
+// reference the appropriate value rather than each enforcing the
+// same number with their own ad-hoc adjustments. See
+// common/consts.go for the umbrella TODO.
 const blockMarshalOverheadPct = 2
 
 // RetrieveBatch gets the next batch of transactions from the sequencer.
