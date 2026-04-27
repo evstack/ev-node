@@ -5,7 +5,19 @@ import (
 	"encoding/binary"
 	"sync"
 	"sync/atomic"
+	"time"
 )
+
+// loaderBackoff is what each worker waits when InjectTx returns false
+// because the mempool channel is full. A real sleep (rather than
+// runtime.Gosched) caps the per-worker drop rate so allocation
+// pressure scales with actual drain throughput; without it, full-
+// mempool workers spin a tight allocate-then-drop loop at ~200k
+// iter/s/worker — millions of short-lived slices per second across the
+// pool, which drove the OOM kills we hit early in the investigation.
+// 100 µs caps each worker at ~10k drops/s when the mempool is
+// permanently full.
+const loaderBackoff = 100 * time.Microsecond
 
 // loader pumps fixed-size payloads into the in-mem executor as fast as it
 // can. Backpressure comes from the executor's bounded mempool channel:
@@ -63,16 +75,11 @@ func (l *loader) run(ctx context.Context) {
 				tx := make([]byte, l.txSize)
 				copy(tx, buf)
 				if !l.exec.InjectTx(tx) {
-					// Mempool full — yield and retry. ev-node's
-					// reaper will drain it on its scrape interval.
+					// Mempool full — back off briefly and retry.
 					select {
 					case <-ctx.Done():
 						return
-					default:
-						// Tight retry: Gosched is enough to let the
-						// reaper goroutine make progress without us
-						// burning a syscall.
-						runtimeYield()
+					case <-time.After(loaderBackoff):
 					}
 				}
 			}
