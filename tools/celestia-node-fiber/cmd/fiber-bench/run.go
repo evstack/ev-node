@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"os"
@@ -12,19 +11,15 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ipfs/go-datastore"
-	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 
-	"github.com/evstack/ev-node/block"
+	rollcmd "github.com/evstack/ev-node/pkg/cmd"
 	evconfig "github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/node"
 	"github.com/evstack/ev-node/pkg/genesis"
-	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/sequencers/solo"
-	pkgsigner "github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/signer/file"
 	"github.com/evstack/ev-node/pkg/store"
 )
@@ -67,7 +62,7 @@ func runCmd() *cobra.Command {
 		Use:   "run",
 		Short: "Run the bench: start a single-sequencer ev-node against a Fibre network and pump load",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runBench(cmd.Context(), f)
+			return runBench(cmd, f)
 		},
 	}
 
@@ -99,17 +94,21 @@ func runCmd() *cobra.Command {
 	flags.StringVar(&f.prometheusAddr, "prometheus-addr", "127.0.0.1:26660", "address for the ev-node Prometheus endpoint")
 	flags.StringVar(&f.logLevel, "log-level", "info", "ev-node log level (debug|info|warn|error)")
 
+	// FlagSignerPassphraseFile is what cmd.StartNode reads to load the
+	// file-backed signer's passphrase. We define it on the bench's run
+	// command so cmd.StartNode finds it via cmd.Flags().GetString;
+	// runBench writes the operator's --signer-passphrase to a temp
+	// file and sets this flag's value before delegating.
+	flags.String(evconfig.FlagSignerPassphraseFile, "", "(internal) populated by --signer-passphrase before cmd.StartNode runs")
+	_ = cmd.Flags().MarkHidden(evconfig.FlagSignerPassphraseFile)
+
 	_ = cobra.MarkFlagRequired(flags, "consensus-grpc")
 	_ = cobra.MarkFlagRequired(flags, "chain-id")
 
 	return cmd
 }
 
-func runBench(parentCtx context.Context, f runFlags) error {
-	// Single root context for everything; SIGINT cancels.
-	ctx, cancel := signal.NotifyContext(parentCtx, os.Interrupt, syscall.SIGTERM)
-	defer cancel()
-
+func runBench(cobraCmd *cobra.Command, f runFlags) error {
 	logger := setupLogger(f.logLevel)
 
 	if !f.keepHome {
@@ -119,9 +118,9 @@ func runBench(parentCtx context.Context, f runFlags) error {
 		return fmt.Errorf("create home %s: %w", f.homeDir, err)
 	}
 
-	// 1) Open the cosmos keyring (must already contain --key-name; we don't
-	// auto-create here so that operator-funded keys aren't accidentally
-	// regenerated when bench runs are re-launched).
+	// 1) Open the cosmos keyring + build the bridge-bypass Fibre
+	// adapter. These are the two genuinely fiber-bench-specific
+	// pieces — neither lives in the production wiring path.
 	kr, err := openKeyring(f.keyringDir)
 	if err != nil {
 		return fmt.Errorf("open keyring at %s: %w", f.keyringDir, err)
@@ -137,9 +136,8 @@ func runBench(parentCtx context.Context, f runFlags) error {
 	}
 	logger.Info().Str("address", addr.String()).Str("key", f.keyName).Msg("loaded fibre signing key")
 
-	// 2) Build the bridge-bypass Fibre adapter.
 	logger.Info().Str("grpc", f.consensusGRPC).Msg("dialing consensus gRPC")
-	innerFiberClient, fiberClose, err := buildFibreAdapter(ctx, f.consensusGRPC, f.keyName, kr)
+	innerFiberClient, fiberClose, err := buildFibreAdapter(cobraCmd.Context(), f.consensusGRPC, f.keyName, kr)
 	if err != nil {
 		return fmt.Errorf("build fibre adapter: %w", err)
 	}
@@ -149,47 +147,53 @@ func runBench(parentCtx context.Context, f runFlags) error {
 		}
 	}()
 	// Wrap in a latency-recording proxy so the stats printer can show
-	// per-Upload p50/p99 — without this we can't tell whether the
-	// production-vs-DA-settlement gap comes from ev-node's submitter
-	// serialization (one header + one data Upload in flight at a time)
-	// or from actual Fibre Upload latency.
+	// per-Upload p50/p99.
 	fiberClient := newInstrumentedAdapter(innerFiberClient)
 
-	// 3) Build the ev-node file signer (separate key — block signing, not
-	// fibre payments). Created in the home dir if missing.
+	// 2) ev-node block-signing key. Created in the home dir if missing.
 	signerDir := filepath.Join(f.homeDir, "signer")
 	if err := os.MkdirAll(signerDir, 0o750); err != nil {
 		return fmt.Errorf("create signer dir: %w", err)
 	}
 	signerFile := filepath.Join(signerDir, "signer.json")
-	var signer pkgsigner.Signer
-	if _, err := os.Stat(signerFile); os.IsNotExist(err) {
+	if _, statErr := os.Stat(signerFile); os.IsNotExist(statErr) {
 		s, err := file.CreateFileSystemSigner(signerDir, []byte(f.signerPassphrase))
 		if err != nil {
 			return fmt.Errorf("create file signer: %w", err)
 		}
-		signer = s
-	} else {
-		s, err := file.LoadFileSystemSigner(signerDir, []byte(f.signerPassphrase))
-		if err != nil {
-			return fmt.Errorf("load file signer: %w", err)
+		if _, err := s.GetAddress(); err != nil {
+			return fmt.Errorf("signer address: %w", err)
 		}
-		signer = s
 	}
-	signerAddr, err := signer.GetAddress()
+	// cmd.StartNode reads the passphrase from a file path stored in
+	// FlagSignerPassphraseFile; write the in-memory string out so
+	// the canonical signer-loading path works without a separate
+	// passphrase-flag flow.
+	passphraseFile := filepath.Join(f.homeDir, "passphrase.txt")
+	if err := os.WriteFile(passphraseFile, []byte(f.signerPassphrase), 0o600); err != nil {
+		return fmt.Errorf("write passphrase file: %w", err)
+	}
+	if err := cobraCmd.Flags().Set(evconfig.FlagSignerPassphraseFile, passphraseFile); err != nil {
+		return fmt.Errorf("set passphrase flag: %w", err)
+	}
+
+	// Reload the signer to derive the genesis proposer address.
+	loaded, err := file.LoadFileSystemSigner(signerDir, []byte(f.signerPassphrase))
+	if err != nil {
+		return fmt.Errorf("load file signer: %w", err)
+	}
+	signerAddr, err := loaded.GetAddress()
 	if err != nil {
 		return fmt.Errorf("signer address: %w", err)
 	}
 
-	// 4) Genesis. Single proposer = our signer.
+	// 3) Genesis. Single proposer = our signer.
 	gen := genesis.NewGenesis(f.chainID, 1, time.Now().UTC(), signerAddr)
 	if err := gen.Validate(); err != nil {
 		return fmt.Errorf("invalid genesis: %w", err)
 	}
 
-	// 5) ev-node config. P2P listen on a random port; ev-node disables p2p
-	// outbound when fiber is enabled, but the libp2p host is still
-	// constructed, so we still need a port.
+	// 4) ev-node config.
 	cfg := evconfig.DefaultConfig()
 	cfg.RootDir = f.homeDir
 	cfg.DBPath = "data"
@@ -224,79 +228,44 @@ func runBench(parentCtx context.Context, f runFlags) error {
 	cfg.Signer.SignerType = "file"
 	cfg.Signer.SignerPath = signerDir
 
-	// Validate fiber config the way ev-node would.
 	if err := cfg.DA.Fiber.Validate(); err != nil {
 		return fmt.Errorf("fiber config: %w", err)
 	}
 
-	// 6) Datastore for ev-node's internal state. Uses the standard
-	// constructor; the in-memory swap for benchmarking lives in
-	// pkg/store/kv.go::NewDefaultKVStore (see HACK there).
+	// 5) Datastore + node-key + executor + sequencer. The first three
+	// look identical to what testapp/cmd/run.go does; the executor
+	// is the bench-specific in-memory variant (constant state root,
+	// see executor.go for rationale) and the sequencer is solo (no
+	// based-sequencer / no forced inclusion machinery).
 	ds, err := store.NewDefaultKVStore(f.homeDir, cfg.DBPath, "fiber-bench")
 	if err != nil {
 		return fmt.Errorf("open datastore: %w", err)
 	}
-
-	// 7) Executor + sequencer.
+	nodeKey, err := loadOrGenNodeKey(filepath.Join(f.homeDir, "node-key.json"))
+	if err != nil {
+		return fmt.Errorf("node key: %w", err)
+	}
 	exec := newInMemExecutor(f.mempoolSize)
 	seq := solo.NewSoloSequencer(logger, []byte(gen.ChainID), exec)
 
-	// 8) DA client wraps our adapter as the FullDAClient ev-node expects.
-	daClient := block.NewFiberDAClient(fiberClient, cfg, logger, gen.DAStartHeight)
+	// 6) Spawn loader + stats printer BEFORE cmd.StartNode (which
+	// blocks). They run for the lifetime of the bench. cmd.StartNode
+	// owns its own signal-handling goroutine; we send SIGINT to
+	// ourselves when the duration timer expires so it can exit
+	// through its normal shutdown path.
+	bgCtx, bgCancel := signal.NotifyContext(cobraCmd.Context(), os.Interrupt, syscall.SIGTERM)
+	defer bgCancel()
 
-	// 9) p2p client (required by NewNode signature; outbound is disabled
-	// internally when fiber is enabled).
-	nodePrivKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
-	if err != nil {
-		return fmt.Errorf("generate node key: %w", err)
-	}
-	nodeKey := &key.NodeKey{PrivKey: nodePrivKey}
-	p2pClient, err := p2p.NewClient(cfg.P2P, nodeKey.PrivKey, datastore.NewMapDatastore(), gen.ChainID, logger, nil)
-	if err != nil {
-		return fmt.Errorf("create p2p client: %w", err)
-	}
-
-	// 10) Build the node.
-	rollnode, err := node.NewNode(
-		cfg,
-		exec,
-		seq,
-		daClient,
-		signer,
-		p2pClient,
-		gen,
-		ds,
-		node.DefaultMetricsProvider(cfg.Instrumentation),
-		logger,
-		node.NodeOptions{},
-	)
-	if err != nil {
-		return fmt.Errorf("create node: %w", err)
-	}
-
-	// 11) Start the node.
-	nodeErrCh := make(chan error, 1)
-	var nodeWg sync.WaitGroup
-	nodeWg.Add(1)
-	go func() {
-		defer nodeWg.Done()
-		defer func() {
-			if r := recover(); r != nil {
-				nodeErrCh <- fmt.Errorf("node panicked: %v", r)
-			}
-		}()
-		nodeErrCh <- rollnode.Run(ctx)
-	}()
-
-	// 12) Start the load generator.
-	loaderWg := sync.WaitGroup{}
+	var loaderWg sync.WaitGroup
 	loaderWg.Add(1)
 	go func() {
 		defer loaderWg.Done()
-		newLoader(exec, f.workers, f.txSize).run(ctx)
+		newLoader(exec, f.workers, f.txSize).run(bgCtx)
 	}()
 
-	// 13) Stats printer + duration timer.
+	printer := newStatsPrinter(exec, f.prometheusAddr, f.txSize, fiberClient)
+	printer.start(bgCtx, f.statsInterval)
+
 	logger.Info().
 		Dur("duration", f.duration).
 		Int("workers", f.workers).
@@ -306,38 +275,40 @@ func runBench(parentCtx context.Context, f runFlags) error {
 		Str("batching", f.batchingStrategy).
 		Msg("bench started")
 
-	printer := newStatsPrinter(exec, f.prometheusAddr, f.txSize, fiberClient)
-	printer.start(ctx, f.statsInterval)
-
 	if f.duration > 0 {
-		select {
-		case <-time.After(f.duration):
-			logger.Info().Msg("duration elapsed, stopping")
-		case err := <-nodeErrCh:
-			if err != nil && !errors.Is(err, context.Canceled) {
-				logger.Error().Err(err).Msg("node exited unexpectedly")
-				cancel()
-				return err
+		go func() {
+			select {
+			case <-time.After(f.duration):
+				logger.Info().Msg("duration elapsed, sending SIGINT to trigger shutdown")
+				_ = syscall.Kill(syscall.Getpid(), syscall.SIGINT)
+			case <-bgCtx.Done():
 			}
-		case <-ctx.Done():
-		}
-	} else {
-		select {
-		case err := <-nodeErrCh:
-			if err != nil && !errors.Is(err, context.Canceled) {
-				logger.Error().Err(err).Msg("node exited unexpectedly")
-				cancel()
-				return err
-			}
-		case <-ctx.Done():
-		}
+		}()
 	}
 
-	cancel()
+	// 7) The actual node — let cmd.StartNode do all the wiring
+	// (signer load, DA client, p2p, node.NewNode, run loop with
+	// shutdown). Same call testapp/evm/grpc apps make.
+	startErr := rollcmd.StartNode(
+		logger, cobraCmd, exec, seq, nodeKey, ds, cfg, gen,
+		node.NodeOptions{}, fiberClient,
+	)
+
+	bgCancel()
 	loaderWg.Wait()
-	nodeWg.Wait()
 	printer.printFinalSummary()
+
+	if startErr != nil && !errors.Is(startErr, context.Canceled) {
+		return startErr
+	}
 	return nil
+}
+
+// loadOrGenNodeKey is a tiny shim around pkg/p2p/key.LoadOrGenNodeKey,
+// kept as a package-local helper so the bench can stay decoupled from
+// changes to that helper's import path. The behaviour is identical.
+func loadOrGenNodeKey(path string) (*key.NodeKey, error) {
+	return key.LoadOrGenNodeKey(filepath.Dir(path))
 }
 
 func setupLogger(level string) zerolog.Logger {
