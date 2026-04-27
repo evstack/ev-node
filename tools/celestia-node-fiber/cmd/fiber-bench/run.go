@@ -230,10 +230,21 @@ func runBench(parentCtx context.Context, f runFlags) error {
 	}
 
 	// 6) Datastore for ev-node's internal state.
-	ds, err := store.NewDefaultKVStore(f.homeDir, cfg.DBPath, "fiber-bench")
+	//
+	// Use the in-memory KV store so block writes don't touch disk:
+	// at sustained 128 MB blocks × ~1 b/s the on-disk Badger backend
+	// generates 100+ MB/s of value-log writes plus heavy compaction
+	// pressure that contributes to GC stalls and, under load, can
+	// hit Badger races ("file exists" on .vlog rotation observed at
+	// ~150 MB/s sustained). The bench has no durability requirement
+	// — if it crashes we re-run — so we skip persistence entirely
+	// and let the bench measure ev-node's pipeline rather than
+	// Badger's write-amplification curve.
+	ds, err := store.NewTestInMemoryKVStore()
 	if err != nil {
 		return fmt.Errorf("open datastore: %w", err)
 	}
+	_ = f.homeDir // referenced elsewhere for signer dir
 
 	// 7) Executor + sequencer.
 	exec := newInMemExecutor(f.mempoolSize)
