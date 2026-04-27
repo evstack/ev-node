@@ -52,6 +52,7 @@ type CacheManager interface {
 
 	// Transaction operations
 	IsTxSeen(hash string) bool
+	AreTxsSeen(hashes []string) []bool
 	SetTxSeen(hash string)
 	SetTxsSeen(hashes []string)
 	CleanupOldTxs(olderThan time.Duration) int
@@ -204,6 +205,10 @@ func (m *implementation) IsTxSeen(hash string) bool {
 	return m.txCache.isSeen(hash)
 }
 
+func (m *implementation) AreTxsSeen(hashes []string) []bool {
+	return m.txCache.areSeen(hashes)
+}
+
 func (m *implementation) SetTxSeen(hash string) {
 	// Use 0 as height since transactions don't have a block height yet
 	m.txCache.setSeen(hash, 0)
@@ -212,9 +217,9 @@ func (m *implementation) SetTxSeen(hash string) {
 }
 
 func (m *implementation) SetTxsSeen(hashes []string) {
+	m.txCache.setSeenBatch(hashes, 0)
 	now := time.Now()
 	for _, hash := range hashes {
-		m.txCache.setSeen(hash, 0)
 		m.txTimestamps.Store(hash, now)
 	}
 }
