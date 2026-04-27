@@ -21,8 +21,26 @@ import (
 const (
 	// MaxBackoffInterval is the maximum backoff interval for retries
 	MaxBackoffInterval = 30 * time.Second
-	CleanupInterval    = 1 * time.Hour
 )
+
+// cleanupIntervalStr controls how often the reaper sweeps expired hashes
+// from the seen-tx cache. Override at link time for high-throughput
+// benchmarks where the default hourly sweep lets the cache grow to OOM:
+//
+//	go build -ldflags "-X github.com/evstack/ev-node/block/internal/reaping.cleanupIntervalStr=10s"
+var cleanupIntervalStr = "1h"
+
+// CleanupInterval is the resolved sweep period used by reaperLoop.
+var CleanupInterval time.Duration
+
+func init() {
+	d, err := time.ParseDuration(cleanupIntervalStr)
+	if err != nil || d <= 0 {
+		CleanupInterval = time.Hour
+		return
+	}
+	CleanupInterval = d
+}
 
 // Reaper is responsible for periodically retrieving transactions from the executor,
 // filtering out already seen transactions, and submitting new transactions to the sequencer.

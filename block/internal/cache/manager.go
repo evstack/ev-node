@@ -24,10 +24,27 @@ const (
 
 	// DataDAIncludedPrefix is the store key prefix for data DA inclusion tracking.
 	DataDAIncludedPrefix = "cache/data-da-included/"
-
-	// DefaultTxCacheRetention is the default time to keep transaction hashes in cache.
-	DefaultTxCacheRetention = 24 * time.Hour
 )
+
+// defaultTxCacheRetentionStr controls the duration tx hashes are kept in
+// the seen-tx cache before CleanupOldTxs removes them. Override at link
+// time for high-throughput benchmarks where the default 24 h causes the
+// cache to grow until OOM:
+//
+//	go build -ldflags "-X github.com/evstack/ev-node/block/internal/cache.defaultTxCacheRetentionStr=30s"
+var defaultTxCacheRetentionStr = "24h"
+
+// DefaultTxCacheRetention is the resolved retention used by CleanupOldTxs.
+var DefaultTxCacheRetention time.Duration
+
+func init() {
+	d, err := time.ParseDuration(defaultTxCacheRetentionStr)
+	if err != nil || d <= 0 {
+		DefaultTxCacheRetention = 24 * time.Hour
+		return
+	}
+	DefaultTxCacheRetention = d
+}
 
 // CacheManager provides thread-safe cache operations for tracking seen blocks
 // and DA inclusion status.
