@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -87,48 +88,75 @@ func (c *fiberDAClient) Submit(ctx context.Context, data [][]byte, _ float64, na
 		}
 	}
 
-	// Single-item fast path: avoid the MaxBlobSize-sized allocation +
-	// memcpy that flattenBlobs would do just to wrap one item in the
-	// 8-byte count/length prefix. With per-item caps already saturating
-	// MaxBlobBytes for data blobs, this is the steady-state path.
+	// Per-item concurrent Upload. Fibre's per-Upload latency is
+	// dominated by validator signature aggregation (~1.5 s on a
+	// healthy network) and does not scale up linearly under multiple
+	// in-flight Uploads, so settlement throughput scales with the
+	// number of concurrent items submitted in a single batch. Each
+	// item gets its own goroutine, its own Upload call, and its own
+	// BlobID in the result; the previous flatten step was both
+	// memory-wasteful (a MaxBlobSize-sized memcpy on every Submit)
+	// and inherently serial (one Upload per Submit).
 	//
-	// TODO: wire-format compat — splitBlobs always expects the prefix,
-	// so any retriever (full node syncer, light client) downloading a
-	// blob written via this fast path will fail to decode. Address
-	// alongside the concurrent-uploads change by switching to a
-	// per-item Upload model where flatten is no longer needed.
-	var blob []byte
-	if len(data) == 1 {
-		blob = data[0]
-	} else {
-		blob = flattenBlobs(data)
+	// TODO: wire-format compat — old splitBlobs assumed all items in
+	// a Submit were written as a single prefixed blob. With per-item
+	// Uploads, retrievers must treat each BlobID separately. The
+	// retrieve path in this file still uses splitBlobs and will need
+	// a follow-up to read the new per-item blobs as raw payloads.
+	nsID := namespace[len(namespace)-10:]
+	type uploadResult struct {
+		idx int
+		id  []byte
+		err error
+	}
+	results := make([]uploadResult, len(data))
+	var wg sync.WaitGroup
+	for i := range data {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			res, err := c.fiber.Upload(ctx, nsID, data[i])
+			if err != nil {
+				results[i] = uploadResult{idx: i, err: err}
+				return
+			}
+			id := make([]byte, len(res.BlobID))
+			copy(id, res.BlobID)
+			results[i] = uploadResult{idx: i, id: id}
+		}(i)
+	}
+	wg.Wait()
+
+	// Walk results in submission order. submitToDA's retry logic
+	// expects "prefix of successes": SubmittedCount=N means items
+	// [0..N) succeeded and the caller will re-submit items [N..end)
+	// on the next attempt. Reporting interleaved successes would
+	// double-submit blobs and waste escrow; matching prefix
+	// semantics keeps the contract intact even when individual
+	// Uploads fail out-of-order.
+	ids := make([][]byte, 0, len(data))
+	var firstErr error
+	for _, r := range results {
+		if r.err != nil {
+			firstErr = r.err
+			break
+		}
+		ids = append(ids, r.id)
 	}
 
-	// Honor the caller's context so Upload returns promptly on
-	// shutdown / parent cancellation. The previous context.Background()
-	// kept Uploads alive past node shutdown and contributed to the
-	// "payment promise already processed" warnings we saw in early
-	// runs (a stale Upload would settle after the node had stopped
-	// tracking it).
-	result, err := c.fiber.Upload(ctx, namespace[len(namespace)-10:], blob)
-	if err != nil {
+	if len(ids) == 0 && firstErr != nil {
 		code := datypes.StatusError
 		switch {
-		case errors.Is(err, context.Canceled):
+		case errors.Is(firstErr, context.Canceled):
 			code = datypes.StatusContextCanceled
-		case errors.Is(err, context.DeadlineExceeded):
+		case errors.Is(firstErr, context.DeadlineExceeded):
 			code = datypes.StatusContextDeadline
 		}
-
-		c.logger.Error().Err(err).Msg("fiber upload failed")
-
+		c.logger.Error().Err(firstErr).Msg("fiber upload failed")
 		return datypes.ResultSubmit{
 			BaseResult: datypes.BaseResult{
-				Code: code,
-				Message: fmt.Sprintf("fiber upload failed for blob: %v", err),
-				// On error nothing settled — the previous len(data)-1
-				// reported all-but-one as submitted on full failure,
-				// which lied to the caller's retry/postSubmit logic.
+				Code:           code,
+				Message:        fmt.Sprintf("fiber upload failed for blob: %v", firstErr),
 				SubmittedCount: 0,
 				BlobSize:       blobSize,
 				Timestamp:      time.Now(),
@@ -136,13 +164,20 @@ func (c *fiberDAClient) Submit(ctx context.Context, data [][]byte, _ float64, na
 		}
 	}
 
-	c.logger.Debug().Int("num_ids", len(data)).Uint64("height", 0 /* TODO */).Msg("fiber DA submission successful")
+	if firstErr != nil {
+		c.logger.Warn().Err(firstErr).
+			Int("submitted", len(ids)).
+			Int("total", len(data)).
+			Msg("fiber upload partial success — caller will retry the remainder")
+	}
+
+	c.logger.Debug().Int("num_ids", len(ids)).Uint64("height", 0 /* TODO */).Msg("fiber DA submission successful")
 
 	return datypes.ResultSubmit{
 		BaseResult: datypes.BaseResult{
 			Code:           datypes.StatusSuccess,
-			IDs:            [][]byte{result.BlobID},
-			SubmittedCount: uint64(len(data)),
+			IDs:            ids,
+			SubmittedCount: uint64(len(ids)),
 			Height:         0, /* TODO */
 			BlobSize:       blobSize,
 			Timestamp:      time.Now(),
