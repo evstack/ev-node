@@ -22,7 +22,7 @@ WORKDIR /src/celestia-app
 RUN git checkout "${CELESTIA_APP_REF}" || true
 ENV CGO_ENABLED=0 GOFLAGS="-mod=readonly"
 RUN go build -tags "ledger,fibre" -o /out/celestia-appd ./cmd/celestia-appd
-RUN go build -tags "ledger,fibre" -o /out/fibre        ./cmd/fibre
+RUN go build -tags "ledger,fibre" -o /out/fibre        ./fibre/cmd
 
 FROM debian:bookworm-slim
 RUN apt-get update \

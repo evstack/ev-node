@@ -34,6 +34,7 @@ sed -i \
     -e 's|^laddr = "tcp://0.0.0.0:26656"|laddr = "tcp://0.0.0.0:26656"|' \
     -e "s|^persistent_peers = \"\"|persistent_peers = \"$peers\"|" \
     -e "s|^external_address = \"\"|external_address = \"$service_name:26656\"|" \
+    -e 's|^priv_validator_grpc_laddr = ""|priv_validator_grpc_laddr = "127.0.0.1:26659"|' \
     "$config_toml"
 
 sed -i \
@@ -43,26 +44,43 @@ sed -i \
     -e 's|^address = "localhost:9091"|address = "0.0.0.0:9091"|' \
     "$app_toml"
 
-# Start celestia-appd in the background.
+# Start celestia-appd in the background. --force-no-bbr because the
+# linux kernel inside docker containers on macOS does not have BBR
+# congestion control enabled.
 "$APP" start --home "$home" \
     --grpc.address "0.0.0.0:9090" \
-    --grpc.enable true &
+    --grpc.enable true \
+    --force-no-bbr &
 appd_pid=$!
 
-# Wait for the gRPC port to be reachable before launching fibre.
-until nc -z 127.0.0.1 9090; do
+# Wait for the gRPC + privval gRPC ports to be reachable before launching
+# fibre. Use bash's /dev/tcp instead of nc (not in slim debian).
+until (exec 3<>/dev/tcp/127.0.0.1/9090) 2>/dev/null; do
     sleep 1
 done
+exec 3<&- 3>&-
+until (exec 3<>/dev/tcp/127.0.0.1/26659) 2>/dev/null; do
+    sleep 1
+done
+exec 3<&- 3>&-
 
-# Start the fibre server. Listens on :26659 (arbitrary chosen port —
-# matches the dns:///val$VAL_INDEX:26659 form used at registration time).
-# TODO: confirm the actual `fibre` binary CLI; flags below are
-# illustrative based on tools/talis/fibre_setup.go usage. May need
-# adjusting once we run it for real.
-"$FIBRE_BIN" \
-    --home "$home" \
-    --listen-address "0.0.0.0:26659" \
-    --app-grpc-address "127.0.0.1:9090" &
+# Wait for the chain to produce the first block — fibre requires this
+# at startup to detect chain ID, otherwise it errors out and exits.
+until height=$("$APP" status --home "$home" --node "tcp://127.0.0.1:26657" 2>/dev/null \
+    | jq -r '.sync_info.latest_block_height // 0') \
+    && [ "${height:-0}" -ge 1 ]; do
+    echo "validator-$VAL_INDEX: waiting for first block (current=${height:-?})..."
+    sleep 2
+done
+
+# Start the fibre server. Defaults: listens on 0.0.0.0:7980, signs via
+# the validator's privval gRPC at 127.0.0.1:26659 (set above via
+# priv_validator_grpc_laddr).
+"$FIBRE_BIN" start \
+    --home "$home/.celestia-fibre" \
+    --server-listen-address "0.0.0.0:7980" \
+    --app-grpc-address "127.0.0.1:9090" \
+    --signer-grpc-address "127.0.0.1:26659" &
 fibre_pid=$!
 
 trap 'kill "$appd_pid" "$fibre_pid" 2>/dev/null || true' EXIT
