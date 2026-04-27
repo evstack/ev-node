@@ -21,26 +21,22 @@ import (
 const (
 	// MaxBackoffInterval is the maximum backoff interval for retries
 	MaxBackoffInterval = 30 * time.Second
+
+	// CleanupInterval is how often the reaper sweeps expired hashes
+	// out of the seen-tx cache.
+	//
+	// HACK(fiber-throughput): dropped from 1h to 5s. The original
+	// 1h was effectively coupled to the previous 24h retention —
+	// sweeping every hour against a 24h window means a cache entry
+	// can outlive its retention by 1h, which is fine when retention
+	// is a day but completely breaks at 30s retention (entries
+	// would survive 12× past expiry). Whatever the right retention
+	// turns out to be (see DefaultTxCacheRetention's note in
+	// cache/manager.go), this value should be a small fraction of
+	// it — not a fixed time. Better to derive: e.g.
+	// retention/10 with a sane min/max.
+	CleanupInterval = 5 * time.Second
 )
-
-// cleanupIntervalStr controls how often the reaper sweeps expired hashes
-// from the seen-tx cache. Override at link time for high-throughput
-// benchmarks where the default hourly sweep lets the cache grow to OOM:
-//
-//	go build -ldflags "-X github.com/evstack/ev-node/block/internal/reaping.cleanupIntervalStr=10s"
-var cleanupIntervalStr = "1h"
-
-// CleanupInterval is the resolved sweep period used by reaperLoop.
-var CleanupInterval time.Duration
-
-func init() {
-	d, err := time.ParseDuration(cleanupIntervalStr)
-	if err != nil || d <= 0 {
-		CleanupInterval = time.Hour
-		return
-	}
-	CleanupInterval = d
-}
 
 // Reaper is responsible for periodically retrieving transactions from the executor,
 // filtering out already seen transactions, and submitting new transactions to the sequencer.

@@ -24,27 +24,26 @@ const (
 
 	// DataDAIncludedPrefix is the store key prefix for data DA inclusion tracking.
 	DataDAIncludedPrefix = "cache/data-da-included/"
+
+	// DefaultTxCacheRetention is how long tx hashes stay in the
+	// seen-tx cache before CleanupOldTxs evicts them.
+	//
+	// HACK(fiber-throughput): dropped from 24h to 30s while we chase
+	// throughput, but the previous default was itself wrong: 24h is
+	// retention × tps in memory, so any rollup with meaningful TPS
+	// would OOM (we hit ~16 GB in under a minute at ~1.5M tx/s).
+	// What this should be properly:
+	//   - Bounded by entry count, not wall time. The dedup window
+	//     should be "the last N txs we saw", LRU-evicted, so cache
+	//     memory is fixed regardless of throughput.
+	//   - Or expressed in DA blocks: "drop hashes once their txs
+	//     would have been retried out of the mempool", which is a
+	//     property of mempool TTL × DA block time, not 24 hours.
+	//   - 30s is a fine measurement default and a reasonable upper
+	//     bound for pretty much any rollup; pick the right number
+	//     when the cache structure itself is reworked.
+	DefaultTxCacheRetention = 30 * time.Second
 )
-
-// defaultTxCacheRetentionStr controls the duration tx hashes are kept in
-// the seen-tx cache before CleanupOldTxs removes them. Override at link
-// time for high-throughput benchmarks where the default 24 h causes the
-// cache to grow until OOM:
-//
-//	go build -ldflags "-X github.com/evstack/ev-node/block/internal/cache.defaultTxCacheRetentionStr=30s"
-var defaultTxCacheRetentionStr = "24h"
-
-// DefaultTxCacheRetention is the resolved retention used by CleanupOldTxs.
-var DefaultTxCacheRetention time.Duration
-
-func init() {
-	d, err := time.ParseDuration(defaultTxCacheRetentionStr)
-	if err != nil || d <= 0 {
-		DefaultTxCacheRetention = 24 * time.Hour
-		return
-	}
-	DefaultTxCacheRetention = d
-}
 
 // CacheManager provides thread-safe cache operations for tracking seen blocks
 // and DA inclusion status.
