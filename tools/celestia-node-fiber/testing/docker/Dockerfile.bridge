@@ -3,7 +3,7 @@
 # Listen path, and (on the read-only side) the fibre namespace API.
 ARG GO_VERSION=1.26.1
 ARG CELESTIA_NODE_REPO=https://github.com/celestiaorg/celestia-node.git
-ARG CELESTIA_NODE_REF=feature/fibre
+ARG CELESTIA_NODE_REF=feature/fibre-experimental
 
 FROM golang:${GO_VERSION}-bookworm AS build
 ARG CELESTIA_NODE_REPO

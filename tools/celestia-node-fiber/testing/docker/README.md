@@ -17,7 +17,7 @@ correctly, but it doesn't exercise:
   satisfies it),
 - inter-validator P2P,
 - multiple Fibre servers contributing partial signatures,
-- the dns:/// host registry resolution path,
+- the host:port registry resolution path,
 - the bridge syncing real headers off a network it doesn't itself drive.
 
 This stack does.

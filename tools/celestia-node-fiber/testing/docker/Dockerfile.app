@@ -7,7 +7,7 @@
 # fibre development lives.
 ARG GO_VERSION=1.26.1
 ARG CELESTIA_APP_REPO=https://github.com/celestiaorg/celestia-app.git
-ARG CELESTIA_APP_REF=main
+ARG CELESTIA_APP_REF=feat/fibre-payments
 
 FROM golang:${GO_VERSION}-bookworm AS build
 ARG CELESTIA_APP_REPO

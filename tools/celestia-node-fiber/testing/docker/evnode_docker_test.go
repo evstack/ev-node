@@ -41,7 +41,7 @@ import (
 //   - real consensus 2/3-quorum signature aggregation (4 validators),
 //   - inter-validator P2P,
 //   - 4 distinct fibre servers cooperating on Upload row distribution,
-//   - dns:/// host registry resolution against an external chain,
+//   - host:port registry resolution against an external chain,
 //   - a bridge that's syncing real headers, not driving block production.
 func TestEvNode_FiberDA_Docker(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)

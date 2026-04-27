@@ -2,10 +2,11 @@
 # register-fsps.sh — runs once after validators are producing blocks.
 #
 # Submits MsgSetFibreProviderInfo for each validator so the chain's
-# valaddr module maps consensus address → fibre server address. The
-# `dns:///` URI prefix is required by the fibre client's gRPC dialer
-# (a bare host:port fails URL parsing — same gotcha documented in
-# tools/talis/fibre_setup.go).
+# valaddr module maps consensus address → fibre server address.
+# x/valaddr now requires plain `host:port` (no `dns:///` prefix or any
+# scheme), see celestia-app PR #7183. gRPC's default passthrough
+# resolver dials `host:port` directly, so the prefix is no longer
+# needed (and is now rejected at registration tx time).
 #
 # Also funds the test client account's escrow so MsgPayForFibre can
 # settle in the docker network.
@@ -44,7 +45,7 @@ for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
     # driver running on the docker host can dial each fibre server
     # directly. compose.yaml maps val_i:7980 → host:798$i.
     host_port=$((FIBRE_PORT + i))
-    "$APP" tx valaddr set-host "dns:///127.0.0.1:$host_port" \
+    "$APP" tx valaddr set-host "127.0.0.1:$host_port" \
         --from validator --keyring-backend test --home "$home" \
         --chain-id "$CHAIN_ID" --node "tcp://val$i:26657" \
         --fees "$FEES" --yes
