@@ -261,7 +261,6 @@ func TestDASubmitter_SubmitData_Success(t *testing.T) {
 
 	// Create test signer
 	addr, pub, signer := createTestSigner(t)
-	gen.ProposerAddress = addr
 
 	// Update submitter genesis to use correct proposer
 	submitter.genesis.ProposerAddress = addr
@@ -349,7 +348,6 @@ func TestDASubmitter_SubmitData_SkipsEmptyData(t *testing.T) {
 
 	// Create test signer
 	addr, pub, signer := createTestSigner(t)
-	gen.ProposerAddress = addr
 
 	// Create empty data
 	emptyData := &types.Data{
