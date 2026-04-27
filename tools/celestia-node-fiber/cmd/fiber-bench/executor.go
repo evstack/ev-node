@@ -115,28 +115,16 @@ func (e *inMemExecutor) GetExecutionInfo(_ context.Context) (coreexecution.Execu
 	return coreexecution.ExecutionInfo{MaxGas: 0}, nil
 }
 
-// blockOverheadMargin is the safety margin we subtract from ev-node's
-// MaxBytes hint inside FilterTxs. ev-node currently caps raw tx bytes at
-// MaxBlobSize, but the actual DA blob also carries types.Data metadata,
-// signature, and protobuf framing — empirically ~80 KB at 200 B/tx,
-// 26k txs/block. Without this margin, submission of a full block hits
-// "single item exceeds DA blob size limit" and halts the node.
-//
-// This is a workaround for a real ev-node accounting bug
-// (block/internal/executing/executor.go:670 hardcodes MaxBytes =
-// MaxBlobSize without reserving room for metadata/proto). 256 KB is
-// generous and avoids the failure mode reliably.
-const blockOverheadMargin uint64 = 256 * 1024
-
 // FilterTxs enforces the configured per-block byte budget. Mirrors the
 // existing testapp KV executor's behavior: oversized txs are dropped, the
 // rest fill until the budget is hit and overflow is postponed for the
 // next block. We don't validate tx content — txs from the load generator
 // are well-formed by construction.
+//
+// We honor maxBytes as-is. Per-block proto/Metadata overhead is the
+// responsibility of the block-size cap (now anchored to Fibre's actual
+// MaxPayload in block/internal/common/consts.go), not the executor.
 func (e *inMemExecutor) FilterTxs(_ context.Context, txs [][]byte, maxBytes, _ uint64, _ bool) ([]coreexecution.FilterStatus, error) {
-	if maxBytes > blockOverheadMargin {
-		maxBytes -= blockOverheadMargin
-	}
 	out := make([]coreexecution.FilterStatus, len(txs))
 	var used uint64
 	limitReached := false
