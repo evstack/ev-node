@@ -14,6 +14,7 @@ import (
 	"github.com/celestiaorg/celestia-node/api/client"
 	blobapi "github.com/celestiaorg/celestia-node/nodebuilder/blob"
 	fibreapi "github.com/celestiaorg/celestia-node/nodebuilder/fibre"
+	headerapi "github.com/celestiaorg/celestia-node/nodebuilder/header"
 
 	"github.com/evstack/ev-node/block"
 )
@@ -39,6 +40,7 @@ const defaultListenChannelSize = 16
 type Adapter struct {
 	fibre           fibreapi.Module
 	blob            blobapi.Module
+	header          headerapi.Module
 	listenChannelSz int
 
 	// closer, if non-nil, is invoked by Close. Set only when the Adapter
@@ -60,6 +62,7 @@ func New(ctx context.Context, cfg Config, kr keyring.Keyring) (*Adapter, error) 
 	return &Adapter{
 		fibre:           c.Fibre,
 		blob:            c.Blob,
+		header:          c.Header,
 		listenChannelSz: resolveListenChannelSize(cfg.ListenChannelSize),
 		closer:          c.Close,
 	}, nil
@@ -83,6 +86,20 @@ func (a *Adapter) Close() error {
 		return nil
 	}
 	return a.closer()
+}
+
+// Head returns the bridge node's current local-head height. Returns 0 if
+// the underlying client was constructed via FromModules without a Header
+// module.
+func (a *Adapter) Head(ctx context.Context) (uint64, error) {
+	if a.header == nil {
+		return 0, fmt.Errorf("Adapter has no Header module; construct via New")
+	}
+	h, err := a.header.LocalHead(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("header.LocalHead: %w", err)
+	}
+	return h.Height(), nil
 }
 
 // Upload implements fiber.DA.Upload. client.Fibre.Upload does off-chain row
