@@ -87,9 +87,30 @@ func (c *fiberDAClient) Submit(ctx context.Context, data [][]byte, _ float64, na
 		}
 	}
 
-	flat := flattenBlobs(data)
+	// Single-item fast path: avoid the MaxBlobSize-sized allocation +
+	// memcpy that flattenBlobs would do just to wrap one item in the
+	// 8-byte count/length prefix. With per-item caps already saturating
+	// MaxBlobBytes for data blobs, this is the steady-state path.
+	//
+	// TODO: wire-format compat — splitBlobs always expects the prefix,
+	// so any retriever (full node syncer, light client) downloading a
+	// blob written via this fast path will fail to decode. Address
+	// alongside the concurrent-uploads change by switching to a
+	// per-item Upload model where flatten is no longer needed.
+	var blob []byte
+	if len(data) == 1 {
+		blob = data[0]
+	} else {
+		blob = flattenBlobs(data)
+	}
 
-	result, err := c.fiber.Upload(context.Background(), namespace[len(namespace)-10:], flat)
+	// Honor the caller's context so Upload returns promptly on
+	// shutdown / parent cancellation. The previous context.Background()
+	// kept Uploads alive past node shutdown and contributed to the
+	// "payment promise already processed" warnings we saw in early
+	// runs (a stale Upload would settle after the node had stopped
+	// tracking it).
+	result, err := c.fiber.Upload(ctx, namespace[len(namespace)-10:], blob)
 	if err != nil {
 		code := datypes.StatusError
 		switch {
@@ -103,9 +124,12 @@ func (c *fiberDAClient) Submit(ctx context.Context, data [][]byte, _ float64, na
 
 		return datypes.ResultSubmit{
 			BaseResult: datypes.BaseResult{
-				Code:           code,
-				Message:        fmt.Sprintf("fiber upload failed for blob: %v", err),
-				SubmittedCount: uint64(len(data) - 1),
+				Code: code,
+				Message: fmt.Sprintf("fiber upload failed for blob: %v", err),
+				// On error nothing settled — the previous len(data)-1
+				// reported all-but-one as submitted on full failure,
+				// which lied to the caller's retry/postSubmit logic.
+				SubmittedCount: 0,
 				BlobSize:       blobSize,
 				Timestamp:      time.Now(),
 			},
