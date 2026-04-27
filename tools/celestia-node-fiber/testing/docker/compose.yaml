@@ -1,0 +1,153 @@
+# Local 4-validator + 1-bridge Fibre stack for end-to-end testing of the
+# celestia-node-fiber adapter. Designed to be brought up with
+# `docker compose up -d` from this directory; the test driver in
+# docker_test.go (build tag `fibre_docker`) connects to it from the host.
+#
+# Services:
+#   bootstrap         one-shot — generates a 4-val genesis under /shared
+#   val0..val3        validators running celestia-appd + fibre server
+#   register          one-shot — submits MsgSetFibreProviderInfo + escrow
+#   bridge            celestia-node bridge connected to val0
+#
+# Volumes:
+#   shared/           genesis, keyrings, peers, JWT — read by every service
+#
+# Ports exposed to host (override via override file if they collide):
+#   val0 :26657 (RPC) :9090 (gRPC) :7980 (fibre)
+#   bridge :26658 (JSON-RPC over WebSocket)
+services:
+  bootstrap:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    entrypoint: ["bash", "/scripts/init-genesis.sh"]
+    environment:
+      CHAIN_ID: fibre-docker
+      NUM_VALIDATORS: "4"
+      SHARED: /shared
+      CLIENT_ACCOUNT: default-fibre
+    volumes:
+      - shared:/shared
+      - ./scripts:/scripts:ro
+    restart: "no"
+
+  val0:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    entrypoint: ["bash", "/scripts/start-validator.sh"]
+    environment:
+      VAL_INDEX: "0"
+      SHARED: /shared
+      CHAIN_ID: fibre-docker
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    volumes:
+      - shared:/shared
+      - ./scripts:/scripts:ro
+    ports:
+      - "26657:26657"
+      - "9090:9090"
+      - "7980:7980"
+
+  val1:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    entrypoint: ["bash", "/scripts/start-validator.sh"]
+    environment:
+      VAL_INDEX: "1"
+      SHARED: /shared
+      CHAIN_ID: fibre-docker
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    volumes:
+      - shared:/shared
+      - ./scripts:/scripts:ro
+    ports:
+      - "7981:7980"
+
+  val2:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    entrypoint: ["bash", "/scripts/start-validator.sh"]
+    environment:
+      VAL_INDEX: "2"
+      SHARED: /shared
+      CHAIN_ID: fibre-docker
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    volumes:
+      - shared:/shared
+      - ./scripts:/scripts:ro
+    ports:
+      - "7982:7980"
+
+  val3:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    entrypoint: ["bash", "/scripts/start-validator.sh"]
+    environment:
+      VAL_INDEX: "3"
+      SHARED: /shared
+      CHAIN_ID: fibre-docker
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    volumes:
+      - shared:/shared
+      - ./scripts:/scripts:ro
+    ports:
+      - "7983:7980"
+
+  register:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    entrypoint: ["bash", "/scripts/register-fsps.sh"]
+    environment:
+      NUM_VALIDATORS: "4"
+      SHARED: /shared
+      CHAIN_ID: fibre-docker
+      CLIENT_ACCOUNT: default-fibre
+    depends_on:
+      val0:
+        condition: service_started
+      val1:
+        condition: service_started
+      val2:
+        condition: service_started
+      val3:
+        condition: service_started
+    volumes:
+      - shared:/shared
+      - ./scripts:/scripts:ro
+    restart: on-failure
+
+  bridge:
+    build:
+      context: .
+      dockerfile: Dockerfile.bridge
+    entrypoint: ["bash", "/scripts/start-bridge.sh"]
+    environment:
+      NETWORK: fibre-docker
+      SHARED: /shared
+      CORE_IP: val0
+      CORE_GRPC_PORT: "9090"
+      CORE_RPC_PORT: "26657"
+    depends_on:
+      register:
+        condition: service_completed_successfully
+    volumes:
+      - shared:/shared
+      - ./scripts:/scripts:ro
+    ports:
+      - "26658:26658"
+
+volumes:
+  shared:

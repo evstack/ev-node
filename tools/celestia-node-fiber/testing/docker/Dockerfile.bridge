@@ -1,0 +1,28 @@
+# Build a celestia-node bridge binary with the `fibre` build tag enabled.
+# The bridge is what serves blob.Subscribe over JSON-RPC for the adapter's
+# Listen path, and (on the read-only side) the fibre namespace API.
+ARG GO_VERSION=1.26.1
+ARG CELESTIA_NODE_REPO=https://github.com/celestiaorg/celestia-node.git
+ARG CELESTIA_NODE_REF=feature/fibre
+
+FROM golang:${GO_VERSION}-bookworm AS build
+ARG CELESTIA_NODE_REPO
+ARG CELESTIA_NODE_REF
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+RUN git clone --depth 1 --branch "${CELESTIA_NODE_REF}" "${CELESTIA_NODE_REPO}" celestia-node \
+    || git clone "${CELESTIA_NODE_REPO}" celestia-node
+WORKDIR /src/celestia-node
+RUN git checkout "${CELESTIA_NODE_REF}" || true
+ENV CGO_ENABLED=0 GOFLAGS="-mod=readonly"
+RUN go build -tags "fibre" -o /out/celestia ./cmd/celestia
+
+FROM debian:bookworm-slim
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates jq curl \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=build /out/celestia /usr/local/bin/celestia
+RUN chmod +x /usr/local/bin/celestia
+WORKDIR /home/celestia
