@@ -2,6 +2,11 @@ module github.com/evstack/ev-node/execution/evm
 
 go 1.25.7
 
+replace (
+	github.com/evstack/ev-node => ../../
+	github.com/evstack/ev-node/core => ../../core
+)
+
 require (
 	github.com/ethereum/go-ethereum v1.17.2
 	github.com/evstack/ev-node v1.1.0

@@ -1,7 +1,6 @@
 package types
 
 import (
-	"bytes"
 	"context"
 	"encoding"
 	"errors"
@@ -43,7 +42,8 @@ var (
 	// ErrNoProposerAddress is returned when the proposer address is not set.
 	ErrNoProposerAddress = errors.New("no proposer address")
 
-	// ErrProposerVerificationFailed is returned when the proposer verification fails.
+	// ErrProposerVerificationFailed is deprecated. Proposer authorization is
+	// enforced through State validation because proposer rotation is execution-owned.
 	ErrProposerVerificationFailed = errors.New("proposer verification failed")
 
 	// ErrInvalidTimestamp is returned when the timestamp is invalid.
@@ -124,15 +124,9 @@ func (h *Header) Time() time.Time {
 
 // Verify verifies the header.
 func (h *Header) Verify(untrstH *Header) error {
-	if !bytes.Equal(untrstH.ProposerAddress, h.ProposerAddress) {
-		return &header.VerifyError{
-			Reason: fmt.Errorf("%w: expected proposer (%X) got (%X)",
-				ErrProposerVerificationFailed,
-				h.ProposerAddress,
-				untrstH.ProposerAddress,
-			),
-		}
-	}
+	// Proposer rotation is execution/state-owned. The trusted header alone no
+	// longer contains enough information to authorize the signer of the next
+	// header, so full nodes enforce proposer validity through State validation.
 	return nil
 }
 

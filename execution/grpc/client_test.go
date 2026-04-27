@@ -13,7 +13,7 @@ import (
 type mockExecutor struct {
 	initChainFunc        func(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, error)
 	getTxsFunc           func(ctx context.Context) ([][]byte, error)
-	executeTxsFunc       func(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, error)
+	executeTxsFunc       func(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (execution.ExecuteResult, error)
 	setFinalFunc         func(ctx context.Context, blockHeight uint64) error
 	getExecutionInfoFunc func(ctx context.Context) (execution.ExecutionInfo, error)
 	filterTxsFunc        func(ctx context.Context, txs [][]byte, maxBytes, maxGas uint64, hasForceIncludedTransaction bool) ([]execution.FilterStatus, error)
@@ -33,11 +33,11 @@ func (m *mockExecutor) GetTxs(ctx context.Context) ([][]byte, error) {
 	return [][]byte{[]byte("tx1"), []byte("tx2")}, nil
 }
 
-func (m *mockExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, error) {
+func (m *mockExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (execution.ExecuteResult, error) {
 	if m.executeTxsFunc != nil {
 		return m.executeTxsFunc(ctx, txs, blockHeight, timestamp, prevStateRoot)
 	}
-	return []byte("updated_state_root"), nil
+	return execution.ExecuteResult{UpdatedStateRoot: []byte("updated_state_root")}, nil
 }
 
 func (m *mockExecutor) SetFinal(ctx context.Context, blockHeight uint64) error {
@@ -151,7 +151,7 @@ func TestClient_ExecuteTxs(t *testing.T) {
 	expectedStateRoot := []byte("new_state_root")
 
 	mockExec := &mockExecutor{
-		executeTxsFunc: func(ctx context.Context, txsIn [][]byte, bh uint64, ts time.Time, psr []byte) ([]byte, error) {
+		executeTxsFunc: func(ctx context.Context, txsIn [][]byte, bh uint64, ts time.Time, psr []byte) (execution.ExecuteResult, error) {
 			if len(txsIn) != len(txs) {
 				t.Errorf("expected %d txs, got %d", len(txs), len(txsIn))
 			}
@@ -164,7 +164,7 @@ func TestClient_ExecuteTxs(t *testing.T) {
 			if string(psr) != string(prevStateRoot) {
 				t.Errorf("expected prev state root %s, got %s", prevStateRoot, psr)
 			}
-			return expectedStateRoot, nil
+			return execution.ExecuteResult{UpdatedStateRoot: expectedStateRoot}, nil
 		},
 	}
 
@@ -177,13 +177,13 @@ func TestClient_ExecuteTxs(t *testing.T) {
 	client := NewClient(server.URL)
 
 	// Test ExecuteTxs
-	stateRoot, err := client.ExecuteTxs(ctx, txs, blockHeight, timestamp, prevStateRoot)
+	result, err := client.ExecuteTxs(ctx, txs, blockHeight, timestamp, prevStateRoot)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if string(stateRoot) != string(expectedStateRoot) {
-		t.Errorf("expected state root %s, got %s", expectedStateRoot, stateRoot)
+	if string(result.UpdatedStateRoot) != string(expectedStateRoot) {
+		t.Errorf("expected state root %s, got %s", expectedStateRoot, result.UpdatedStateRoot)
 	}
 }
 

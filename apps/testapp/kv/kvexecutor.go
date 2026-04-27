@@ -239,16 +239,16 @@ func (k *KVExecutor) GetTxs(ctx context.Context) ([][]byte, error) {
 // ExecuteTxs processes each transaction assumed to be in the format "key=value".
 // It updates the database accordingly using a batch and removes the executed transactions from the mempool.
 // Invalid transactions are filtered out and logged, but execution continues.
-func (k *KVExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, error) {
+func (k *KVExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (execution.ExecuteResult, error) {
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return execution.ExecuteResult{}, ctx.Err()
 	default:
 	}
 
 	batch, err := k.db.Batch(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create database batch: %w", err)
+		return execution.ExecuteResult{}, fmt.Errorf("failed to create database batch: %w", err)
 	}
 
 	validTxCount := 0
@@ -291,7 +291,7 @@ func (k *KVExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight u
 		err = batch.Put(ctx, dsKey, []byte(value))
 		if err != nil {
 			// This error is unlikely for Put unless the context is cancelled.
-			return nil, fmt.Errorf("failed to stage put operation in batch for key '%s': %w", key, err)
+			return execution.ExecuteResult{}, fmt.Errorf("failed to stage put operation in batch for key '%s': %w", key, err)
 		}
 		validTxCount++
 	}
@@ -304,7 +304,7 @@ func (k *KVExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight u
 	// Commit the batch to apply all changes atomically
 	err = batch.Commit(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to commit transaction batch: %w", err)
+		return execution.ExecuteResult{}, fmt.Errorf("failed to commit transaction batch: %w", err)
 	}
 
 	k.blocksProduced.Add(1)
@@ -315,10 +315,10 @@ func (k *KVExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight u
 	if err != nil {
 		// This is problematic, state was changed but root calculation failed.
 		// May need more robust error handling or recovery logic.
-		return nil, fmt.Errorf("failed to compute state root after executing transactions: %w", err)
+		return execution.ExecuteResult{}, fmt.Errorf("failed to compute state root after executing transactions: %w", err)
 	}
 
-	return stateRoot, nil
+	return execution.ExecuteResult{UpdatedStateRoot: stateRoot}, nil
 }
 
 // SetFinal marks a block as finalized at the specified height.

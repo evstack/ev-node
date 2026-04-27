@@ -131,13 +131,13 @@ func TestExecuteTxs(t *testing.T) {
 	prevStateRoot := executor.GetStateRoot()
 
 	txsToExecute := [][]byte{tx1, tx3}
-	newStateRoot, err := executor.ExecuteTxs(ctx, txsToExecute, blockHeight, timestamp, prevStateRoot)
+	result, err := executor.ExecuteTxs(ctx, txsToExecute, blockHeight, timestamp, prevStateRoot)
 
 	if err != nil {
 		t.Fatalf("ExecuteTxs returned error: %v", err)
 	}
 
-	if bytes.Equal(newStateRoot, prevStateRoot) {
+	if bytes.Equal(result.UpdatedStateRoot, prevStateRoot) {
 		t.Error("stateRoot should have changed after ExecuteTxs")
 	}
 
@@ -167,7 +167,7 @@ func TestSetFinal(t *testing.T) {
 	prevStateRoot := executor.GetStateRoot()
 	txs := [][]byte{[]byte("tx1"), []byte("tx2")}
 
-	pendingRoot, _ := executor.ExecuteTxs(ctx, txs, blockHeight, timestamp, prevStateRoot)
+	pendingResult, _ := executor.ExecuteTxs(ctx, txs, blockHeight, timestamp, prevStateRoot)
 
 	// Set the block as final
 	err := executor.SetFinal(ctx, blockHeight)
@@ -177,8 +177,8 @@ func TestSetFinal(t *testing.T) {
 
 	// Verify that the state root was updated
 	newStateRoot := executor.GetStateRoot()
-	if !bytes.Equal(newStateRoot, pendingRoot) {
-		t.Errorf("Expected state root to be updated to pending root %v, got %v", pendingRoot, newStateRoot)
+	if !bytes.Equal(newStateRoot, pendingResult.UpdatedStateRoot) {
+		t.Errorf("Expected state root to be updated to pending root %v, got %v", pendingResult.UpdatedStateRoot, newStateRoot)
 	}
 
 	// Verify that the pending root was removed
@@ -398,7 +398,7 @@ func TestExecuteTxsWithInvalidPrevStateRoot(t *testing.T) {
 	timestamp := time.Now()
 	txs := [][]byte{[]byte("tx1"), []byte("tx2")}
 
-	newStateRoot, err := executor.ExecuteTxs(ctx, txs, blockHeight, timestamp, invalidPrevStateRoot)
+	result, err := executor.ExecuteTxs(ctx, txs, blockHeight, timestamp, invalidPrevStateRoot)
 
 	// The dummy executor doesn't validate the previous state root, so it should still work
 	// This is a characteristic of the dummy implementation
@@ -406,7 +406,7 @@ func TestExecuteTxsWithInvalidPrevStateRoot(t *testing.T) {
 		t.Fatalf("ExecuteTxs with invalid prevStateRoot returned error: %v", err)
 	}
 
-	if len(newStateRoot) == 0 {
+	if len(result.UpdatedStateRoot) == 0 {
 		t.Error("Expected non-empty state root even with invalid prevStateRoot")
 	}
 

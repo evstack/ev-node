@@ -99,7 +99,7 @@ func (c *Client) GetTxs(ctx context.Context) ([][]byte, error) {
 // This method sends transactions to the execution service for processing and
 // returns the updated state root after execution. The execution service ensures
 // deterministic execution and validates the state transition.
-func (c *Client) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (updatedStateRoot []byte, err error) {
+func (c *Client) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (execution.ExecuteResult, error) {
 	req := connect.NewRequest(&pb.ExecuteTxsRequest{
 		Txs:           txs,
 		BlockHeight:   blockHeight,
@@ -109,10 +109,13 @@ func (c *Client) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint6
 
 	resp, err := c.client.ExecuteTxs(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("grpc client: failed to execute txs: %w", err)
+		return execution.ExecuteResult{}, fmt.Errorf("grpc client: failed to execute txs: %w", err)
 	}
 
-	return resp.Msg.UpdatedStateRoot, nil
+	return execution.ExecuteResult{
+		UpdatedStateRoot:    resp.Msg.UpdatedStateRoot,
+		NextProposerAddress: resp.Msg.NextProposerAddress,
+	}, nil
 }
 
 // SetFinal marks a block as finalized at the specified height.
@@ -145,7 +148,8 @@ func (c *Client) GetExecutionInfo(ctx context.Context) (execution.ExecutionInfo,
 	}
 
 	return execution.ExecutionInfo{
-		MaxGas: resp.Msg.MaxGas,
+		MaxGas:              resp.Msg.MaxGas,
+		NextProposerAddress: resp.Msg.NextProposerAddress,
 	}, nil
 }
 

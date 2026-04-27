@@ -215,15 +215,18 @@ func TestDARetriever_TryDecodeHeaderAndData_Basic(t *testing.T) {
 	assert.Nil(t, r.tryDecodeData([]byte("junk"), 1))
 }
 
-func TestDARetriever_tryDecodeData_InvalidSignatureOrProposer(t *testing.T) {
+func TestDARetriever_tryDecodeData_InvalidSignature(t *testing.T) {
 
-	goodAddr, pub, signer := buildSyncTestSigner(t)
-	badAddr := []byte("not-the-proposer")
-	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: badAddr}
+	addr, pub, signer := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
 	r := newTestDARetriever(t, nil, config.DefaultConfig(), gen)
 
-	// Signed data is made by goodAddr; retriever expects badAddr -> should be rejected
-	db, _ := makeSignedDataBytes(t, gen.ChainID, 7, goodAddr, pub, signer, 1)
+	_, signedData := makeSignedDataBytes(t, gen.ChainID, 7, addr, pub, signer, 1)
+	require.NotEmpty(t, signedData.Signature)
+	signedData.Signature[0] ^= 0x01
+	db, err := signedData.MarshalBinary()
+	require.NoError(t, err)
+
 	assert.Nil(t, r.tryDecodeData(db, 55))
 }
 

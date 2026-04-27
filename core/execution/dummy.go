@@ -61,7 +61,7 @@ func (e *DummyExecutor) InjectTx(tx []byte) {
 }
 
 // ExecuteTxs simulate execution of transactions.
-func (e *DummyExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, error) {
+func (e *DummyExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (ExecuteResult, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -73,7 +73,7 @@ func (e *DummyExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeigh
 	pending := hash.Sum(nil)
 	e.pendingRoots[blockHeight] = pending
 	e.removeExecutedTxs(txs)
-	return pending, nil
+	return ExecuteResult{UpdatedStateRoot: pending}, nil
 }
 
 // SetFinal marks block at given height as finalized.

@@ -20,13 +20,20 @@ The `Executor` interface defines how the execution layer processes transactions 
 // Executor defines the interface for the execution layer.
 type Executor interface {
 	// InitChain initializes the chain based on the genesis information.
-	InitChain(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) (stateRoot []byte, maxBytes uint64, err error)
+	InitChain(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) (stateRoot []byte, err error)
 	// GetTxs retrieves transactions from the mempool.
 	GetTxs(ctx context.Context) ([][]byte, error)
 	// ExecuteTxs executes a block of transactions against the current state.
-	ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (updatedStateRoot []byte, maxBytes uint64, err error)
+	ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (result ExecuteResult, err error)
 	// SetFinal marks a block height as final.
 	SetFinal(ctx context.Context, blockHeight uint64) error
+	// GetExecutionInfo returns execution parameters used by ev-node.
+	GetExecutionInfo(ctx context.Context) (ExecutionInfo, error)
+}
+
+type ExecuteResult struct {
+	UpdatedStateRoot    []byte
+	NextProposerAddress []byte
 }
 
 ```

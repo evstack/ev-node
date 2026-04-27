@@ -363,6 +363,14 @@ func (s *DASubmitter) signEnvelopesParallel(
 
 // signAndCacheEnvelope signs a single header and caches the result.
 func (s *DASubmitter) signAndCacheEnvelope(ctx context.Context, header *types.SignedHeader, marshalledHeader []byte, signer signer.Signer) ([]byte, error) {
+	addr, err := signer.GetAddress()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get signer address: %w", err)
+	}
+	if len(header.Signer.Address) > 0 && !bytes.Equal(addr, header.Signer.Address) {
+		return nil, fmt.Errorf("envelope signer address mismatch: got %x, expected %x", addr, header.Signer.Address)
+	}
+
 	// Sign the pre-marshalled header content
 	envelopeSignature, err := signer.Sign(ctx, marshalledHeader)
 	if err != nil {
@@ -417,7 +425,7 @@ func (s *DASubmitter) setCachedEnvelope(height uint64, envelope []byte) {
 }
 
 // SubmitData submits pending data to DA layer
-func (s *DASubmitter) SubmitData(ctx context.Context, unsignedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis) error {
+func (s *DASubmitter) SubmitData(ctx context.Context, unsignedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer) error {
 	if len(unsignedDataList) == 0 {
 		return nil
 	}
@@ -427,7 +435,7 @@ func (s *DASubmitter) SubmitData(ctx context.Context, unsignedDataList []*types.
 	}
 
 	// Sign the data (cache returns unsigned SignedData structs)
-	signedDataList, signedDataListBz, err := s.signData(ctx, unsignedDataList, marshalledData, signer, genesis)
+	signedDataList, signedDataListBz, err := s.signData(ctx, unsignedDataList, marshalledData, signer)
 	if err != nil {
 		return fmt.Errorf("failed to sign data: %w", err)
 	}
@@ -461,7 +469,7 @@ func (s *DASubmitter) SubmitData(ctx context.Context, unsignedDataList []*types.
 }
 
 // signData signs unsigned SignedData structs returned from cache
-func (s *DASubmitter) signData(ctx context.Context, unsignedDataList []*types.SignedData, unsignedDataListBz [][]byte, signer signer.Signer, genesis genesis.Genesis) ([]*types.SignedData, [][]byte, error) {
+func (s *DASubmitter) signData(ctx context.Context, unsignedDataList []*types.SignedData, unsignedDataListBz [][]byte, signer signer.Signer) ([]*types.SignedData, [][]byte, error) {
 	if signer == nil {
 		return nil, nil, fmt.Errorf("signer is nil")
 	}
@@ -474,10 +482,6 @@ func (s *DASubmitter) signData(ctx context.Context, unsignedDataList []*types.Si
 	addr, err := signer.GetAddress()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get address: %w", err)
-	}
-
-	if len(genesis.ProposerAddress) > 0 && !bytes.Equal(addr, genesis.ProposerAddress) {
-		return nil, nil, fmt.Errorf("signer address mismatch with genesis proposer")
 	}
 
 	signerInfo := types.Signer{

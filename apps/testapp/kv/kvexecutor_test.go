@@ -105,13 +105,13 @@ func TestExecuteTxs_Valid(t *testing.T) {
 		[]byte("key2=value2"),
 	}
 
-	stateRoot, err := exec.ExecuteTxs(ctx, txs, 1, time.Now(), []byte(""))
+	result, err := exec.ExecuteTxs(ctx, txs, 1, time.Now(), []byte(""))
 	if err != nil {
 		t.Fatalf("ExecuteTxs failed: %v", err)
 	}
 
 	// Check that stateRoot contains the updated key-value pairs
-	rootStr := string(stateRoot)
+	rootStr := string(result.UpdatedStateRoot)
 	if !strings.Contains(rootStr, "key1:value1;") || !strings.Contains(rootStr, "key2:value2;") {
 		t.Errorf("State root does not contain expected key-values: %s", rootStr)
 	}
@@ -134,13 +134,13 @@ func TestExecuteTxs_Invalid(t *testing.T) {
 		[]byte(""),
 	}
 
-	stateRoot, err := exec.ExecuteTxs(ctx, txs, 1, time.Now(), []byte(""))
+	result, err := exec.ExecuteTxs(ctx, txs, 1, time.Now(), []byte(""))
 	if err != nil {
 		t.Fatalf("ExecuteTxs should handle gibberish gracefully, got error: %v", err)
 	}
 
 	// State root should still be computed (empty block is valid)
-	if stateRoot == nil {
+	if result.UpdatedStateRoot == nil {
 		t.Error("Expected non-nil state root even with all invalid transactions")
 	}
 
@@ -152,13 +152,13 @@ func TestExecuteTxs_Invalid(t *testing.T) {
 		[]byte(""),
 	}
 
-	stateRoot2, err := exec.ExecuteTxs(ctx, mixedTxs, 2, time.Now(), stateRoot)
+	result2, err := exec.ExecuteTxs(ctx, mixedTxs, 2, time.Now(), result.UpdatedStateRoot)
 	if err != nil {
 		t.Fatalf("ExecuteTxs should filter invalid transactions and process valid ones, got error: %v", err)
 	}
 
 	// State root should contain only the valid transactions
-	rootStr := string(stateRoot2)
+	rootStr := string(result2.UpdatedStateRoot)
 	if !strings.Contains(rootStr, "valid_key:valid_value") || !strings.Contains(rootStr, "another_valid:value2") {
 		t.Errorf("State root should contain valid transactions: %s", rootStr)
 	}

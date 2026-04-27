@@ -183,10 +183,10 @@ func TestWithTracingExecutor_ExecuteTxs_Success(t *testing.T) {
 		ExecuteTxs(mock.Anything, txs, blockHeight, timestamp, prevStateRoot).
 		Return(expectedStateRoot, nil)
 
-	stateRoot, err := traced.ExecuteTxs(ctx, txs, blockHeight, timestamp, prevStateRoot)
+	result, err := traced.ExecuteTxs(ctx, txs, blockHeight, timestamp, prevStateRoot)
 
 	require.NoError(t, err)
-	require.Equal(t, expectedStateRoot, stateRoot)
+	require.Equal(t, expectedStateRoot, result.UpdatedStateRoot)
 
 	// verify span
 	spans := sr.Ended()

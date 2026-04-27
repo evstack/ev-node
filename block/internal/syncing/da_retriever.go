@@ -299,11 +299,6 @@ func (r *daRetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedH
 		return nil
 	}
 
-	if err := r.assertExpectedProposer(header.ProposerAddress); err != nil {
-		r.logger.Debug().Err(err).Msg("unexpected proposer")
-		return nil
-	}
-
 	if isValidEnvelope && !r.strictMode {
 		r.logger.Info().Uint64("height", header.Height()).Msg("valid DA envelope detected, switching to STRICT MODE")
 		r.strictMode = true
@@ -353,11 +348,6 @@ func (r *daRetriever) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
 		Msg("data marked as DA included")
 
 	return &signedData.Data
-}
-
-// assertExpectedProposer validates the proposer address
-func (r *daRetriever) assertExpectedProposer(proposerAddr []byte) error {
-	return assertExpectedProposer(r.genesis, proposerAddr)
 }
 
 // assertValidSignedData validates signed data using the configured signature provider

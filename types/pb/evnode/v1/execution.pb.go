@@ -347,9 +347,12 @@ type ExecuteTxsResponse struct {
 	// New state root after executing transactions
 	UpdatedStateRoot []byte `protobuf:"bytes,1,opt,name=updated_state_root,json=updatedStateRoot,proto3" json:"updated_state_root,omitempty"`
 	// Maximum allowed transaction size (may change with protocol updates)
-	MaxBytes      uint64 `protobuf:"varint,2,opt,name=max_bytes,json=maxBytes,proto3" json:"max_bytes,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	MaxBytes uint64 `protobuf:"varint,2,opt,name=max_bytes,json=maxBytes,proto3" json:"max_bytes,omitempty"`
+	// Proposer address that should sign the next block.
+	// Empty means the current proposer remains active.
+	NextProposerAddress []byte `protobuf:"bytes,3,opt,name=next_proposer_address,json=nextProposerAddress,proto3" json:"next_proposer_address,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *ExecuteTxsResponse) Reset() {
@@ -394,6 +397,13 @@ func (x *ExecuteTxsResponse) GetMaxBytes() uint64 {
 		return x.MaxBytes
 	}
 	return 0
+}
+
+func (x *ExecuteTxsResponse) GetNextProposerAddress() []byte {
+	if x != nil {
+		return x.NextProposerAddress
+	}
+	return nil
 }
 
 // SetFinalRequest marks a block as finalized
@@ -521,9 +531,12 @@ type GetExecutionInfoResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Maximum gas allowed for transactions in a block
 	// For non-gas-based execution layers, this should be 0
-	MaxGas        uint64 `protobuf:"varint,1,opt,name=max_gas,json=maxGas,proto3" json:"max_gas,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	MaxGas uint64 `protobuf:"varint,1,opt,name=max_gas,json=maxGas,proto3" json:"max_gas,omitempty"`
+	// Proposer address that should sign the next block from the execution
+	// layer's current view. Empty means unchanged or unavailable.
+	NextProposerAddress []byte `protobuf:"bytes,2,opt,name=next_proposer_address,json=nextProposerAddress,proto3" json:"next_proposer_address,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *GetExecutionInfoResponse) Reset() {
@@ -561,6 +574,13 @@ func (x *GetExecutionInfoResponse) GetMaxGas() uint64 {
 		return x.MaxGas
 	}
 	return 0
+}
+
+func (x *GetExecutionInfoResponse) GetNextProposerAddress() []byte {
+	if x != nil {
+		return x.NextProposerAddress
+	}
+	return nil
 }
 
 // FilterTxsRequest contains transactions to validate and filter
@@ -701,16 +721,18 @@ const file_evnode_v1_execution_proto_rawDesc = "" +
 	"\x03txs\x18\x01 \x03(\fR\x03txs\x12!\n" +
 	"\fblock_height\x18\x02 \x01(\x04R\vblockHeight\x128\n" +
 	"\ttimestamp\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12&\n" +
-	"\x0fprev_state_root\x18\x04 \x01(\fR\rprevStateRoot\"_\n" +
+	"\x0fprev_state_root\x18\x04 \x01(\fR\rprevStateRoot\"\x93\x01\n" +
 	"\x12ExecuteTxsResponse\x12,\n" +
 	"\x12updated_state_root\x18\x01 \x01(\fR\x10updatedStateRoot\x12\x1b\n" +
-	"\tmax_bytes\x18\x02 \x01(\x04R\bmaxBytes\"4\n" +
+	"\tmax_bytes\x18\x02 \x01(\x04R\bmaxBytes\x122\n" +
+	"\x15next_proposer_address\x18\x03 \x01(\fR\x13nextProposerAddress\"4\n" +
 	"\x0fSetFinalRequest\x12!\n" +
 	"\fblock_height\x18\x01 \x01(\x04R\vblockHeight\"\x12\n" +
 	"\x10SetFinalResponse\"\x19\n" +
-	"\x17GetExecutionInfoRequest\"3\n" +
+	"\x17GetExecutionInfoRequest\"g\n" +
 	"\x18GetExecutionInfoResponse\x12\x17\n" +
-	"\amax_gas\x18\x01 \x01(\x04R\x06maxGas\"\x9f\x01\n" +
+	"\amax_gas\x18\x01 \x01(\x04R\x06maxGas\x122\n" +
+	"\x15next_proposer_address\x18\x02 \x01(\fR\x13nextProposerAddress\"\x9f\x01\n" +
 	"\x10FilterTxsRequest\x12\x10\n" +
 	"\x03txs\x18\x01 \x03(\fR\x03txs\x12\x1b\n" +
 	"\tmax_bytes\x18\x02 \x01(\x04R\bmaxBytes\x12\x17\n" +

@@ -60,8 +60,8 @@ func (e *infiniteExecutor) GetTxs(_ context.Context) ([][]byte, error) {
 	return txs, nil
 }
 
-func (e *infiniteExecutor) ExecuteTxs(_ context.Context, _ [][]byte, _ uint64, _ time.Time, _ []byte) ([]byte, error) {
-	return nil, nil
+func (e *infiniteExecutor) ExecuteTxs(_ context.Context, _ [][]byte, _ uint64, _ time.Time, _ []byte) (coreexecutor.ExecuteResult, error) {
+	return coreexecutor.ExecuteResult{}, nil
 }
 
 func (e *infiniteExecutor) FilterTxs(_ context.Context, txs [][]byte, _ uint64, _ uint64, _ bool) ([]coreexecutor.FilterStatus, error) {

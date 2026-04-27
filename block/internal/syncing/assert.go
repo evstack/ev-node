@@ -1,7 +1,6 @@
 package syncing
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 
@@ -9,21 +8,12 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-func assertExpectedProposer(genesis genesis.Genesis, proposerAddr []byte) error {
-	if !bytes.Equal(proposerAddr, genesis.ProposerAddress) {
-		return fmt.Errorf("unexpected proposer: got %x, expected %x",
-			proposerAddr, genesis.ProposerAddress)
-	}
-	return nil
-}
-
 func assertValidSignedData(signedData *types.SignedData, genesis genesis.Genesis) error {
 	if signedData == nil || signedData.Txs == nil {
 		return errors.New("empty signed data")
 	}
-
-	if err := assertExpectedProposer(genesis, signedData.Signer.Address); err != nil {
-		return err
+	if signedData.Signer.PubKey == nil {
+		return errors.New("missing signer public key in signed data")
 	}
 
 	dataBytes, err := signedData.Data.MarshalBinary()

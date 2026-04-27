@@ -344,7 +344,7 @@ func (c *EngineClient) GetTxs(ctx context.Context) ([][]byte, error) {
 // - Checks for already-promoted blocks to enable idempotent execution
 // - Saves ExecMeta with payloadID after forkchoiceUpdatedV3 for crash recovery
 // - Updates ExecMeta to "promoted" after successful execution
-func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (updatedStateRoot []byte, err error) {
+func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (execution.ExecuteResult, error) {
 
 	// 1. Check for idempotent execution
 	stateRoot, payloadID, found, idempotencyErr := c.reconcileExecutionAtHeight(ctx, blockHeight, timestamp, txs)
@@ -353,22 +353,26 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 		// Continue execution on error, as it might be transient
 	} else if found {
 		if stateRoot != nil {
-			return stateRoot, nil
+			return execution.ExecuteResult{UpdatedStateRoot: stateRoot}, nil
 		}
 		if payloadID != nil {
 			// Found in-progress execution, attempt to resume
-			return c.processPayload(ctx, *payloadID, txs)
+			stateRoot, err := c.processPayload(ctx, *payloadID, txs)
+			if err != nil {
+				return execution.ExecuteResult{}, err
+			}
+			return execution.ExecuteResult{UpdatedStateRoot: stateRoot}, nil
 		}
 	}
 
 	prevBlockHash, prevHeaderStateRoot, prevGasLimit, _, err := c.getBlockInfo(ctx, blockHeight-1)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get block info: %w", err)
+		return execution.ExecuteResult{}, fmt.Errorf("failed to get block info: %w", err)
 	}
 	// It's possible that the prev state root passed in is nil if this is the first block.
 	// If so, we can't do a comparison. Otherwise, we compare the roots.
 	if len(prevStateRoot) > 0 && !bytes.Equal(prevStateRoot, prevHeaderStateRoot.Bytes()) {
-		return nil, fmt.Errorf("prevStateRoot mismatch at height %d: consensus=%x execution=%x", blockHeight-1, prevStateRoot, prevHeaderStateRoot.Bytes())
+		return execution.ExecuteResult{}, fmt.Errorf("prevStateRoot mismatch at height %d: consensus=%x execution=%x", blockHeight-1, prevStateRoot, prevHeaderStateRoot.Bytes())
 	}
 
 	// 2. Prepare payload attributes
@@ -445,7 +449,7 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 		return nil
 	}, MaxPayloadStatusRetries, InitialRetryBackoff, "ExecuteTxs forkchoice")
 	if err != nil {
-		return nil, err
+		return execution.ExecuteResult{}, err
 	}
 
 	// Save ExecMeta with payloadID for crash recovery (Stage="started")
@@ -453,7 +457,11 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 	c.saveExecMeta(ctx, blockHeight, timestamp.Unix(), newPayloadID[:], nil, nil, txs, ExecStageStarted)
 
 	// 4. Process the payload (get, submit, finalize)
-	return c.processPayload(ctx, *newPayloadID, txs)
+	stateRoot, err = c.processPayload(ctx, *newPayloadID, txs)
+	if err != nil {
+		return execution.ExecuteResult{}, err
+	}
+	return execution.ExecuteResult{UpdatedStateRoot: stateRoot}, nil
 }
 
 // setHead updates the head block hash without changing safe or finalized.

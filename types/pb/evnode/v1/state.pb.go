@@ -24,17 +24,18 @@ const (
 
 // State is the state of the blockchain.
 type State struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	Version         *Version               `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`
-	ChainId         string                 `protobuf:"bytes,2,opt,name=chain_id,json=chainId,proto3" json:"chain_id,omitempty"`
-	InitialHeight   uint64                 `protobuf:"varint,3,opt,name=initial_height,json=initialHeight,proto3" json:"initial_height,omitempty"`
-	LastBlockHeight uint64                 `protobuf:"varint,4,opt,name=last_block_height,json=lastBlockHeight,proto3" json:"last_block_height,omitempty"`
-	LastBlockTime   *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=last_block_time,json=lastBlockTime,proto3" json:"last_block_time,omitempty"`
-	DaHeight        uint64                 `protobuf:"varint,6,opt,name=da_height,json=daHeight,proto3" json:"da_height,omitempty"`
-	AppHash         []byte                 `protobuf:"bytes,8,opt,name=app_hash,json=appHash,proto3" json:"app_hash,omitempty"`
-	LastHeaderHash  []byte                 `protobuf:"bytes,9,opt,name=last_header_hash,json=lastHeaderHash,proto3" json:"last_header_hash,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	Version             *Version               `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`
+	ChainId             string                 `protobuf:"bytes,2,opt,name=chain_id,json=chainId,proto3" json:"chain_id,omitempty"`
+	InitialHeight       uint64                 `protobuf:"varint,3,opt,name=initial_height,json=initialHeight,proto3" json:"initial_height,omitempty"`
+	LastBlockHeight     uint64                 `protobuf:"varint,4,opt,name=last_block_height,json=lastBlockHeight,proto3" json:"last_block_height,omitempty"`
+	LastBlockTime       *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=last_block_time,json=lastBlockTime,proto3" json:"last_block_time,omitempty"`
+	DaHeight            uint64                 `protobuf:"varint,6,opt,name=da_height,json=daHeight,proto3" json:"da_height,omitempty"`
+	AppHash             []byte                 `protobuf:"bytes,8,opt,name=app_hash,json=appHash,proto3" json:"app_hash,omitempty"`
+	LastHeaderHash      []byte                 `protobuf:"bytes,9,opt,name=last_header_hash,json=lastHeaderHash,proto3" json:"last_header_hash,omitempty"`
+	NextProposerAddress []byte                 `protobuf:"bytes,10,opt,name=next_proposer_address,json=nextProposerAddress,proto3" json:"next_proposer_address,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *State) Reset() {
@@ -119,6 +120,13 @@ func (x *State) GetAppHash() []byte {
 func (x *State) GetLastHeaderHash() []byte {
 	if x != nil {
 		return x.LastHeaderHash
+	}
+	return nil
+}
+
+func (x *State) GetNextProposerAddress() []byte {
+	if x != nil {
+		return x.NextProposerAddress
 	}
 	return nil
 }
@@ -275,7 +283,7 @@ var File_evnode_v1_state_proto protoreflect.FileDescriptor
 
 const file_evnode_v1_state_proto_rawDesc = "" +
 	"\n" +
-	"\x15evnode/v1/state.proto\x12\tevnode.v1\x1a\x16evnode/v1/evnode.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xcf\x02\n" +
+	"\x15evnode/v1/state.proto\x12\tevnode.v1\x1a\x16evnode/v1/evnode.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x83\x03\n" +
 	"\x05State\x12,\n" +
 	"\aversion\x18\x01 \x01(\v2\x12.evnode.v1.VersionR\aversion\x12\x19\n" +
 	"\bchain_id\x18\x02 \x01(\tR\achainId\x12%\n" +
@@ -284,7 +292,9 @@ const file_evnode_v1_state_proto_rawDesc = "" +
 	"\x0flast_block_time\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\rlastBlockTime\x12\x1b\n" +
 	"\tda_height\x18\x06 \x01(\x04R\bdaHeight\x12\x19\n" +
 	"\bapp_hash\x18\b \x01(\fR\aappHash\x12(\n" +
-	"\x10last_header_hash\x18\t \x01(\fR\x0elastHeaderHashJ\x04\b\a\x10\b\"\x8e\x02\n" +
+	"\x10last_header_hash\x18\t \x01(\fR\x0elastHeaderHash\x122\n" +
+	"\x15next_proposer_address\x18\n" +
+	" \x01(\fR\x13nextProposerAddressJ\x04\b\a\x10\b\"\x8e\x02\n" +
 	"\x0eRaftBlockState\x12\x16\n" +
 	"\x06height\x18\x01 \x01(\x04R\x06height\x12D\n" +
 	"\x1flast_submitted_da_header_height\x18\x02 \x01(\x04R\x1blastSubmittedDaHeaderHeight\x12@\n" +

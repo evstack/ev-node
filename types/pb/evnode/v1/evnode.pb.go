@@ -792,7 +792,7 @@ const file_evnode_v1_evnode_proto_rawDesc = "" +
 	"\x16evnode/v1/evnode.proto\x12\tevnode.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"1\n" +
 	"\aVersion\x12\x14\n" +
 	"\x05block\x18\x01 \x01(\x04R\x05block\x12\x10\n" +
-	"\x03app\x18\x02 \x01(\x04R\x03app\"\xc3\x02\n" +
+	"\x03app\x18\x02 \x01(\x04R\x03app\"\xc9\x02\n" +
 	"\x06Header\x12,\n" +
 	"\aversion\x18\x01 \x01(\v2\x12.evnode.v1.VersionR\aversion\x12\x16\n" +
 	"\x06height\x18\x02 \x01(\x04R\x06height\x12\x12\n" +
@@ -804,7 +804,7 @@ const file_evnode_v1_evnode_proto_rawDesc = "" +
 	" \x01(\fR\x0fproposerAddress\x12%\n" +
 	"\x0evalidator_hash\x18\v \x01(\fR\rvalidatorHash\x12\x19\n" +
 	"\bchain_id\x18\f \x01(\tR\achainIdJ\x04\b\x05\x10\x06J\x04\b\a\x10\bJ\x04\b\t\x10\n" +
-	"\"\x88\x01\n" +
+	"J\x04\b\r\x10\x0e\"\x88\x01\n" +
 	"\fSignedHeader\x12)\n" +
 	"\x06header\x18\x01 \x01(\v2\x11.evnode.v1.HeaderR\x06header\x12\x1c\n" +
 	"\tsignature\x18\x02 \x01(\fR\tsignature\x12)\n" +

@@ -149,8 +149,8 @@ func (s *stubExecClient) InitChain(context.Context, time.Time, uint64, string) (
 	return s.stateRoot, nil
 }
 func (s *stubExecClient) GetTxs(context.Context) ([][]byte, error) { return nil, nil }
-func (s *stubExecClient) ExecuteTxs(_ context.Context, _ [][]byte, _ uint64, _ time.Time, _ []byte) ([]byte, error) {
-	return s.stateRoot, nil
+func (s *stubExecClient) ExecuteTxs(_ context.Context, _ [][]byte, _ uint64, _ time.Time, _ []byte) (coreexec.ExecuteResult, error) {
+	return coreexec.ExecuteResult{UpdatedStateRoot: s.stateRoot}, nil
 }
 func (s *stubExecClient) SetFinal(context.Context, uint64) error { return nil }
 func (s *stubExecClient) GetExecutionInfo(context.Context) (coreexec.ExecutionInfo, error) {

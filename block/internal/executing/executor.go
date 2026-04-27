@@ -121,14 +121,6 @@ func NewExecutor(
 			return nil, errors.New("signer cannot be nil")
 		}
 
-		addr, err := signer.GetAddress()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get address: %w", err)
-		}
-
-		if !bytes.Equal(addr, genesis.ProposerAddress) {
-			return nil, common.ErrNotProposer
-		}
 	}
 	if raftNode != nil && reflect.ValueOf(raftNode).IsNil() {
 		raftNode = nil
@@ -242,14 +234,21 @@ func (e *Executor) initializeState() error {
 		}
 
 		state = types.State{
-			ChainID:         e.genesis.ChainID,
-			InitialHeight:   e.genesis.InitialHeight,
-			LastBlockHeight: e.genesis.InitialHeight - 1,
-			LastBlockTime:   e.genesis.StartTime,
-			AppHash:         stateRoot,
+			ChainID:             e.genesis.ChainID,
+			InitialHeight:       e.genesis.InitialHeight,
+			LastBlockHeight:     e.genesis.InitialHeight - 1,
+			LastBlockTime:       e.genesis.StartTime,
+			AppHash:             stateRoot,
+			NextProposerAddress: e.initialProposerAddress(e.ctx),
 			// DA start height is usually 0 at InitChain unless it is a re-genesis or a based sequencer.
 			DAHeight: e.genesis.DAStartHeight,
 		}
+	}
+	if len(state.NextProposerAddress) == 0 {
+		state.NextProposerAddress = e.initialProposerAddress(e.ctx)
+	}
+	if err := e.assertConfiguredSigner(state.NextProposerAddress); err != nil {
+		return err
 	}
 
 	if e.raftNode != nil {
@@ -376,6 +375,32 @@ func (e *Executor) initializeState() error {
 		}
 	}
 
+	return nil
+}
+
+func (e *Executor) initialProposerAddress(ctx context.Context) []byte {
+	if e.exec != nil {
+		info, err := e.exec.GetExecutionInfo(ctx)
+		if err != nil {
+			e.logger.Warn().Err(err).Msg("failed to get execution info for proposer, falling back to genesis proposer")
+		} else if len(info.NextProposerAddress) > 0 {
+			return append([]byte(nil), info.NextProposerAddress...)
+		}
+	}
+	return append([]byte(nil), e.genesis.ProposerAddress...)
+}
+
+func (e *Executor) assertConfiguredSigner(expectedProposer []byte) error {
+	if e.config.Node.BasedSequencer {
+		return nil
+	}
+	addr, err := e.signer.GetAddress()
+	if err != nil {
+		return fmt.Errorf("failed to get address: %w", err)
+	}
+	if !bytes.Equal(addr, expectedProposer) {
+		return common.ErrNotProposer
+	}
 	return nil
 }
 
@@ -696,6 +721,10 @@ func (e *Executor) RetrieveBatch(ctx context.Context) (*BatchData, error) {
 func (e *Executor) CreateBlock(ctx context.Context, height uint64, batchData *BatchData) (*types.SignedHeader, *types.Data, error) {
 	currentState := e.getLastState()
 	headerTime := uint64(e.genesis.StartTime.UnixNano())
+	proposerAddress := currentState.NextProposerAddress
+	if len(proposerAddress) == 0 {
+		proposerAddress = e.genesis.ProposerAddress
+	}
 
 	var lastHeaderHash types.Hash
 	var lastDataHash types.Hash
@@ -736,14 +765,21 @@ func (e *Executor) CreateBlock(ctx context.Context, height uint64, batchData *Ba
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to get public key: %w", err)
 		}
+		addr, err := e.signer.GetAddress()
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get address: %w", err)
+		}
+		if !bytes.Equal(addr, proposerAddress) {
+			return nil, nil, common.ErrNotProposer
+		}
 
-		validatorHash, err = e.options.ValidatorHasherProvider(e.genesis.ProposerAddress, pubKey)
+		validatorHash, err = e.options.ValidatorHasherProvider(proposerAddress, pubKey)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to get validator hash: %w", err)
 		}
 	} else {
 		var err error
-		validatorHash, err = e.options.ValidatorHasherProvider(e.genesis.ProposerAddress, nil)
+		validatorHash, err = e.options.ValidatorHasherProvider(proposerAddress, nil)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to get validator hash: %w", err)
 		}
@@ -763,13 +799,13 @@ func (e *Executor) CreateBlock(ctx context.Context, height uint64, batchData *Ba
 			},
 			LastHeaderHash:  lastHeaderHash,
 			AppHash:         currentState.AppHash,
-			ProposerAddress: e.genesis.ProposerAddress,
+			ProposerAddress: proposerAddress,
 			ValidatorHash:   validatorHash,
 		},
 		Signature: lastSignature,
 		Signer: types.Signer{
 			PubKey:  pubKey,
-			Address: e.genesis.ProposerAddress,
+			Address: proposerAddress,
 		},
 	}
 
@@ -813,14 +849,14 @@ func (e *Executor) ApplyBlock(ctx context.Context, header types.Header, data *ty
 	// Execute transactions
 	execCtx := context.WithValue(ctx, types.HeaderContextKey, header)
 
-	newAppHash, err := e.executeTxsWithRetry(execCtx, rawTxs, header, currentState)
+	result, err := e.executeTxsWithRetry(execCtx, rawTxs, header, currentState)
 	if err != nil {
 		e.sendCriticalError(fmt.Errorf("failed to execute transactions: %w", err))
 		return types.State{}, fmt.Errorf("failed to execute transactions: %w", err)
 	}
 
 	// Create new state
-	newState, err := currentState.NextState(header, newAppHash)
+	newState, err := currentState.NextState(header, result.UpdatedStateRoot, result.NextProposerAddress)
 	if err != nil {
 		return types.State{}, fmt.Errorf("failed to create next state: %w", err)
 	}
@@ -851,12 +887,12 @@ func (e *Executor) signHeader(ctx context.Context, header *types.Header) (types.
 
 // executeTxsWithRetry executes transactions with retry logic.
 // NOTE: the function retries the execution client call regardless of the error. Some execution clients errors are irrecoverable, and will eventually halt the node, as expected.
-func (e *Executor) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, header types.Header, currentState types.State) ([]byte, error) {
+func (e *Executor) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, header types.Header, currentState types.State) (coreexecutor.ExecuteResult, error) {
 	for attempt := 1; attempt <= common.MaxRetriesBeforeHalt; attempt++ {
-		newAppHash, err := e.exec.ExecuteTxs(ctx, rawTxs, header.Height(), header.Time(), currentState.AppHash)
+		result, err := e.exec.ExecuteTxs(ctx, rawTxs, header.Height(), header.Time(), currentState.AppHash)
 		if err != nil {
 			if attempt == common.MaxRetriesBeforeHalt {
-				return nil, fmt.Errorf("failed to execute transactions: %w", err)
+				return coreexecutor.ExecuteResult{}, fmt.Errorf("failed to execute transactions: %w", err)
 			}
 
 			e.logger.Error().Err(err).
@@ -869,14 +905,14 @@ func (e *Executor) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, hea
 			case <-time.After(common.MaxRetriesTimeout):
 				continue
 			case <-e.ctx.Done():
-				return nil, fmt.Errorf("context cancelled during retry: %w", e.ctx.Err())
+				return coreexecutor.ExecuteResult{}, fmt.Errorf("context cancelled during retry: %w", e.ctx.Err())
 			}
 		}
 
-		return newAppHash, nil
+		return result, nil
 	}
 
-	return nil, nil
+	return coreexecutor.ExecuteResult{}, nil
 }
 
 // sendCriticalError sends a critical error to the error channel without blocking
