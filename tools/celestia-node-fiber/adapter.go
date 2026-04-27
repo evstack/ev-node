@@ -8,7 +8,7 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 
-	appfibre "github.com/celestiaorg/celestia-app/v8/fibre"
+	appfibre "github.com/celestiaorg/celestia-app/v9/fibre"
 	libshare "github.com/celestiaorg/go-square/v4/share"
 
 	"github.com/celestiaorg/celestia-node/api/client"

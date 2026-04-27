@@ -16,14 +16,14 @@ import (
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 	"github.com/stretchr/testify/require"
 
-	"github.com/celestiaorg/celestia-app/v8/app"
-	"github.com/celestiaorg/celestia-app/v8/app/encoding"
-	appfibre "github.com/celestiaorg/celestia-app/v8/fibre"
-	"github.com/celestiaorg/celestia-app/v8/pkg/appconsts"
-	"github.com/celestiaorg/celestia-app/v8/pkg/user"
-	"github.com/celestiaorg/celestia-app/v8/test/util/testnode"
-	fibretypes "github.com/celestiaorg/celestia-app/v8/x/fibre/types"
-	valtypes "github.com/celestiaorg/celestia-app/v8/x/valaddr/types"
+	"github.com/celestiaorg/celestia-app/v9/app"
+	"github.com/celestiaorg/celestia-app/v9/app/encoding"
+	appfibre "github.com/celestiaorg/celestia-app/v9/fibre"
+	"github.com/celestiaorg/celestia-app/v9/pkg/appconsts"
+	"github.com/celestiaorg/celestia-app/v9/pkg/user"
+	"github.com/celestiaorg/celestia-app/v9/test/util/testnode"
+	fibretypes "github.com/celestiaorg/celestia-app/v9/x/fibre/types"
+	valtypes "github.com/celestiaorg/celestia-app/v9/x/valaddr/types"
 )
 
 const (
@@ -79,10 +79,11 @@ func StartNetwork(t *testing.T, ctx context.Context) *Network {
 	require.NoError(t, err, "waiting for first block")
 
 	server := startFibreServer(t, ctx, cctx, grpcAddr)
-	// The Fibre client's gRPC dialer expects URI-style targets, so prefix
-	// the host with the dns:/// scheme before registering — matches how
-	// talis provisions real Fibre networks (tools/talis/fibre_setup.go).
-	registerValidator(t, ctx, cctx, "dns:///"+server.ListenAddress())
+	// Register the fibre server's address in plain `host:port` form —
+	// celestia-app's x/valaddr now requires it (no scheme prefix), and
+	// the gRPC dialer accepts bare `host:port` directly via the
+	// passthrough resolver.
+	registerValidator(t, ctx, cctx, server.ListenAddress())
 	fundEscrow(t, ctx, cctx)
 
 	return &Network{
