@@ -81,12 +81,22 @@ func (h *P2PHandler) ProcessHeight(ctx context.Context, height uint64, heightInC
 		}
 		return err
 	}
+	if got := p2pHeader.SignedHeader.Height(); got != height {
+		err := fmt.Errorf("header height mismatch: requested %d, got %d", height, got)
+		h.logger.Warn().Uint64("requested_height", height).Uint64("header_height", got).Err(err).Msg("discarding mismatched header from P2P")
+		return err
+	}
 
 	p2pData, err := h.dataStore.GetByHeight(ctx, height)
 	if err != nil {
 		if ctx.Err() == nil {
 			h.logger.Debug().Uint64("height", height).Err(err).Msg("data unavailable in store")
 		}
+		return err
+	}
+	if got := p2pData.Height(); got != height {
+		err := fmt.Errorf("data height mismatch: requested %d, got %d", height, got)
+		h.logger.Warn().Uint64("requested_height", height).Uint64("data_height", got).Err(err).Msg("discarding mismatched data from P2P")
 		return err
 	}
 	dataCommitment := p2pData.DACommitment()

@@ -331,6 +331,11 @@ func (s *Syncer) initializeState() error {
 	}
 	if len(state.NextProposerAddress) == 0 {
 		state.NextProposerAddress = s.initialProposerAddress(s.ctx)
+		if state.LastBlockHeight > s.genesis.InitialHeight-1 {
+			s.logger.Warn().
+				Uint64("height", state.LastBlockHeight).
+				Msg("loaded state without NextProposerAddress; repaired from execution/genesis. Verify chain has not rotated proposer before this upgrade")
+		}
 	}
 	if state.DAHeight != 0 && state.DAHeight < s.genesis.DAStartHeight {
 		return fmt.Errorf("DA height (%d) is lower than DA start height (%d)", state.DAHeight, s.genesis.DAStartHeight)

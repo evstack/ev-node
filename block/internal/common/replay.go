@@ -150,14 +150,19 @@ func (s *Replayer) replayBlock(ctx context.Context, height uint64) error {
 	// Get the previous state
 	var prevState types.State
 	if height == s.genesis.InitialHeight {
-		// For the first block, use genesis state.
+		// For the first block, use genesis state. Mirror Syncer.initializeState():
+		// prefer the execution layer's view of the next proposer, fall back to genesis.
+		nextProposer := append([]byte(nil), s.genesis.ProposerAddress...)
+		if info, infoErr := s.exec.GetExecutionInfo(ctx); infoErr == nil && len(info.NextProposerAddress) > 0 {
+			nextProposer = append([]byte(nil), info.NextProposerAddress...)
+		}
 		prevState = types.State{
 			ChainID:             s.genesis.ChainID,
 			InitialHeight:       s.genesis.InitialHeight,
 			LastBlockHeight:     s.genesis.InitialHeight - 1,
 			LastBlockTime:       s.genesis.StartTime,
 			AppHash:             header.AppHash, // Genesis app hash (input to first block execution)
-			NextProposerAddress: append([]byte(nil), s.genesis.ProposerAddress...),
+			NextProposerAddress: nextProposer,
 		}
 	} else {
 		// GetStateAtHeight(height-1) returns the state AFTER block height-1 was executed,

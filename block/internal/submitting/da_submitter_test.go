@@ -333,7 +333,7 @@ func TestDASubmitter_SubmitData_Success(t *testing.T) {
 	// Get data from cache and submit
 	signedDataList, marshalledData, err := cm.GetPendingData(ctx)
 	require.NoError(t, err)
-	err = submitter.SubmitData(ctx, signedDataList, marshalledData, cm, signer, gen)
+	err = submitter.SubmitData(ctx, signedDataList, marshalledData, cm, signer)
 	require.NoError(t, err)
 
 	// Verify data is marked as DA included
@@ -387,7 +387,7 @@ func TestDASubmitter_SubmitData_SkipsEmptyData(t *testing.T) {
 	// Get data from cache and submit
 	signedDataList, marshalledData, err := cm.GetPendingData(ctx)
 	require.NoError(t, err)
-	err = submitter.SubmitData(ctx, signedDataList, marshalledData, cm, signer, gen)
+	err = submitter.SubmitData(ctx, signedDataList, marshalledData, cm, signer)
 	require.NoError(t, err)
 	mockDA.AssertNotCalled(t, "Submit", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 
@@ -397,7 +397,7 @@ func TestDASubmitter_SubmitData_SkipsEmptyData(t *testing.T) {
 }
 
 func TestDASubmitter_SubmitData_NoPendingData(t *testing.T) {
-	submitter, _, cm, mockDA, gen := setupDASubmitterTest(t)
+	submitter, _, cm, mockDA, _ := setupDASubmitterTest(t)
 	ctx := context.Background()
 
 	// Create test signer
@@ -406,7 +406,7 @@ func TestDASubmitter_SubmitData_NoPendingData(t *testing.T) {
 	// Get data from cache (should be empty) and submit
 	dataList, marshalledData, err := cm.GetPendingData(ctx)
 	require.NoError(t, err)
-	err = submitter.SubmitData(ctx, dataList, marshalledData, cm, signer, gen)
+	err = submitter.SubmitData(ctx, dataList, marshalledData, cm, signer)
 	require.NoError(t, err) // Should succeed with no action
 	mockDA.AssertNotCalled(t, "Submit", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
@@ -447,7 +447,7 @@ func TestDASubmitter_SubmitData_NilSigner(t *testing.T) {
 	// Get data from cache and submit with nil signer - should fail
 	signedDataList, marshalledData, err := cm.GetPendingData(ctx)
 	require.NoError(t, err)
-	err = submitter.SubmitData(ctx, signedDataList, marshalledData, cm, nil, gen)
+	err = submitter.SubmitData(ctx, signedDataList, marshalledData, cm, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "signer is nil")
 	mockDA.AssertNotCalled(t, "Submit", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
@@ -503,7 +503,7 @@ func TestDASubmitter_SignData(t *testing.T) {
 	}
 
 	// Create signed data
-	resultData, resultDataBz, err := submitter.signData(t.Context(), dataList, dataListBz, signer, gen)
+	resultData, resultDataBz, err := submitter.signData(t.Context(), dataList, dataListBz, signer)
 	require.NoError(t, err)
 
 	// Should have 2 items (empty data skipped)
@@ -542,7 +542,7 @@ func TestDASubmitter_SignData_NilSigner(t *testing.T) {
 	}
 
 	// Create signed data with nil signer - should fail
-	_, _, err := submitter.signData(t.Context(), dataList, dataListBz, nil, gen)
+	_, _, err := submitter.signData(t.Context(), dataList, dataListBz, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "signer is nil")
 }

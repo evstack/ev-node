@@ -26,7 +26,7 @@ import (
 // DASubmitterAPI defines minimal methods needed by Submitter for DA submissions.
 type DASubmitterAPI interface {
 	SubmitHeaders(ctx context.Context, headers []*types.SignedHeader, marshalledHeaders [][]byte, cache cache.Manager, signer signer.Signer) error
-	SubmitData(ctx context.Context, signedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis) error
+	SubmitData(ctx context.Context, signedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer) error
 }
 
 // Submitter handles DA submission and inclusion processing for both sync and aggregator nodes
@@ -291,7 +291,7 @@ func (s *Submitter) daSubmissionLoop() {
 								Dur("time_since_last", timeSinceLastSubmit).
 								Msg("batching strategy triggered data submission")
 
-							if err := s.daSubmitter.SubmitData(s.ctx, signedDataList, marshalledData, s.cache, s.signer, s.genesis); err != nil {
+							if err := s.daSubmitter.SubmitData(s.ctx, signedDataList, marshalledData, s.cache, s.signer); err != nil {
 								// Check for unrecoverable errors that indicate a critical issue
 								if errors.Is(err, common.ErrOversizedItem) {
 									s.logger.Error().Err(err).

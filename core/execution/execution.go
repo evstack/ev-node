@@ -133,9 +133,12 @@ type ExecutionInfo struct {
 	// For non-gas-based execution layers, this should be 0.
 	MaxGas uint64
 
-	// NextProposerAddress is the proposer address that should sign the next
-	// block from the execution layer's current view. Empty means unchanged or
-	// unavailable, and callers should fall back to their current proposer.
+	// NextProposerAddress is the execution layer's best-effort view of the
+	// proposer address for the next block. It is advisory and is consulted
+	// only at startup/replay seeding when no prior consensus state is
+	// available; the authoritative source for the next proposer is
+	// ExecuteResult.NextProposerAddress. Empty means unchanged/unavailable,
+	// and callers must fall back to the genesis proposer.
 	NextProposerAddress []byte
 }
 
@@ -144,8 +147,11 @@ type ExecuteResult struct {
 	// UpdatedStateRoot is the new state root after executing transactions.
 	UpdatedStateRoot []byte
 
-	// NextProposerAddress is the proposer address selected by execution for the
-	// next block. Empty means the current proposer remains active.
+	// NextProposerAddress is the authoritative proposer address selected by
+	// the execution layer to sign block blockHeight+1 (the block immediately
+	// after the one just executed). An empty value means the current proposer
+	// remains active; execution layers that do not support proposer rotation
+	// MUST leave this field empty.
 	NextProposerAddress []byte
 }
 

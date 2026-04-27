@@ -12,7 +12,6 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	"github.com/evstack/ev-node/block/internal/cache"
-	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/telemetry/testutil"
 	"github.com/evstack/ev-node/types"
@@ -20,7 +19,7 @@ import (
 
 type mockDASubmitterAPI struct {
 	submitHeadersFn func(ctx context.Context, headers []*types.SignedHeader, marshalledHeaders [][]byte, cache cache.Manager, signer signer.Signer) error
-	submitDataFn    func(ctx context.Context, signedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis) error
+	submitDataFn    func(ctx context.Context, signedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer) error
 }
 
 func (m *mockDASubmitterAPI) SubmitHeaders(ctx context.Context, headers []*types.SignedHeader, marshalledHeaders [][]byte, cache cache.Manager, signer signer.Signer) error {
@@ -30,9 +29,9 @@ func (m *mockDASubmitterAPI) SubmitHeaders(ctx context.Context, headers []*types
 	return nil
 }
 
-func (m *mockDASubmitterAPI) SubmitData(ctx context.Context, signedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis) error {
+func (m *mockDASubmitterAPI) SubmitData(ctx context.Context, signedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer) error {
 	if m.submitDataFn != nil {
-		return m.submitDataFn(ctx, signedDataList, marshalledData, cache, signer, genesis)
+		return m.submitDataFn(ctx, signedDataList, marshalledData, cache, signer)
 	}
 	return nil
 }
@@ -131,7 +130,7 @@ func TestTracedDASubmitter_SubmitHeaders_Empty(t *testing.T) {
 
 func TestTracedDASubmitter_SubmitData_Success(t *testing.T) {
 	mock := &mockDASubmitterAPI{
-		submitDataFn: func(ctx context.Context, signedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis) error {
+		submitDataFn: func(ctx context.Context, signedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer) error {
 			return nil
 		},
 	}
@@ -147,7 +146,7 @@ func TestTracedDASubmitter_SubmitData_Success(t *testing.T) {
 		[]byte("data2data2"),
 	}
 
-	err := submitter.SubmitData(ctx, signedDataList, marshalledData, nil, nil, genesis.Genesis{})
+	err := submitter.SubmitData(ctx, signedDataList, marshalledData, nil, nil)
 	require.NoError(t, err)
 
 	spans := sr.Ended()
@@ -166,7 +165,7 @@ func TestTracedDASubmitter_SubmitData_Success(t *testing.T) {
 func TestTracedDASubmitter_SubmitData_Error(t *testing.T) {
 	expectedErr := errors.New("data submission failed")
 	mock := &mockDASubmitterAPI{
-		submitDataFn: func(ctx context.Context, signedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis) error {
+		submitDataFn: func(ctx context.Context, signedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer) error {
 			return expectedErr
 		},
 	}
@@ -178,7 +177,7 @@ func TestTracedDASubmitter_SubmitData_Error(t *testing.T) {
 	}
 	marshalledData := [][]byte{[]byte("data1")}
 
-	err := submitter.SubmitData(ctx, signedDataList, marshalledData, nil, nil, genesis.Genesis{})
+	err := submitter.SubmitData(ctx, signedDataList, marshalledData, nil, nil)
 	require.Error(t, err)
 	require.Equal(t, expectedErr, err)
 

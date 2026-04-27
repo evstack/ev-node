@@ -9,7 +9,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/evstack/ev-node/block/internal/cache"
-	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/types"
 )
@@ -63,7 +62,7 @@ func (t *tracedDASubmitter) SubmitHeaders(ctx context.Context, headers []*types.
 	return nil
 }
 
-func (t *tracedDASubmitter) SubmitData(ctx context.Context, signedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis) error {
+func (t *tracedDASubmitter) SubmitData(ctx context.Context, signedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer) error {
 	ctx, span := t.tracer.Start(ctx, "DASubmitter.SubmitData",
 		trace.WithAttributes(
 			attribute.Int("data.count", len(signedDataList)),
@@ -86,7 +85,7 @@ func (t *tracedDASubmitter) SubmitData(ctx context.Context, signedDataList []*ty
 		)
 	}
 
-	err := t.inner.SubmitData(ctx, signedDataList, marshalledData, cache, signer, genesis)
+	err := t.inner.SubmitData(ctx, signedDataList, marshalledData, cache, signer)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
