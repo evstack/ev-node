@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ipfs/go-datastore"
+	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
@@ -231,19 +232,19 @@ func runBench(parentCtx context.Context, f runFlags) error {
 
 	// 6) Datastore for ev-node's internal state.
 	//
-	// Use the in-memory KV store so block writes don't touch disk:
-	// at sustained 128 MB blocks × ~1 b/s the on-disk Badger backend
-	// generates 100+ MB/s of value-log writes plus heavy compaction
-	// pressure that contributes to GC stalls and, under load, can
-	// hit Badger races ("file exists" on .vlog rotation observed at
-	// ~150 MB/s sustained). The bench has no durability requirement
-	// — if it crashes we re-run — so we skip persistence entirely
-	// and let the bench measure ev-node's pipeline rather than
-	// Badger's write-amplification curve.
-	ds, err := store.NewTestInMemoryKVStore()
-	if err != nil {
-		return fmt.Errorf("open datastore: %w", err)
-	}
+	// Pure-Go in-memory map (sync-wrapped) so block writes don't
+	// touch disk and aren't bounded by any storage-engine value
+	// limit. Badger's NewTestInMemoryKVStore has a default 1 MiB
+	// ValueThreshold — anything over that fails to save, which our
+	// 128 MB blocks blow past on every commit. With ds.MapDatastore
+	// we get O(map insert) writes with no value-size cap.
+	//
+	// The bench has no durability requirement — if it crashes we
+	// re-run — and removing Badger from the critical path is what
+	// finally lets concurrent uploads multiply throughput rather
+	// than queueing behind block.Commit.
+	_ = store.NewTestInMemoryKVStore // keep dep referenced for the alternate path
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	_ = f.homeDir // referenced elsewhere for signer dir
 
 	// 7) Executor + sequencer.
