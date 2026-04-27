@@ -23,6 +23,14 @@ CLIENT_BALANCE="${CLIENT_BALANCE:-1000000000000utia}"
 
 mkdir -p "$SHARED"
 
+# Idempotency: if a previous run already produced peers.txt the genesis
+# is already in place — skip re-init so subsequent `docker compose up`
+# invocations don't fail trying to re-init the homes.
+if [ -f "$SHARED/peers.txt" ]; then
+    echo "init-genesis: already initialized; nothing to do."
+    exit 0
+fi
+
 # Validator 0 is the seed home: we initialize there, add genesis accounts,
 # then copy the resulting genesis.json into every other validator's home.
 for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
@@ -55,6 +63,14 @@ client_addr=$("$APP" keys show "$CLIENT_ACCOUNT" -a \
     --keyring-backend "$KEYRING_BACKEND" --home "$seed_home")
 "$APP" genesis add-genesis-account "$client_addr" "$CLIENT_BALANCE" \
     --keyring-backend "$KEYRING_BACKEND" --home "$seed_home"
+
+# Set network minimum gas price to 0 so gentxs (which have no fees) can
+# be included. The default 0.000001 utia/gas would reject every gentx.
+seed_genesis="$seed_home/config/genesis.json"
+tmp=$(mktemp)
+jq '.app_state.minfee.params.network_min_gas_price = "0.000000000000000000"' \
+    "$seed_genesis" > "$tmp"
+mv "$tmp" "$seed_genesis"
 
 # Generate gentxs from each validator's home, collect them in seed_home.
 mkdir -p "$seed_home/config/gentx"

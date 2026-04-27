@@ -96,31 +96,23 @@ docker compose build --build-arg CELESTIA_NODE_REF=194cc74c ...
 
 ## Known TODOs
 
-This is a working scaffold — not a polished CI artifact. A few
-things will likely need iteration the first time it runs end-to-end
-on your machine:
+The scaffold has been validated end-to-end on Apple Silicon
+(Docker Desktop 4.70 / linux/arm64). A few rough edges remain that
+are worth tightening for CI:
 
-1. **`fibre` binary CLI flags** in `scripts/start-validator.sh` are
-   illustrative. The real `cmd/fibre` flags may differ (port name,
-   app gRPC flag, signer config). Run `fibre --help` inside a
-   validator container to confirm and adjust.
-2. **`config.toml` / `app.toml` overrides** in `start-validator.sh`
+1. **`config.toml` / `app.toml` overrides** in `start-validator.sh`
    use `sed` against expected default lines. If the celestia-app
    defaults change verb/spacing, the substitutions silently no-op.
    Consider a `dasel`/`tomlq` rewrite if it bites.
-3. **No healthchecks** on validators. `register` waits on
+2. **No healthchecks** on validators. `register` waits on
    `service_started`, which is only "container booted", not "RPC
    responding". The script polls `celestia-appd status` which
    handles that, but a proper healthcheck would let `bridge` start
    sooner without polling itself.
-4. **No CI integration**. Adding `make docker-test` that wraps
+3. **No CI integration**. Adding `make docker-test` that wraps
    `docker compose up -d --wait`, runs the test, then tears down,
    is a sensible follow-up.
-5. **Build cache** — every `docker compose up --build` re-clones
+4. **Build cache** — every `docker compose up --build` re-clones
    celestia-app + celestia-node. To iterate faster, set up a
    docker volume cache for `/go/pkg/mod` and `/root/.cache/go-build`,
    or build the images once and re-use.
-
-These are documented honestly because the value of the scaffold is in
-unblocking the next iteration step, not in pretending it works
-flawlessly without manual fixes.
