@@ -131,7 +131,10 @@ var RunCmd = &cobra.Command{
 			}()
 		}
 
-		return rollcmd.StartNode(logger, cmd, executor, sequencer, nodeKey, datastore, nodeConfig, genesis, node.NodeOptions{})
+		// nil fiberClient: the EVM app doesn't wire Fibre DA. See
+		// tools/celestia-node-fiber for the adapter; testapp/cmd/run.go
+		// has the same TODO note for matching context.
+		return rollcmd.StartNode(logger, cmd, executor, sequencer, nodeKey, datastore, nodeConfig, genesis, node.NodeOptions{}, nil)
 	},
 }
 
