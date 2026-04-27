@@ -70,15 +70,20 @@ go build -tags fibre -o bin/fiber-bench ./cmd/fiber-bench/
 
 # 6. Run the bench
 ./bin/fiber-bench run \
-    --consensus-grpc 139.59.229.101:9091 \
-    --chain-id <chain-id-the-server-actually-reports> \
-    --key-name bench \
+    --evnode.da.fiber.consensus_address 139.59.229.101:9091 \
+    --evnode.da.fiber.consensus_chain_id <chain-id-the-server-actually-reports> \
+    --evnode.da.fiber.key_name bench \
     --duration 2m \
     --workers 32 \
     --tx-size 200 \
-    --block-time 1s \
-    --batching-strategy immediate
+    --evnode.node.block_time 1s \
+    --evnode.da.batching_strategy immediate
 ```
+
+The bench reuses canonical ev-node flags (`--evnode.*`) registered by
+`pkg/config.AddFlags` rather than defining bench-specific aliases. See
+`fiber-bench run --help` for the full list — anything you'd configure on
+testapp/evm/grpc apps works here too.
 
 Or use the convenience wrapper:
 
@@ -130,17 +135,28 @@ Txs executed:           XXX (avg N tx/s, peak N tx/s, T tx/blk)
 
 ## Knobs worth flipping while debugging
 
+Bench-local flags:
+
 | Flag                    | Default      | Why                                               |
 |-------------------------|--------------|---------------------------------------------------|
-| `--block-time`          | `1s`         | Drop to e.g. `100ms` to expose per-block overhead |
-| `--batching-strategy`   | `immediate`  | Try `time` / `size` / `adaptive`                  |
-| `--reaper-interval`     | `100ms`      | How often the mempool drain runs                  |
-| `--max-pending`         | `0`          | Cap pending DA blobs to test backpressure         |
 | `--workers`             | `32`         | Tx-injection concurrency                          |
 | `--tx-size`             | `200`        | Bytes per tx (matches user-reported regression)   |
 | `--mempool-size`        | `1_000_000`  | Bench's bounded backpressure boundary             |
 | `--keep-home`           | `false`      | Resume from prior state (defaults to wipe)        |
-| `--log-level`           | `info`       | `debug` to see ev-node block production logs      |
+| `--duration`            | `1m`         | How long to run (0 = until SIGINT)                |
+| `--stats-interval`      | `1s`         | Stats line cadence                                |
+| `--keyring-dir`         | `~/.fiber-bench/keyring` | Cosmos keyring (Fibre payment promises) |
+| `--signer-passphrase`   | `fiber-bench-passphrase` | ev-node block-signing key passphrase  |
+
+Canonical ev-node flags worth flipping (full list: `run --help`):
+
+| Flag                                | Bench default | Why                                  |
+|-------------------------------------|---------------|--------------------------------------|
+| `--evnode.node.block_time`          | `1s`          | Drop to `100ms` to expose per-block overhead |
+| `--evnode.da.batching_strategy`     | `immediate`   | Try `time` / `size` / `adaptive`              |
+| `--evnode.node.scrape_interval`     | `100ms`       | How often the mempool drain runs              |
+| `--evnode.node.max_pending_headers_and_data` | `0`  | Cap pending DA blobs to test backpressure     |
+| `--evnode.log.level`                | `info`        | `debug` to see ev-node block production logs  |
 
 ## ev-node Prometheus
 

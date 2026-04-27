@@ -23,13 +23,29 @@ import (
 	// bech32 prefix to "celestia" — must run before any keyring operation
 	// that prints addresses.
 	_ "github.com/celestiaorg/celestia-app/v9/app/params"
+
+	rollconf "github.com/evstack/ev-node/pkg/config"
+)
+
+// AppName names the binary. The home dir intentionally lives one level
+// deeper at ~/.fiber-bench/node so the bench's --keep-home=false default
+// (which os.RemoveAll's cfg.RootDir) cannot wipe the cosmos keyring at
+// ~/.fiber-bench/keyring.
+const (
+	AppName            = "fiber-bench"
+	defaultHomeAppName = AppName + "/node"
 )
 
 func main() {
 	root := &cobra.Command{
-		Use:   "fiber-bench",
+		Use:   AppName,
 		Short: "Single-sequencer ev-node throughput bench against a remote Fibre network",
 	}
+
+	// Register --home, --evnode.log.level, --evnode.log.format,
+	// --evnode.log.trace on the root so every subcommand inherits them
+	// (matches apps/testapp).
+	rollconf.AddGlobalFlags(root, defaultHomeAppName)
 
 	root.AddCommand(
 		keysCmd(),

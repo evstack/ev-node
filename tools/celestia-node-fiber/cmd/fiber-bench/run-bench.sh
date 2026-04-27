@@ -61,14 +61,14 @@ echo "==> escrow:"
 
 echo "==> starting bench: duration=$DURATION workers=$WORKERS tx_size=$TX_SIZE block_time=$BLOCK_TIME batching=$BATCHING"
 exec "$BIN" run \
-    --consensus-grpc "$CONSENSUS_GRPC" \
-    --chain-id "$CHAIN_ID" \
+    --evnode.da.fiber.consensus_address "$CONSENSUS_GRPC" \
+    --evnode.da.fiber.consensus_chain_id "$CHAIN_ID" \
+    --evnode.da.fiber.key_name "$KEY_NAME" \
     --keyring-dir "$KEYRING_DIR" \
-    --key-name "$KEY_NAME" \
     --home "$HOME_DIR" \
     --duration "$DURATION" \
     --workers "$WORKERS" \
     --tx-size "$TX_SIZE" \
-    --block-time "$BLOCK_TIME" \
-    --batching-strategy "$BATCHING" \
+    --evnode.node.block_time "$BLOCK_TIME" \
+    --evnode.da.batching_strategy "$BATCHING" \
     ${FIBER_BENCH_ARGS:-}
