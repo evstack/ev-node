@@ -38,7 +38,7 @@ message Header {
   bytes validator_hash = 11;
   // Chain ID the block belongs to
   string chain_id = 12;
-  reserved 5, 7, 9, 13;
+  reserved 5, 7, 9;
 }
 
 // SignedHeader is a header with a signature and a signer.
