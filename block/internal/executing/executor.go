@@ -663,11 +663,26 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 	return nil
 }
 
+// blockMarshalOverhead reserves a fraction of MaxBlobSize for the proto
+// framing + Metadata overhead added when types.Data is marshaled into a
+// DA blob. Empirically the per-tx proto length-prefix runs ~3 bytes,
+// which is roughly 1.5% at 200 B txs and stays in that range across
+// realistic tx sizes; 2% gives margin for fixed Metadata fields without
+// leaving meaningful capacity unused. Reserving here (vs. inside
+// FilterTxs) keeps the executor’s view of MaxBytes equal to the raw-tx
+// budget and prevents a fully packed batch from blowing past the
+// submitter’s MaxBlobSize check.
+const blockMarshalOverheadPct = 2
+
 // RetrieveBatch gets the next batch of transactions from the sequencer.
 func (e *Executor) RetrieveBatch(ctx context.Context) (*BatchData, error) {
+	maxTxBytes := common.DefaultMaxBlobSize
+	if reserve := maxTxBytes * blockMarshalOverheadPct / 100; reserve < maxTxBytes {
+		maxTxBytes -= reserve
+	}
 	req := coresequencer.GetNextBatchRequest{
 		Id:            []byte(e.genesis.ChainID),
-		MaxBytes:      common.DefaultMaxBlobSize,
+		MaxBytes:      maxTxBytes,
 		LastBatchData: [][]byte{}, // Can be populated if needed for sequencer context
 	}
 
