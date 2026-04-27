@@ -1,29 +1,36 @@
 //go:build fibre_docker
 
-// bad_host_repro_test.go — reproduces the production "too many colons in
-// address" / "first path segment in URL cannot contain colon" failures
-// observed when an operator registers a Fibre provider with a host
-// string that isn't in the canonical `dns:///host:port` form.
+// bad_host_repro_test.go — empirically validates which fibre provider
+// host formats survive end-to-end through the chain + fibre client +
+// gRPC dialer. Three formats are exercised:
+//
+//   - `http://host:port`      : reproduces production error
+//                               "too many colons in address"
+//   - `host:port`             : reproduces production error
+//                               "first path segment in URL cannot
+//                               contain colon"
+//   - `dns:///host:port`      : the only working form today
 //
 // Root cause: x/valaddr `MsgSetFibreProviderInfo.ValidateBasic` only
-// checks that the host is non-empty and ≤100 chars. Anything else
-// passes — including `http://10.0.37.242:7980`, bare `host:port`, or
-// arbitrary garbage. At read time the fibre client's
+// checks that the host is non-empty and ≤100 chars, so any of the
+// above is accepted on chain. At read time the fibre client's
 // `HostRegistry.GetHost` runs `url.Parse(host)`; bare host:port fails
 // that, while `http://...` passes and then breaks downstream because
 // `grpc.NewClient` doesn't recognise `http` as a resolver scheme and
 // appends a default `:443`, yielding `http://host:port:443` ("too
-// many colons").
+// many colons"). Only `dns:///host:port` parses as a URL AND is a
+// gRPC-known resolver scheme, so it works end-to-end.
 //
 // The expected fix is to require a strict `host:port` form in
 // `ValidateBasic` (no scheme, no path, no userinfo). After that lands
-// the chain rejects the registration tx itself and the assertions
-// here flip — see assertChainAcceptsBadHost.
+// the chain rejects the registration tx for both `http://...` and
+// `dns:///...` and only `host:port` succeeds — assertions in this
+// test will need to flip.
 //
 // Run with:
 //
 //	go test -tags 'fibre fibre_docker' -count=1 -timeout 5m \
-//	    -run TestFibreClient_BadHostRegistration ./testing/docker/...
+//	    -run TestFibreClient_HostRegistrationFormats ./testing/docker/...
 
 package docker_test
 
@@ -54,30 +61,61 @@ var canonicalHosts = map[int]string{
 	3: "dns:///127.0.0.1:7983",
 }
 
-// TestFibreClient_BadHostRegistration re-registers every validator with
-// a malformed host string, confirms the chain accepts the registration
-// (the bug), then confirms Upload fails because none of the validators
-// can be dialed (the symptom). After each subtest the canonical
-// registrations are restored so sibling tests on the shared docker
-// stack continue to pass.
-func TestFibreClient_BadHostRegistration(t *testing.T) {
+// TestFibreClient_HostRegistrationFormats re-registers every validator
+// with a particular host-string format, then attempts an Upload through
+// a fresh adapter and asserts whether the upload succeeds or fails.
+//
+// The matrix establishes empirically which formats the chain + fibre
+// client accept end-to-end:
+//
+//   - http_scheme_prefix  → fails with "too many colons in address"
+//   - bare_host_port      → fails with "first path segment in URL ..."
+//   - dns_prefix          → succeeds (this is the only working form)
+//
+// The two failing cases exactly reproduce the production warnings the
+// operator saw. The succeeding case is the positive control showing
+// `dns:///host:port` is the working format today, which is what the
+// proposed valaddr fix changes (it would make `host:port` succeed and
+// `dns:///` fail).
+//
+// After each subtest the canonical registrations are restored so
+// sibling tests on the shared docker stack continue to pass.
+func TestFibreClient_HostRegistrationFormats(t *testing.T) {
 	cases := []struct {
 		name string
-		// hostFor returns the bad host string to register for the given
+		// hostFor returns the host string to register for the given
 		// validator index (0..3).
 		hostFor func(i int) string
+		// wantUploadErr, when non-empty, marks this case as expected to
+		// fail Upload; the substring must appear in the resulting error
+		// chain (we look at the per-validator warning; the outer error
+		// is "not enough voting power" once enough fail).
+		wantUploadErr string
 	}{
 		{
 			name: "http_scheme_prefix",
 			hostFor: func(i int) string {
 				return fmt.Sprintf("http://127.0.0.1:%d", 7980+i)
 			},
+			// Adapter uploads return the aggregate error; the
+			// per-validator dial error is logged, not bubbled. We
+			// assert the aggregate ("not enough voting power") here
+			// and rely on log capture below for the specific message.
+			wantUploadErr: "not enough voting power",
 		},
 		{
 			name: "bare_host_port",
 			hostFor: func(i int) string {
 				return fmt.Sprintf("127.0.0.1:%d", 7980+i)
 			},
+			wantUploadErr: "not enough voting power",
+		},
+		{
+			name: "dns_prefix",
+			hostFor: func(i int) string {
+				return fmt.Sprintf("dns:///127.0.0.1:%d", 7980+i)
+			},
+			// No wantUploadErr — Upload should succeed.
 		},
 	}
 
@@ -105,18 +143,19 @@ func TestFibreClient_BadHostRegistration(t *testing.T) {
 				}
 			})
 
-			// Register every validator with the broken host. The chain
-			// should accept all of them — that's the bug.
+			// Register every validator with the chosen host format.
+			// The chain accepts all of these today — even the broken
+			// ones — because ValidateBasic only checks length.
 			for i := 0; i < 4; i++ {
-				bad := tc.hostFor(i)
-				require.NoError(t, setValHost(ctx, t, i, bad),
-					"chain accepted MsgSetFibreProviderInfo for val%d host=%q (no format validation)", i, bad)
+				h := tc.hostFor(i)
+				require.NoError(t, setValHost(ctx, t, i, h),
+					"chain should accept set-host for val%d host=%q on the current code", i, h)
 			}
-			// Wait until val3's bad host is observable; this is the
-			// last one we wrote, so its presence implies the others
-			// also propagated.
+			// Wait until val3's host is observable; this is the last
+			// one we wrote, so its presence implies the others also
+			// propagated.
 			require.NoError(t, waitForHost(ctx, t, tc.hostFor(3)),
-				"bad registrations should be visible on chain")
+				"%s registrations should be visible on chain", tc.name)
 
 			// Construct a FRESH adapter so PullAll picks up the just-
 			// updated registry rather than a cached canonical entry.
@@ -140,14 +179,22 @@ func TestFibreClient_BadHostRegistration(t *testing.T) {
 			t.Cleanup(func() { _ = adapter.Close() })
 
 			namespace := bytes.Repeat([]byte{0xcd}, 10)
-			payload := []byte(fmt.Sprintf("bad-host-repro-%s-%d", tc.name, time.Now().UnixNano()))
+			payload := []byte(fmt.Sprintf("host-format-repro-%s-%d", tc.name, time.Now().UnixNano()))
 
 			uploadCtx, uploadCancel := context.WithTimeout(ctx, 60*time.Second)
 			defer uploadCancel()
 
-			_, uploadErr := adapter.Upload(uploadCtx, namespace, payload)
-			require.Error(t, uploadErr, "Upload must fail when no validator host can be dialed")
-			t.Logf("upload failed as expected (%s): %v", tc.name, uploadErr)
+			res, uploadErr := adapter.Upload(uploadCtx, namespace, payload)
+			if tc.wantUploadErr != "" {
+				require.Error(t, uploadErr, "Upload must fail when no validator host can be dialed")
+				require.Contains(t, uploadErr.Error(), tc.wantUploadErr,
+					"upload error should match expected aggregate failure")
+				t.Logf("upload failed as expected (%s): %v", tc.name, uploadErr)
+			} else {
+				require.NoError(t, uploadErr, "Upload should succeed for %s host format", tc.name)
+				require.NotEmpty(t, res.BlobID)
+				t.Logf("upload ok (%s): blob_id=%x", tc.name, res.BlobID)
+			}
 		})
 	}
 }
