@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/ipfs/go-datastore"
-	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
@@ -230,22 +229,13 @@ func runBench(parentCtx context.Context, f runFlags) error {
 		return fmt.Errorf("fiber config: %w", err)
 	}
 
-	// 6) Datastore for ev-node's internal state.
-	//
-	// Pure-Go in-memory map (sync-wrapped) so block writes don't
-	// touch disk and aren't bounded by any storage-engine value
-	// limit. Badger's NewTestInMemoryKVStore has a default 1 MiB
-	// ValueThreshold — anything over that fails to save, which our
-	// 128 MB blocks blow past on every commit. With ds.MapDatastore
-	// we get O(map insert) writes with no value-size cap.
-	//
-	// The bench has no durability requirement — if it crashes we
-	// re-run — and removing Badger from the critical path is what
-	// finally lets concurrent uploads multiply throughput rather
-	// than queueing behind block.Commit.
-	_ = store.NewTestInMemoryKVStore // keep dep referenced for the alternate path
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	_ = f.homeDir // referenced elsewhere for signer dir
+	// 6) Datastore for ev-node's internal state. Uses the standard
+	// constructor; the in-memory swap for benchmarking lives in
+	// pkg/store/kv.go::NewDefaultKVStore (see HACK there).
+	ds, err := store.NewDefaultKVStore(f.homeDir, cfg.DBPath, "fiber-bench")
+	if err != nil {
+		return fmt.Errorf("open datastore: %w", err)
+	}
 
 	// 7) Executor + sequencer.
 	exec := newInMemExecutor(f.mempoolSize)

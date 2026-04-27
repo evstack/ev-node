@@ -8,6 +8,7 @@ import (
 	ds "github.com/ipfs/go-datastore"
 	ktds "github.com/ipfs/go-datastore/keytransform"
 	dsq "github.com/ipfs/go-datastore/query"
+	dssync "github.com/ipfs/go-datastore/sync"
 	badger4 "github.com/ipfs/go-ds-badger4"
 )
 
@@ -15,7 +16,40 @@ import (
 const EvPrefix = "0"
 
 // NewDefaultKVStore creates instance of default key-value store.
-func NewDefaultKVStore(rootDir, dbPath, dbName string) (ds.Batching, error) {
+//
+// HACK(fiber-throughput): swapped to a pure in-memory map for the
+// Fibre throughput investigation. The real issue this surfaces is
+// architectural, not a Badger bug: block.executing.Executor.ProduceBlock
+// calls store.batch.Commit() synchronously inside the producer, so
+// the storage engine's write rate is a hard ceiling on block
+// production. With 128 MiB blocks × ~1 b/s the on-disk path drives
+// ~150 MB/s of value-log writes plus heavy compaction; the producer
+// blocks on Badger long before the DA submitter is the bottleneck.
+//
+// Don't revert this in place — fix the underlying design instead.
+// Options worth weighing:
+//   - Move the block save off the producer hot path (async commit
+//     with a bounded queue). Block durability is not required to
+//     advance state, only to recover after restart.
+//   - For Fibre-only rollups specifically: skip local persistence
+//     entirely. Fibre IS the storage; a node can re-sync from the
+//     chain on restart. This removes the question.
+//   - If we keep persisting, pick a write-optimised backend that
+//     handles 100s of MB/s of large-value writes without compaction
+//     stalls. Badger v4 with these tunings still hit a .vlog
+//     rotation race under sustained load.
+//
+// NewDefaultKVStoreOnDisk preserved below as the literal Badger
+// constructor for any caller that explicitly wants disk-backed
+// state today; the production wiring should switch to one of the
+// three options above before this directory is dropped.
+func NewDefaultKVStore(_, _, _ string) (ds.Batching, error) {
+	return dssync.MutexWrap(ds.NewMapDatastore()), nil
+}
+
+// NewDefaultKVStoreOnDisk is the original Badger-backed constructor,
+// preserved for the duration of the throughput-cleanup window.
+func NewDefaultKVStoreOnDisk(rootDir, dbPath, dbName string) (ds.Batching, error) {
 	path := filepath.Join(rootify(rootDir, dbPath), dbName)
 	return badger4.NewDatastore(path, BadgerOptions())
 }
