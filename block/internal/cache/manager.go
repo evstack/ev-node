@@ -25,8 +25,24 @@ const (
 	// DataDAIncludedPrefix is the store key prefix for data DA inclusion tracking.
 	DataDAIncludedPrefix = "cache/data-da-included/"
 
-	// DefaultTxCacheRetention is the default time to keep transaction hashes in cache.
-	DefaultTxCacheRetention = 24 * time.Hour
+	// DefaultTxCacheRetention is how long tx hashes stay in the
+	// seen-tx cache before CleanupOldTxs evicts them.
+	//
+	// HACK(fiber-throughput): dropped from 24h to 30s while we chase
+	// throughput, but the previous default was itself wrong: 24h is
+	// retention × tps in memory, so any rollup with meaningful TPS
+	// would OOM (we hit ~16 GB in under a minute at ~1.5M tx/s).
+	// What this should be properly:
+	//   - Bounded by entry count, not wall time. The dedup window
+	//     should be "the last N txs we saw", LRU-evicted, so cache
+	//     memory is fixed regardless of throughput.
+	//   - Or expressed in DA blocks: "drop hashes once their txs
+	//     would have been retried out of the mempool", which is a
+	//     property of mempool TTL × DA block time, not 24 hours.
+	//   - 30s is a fine measurement default and a reasonable upper
+	//     bound for pretty much any rollup; pick the right number
+	//     when the cache structure itself is reworked.
+	DefaultTxCacheRetention = 30 * time.Second
 )
 
 // CacheManager provides thread-safe cache operations for tracking seen blocks

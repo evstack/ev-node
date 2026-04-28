@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -87,38 +88,96 @@ func (c *fiberDAClient) Submit(ctx context.Context, data [][]byte, _ float64, na
 		}
 	}
 
-	flat := flattenBlobs(data)
+	// Per-item concurrent Upload. Fibre's per-Upload latency is
+	// dominated by validator signature aggregation (~1.5 s on a
+	// healthy network) and does not scale up linearly under multiple
+	// in-flight Uploads, so settlement throughput scales with the
+	// number of concurrent items submitted in a single batch. Each
+	// item gets its own goroutine, its own Upload call, and its own
+	// BlobID in the result; the previous flatten step was both
+	// memory-wasteful (a MaxBlobSize-sized memcpy on every Submit)
+	// and inherently serial (one Upload per Submit).
+	//
+	// TODO: wire-format compat — old splitBlobs assumed all items in
+	// a Submit were written as a single prefixed blob. With per-item
+	// Uploads, retrievers must treat each BlobID separately. The
+	// retrieve path in this file still uses splitBlobs and will need
+	// a follow-up to read the new per-item blobs as raw payloads.
+	nsID := namespace[len(namespace)-10:]
+	type uploadResult struct {
+		idx int
+		id  []byte
+		err error
+	}
+	results := make([]uploadResult, len(data))
+	var wg sync.WaitGroup
+	for i := range data {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			res, err := c.fiber.Upload(ctx, nsID, data[i])
+			if err != nil {
+				results[i] = uploadResult{idx: i, err: err}
+				return
+			}
+			id := make([]byte, len(res.BlobID))
+			copy(id, res.BlobID)
+			results[i] = uploadResult{idx: i, id: id}
+		}(i)
+	}
+	wg.Wait()
 
-	result, err := c.fiber.Upload(context.Background(), namespace[len(namespace)-10:], flat)
-	if err != nil {
+	// Walk results in submission order. submitToDA's retry logic
+	// expects "prefix of successes": SubmittedCount=N means items
+	// [0..N) succeeded and the caller will re-submit items [N..end)
+	// on the next attempt. Reporting interleaved successes would
+	// double-submit blobs and waste escrow; matching prefix
+	// semantics keeps the contract intact even when individual
+	// Uploads fail out-of-order.
+	ids := make([][]byte, 0, len(data))
+	var firstErr error
+	for _, r := range results {
+		if r.err != nil {
+			firstErr = r.err
+			break
+		}
+		ids = append(ids, r.id)
+	}
+
+	if len(ids) == 0 && firstErr != nil {
 		code := datypes.StatusError
 		switch {
-		case errors.Is(err, context.Canceled):
+		case errors.Is(firstErr, context.Canceled):
 			code = datypes.StatusContextCanceled
-		case errors.Is(err, context.DeadlineExceeded):
+		case errors.Is(firstErr, context.DeadlineExceeded):
 			code = datypes.StatusContextDeadline
 		}
-
-		c.logger.Error().Err(err).Msg("fiber upload failed")
-
+		c.logger.Error().Err(firstErr).Msg("fiber upload failed")
 		return datypes.ResultSubmit{
 			BaseResult: datypes.BaseResult{
 				Code:           code,
-				Message:        fmt.Sprintf("fiber upload failed for blob: %v", err),
-				SubmittedCount: uint64(len(data) - 1),
+				Message:        fmt.Sprintf("fiber upload failed for blob: %v", firstErr),
+				SubmittedCount: 0,
 				BlobSize:       blobSize,
 				Timestamp:      time.Now(),
 			},
 		}
 	}
 
-	c.logger.Debug().Int("num_ids", len(data)).Uint64("height", 0 /* TODO */).Msg("fiber DA submission successful")
+	if firstErr != nil {
+		c.logger.Warn().Err(firstErr).
+			Int("submitted", len(ids)).
+			Int("total", len(data)).
+			Msg("fiber upload partial success — caller will retry the remainder")
+	}
+
+	c.logger.Debug().Int("num_ids", len(ids)).Uint64("height", 0 /* TODO */).Msg("fiber DA submission successful")
 
 	return datypes.ResultSubmit{
 		BaseResult: datypes.BaseResult{
 			Code:           datypes.StatusSuccess,
-			IDs:            [][]byte{result.BlobID},
-			SubmittedCount: uint64(len(data)),
+			IDs:            ids,
+			SubmittedCount: uint64(len(ids)),
 			Height:         0, /* TODO */
 			BlobSize:       blobSize,
 			Timestamp:      time.Now(),
@@ -329,29 +388,19 @@ func (c *fiberDAClient) Validate(_ context.Context, ids []datypes.ID, proofs []d
 func (c *fiberDAClient) GetHeaderNamespace() []byte { return c.namespaceBz }
 func (c *fiberDAClient) GetDataNamespace() []byte   { return c.dataNamespaceBz }
 
-func flattenBlobs(blobs [][]byte) []byte {
-	if len(blobs) == 0 {
-		return nil
-	}
-
-	var total int
-	for _, b := range blobs {
-		total += 4 + len(b)
-	}
-	total += 4
-
-	buf := make([]byte, total)
-	binary.BigEndian.PutUint32(buf, uint32(len(blobs)))
-	off := 4
-	for _, b := range blobs {
-		binary.BigEndian.PutUint32(buf[off:], uint32(len(b)))
-		off += 4
-		copy(buf[off:], b)
-		off += len(b)
-	}
-	return buf
-}
-
+// splitBlobs decodes the legacy "count + per-item length" framing that
+// the previous Submit path used to pack multiple blobs into a single
+// Upload. The per-item-concurrent Submit path no longer writes that
+// framing — each item is uploaded raw — so any blob written by this
+// branch's Submit will fail to decode here.
+//
+// Callers (Retrieve / RetrieveBlobs / Get / Subscribe) therefore only
+// work for blobs written by the OLD code path, OR for the multi-item
+// header batches that still use it. Pair the format change with a
+// matching update to the read path before any node on this branch
+// tries to sync from another node on this branch.
+//
+// Tracked alongside the wire-format TODO on Submit (above).
 func splitBlobs(data []byte) ([][]byte, error) {
 	if len(data) == 0 {
 		return nil, nil
