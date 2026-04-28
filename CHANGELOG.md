@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changes
 
 - Optimization of mutex usage in cache for reaper [#3286](https://github.com/evstack/ev-node/pull/3286)
+- Optimize metadata writes by making it async in cache store [#3298](https://github.com/evstack/ev-node/pull/3298)
 
 ## v1.1.1
 
