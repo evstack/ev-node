@@ -53,6 +53,20 @@ Raft transport is **plain TCP** with no built-in encryption. Before deploying:
 - **Never expose the Raft port to the public internet.** An attacker with access to the Raft port can send forged messages that disrupt or hijack cluster consensus.
 - Ensure low-latency connectivity between nodes. Timeouts must be sized larger than the worst-case round-trip time (RTT) between any two nodes in the cluster.
 
+### Node Placement
+
+**Run all nodes in the same region, spread across different availability zones.**
+
+This is the single most important infrastructure decision for cluster stability. All nodes must have roughly the same RTT to each other. The timing parameters (heartbeat timeout, election timeout) are sized for a single `RTT_MAX` value — if one node has materially higher latency than its peers, it degrades the entire cluster's ability to detect failures and elect leaders reliably.
+
+Specifically:
+- **Same region, different AZs** gives uniform 5–30ms RTT and is the validated production topology. Nodes are isolated from AZ-level failures while keeping latency uniform.
+- **Cross-region nodes** introduce higher and asymmetric RTT (100ms+). Even a single high-latency node can destabilize the cluster under network stress.
+
+This was observed directly in load testing: a 3-node cluster where one node averaged 99ms RTT (2× higher than its peers at 45–49ms) showed election times up to 284 seconds, three undetected leader elections, and one skipped cycle when 200–500ms of additional latency was injected — the same disruption level where the two lower-latency nodes recovered in under 55 seconds. Moving to a 5-node cluster with uniform ~45ms RTT across all nodes eliminated all undetected elections, reduced the worst-case election time from 284s to 66s, and reduced cascade risk from 10% of cycles to 3%.
+
+If your deployment requires nodes in different regions, increase `heartbeat_timeout` and `election_timeout` to at least 4–5× the worst-case inter-node RTT, and expect slower failover. See the [timing parameters](#timing-parameters) section for tuning formulas.
+
 ---
 
 ## Configuration Reference
