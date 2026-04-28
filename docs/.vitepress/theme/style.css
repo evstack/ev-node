@@ -159,6 +159,7 @@
     /* Inline code */
     --vp-code-color: #000000;
     --vp-code-bg: rgba(0, 0, 0, 0.05);
+
 }
 
 /* Inline code styling */
@@ -179,7 +180,7 @@ div[class*="language-"] pre {
 }
 
 div[class*="language-"] code {
-    color: #ffffff;
+    color: #dbd7ca;  /* vitesse-black default text */
 }
 
 /**
