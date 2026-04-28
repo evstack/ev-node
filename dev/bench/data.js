@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1777381024623,
+  "lastUpdate": 1777381026948,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -194,6 +194,102 @@ window.BENCHMARK_DATA = {
             "value": 54,
             "unit": "allocs/op",
             "extra": "27562 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "27022259+auricom@users.noreply.github.com",
+            "name": "auricom",
+            "username": "auricom"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "4b616008a9af7ddaf63e34bd139e7dc742f272eb",
+          "message": "ci: skip code jobs on docs-only changes (#3295)\n\nAdd a `changes` job using dorny/paths-filter to detect whether any\nnon-documentation files were modified. All heavy jobs (lint, docker,\ntest, docker-tests, proto) are gated behind this check and skipped\nwhen the PR only touches docs/** or markdown files.\n\nCo-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>",
+          "timestamp": "2026-04-28T12:30:46Z",
+          "tree_id": "afba44cb1dd5ffc5001a713f5e0692bf6ed7003f",
+          "url": "https://github.com/evstack/ev-node/commit/4b616008a9af7ddaf63e34bd139e7dc742f272eb"
+        },
+        "date": 1777381026331,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 44221,
+            "unit": "ns/op\t   10260 B/op\t      54 allocs/op",
+            "extra": "27558 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 44221,
+            "unit": "ns/op",
+            "extra": "27558 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 10260,
+            "unit": "B/op",
+            "extra": "27558 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 54,
+            "unit": "allocs/op",
+            "extra": "27558 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 37648,
+            "unit": "ns/op\t    4772 B/op\t      50 allocs/op",
+            "extra": "32022 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 37648,
+            "unit": "ns/op",
+            "extra": "32022 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 4772,
+            "unit": "B/op",
+            "extra": "32022 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 50,
+            "unit": "allocs/op",
+            "extra": "32022 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 38335,
+            "unit": "ns/op\t    4971 B/op\t      54 allocs/op",
+            "extra": "31742 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 38335,
+            "unit": "ns/op",
+            "extra": "31742 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 4971,
+            "unit": "B/op",
+            "extra": "31742 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 54,
+            "unit": "allocs/op",
+            "extra": "31742 times\n4 procs"
           }
         ]
       }
