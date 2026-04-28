@@ -215,13 +215,18 @@ p2p:
 
 ---
 
-## Step 8: Create Raft Data Directories
+## Step 8: Create Raft Data Directories and Passphrase File
 
 Run on every node:
 
 ```bash
 sudo mkdir -p /var/lib/ev-node/raft
 sudo chown $(whoami) /var/lib/ev-node/raft
+
+# Create the passphrase file — the binary reads this at startup
+sudo mkdir -p /etc/ev-node
+echo -n "<YOUR_PASSPHRASE>" | sudo tee /etc/ev-node/passphrase > /dev/null
+sudo chmod 600 /etc/ev-node/passphrase
 ```
 
 ---
@@ -250,10 +255,6 @@ The key requirement here is that all nodes must start within a short window of e
 Use a coordination mechanism — a simple approach is to open five terminals (or tmux panes) and fire the start commands in quick succession:
 
 ```bash
-# Load the passphrase from the secure env file (avoids it appearing in ps aux)
-# See the cluster-setup guide for how to create /etc/ev-node/env with chmod 600
-source /etc/ev-node/env
-
 # On node-1
 ./evm start \
   --evnode.node.aggregator=true \
@@ -270,7 +271,7 @@ source /etc/ev-node/env
   --evnode.raft.snapshot_threshold=5000 \
   --evnode.p2p.listen_address="/ip4/0.0.0.0/tcp/26656" \
   --evnode.p2p.peers="/ip4/10.0.0.2/tcp/26656/p2p/<PEER_ID_NODE_2>,/ip4/10.0.0.3/tcp/26656/p2p/<PEER_ID_NODE_3>,/ip4/10.0.0.4/tcp/26656/p2p/<PEER_ID_NODE_4>,/ip4/10.0.0.5/tcp/26656/p2p/<PEER_ID_NODE_5>" \
-  --evnode.signer.passphrase="$EV_SIGNER_PASSPHRASE" \
+  --evnode.signer.passphrase_file=/etc/ev-node/passphrase \
   --evm.jwt-secret=$(cat /path/to/jwt.hex) \
   --evm.genesis-hash=<YOUR_GENESIS_HASH>
 ```
@@ -354,11 +355,10 @@ If anything goes wrong during the cutover, you can revert to the single sequence
 
 ```bash
 # Emergency rollback — revert node-1 to single sequencer
-source /etc/ev-node/env
 ./evm start \
   --evnode.node.aggregator=true \
   --evnode.raft.enable=false \
-  --evnode.signer.passphrase="$EV_SIGNER_PASSPHRASE" \
+  --evnode.signer.passphrase_file=/etc/ev-node/passphrase \
   # ... your original flags
 ```
 
