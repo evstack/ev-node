@@ -112,16 +112,33 @@ func (cs *CachedStore) startWriteLoop() {
 	go func() {
 		defer close(cs.done)
 		for op := range cs.writeCh {
-			var err error
-			if op.isDelete {
-				err = cs.Store.DeleteMetadata(context.Background(), op.key)
-			} else {
-				err = cs.Store.SetMetadata(context.Background(), op.key, op.value)
+			ops := []asyncWriteOp{op}
+		drain:
+			for {
+				select {
+				case op := <-cs.writeCh:
+					ops = append(ops, op)
+				default:
+					break drain
+				}
 			}
-			if err != nil {
-				cs.logger.Error().Err(err).Str("key", op.key).
-					Bool("delete", op.isDelete).
-					Msg("async metadata write failed")
+
+			var puts []MetadataKV
+			var deletes []string
+			for _, o := range ops {
+				if o.isDelete {
+					deletes = append(deletes, o.key)
+				} else {
+					puts = append(puts, MetadataKV{Key: o.key, Value: o.value})
+				}
+			}
+
+			if err := cs.Store.BatchMetadata(context.Background(), puts, deletes); err != nil {
+				for _, o := range ops {
+					cs.logger.Error().Err(err).Str("key", o.key).
+						Bool("delete", o.isDelete).
+						Msg("async metadata batch write failed")
+				}
 			}
 		}
 	}()
