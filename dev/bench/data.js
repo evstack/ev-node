@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1777380129374,
+  "lastUpdate": 1777381024623,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -46,6 +46,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 175848,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "27022259+auricom@users.noreply.github.com",
+            "name": "auricom",
+            "username": "auricom"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "4b616008a9af7ddaf63e34bd139e7dc742f272eb",
+          "message": "ci: skip code jobs on docs-only changes (#3295)\n\nAdd a `changes` job using dorny/paths-filter to detect whether any\nnon-documentation files were modified. All heavy jobs (lint, docker,\ntest, docker-tests, proto) are gated behind this check and skipped\nwhen the PR only touches docs/** or markdown files.\n\nCo-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>",
+          "timestamp": "2026-04-28T12:30:46Z",
+          "tree_id": "afba44cb1dd5ffc5001a713f5e0692bf6ed7003f",
+          "url": "https://github.com/evstack/ev-node/commit/4b616008a9af7ddaf63e34bd139e7dc742f272eb"
+        },
+        "date": 1777381020354,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 920508078,
+            "unit": "ns/op\t30535644 B/op\t  161626 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 920508078,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 30535644,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 161626,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
