@@ -24,7 +24,7 @@ const (
 
 	// CleanupInterval is how often the reaper sweeps expired hashes
 	// out of the seen-tx cache.
-	CleanupInterval = max(cache.DefaultTxCacheRetention/10, 5*time.Second)
+	CleanupInterval = max(cache.DefaultTxCacheRetention/10, 15*time.Second)
 )
 
 // Reaper is responsible for periodically retrieving transactions from the executor,
