@@ -152,20 +152,22 @@ p2p:
   peers: "/ip4/10.0.0.2/tcp/26656/p2p/<PEER_ID_NODE_2>,/ip4/10.0.0.3/tcp/26656/p2p/<PEER_ID_NODE_3>,/ip4/10.0.0.4/tcp/26656/p2p/<PEER_ID_NODE_4>,/ip4/10.0.0.5/tcp/26656/p2p/<PEER_ID_NODE_5>"
 ```
 
-### node-2 (change only `node_id` and P2P peers)
+### node-2 (`~/.evm/config/evnode.yaml`)
+
+Each node's `raft.peers` must list every **other** node — never the node itself.
 
 ```yaml
-# ... same as node-1 except:
+# ... same as node-1 except node_id and raft.peers:
 raft:
   node_id: "node-2"
   raft_addr: "0.0.0.0:5001"
-  # peers list is identical
+  peers: "node-1@10.0.0.1:5001,node-3@10.0.0.3:5001,node-4@10.0.0.4:5001,node-5@10.0.0.5:5001"
 
 p2p:
   peers: "/ip4/10.0.0.1/tcp/26656/p2p/<PEER_ID_NODE_1>,/ip4/10.0.0.3/tcp/26656/p2p/<PEER_ID_NODE_3>,/ip4/10.0.0.4/tcp/26656/p2p/<PEER_ID_NODE_4>,/ip4/10.0.0.5/tcp/26656/p2p/<PEER_ID_NODE_5>"
 ```
 
-Repeat for node-3 through node-5, updating `node_id` and the P2P peers list (exclude the local node from its own P2P peers).
+Repeat for node-3 through node-5: increment `node_id`, remove the local node from both `raft.peers` and `p2p.peers`.
 
 ---
 
@@ -358,20 +360,27 @@ To restart nodes without taking the cluster offline (e.g., for a config change o
 2. For the leader node, restart it last. `ev-node` will transfer leadership to a peer before shutting down.
 
 ```bash
-# Restart non-leader nodes first
+# Restart non-leader nodes first, one at a time.
+# After each restart, wait until the node confirms it has rejoined before touching the next.
+
 ssh user@10.0.0.2 "sudo systemctl restart ev-node"
-# Wait ~30 seconds for node-2 to rejoin and sync
+ssh user@10.0.0.2 "sudo journalctl -u ev-node --since '1 min ago' -f | grep -m1 'follower state\|leader state'"
+
 ssh user@10.0.0.3 "sudo systemctl restart ev-node"
-# ...wait...
+ssh user@10.0.0.3 "sudo journalctl -u ev-node --since '1 min ago' -f | grep -m1 'follower state\|leader state'"
+
 ssh user@10.0.0.4 "sudo systemctl restart ev-node"
-# ...wait...
+ssh user@10.0.0.4 "sudo journalctl -u ev-node --since '1 min ago' -f | grep -m1 'follower state\|leader state'"
+
 ssh user@10.0.0.5 "sudo systemctl restart ev-node"
-# ...wait...
-# Restart the leader last
+ssh user@10.0.0.5 "sudo journalctl -u ev-node --since '1 min ago' -f | grep -m1 'follower state\|leader state'"
+
+# Restart the leader last — ev-node transfers leadership before shutting down
 ssh user@10.0.0.1 "sudo systemctl restart ev-node"
+ssh user@10.0.0.1 "sudo journalctl -u ev-node --since '1 min ago' -f | grep -m1 'follower state\|leader state'"
 ```
 
-Verify each node is back in the cluster (check logs for `entering follower state` or `entering leader state`) before proceeding to the next.
+The `grep -m1` exits as soon as the node logs `entering follower state` or `entering leader state`, confirming it has rejoined the cluster. Only then proceed to the next node.
 
 ---
 
