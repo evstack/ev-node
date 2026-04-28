@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1777364556015,
+  "lastUpdate": 1777364557869,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -1874,6 +1874,102 @@ window.BENCHMARK_DATA = {
             "value": 54,
             "unit": "allocs/op",
             "extra": "26582 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "14b82da48e3606b9d35dbe57196b7f1d06bed436",
+          "message": "build(deps): Bump the all-go group across 8 directories with 7 updates (#3291)\n\n* build(deps): Bump the all-go group across 8 directories with 7 updates\n\nBumps the all-go group with 5 updates in the / directory:\n\n| Package | From | To |\n| --- | --- | --- |\n| [github.com/aws/aws-sdk-go-v2/service/kms](https://github.com/aws/aws-sdk-go-v2) | `1.50.5` | `1.51.0` |\n| [github.com/aws/smithy-go](https://github.com/aws/smithy-go) | `1.25.0` | `1.25.1` |\n| [github.com/libp2p/go-libp2p-pubsub](https://github.com/libp2p/go-libp2p-pubsub) | `0.15.0` | `0.16.0` |\n| [github.com/rs/zerolog](https://github.com/rs/zerolog) | `1.35.0` | `1.35.1` |\n| [google.golang.org/api](https://github.com/googleapis/google-api-go-client) | `0.274.0` | `0.276.0` |\n\nBumps the all-go group with 1 update in the /apps/evm directory: [github.com/rs/zerolog](https://github.com/rs/zerolog).\nBumps the all-go group with 1 update in the /apps/grpc directory: [github.com/rs/zerolog](https://github.com/rs/zerolog).\nBumps the all-go group with 1 update in the /apps/testapp directory: [github.com/rs/zerolog](https://github.com/rs/zerolog).\nBumps the all-go group with 2 updates in the /execution/evm directory: [github.com/rs/zerolog](https://github.com/rs/zerolog) and [github.com/evstack/ev-node](https://github.com/evstack/ev-node).\nBumps the all-go group with 1 update in the /execution/grpc directory: [github.com/evstack/ev-node](https://github.com/evstack/ev-node).\nBumps the all-go group with 1 update in the /test/docker-e2e directory: [github.com/celestiaorg/tastora](https://github.com/celestiaorg/tastora).\nBumps the all-go group with 2 updates in the /test/e2e directory: [github.com/rs/zerolog](https://github.com/rs/zerolog) and [github.com/celestiaorg/tastora](https://github.com/celestiaorg/tastora).\n\n\nUpdates `github.com/aws/aws-sdk-go-v2/service/kms` from 1.50.5 to 1.51.0\n- [Release notes](https://github.com/aws/aws-sdk-go-v2/releases)\n- [Commits](https://github.com/aws/aws-sdk-go-v2/compare/service/ssm/v1.50.5...service/s3/v1.51.0)\n\nUpdates `github.com/aws/smithy-go` from 1.25.0 to 1.25.1\n- [Release notes](https://github.com/aws/smithy-go/releases)\n- [Changelog](https://github.com/aws/smithy-go/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/aws/smithy-go/compare/v1.25.0...v1.25.1)\n\nUpdates `github.com/libp2p/go-libp2p-pubsub` from 0.15.0 to 0.16.0\n- [Release notes](https://github.com/libp2p/go-libp2p-pubsub/releases)\n- [Commits](https://github.com/libp2p/go-libp2p-pubsub/compare/v0.15.0...v0.16.0)\n\nUpdates `github.com/rs/zerolog` from 1.35.0 to 1.35.1\n- [Commits](https://github.com/rs/zerolog/compare/v1.35.0...v1.35.1)\n\nUpdates `google.golang.org/api` from 0.274.0 to 0.276.0\n- [Release notes](https://github.com/googleapis/google-api-go-client/releases)\n- [Changelog](https://github.com/googleapis/google-api-go-client/blob/main/CHANGES.md)\n- [Commits](https://github.com/googleapis/google-api-go-client/compare/v0.274.0...v0.276.0)\n\nUpdates `github.com/rs/zerolog` from 1.35.0 to 1.35.1\n- [Commits](https://github.com/rs/zerolog/compare/v1.35.0...v1.35.1)\n\nUpdates `github.com/rs/zerolog` from 1.35.0 to 1.35.1\n- [Commits](https://github.com/rs/zerolog/compare/v1.35.0...v1.35.1)\n\nUpdates `github.com/rs/zerolog` from 1.35.0 to 1.35.1\n- [Commits](https://github.com/rs/zerolog/compare/v1.35.0...v1.35.1)\n\nUpdates `github.com/rs/zerolog` from 1.35.0 to 1.35.1\n- [Commits](https://github.com/rs/zerolog/compare/v1.35.0...v1.35.1)\n\nUpdates `github.com/evstack/ev-node` from 1.1.0 to 1.1.1\n- [Release notes](https://github.com/evstack/ev-node/releases)\n- [Changelog](https://github.com/evstack/ev-node/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/evstack/ev-node/compare/v1.1.0...v1.1.1)\n\nUpdates `github.com/evstack/ev-node` from 1.1.0 to 1.1.1\n- [Release notes](https://github.com/evstack/ev-node/releases)\n- [Changelog](https://github.com/evstack/ev-node/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/evstack/ev-node/compare/v1.1.0...v1.1.1)\n\nUpdates `github.com/celestiaorg/tastora` from 0.17.0 to 0.19.0\n- [Release notes](https://github.com/celestiaorg/tastora/releases)\n- [Commits](https://github.com/celestiaorg/tastora/compare/v0.17.0...v0.19.0)\n\nUpdates `github.com/rs/zerolog` from 1.35.0 to 1.35.1\n- [Commits](https://github.com/rs/zerolog/compare/v1.35.0...v1.35.1)\n\nUpdates `github.com/celestiaorg/tastora` from 0.16.1-0.20260312082036-2ee1b0a2ac4e to 0.19.0\n- [Release notes](https://github.com/celestiaorg/tastora/releases)\n- [Commits](https://github.com/celestiaorg/tastora/compare/v0.17.0...v0.19.0)\n\n---\nupdated-dependencies:\n- dependency-name: github.com/aws/aws-sdk-go-v2/service/kms\n  dependency-version: 1.51.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: github.com/aws/smithy-go\n  dependency-version: 1.25.1\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/libp2p/go-libp2p-pubsub\n  dependency-version: 0.16.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: github.com/rs/zerolog\n  dependency-version: 1.35.1\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: google.golang.org/api\n  dependency-version: 0.276.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: github.com/rs/zerolog\n  dependency-version: 1.35.1\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/rs/zerolog\n  dependency-version: 1.35.1\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/rs/zerolog\n  dependency-version: 1.35.1\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/rs/zerolog\n  dependency-version: 1.35.1\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/evstack/ev-node\n  dependency-version: 1.1.1\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/evstack/ev-node\n  dependency-version: 1.1.1\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/celestiaorg/tastora\n  dependency-version: 0.19.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: github.com/rs/zerolog\n  dependency-version: 1.35.1\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/celestiaorg/tastora\n  dependency-version: 0.19.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\n\n* tidy\n\n---------\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\nCo-authored-by: Julien Robert <julien@rbrt.fr>",
+          "timestamp": "2026-04-28T10:19:01+02:00",
+          "tree_id": "80edbaf5f1eea1ca3751bf8f0d69dbe7c69f6d14",
+          "url": "https://github.com/evstack/ev-node/commit/14b82da48e3606b9d35dbe57196b7f1d06bed436"
+        },
+        "date": 1777364557464,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 36272,
+            "unit": "ns/op\t   10101 B/op\t      54 allocs/op",
+            "extra": "33379 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 36272,
+            "unit": "ns/op",
+            "extra": "33379 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 10101,
+            "unit": "B/op",
+            "extra": "33379 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 54,
+            "unit": "allocs/op",
+            "extra": "33379 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 31495,
+            "unit": "ns/op\t    4627 B/op\t      50 allocs/op",
+            "extra": "39242 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 31495,
+            "unit": "ns/op",
+            "extra": "39242 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 4627,
+            "unit": "B/op",
+            "extra": "39242 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 50,
+            "unit": "allocs/op",
+            "extra": "39242 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 31768,
+            "unit": "ns/op\t    4837 B/op\t      54 allocs/op",
+            "extra": "38154 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 31768,
+            "unit": "ns/op",
+            "extra": "38154 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 4837,
+            "unit": "B/op",
+            "extra": "38154 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 54,
+            "unit": "allocs/op",
+            "extra": "38154 times\n4 procs"
           }
         ]
       }
