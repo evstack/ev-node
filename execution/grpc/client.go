@@ -130,7 +130,7 @@ func (c *Client) GetTxs(ctx context.Context) ([][]byte, error) {
 		return nil, fmt.Errorf("grpc client: failed to get txs: %w", err)
 	}
 
-	txs, err := decodeTxBatch(resp.Msg.TxBatch)
+	txs, err := decodeTxBatchOrTxs(resp.Msg.TxBatch, resp.Msg.Txs)
 	if err != nil {
 		return nil, fmt.Errorf("grpc client: invalid get txs response: %w", err)
 	}

@@ -71,7 +71,7 @@ The gRPC service is defined in `proto/evnode/v1/execution.proto` and provides th
 - Support for Unix domain socket connections with `unix:///path/to/socket`
 - gRPC reflection for debugging and service discovery
 - Compression for efficient data transfer
-- Contiguous transaction batch encoding to reduce per-transaction protobuf overhead
+- Additive contiguous transaction batch encoding to reduce per-transaction protobuf overhead while keeping legacy `txs` fields in the protobuf API
 - Comprehensive error handling and validation
 
 ## Testing

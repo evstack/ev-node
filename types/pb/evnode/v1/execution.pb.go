@@ -281,7 +281,9 @@ func (x *TxBatch) GetTxSizes() []uint32 {
 type GetTxsResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Valid transactions from mempool.
-	TxBatch       *TxBatch `protobuf:"bytes,1,opt,name=tx_batch,json=txBatch,proto3" json:"tx_batch,omitempty"`
+	Txs [][]byte `protobuf:"bytes,1,rep,name=txs,proto3" json:"txs,omitempty"`
+	// Valid transactions from mempool in contiguous batch form.
+	TxBatch       *TxBatch `protobuf:"bytes,2,opt,name=tx_batch,json=txBatch,proto3" json:"tx_batch,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -316,6 +318,13 @@ func (*GetTxsResponse) Descriptor() ([]byte, []int) {
 	return file_evnode_v1_execution_proto_rawDescGZIP(), []int{4}
 }
 
+func (x *GetTxsResponse) GetTxs() [][]byte {
+	if x != nil {
+		return x.Txs
+	}
+	return nil
+}
+
 func (x *GetTxsResponse) GetTxBatch() *TxBatch {
 	if x != nil {
 		return x.TxBatch
@@ -327,13 +336,15 @@ func (x *GetTxsResponse) GetTxBatch() *TxBatch {
 type ExecuteTxsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Ordered transactions to execute.
-	TxBatch *TxBatch `protobuf:"bytes,1,opt,name=tx_batch,json=txBatch,proto3" json:"tx_batch,omitempty"`
+	Txs [][]byte `protobuf:"bytes,1,rep,name=txs,proto3" json:"txs,omitempty"`
 	// Height of block being created (must be > 0)
 	BlockHeight uint64 `protobuf:"varint,2,opt,name=block_height,json=blockHeight,proto3" json:"block_height,omitempty"`
 	// Block creation time in UTC
 	Timestamp *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
 	// Previous block's state root hash
 	PrevStateRoot []byte `protobuf:"bytes,4,opt,name=prev_state_root,json=prevStateRoot,proto3" json:"prev_state_root,omitempty"`
+	// Ordered transactions to execute in contiguous batch form.
+	TxBatch       *TxBatch `protobuf:"bytes,5,opt,name=tx_batch,json=txBatch,proto3" json:"tx_batch,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -368,9 +379,9 @@ func (*ExecuteTxsRequest) Descriptor() ([]byte, []int) {
 	return file_evnode_v1_execution_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *ExecuteTxsRequest) GetTxBatch() *TxBatch {
+func (x *ExecuteTxsRequest) GetTxs() [][]byte {
 	if x != nil {
-		return x.TxBatch
+		return x.Txs
 	}
 	return nil
 }
@@ -392,6 +403,13 @@ func (x *ExecuteTxsRequest) GetTimestamp() *timestamppb.Timestamp {
 func (x *ExecuteTxsRequest) GetPrevStateRoot() []byte {
 	if x != nil {
 		return x.PrevStateRoot
+	}
+	return nil
+}
+
+func (x *ExecuteTxsRequest) GetTxBatch() *TxBatch {
+	if x != nil {
+		return x.TxBatch
 	}
 	return nil
 }
@@ -622,15 +640,17 @@ func (x *GetExecutionInfoResponse) GetMaxGas() uint64 {
 type FilterTxsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// All transactions (force-included + mempool).
-	TxBatch *TxBatch `protobuf:"bytes,1,opt,name=tx_batch,json=txBatch,proto3" json:"tx_batch,omitempty"`
+	Txs [][]byte `protobuf:"bytes,1,rep,name=txs,proto3" json:"txs,omitempty"`
 	// Maximum cumulative size allowed (0 means no size limit)
 	MaxBytes uint64 `protobuf:"varint,2,opt,name=max_bytes,json=maxBytes,proto3" json:"max_bytes,omitempty"`
 	// Maximum cumulative gas allowed (0 means no gas limit)
 	MaxGas uint64 `protobuf:"varint,3,opt,name=max_gas,json=maxGas,proto3" json:"max_gas,omitempty"`
 	// Whether force-included transactions are present
 	HasForceIncludedTransaction bool `protobuf:"varint,4,opt,name=has_force_included_transaction,json=hasForceIncludedTransaction,proto3" json:"has_force_included_transaction,omitempty"`
-	unknownFields               protoimpl.UnknownFields
-	sizeCache                   protoimpl.SizeCache
+	// All transactions (force-included + mempool) in contiguous batch form.
+	TxBatch       *TxBatch `protobuf:"bytes,5,opt,name=tx_batch,json=txBatch,proto3" json:"tx_batch,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *FilterTxsRequest) Reset() {
@@ -663,9 +683,9 @@ func (*FilterTxsRequest) Descriptor() ([]byte, []int) {
 	return file_evnode_v1_execution_proto_rawDescGZIP(), []int{11}
 }
 
-func (x *FilterTxsRequest) GetTxBatch() *TxBatch {
+func (x *FilterTxsRequest) GetTxs() [][]byte {
 	if x != nil {
-		return x.TxBatch
+		return x.Txs
 	}
 	return nil
 }
@@ -689,6 +709,13 @@ func (x *FilterTxsRequest) GetHasForceIncludedTransaction() bool {
 		return x.HasForceIncludedTransaction
 	}
 	return false
+}
+
+func (x *FilterTxsRequest) GetTxBatch() *TxBatch {
+	if x != nil {
+		return x.TxBatch
+	}
+	return nil
 }
 
 // FilterTxsResponse contains the filter status for each transaction
@@ -752,14 +779,16 @@ const file_evnode_v1_execution_proto_rawDesc = "" +
 	"\rGetTxsRequest\"8\n" +
 	"\aTxBatch\x12\x12\n" +
 	"\x04data\x18\x01 \x01(\fR\x04data\x12\x19\n" +
-	"\btx_sizes\x18\x02 \x03(\rR\atxSizes\"?\n" +
-	"\x0eGetTxsResponse\x12-\n" +
-	"\btx_batch\x18\x01 \x01(\v2\x12.evnode.v1.TxBatchR\atxBatch\"\xc7\x01\n" +
-	"\x11ExecuteTxsRequest\x12-\n" +
-	"\btx_batch\x18\x01 \x01(\v2\x12.evnode.v1.TxBatchR\atxBatch\x12!\n" +
+	"\btx_sizes\x18\x02 \x03(\rR\atxSizes\"Q\n" +
+	"\x0eGetTxsResponse\x12\x10\n" +
+	"\x03txs\x18\x01 \x03(\fR\x03txs\x12-\n" +
+	"\btx_batch\x18\x02 \x01(\v2\x12.evnode.v1.TxBatchR\atxBatch\"\xd9\x01\n" +
+	"\x11ExecuteTxsRequest\x12\x10\n" +
+	"\x03txs\x18\x01 \x03(\fR\x03txs\x12!\n" +
 	"\fblock_height\x18\x02 \x01(\x04R\vblockHeight\x128\n" +
 	"\ttimestamp\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12&\n" +
-	"\x0fprev_state_root\x18\x04 \x01(\fR\rprevStateRoot\"_\n" +
+	"\x0fprev_state_root\x18\x04 \x01(\fR\rprevStateRoot\x12-\n" +
+	"\btx_batch\x18\x05 \x01(\v2\x12.evnode.v1.TxBatchR\atxBatch\"_\n" +
 	"\x12ExecuteTxsResponse\x12,\n" +
 	"\x12updated_state_root\x18\x01 \x01(\fR\x10updatedStateRoot\x12\x1b\n" +
 	"\tmax_bytes\x18\x02 \x01(\x04R\bmaxBytes\"4\n" +
@@ -768,12 +797,13 @@ const file_evnode_v1_execution_proto_rawDesc = "" +
 	"\x10SetFinalResponse\"\x19\n" +
 	"\x17GetExecutionInfoRequest\"3\n" +
 	"\x18GetExecutionInfoResponse\x12\x17\n" +
-	"\amax_gas\x18\x01 \x01(\x04R\x06maxGas\"\xbc\x01\n" +
-	"\x10FilterTxsRequest\x12-\n" +
-	"\btx_batch\x18\x01 \x01(\v2\x12.evnode.v1.TxBatchR\atxBatch\x12\x1b\n" +
+	"\amax_gas\x18\x01 \x01(\x04R\x06maxGas\"\xce\x01\n" +
+	"\x10FilterTxsRequest\x12\x10\n" +
+	"\x03txs\x18\x01 \x03(\fR\x03txs\x12\x1b\n" +
 	"\tmax_bytes\x18\x02 \x01(\x04R\bmaxBytes\x12\x17\n" +
 	"\amax_gas\x18\x03 \x01(\x04R\x06maxGas\x12C\n" +
-	"\x1ehas_force_included_transaction\x18\x04 \x01(\bR\x1bhasForceIncludedTransaction\"H\n" +
+	"\x1ehas_force_included_transaction\x18\x04 \x01(\bR\x1bhasForceIncludedTransaction\x12-\n" +
+	"\btx_batch\x18\x05 \x01(\v2\x12.evnode.v1.TxBatchR\atxBatch\"H\n" +
 	"\x11FilterTxsResponse\x123\n" +
 	"\bstatuses\x18\x01 \x03(\x0e2\x17.evnode.v1.FilterStatusR\bstatuses*E\n" +
 	"\fFilterStatus\x12\r\n" +
@@ -823,8 +853,8 @@ var file_evnode_v1_execution_proto_goTypes = []any{
 var file_evnode_v1_execution_proto_depIdxs = []int32{
 	14, // 0: evnode.v1.InitChainRequest.genesis_time:type_name -> google.protobuf.Timestamp
 	4,  // 1: evnode.v1.GetTxsResponse.tx_batch:type_name -> evnode.v1.TxBatch
-	4,  // 2: evnode.v1.ExecuteTxsRequest.tx_batch:type_name -> evnode.v1.TxBatch
-	14, // 3: evnode.v1.ExecuteTxsRequest.timestamp:type_name -> google.protobuf.Timestamp
+	14, // 2: evnode.v1.ExecuteTxsRequest.timestamp:type_name -> google.protobuf.Timestamp
+	4,  // 3: evnode.v1.ExecuteTxsRequest.tx_batch:type_name -> evnode.v1.TxBatch
 	4,  // 4: evnode.v1.FilterTxsRequest.tx_batch:type_name -> evnode.v1.TxBatch
 	0,  // 5: evnode.v1.FilterTxsResponse.statuses:type_name -> evnode.v1.FilterStatus
 	1,  // 6: evnode.v1.ExecutorService.InitChain:input_type -> evnode.v1.InitChainRequest

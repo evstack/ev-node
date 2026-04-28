@@ -107,7 +107,7 @@ func (s *Server) ExecuteTxs(
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("prev_state_root is required"))
 	}
 
-	txs, err := decodeTxBatch(req.Msg.TxBatch)
+	txs, err := decodeTxBatchOrTxs(req.Msg.TxBatch, req.Msg.Txs)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid tx_batch: %w", err))
 	}
@@ -172,7 +172,7 @@ func (s *Server) FilterTxs(
 	ctx context.Context,
 	req *connect.Request[pb.FilterTxsRequest],
 ) (*connect.Response[pb.FilterTxsResponse], error) {
-	txs, err := decodeTxBatch(req.Msg.TxBatch)
+	txs, err := decodeTxBatchOrTxs(req.Msg.TxBatch, req.Msg.Txs)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid tx_batch: %w", err))
 	}
