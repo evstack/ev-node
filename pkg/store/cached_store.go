@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"sync"
+	"time"
 
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/rs/zerolog"
@@ -18,6 +19,11 @@ const (
 	DefaultBlockDataCacheSize = 200_000
 
 	asyncWriteBufferSize = 8192
+
+	// batchWindow is the time the write goroutine waits after receiving the first
+	// op before flushing. This allows bursts of metadata writes (e.g. 3-4 per
+	// height in the submitter) to be coalesced into a single Badger WriteBatch.
+	batchWindow = 100 * time.Microsecond
 )
 
 type asyncWriteOp struct {
@@ -113,13 +119,19 @@ func (cs *CachedStore) startWriteLoop() {
 		defer close(cs.done)
 		for op := range cs.writeCh {
 			ops := []asyncWriteOp{op}
-		drain:
+
+			timer := time.NewTimer(batchWindow)
+			collect:
 			for {
 				select {
-				case op := <-cs.writeCh:
+				case op, ok := <-cs.writeCh:
+					if !ok {
+						timer.Stop()
+						break collect
+					}
 					ops = append(ops, op)
-				default:
-					break drain
+				case <-timer.C:
+					break collect
 				}
 			}
 
@@ -234,40 +246,33 @@ func (cs *CachedStore) PruneBlocks(ctx context.Context, height uint64) error {
 }
 
 // SetMetadata queues an asynchronous metadata write. The write is persisted
-// by the background goroutine. If the buffer is full or the store has been
-// stopped, the write falls back to synchronous execution on the underlying store.
+// by the background goroutine via BatchMetadata. If the store has been stopped,
+// the write falls back to synchronous execution on the underlying store.
 func (cs *CachedStore) SetMetadata(ctx context.Context, key string, value []byte) error {
 	cs.stopMu.RLock()
 	if cs.stopped {
 		cs.stopMu.RUnlock()
 		return cs.Store.SetMetadata(ctx, key, value)
 	}
-	select {
-	case cs.writeCh <- asyncWriteOp{key: key, value: value}:
-		cs.stopMu.RUnlock()
-		return nil
-	default:
-		cs.stopMu.RUnlock()
-		return cs.Store.SetMetadata(ctx, key, value)
-	}
+	cs.stopMu.RUnlock()
+
+	valueCopy := append([]byte(nil), value...)
+	cs.writeCh <- asyncWriteOp{key: key, value: valueCopy}
+	return nil
 }
 
-// DeleteMetadata queues an asynchronous metadata delete. If the buffer is full
-// or the store has been stopped, the delete falls back to synchronous execution.
+// DeleteMetadata queues an asynchronous metadata delete. If the store has been
+// stopped, the delete falls back to synchronous execution.
 func (cs *CachedStore) DeleteMetadata(ctx context.Context, key string) error {
 	cs.stopMu.RLock()
 	if cs.stopped {
 		cs.stopMu.RUnlock()
 		return cs.Store.DeleteMetadata(ctx, key)
 	}
-	select {
-	case cs.writeCh <- asyncWriteOp{key: key, isDelete: true}:
-		cs.stopMu.RUnlock()
-		return nil
-	default:
-		cs.stopMu.RUnlock()
-		return cs.Store.DeleteMetadata(ctx, key)
-	}
+	cs.stopMu.RUnlock()
+
+	cs.writeCh <- asyncWriteOp{key: key, isDelete: true}
+	return nil
 }
 
 // Close drains pending async writes, then closes the underlying store.

@@ -2,9 +2,11 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -315,27 +317,43 @@ func TestCachedStore_AsyncDeleteMetadata(t *testing.T) {
 }
 
 func TestCachedStore_Close_FlushesPendingWrites(t *testing.T) {
+	ctx := context.Background()
+
 	kv, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 
 	base := New(kv)
-	cs, err := NewCachedStore(base)
-	require.NoError(t, err)
 
-	ctx := context.Background()
-	const n = 100
-	for i := 0; i < n; i++ {
-		k := []byte{byte(i)}
-		require.NoError(t, cs.SetMetadata(ctx, string(k), k))
+	writeCh := make(chan asyncWriteOp, asyncWriteBufferSize)
+	done := make(chan struct{})
+
+	cs := &CachedStore{
+		Store:   base,
+		writeCh: writeCh,
+		done:    done,
+		logger:  zerolog.Nop(),
 	}
 
-	// Wait for the last key to land via pass-through read
-	require.Eventually(t, func() bool {
-		v, err := cs.GetMetadata(ctx, string([]byte{byte(n - 1)}))
-		return err == nil && len(v) == 1 && v[0] == byte(n-1)
-	}, 2*time.Second, 10*time.Millisecond)
+	cs.startWriteLoop()
 
-	require.NoError(t, cs.Close())
+	const n = 100
+	for i := 0; i < n; i++ {
+		k := fmt.Sprintf("key-%d", i)
+		require.NoError(t, cs.SetMetadata(ctx, k, []byte(k)))
+	}
+
+	cs.stopMu.Lock()
+	cs.stopped = true
+	close(writeCh)
+	cs.stopMu.Unlock()
+	<-done
+
+	for i := 0; i < n; i++ {
+		k := fmt.Sprintf("key-%d", i)
+		v, err := base.GetMetadata(ctx, k)
+		require.NoError(t, err)
+		require.Equal(t, []byte(k), v)
+	}
 }
 
 func TestCachedStore_WriteAfterClose_FallsBack(t *testing.T) {
