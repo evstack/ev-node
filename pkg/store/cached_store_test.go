@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -269,4 +270,87 @@ func TestCachedStore_Close(t *testing.T) {
 	// Close should not error
 	err = cachedStore.Close()
 	require.NoError(t, err)
+}
+
+func TestCachedStore_AsyncSetMetadata(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	kv, err := NewTestInMemoryKVStore()
+	require.NoError(t, err)
+
+	base := New(kv)
+	cs, err := NewCachedStore(base)
+	require.NoError(t, err)
+	t.Cleanup(func() { cs.Close() })
+
+	require.NoError(t, cs.SetMetadata(ctx, "key1", []byte("value1")))
+
+	require.Eventually(t, func() bool {
+		v, err := base.GetMetadata(ctx, "key1")
+		return err == nil && string(v) == "value1"
+	}, time.Second, 10*time.Millisecond)
+}
+
+func TestCachedStore_AsyncDeleteMetadata(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	kv, err := NewTestInMemoryKVStore()
+	require.NoError(t, err)
+
+	base := New(kv)
+	require.NoError(t, base.SetMetadata(ctx, "key1", []byte("value1")))
+
+	cs, err := NewCachedStore(base)
+	require.NoError(t, err)
+	t.Cleanup(func() { cs.Close() })
+
+	require.NoError(t, cs.DeleteMetadata(ctx, "key1"))
+
+	require.Eventually(t, func() bool {
+		_, err := base.GetMetadata(ctx, "key1")
+		return err != nil
+	}, time.Second, 10*time.Millisecond)
+}
+
+func TestCachedStore_Close_FlushesPendingWrites(t *testing.T) {
+	kv, err := NewTestInMemoryKVStore()
+	require.NoError(t, err)
+
+	base := New(kv)
+	cs, err := NewCachedStore(base)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	const n = 100
+	for i := 0; i < n; i++ {
+		k := []byte{byte(i)}
+		require.NoError(t, cs.SetMetadata(ctx, string(k), k))
+	}
+
+	// Wait for the last key to land via pass-through read
+	require.Eventually(t, func() bool {
+		v, err := cs.GetMetadata(ctx, string([]byte{byte(n - 1)}))
+		return err == nil && len(v) == 1 && v[0] == byte(n-1)
+	}, 2*time.Second, 10*time.Millisecond)
+
+	require.NoError(t, cs.Close())
+}
+
+func TestCachedStore_WriteAfterClose_FallsBack(t *testing.T) {
+	kv, err := NewTestInMemoryKVStore()
+	require.NoError(t, err)
+
+	base := New(kv)
+	cs, err := NewCachedStore(base)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	require.NoError(t, cs.SetMetadata(ctx, "before", []byte("ok")))
+
+	require.NoError(t, cs.Close())
+
+	err = cs.SetMetadata(ctx, "after", []byte("sync"))
+	require.Error(t, err)
 }

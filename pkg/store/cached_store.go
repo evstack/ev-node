@@ -2,8 +2,10 @@ package store
 
 import (
 	"context"
+	"sync"
 
 	lru "github.com/hashicorp/golang-lru/v2"
+	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/types"
 )
@@ -14,15 +16,32 @@ const (
 
 	// DefaultBlockDataCacheSize is the default number of block data entries to cache.
 	DefaultBlockDataCacheSize = 200_000
+
+	asyncWriteBufferSize = 8192
 )
+
+type asyncWriteOp struct {
+	key      string
+	value    []byte
+	isDelete bool
+}
 
 // CachedStore wraps a Store with LRU caching for frequently accessed data.
 // The underlying LRU cache is thread-safe, so no additional synchronization is needed.
+// Metadata writes (SetMetadata, DeleteMetadata) are processed asynchronously via a
+// buffered channel to avoid blocking Badger's write pipeline for critical operations
+// like block production (batch commits).
 type CachedStore struct {
 	Store
 
 	headerCache    *lru.Cache[uint64, *types.SignedHeader]
 	blockDataCache *lru.Cache[uint64, *blockDataEntry]
+
+	writeCh chan asyncWriteOp
+	done    chan struct{}
+	stopMu  sync.RWMutex
+	stopped bool
+	logger  zerolog.Logger
 }
 
 type blockDataEntry struct {
@@ -73,6 +92,9 @@ func NewCachedStore(store Store, opts ...CachedStoreOption) (*CachedStore, error
 		Store:          store,
 		headerCache:    headerCache,
 		blockDataCache: blockDataCache,
+		writeCh:        make(chan asyncWriteOp, asyncWriteBufferSize),
+		done:           make(chan struct{}),
+		logger:         zerolog.Nop(),
 	}
 
 	for _, opt := range opts {
@@ -81,7 +103,28 @@ func NewCachedStore(store Store, opts ...CachedStoreOption) (*CachedStore, error
 		}
 	}
 
+	cs.startWriteLoop()
+
 	return cs, nil
+}
+
+func (cs *CachedStore) startWriteLoop() {
+	go func() {
+		defer close(cs.done)
+		for op := range cs.writeCh {
+			var err error
+			if op.isDelete {
+				err = cs.Store.DeleteMetadata(context.Background(), op.key)
+			} else {
+				err = cs.Store.SetMetadata(context.Background(), op.key, op.value)
+			}
+			if err != nil {
+				cs.logger.Error().Err(err).Str("key", op.key).
+					Bool("delete", op.isDelete).
+					Msg("async metadata write failed")
+			}
+		}
+	}()
 }
 
 // GetHeader returns the header at the given height, using the cache if available.
@@ -173,8 +216,51 @@ func (cs *CachedStore) PruneBlocks(ctx context.Context, height uint64) error {
 	return nil
 }
 
-// Close closes the underlying store.
+// SetMetadata queues an asynchronous metadata write. The write is persisted
+// by the background goroutine. If the buffer is full or the store has been
+// stopped, the write falls back to synchronous execution on the underlying store.
+func (cs *CachedStore) SetMetadata(ctx context.Context, key string, value []byte) error {
+	cs.stopMu.RLock()
+	if cs.stopped {
+		cs.stopMu.RUnlock()
+		return cs.Store.SetMetadata(ctx, key, value)
+	}
+	select {
+	case cs.writeCh <- asyncWriteOp{key: key, value: value}:
+		cs.stopMu.RUnlock()
+		return nil
+	default:
+		cs.stopMu.RUnlock()
+		return cs.Store.SetMetadata(ctx, key, value)
+	}
+}
+
+// DeleteMetadata queues an asynchronous metadata delete. If the buffer is full
+// or the store has been stopped, the delete falls back to synchronous execution.
+func (cs *CachedStore) DeleteMetadata(ctx context.Context, key string) error {
+	cs.stopMu.RLock()
+	if cs.stopped {
+		cs.stopMu.RUnlock()
+		return cs.Store.DeleteMetadata(ctx, key)
+	}
+	select {
+	case cs.writeCh <- asyncWriteOp{key: key, isDelete: true}:
+		cs.stopMu.RUnlock()
+		return nil
+	default:
+		cs.stopMu.RUnlock()
+		return cs.Store.DeleteMetadata(ctx, key)
+	}
+}
+
+// Close drains pending async writes, then closes the underlying store.
 func (cs *CachedStore) Close() error {
+	cs.stopMu.Lock()
+	cs.stopped = true
+	close(cs.writeCh)
+	cs.stopMu.Unlock()
+	<-cs.done
+
 	cs.ClearCache()
 	return cs.Store.Close()
 }
