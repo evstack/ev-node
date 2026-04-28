@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1777384900065,
+  "lastUpdate": 1777404070435,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -46,6 +46,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 165250,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "julien@rbrt.fr",
+            "name": "julienrbrt",
+            "username": "julienrbrt"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "81c1c259f87471e59c7bcf5ea627bc974158fca2",
+          "message": "fix(cache): reduce tx cache retention (#3299)",
+          "timestamp": "2026-04-28T21:17:16+02:00",
+          "tree_id": "42a141304a06e56d6f907582773476d8fa03db46",
+          "url": "https://github.com/evstack/ev-node/commit/81c1c259f87471e59c7bcf5ea627bc974158fca2"
+        },
+        "date": 1777404065889,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 919075398,
+            "unit": "ns/op\t32992340 B/op\t  186223 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 919075398,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 32992340,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 186223,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
