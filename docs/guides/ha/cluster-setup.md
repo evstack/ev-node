@@ -120,7 +120,7 @@ scp ~/.evm/config/genesis.json user@10.0.0.5:~/.evm/config/
 
 ## Step 5: Write the Configuration Files
 
-Write the following `evnode.yaml` on each node. The only field that differs per node is `raft.node_id` and `raft.raft_addr` — everything else is identical.
+Write the following `evnode.yaml` on each node. `raft.node_id` is unique per node; `raft.peers` and `p2p.peers` must each exclude the local node — everything else is identical.
 
 ### node-1 (`~/.evm/config/evnode.yaml`)
 
@@ -154,20 +154,37 @@ p2p:
 
 ### node-2 (`~/.evm/config/evnode.yaml`)
 
-Each node's `raft.peers` must list every **other** node — never the node itself.
+`raft.peers` must omit the local node. Because `raft_addr` is `0.0.0.0:5001` (a wildcard), the self-exclusion check in the bootstrap code compares addresses literally — it will not recognise `node-2@10.0.0.2:5001` as itself and will add node-2 twice, causing a startup error. Always list only the **other** nodes.
 
 ```yaml
-# ... same as node-1 except node_id and raft.peers:
+node:
+  aggregator: true
+  block_time: "1s"
+
 raft:
+  enable: true
   node_id: "node-2"
   raft_addr: "0.0.0.0:5001"
+  raft_dir: "/var/lib/ev-node/raft"
   peers: "node-1@10.0.0.1:5001,node-3@10.0.0.3:5001,node-4@10.0.0.4:5001,node-5@10.0.0.5:5001"
 
+  # Timing — tuned for RTT_MAX ≤ 25ms
+  heartbeat_timeout:    "92ms"
+  election_timeout:     "368ms"
+  leader_lease_timeout: "46ms"
+  send_timeout:         "50ms"
+
+  # Log retention — covers ~5 hours of absence at 1 block/s
+  trailing_logs:      18000
+  snapshot_threshold: 5000
+  snap_count:         3
+
 p2p:
+  listen_address: "/ip4/0.0.0.0/tcp/26656"
   peers: "/ip4/10.0.0.1/tcp/26656/p2p/<PEER_ID_NODE_1>,/ip4/10.0.0.3/tcp/26656/p2p/<PEER_ID_NODE_3>,/ip4/10.0.0.4/tcp/26656/p2p/<PEER_ID_NODE_4>,/ip4/10.0.0.5/tcp/26656/p2p/<PEER_ID_NODE_5>"
 ```
 
-Repeat for node-3 through node-5: increment `node_id`, remove the local node from both `raft.peers` and `p2p.peers`.
+Repeat for node-3 through node-5, updating `node_id`, `raft.peers` (exclude the local node), and `p2p.peers` (exclude the local node).
 
 ---
 

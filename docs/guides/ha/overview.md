@@ -307,9 +307,9 @@ The number of log entries to **retain after a snapshot** is taken. These entries
 
 **Effect on operations:**
 - **Lower values** (e.g., `200`): tighter disk usage; a node that misses even a few minutes of operation must receive a full snapshot on rejoin.
-- **Higher values** (e.g., `18000`): a lagging node can catch up via log replay for up to 30 minutes at 10 block/second without needing a full snapshot transfer, reducing the cost of brief outages.
+- **Higher values** (e.g., `18000`): a lagging node can catch up via log replay without needing a full snapshot transfer, reducing the cost of brief outages. At 1 block/second (`block_time: "1s"`), `trailing_logs: 18000` covers ~5 hours; at 10 block/second, ~30 minutes.
 
-Set this high enough to cover your typical maintenance window (restart, upgrade, brief network partition). At 10 block/second, `trailing_logs: 18000` covers 30 minutes of absence (1800 seconds).
+Set this high enough to cover your typical maintenance window (restart, upgrade, brief network partition). Scale proportionally with your chain's block rate.
 
 ---
 
