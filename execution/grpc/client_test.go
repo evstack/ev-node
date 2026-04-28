@@ -2,6 +2,9 @@ package grpc
 
 import (
 	"context"
+	"errors"
+	"net"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -213,4 +216,118 @@ func TestClient_SetFinal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+}
+
+func TestClient_FilterTxs(t *testing.T) {
+	ctx := context.Background()
+	txs := [][]byte{[]byte("tx1"), []byte{}, []byte("tx3")}
+	maxBytes := uint64(100)
+	maxGas := uint64(200)
+	hasForced := true
+	expectedStatuses := []execution.FilterStatus{
+		execution.FilterOK,
+		execution.FilterRemove,
+		execution.FilterPostpone,
+	}
+
+	mockExec := &mockExecutor{
+		filterTxsFunc: func(ctx context.Context, txsIn [][]byte, mb, mg uint64, forced bool) ([]execution.FilterStatus, error) {
+			if len(txsIn) != len(txs) {
+				t.Fatalf("expected %d txs, got %d", len(txs), len(txsIn))
+			}
+			for i, tx := range txsIn {
+				if string(tx) != string(txs[i]) {
+					t.Fatalf("tx %d: expected %q, got %q", i, txs[i], tx)
+				}
+			}
+			if mb != maxBytes {
+				t.Fatalf("expected max bytes %d, got %d", maxBytes, mb)
+			}
+			if mg != maxGas {
+				t.Fatalf("expected max gas %d, got %d", maxGas, mg)
+			}
+			if forced != hasForced {
+				t.Fatalf("expected forced=%t, got %t", hasForced, forced)
+			}
+			return expectedStatuses, nil
+		},
+	}
+
+	handler := NewExecutorServiceHandler(mockExec)
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	client := NewClient(server.URL)
+
+	statuses, err := client.FilterTxs(ctx, txs, maxBytes, maxGas, hasForced)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(statuses) != len(expectedStatuses) {
+		t.Fatalf("expected %d statuses, got %d", len(expectedStatuses), len(statuses))
+	}
+	for i, status := range statuses {
+		if status != expectedStatuses[i] {
+			t.Fatalf("status %d: expected %v, got %v", i, expectedStatuses[i], status)
+		}
+	}
+}
+
+func TestClient_UnixSocket(t *testing.T) {
+	ctx := context.Background()
+	socketPath := testUnixSocketPath(t)
+	expectedTxs := [][]byte{[]byte("tx1"), []byte("tx2")}
+
+	mockExec := &mockExecutor{
+		getTxsFunc: func(ctx context.Context) ([][]byte, error) {
+			return expectedTxs, nil
+		},
+	}
+
+	startUnixTestServer(t, mockExec, socketPath)
+
+	client := NewClient("unix://" + socketPath)
+	txs, err := client.GetTxs(ctx)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(txs) != len(expectedTxs) {
+		t.Fatalf("expected %d txs, got %d", len(expectedTxs), len(txs))
+	}
+	for i, tx := range txs {
+		if string(tx) != string(expectedTxs[i]) {
+			t.Fatalf("tx %d: expected %q, got %q", i, expectedTxs[i], tx)
+		}
+	}
+}
+
+func startUnixTestServer(t *testing.T, executor execution.Executor, socketPath string) {
+	t.Helper()
+
+	listener, err := ListenUnix(socketPath)
+	if err != nil {
+		t.Fatalf("listen unix socket: %v", err)
+	}
+
+	server := &http.Server{Handler: NewExecutorServiceHandler(executor)}
+	done := make(chan error, 1)
+	go func() {
+		err := server.Serve(listener)
+		if errors.Is(err, http.ErrServerClosed) || errors.Is(err, net.ErrClosed) {
+			err = nil
+		}
+		done <- err
+	}()
+
+	t.Cleanup(func() {
+		_ = server.Close()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Errorf("unix socket server error: %v", err)
+			}
+		case <-time.After(time.Second):
+			t.Error("unix socket server did not stop")
+		}
+	})
 }
