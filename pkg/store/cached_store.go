@@ -255,12 +255,11 @@ func (cs *CachedStore) PruneBlocks(ctx context.Context, height uint64) error {
 // the write falls back to synchronous execution on the underlying store.
 func (cs *CachedStore) SetMetadata(ctx context.Context, key string, value []byte) error {
 	cs.stopMu.RLock()
+	defer cs.stopMu.RUnlock()
+
 	if cs.stopped {
-		cs.stopMu.RUnlock()
 		return cs.Store.SetMetadata(ctx, key, value)
 	}
-	cs.stopMu.RUnlock()
-
 	valueCopy := append([]byte(nil), value...)
 	cs.writeCh <- asyncWriteOp{key: key, value: valueCopy}
 	return nil
@@ -270,12 +269,11 @@ func (cs *CachedStore) SetMetadata(ctx context.Context, key string, value []byte
 // stopped, the delete falls back to synchronous execution.
 func (cs *CachedStore) DeleteMetadata(ctx context.Context, key string) error {
 	cs.stopMu.RLock()
+	defer cs.stopMu.RUnlock()
+
 	if cs.stopped {
-		cs.stopMu.RUnlock()
 		return cs.Store.DeleteMetadata(ctx, key)
 	}
-	cs.stopMu.RUnlock()
-
 	cs.writeCh <- asyncWriteOp{key: key, isDelete: true}
 	return nil
 }
