@@ -1,6 +1,7 @@
 {
   "name": "ev-dark",
   "displayName": "Evolve Dark",
+  "type": "dark",
   "colors": {
     "editor.background": "#000000",
     "editor.foreground": "#dbd7ca"
@@ -33,7 +34,7 @@
         "punctuation.definition.string.begin.html.vue",
         "punctuation.definition.string.end.html.vue"
       ],
-      "settings": { "foreground": "#505050" }
+      "settings": { "foreground": "#767676" }
     },
     {
       "scope": ["constant", "entity.name.constant", "variable.language", "meta.definition.variable"],

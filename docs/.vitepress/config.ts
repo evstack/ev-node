@@ -1,6 +1,7 @@
 import { withMermaid } from "vitepress-plugin-mermaid";
 import { useSidebar } from "vitepress-openapi";
 import spec from "../src/openapi-rpc.json" with { type: "json" };
+import type { ThemeRegistration } from "shiki";
 import evDarkTheme from "./ev-dark.json" with { type: "json" };
 
 const telegramSVG = ` <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -28,7 +29,7 @@ export default withMermaid({
   base: base,
 
   markdown: {
-    theme: evDarkTheme as any,
+    theme: evDarkTheme as ThemeRegistration,
   },
   sitemap: {
     hostname: "https://docs.ev.xyz",
