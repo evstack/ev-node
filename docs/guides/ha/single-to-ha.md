@@ -82,10 +82,10 @@ All five nodes must sign blocks with the **same key**. The existing sequencer's 
 ls ~/.evm/config/
 
 # Copy to each new node
-scp ~/.evm/config/priv_validator_key.json user@10.0.0.2:~/.evm/config/
-scp ~/.evm/config/priv_validator_key.json user@10.0.0.3:~/.evm/config/
-scp ~/.evm/config/priv_validator_key.json user@10.0.0.4:~/.evm/config/
-scp ~/.evm/config/priv_validator_key.json user@10.0.0.5:~/.evm/config/
+scp ~/.evm/config/signer.json user@10.0.0.2:~/.evm/config/
+scp ~/.evm/config/signer.json user@10.0.0.3:~/.evm/config/
+scp ~/.evm/config/signer.json user@10.0.0.4:~/.evm/config/
+scp ~/.evm/config/signer.json user@10.0.0.5:~/.evm/config/
 ```
 
 ---
@@ -124,6 +124,13 @@ After the copy, note the **latest block height** — this is your reference poin
 ```bash
 # Note the height before shutdown
 cast block --rpc-url http://<EV_RETH_IP>:<EV_RETH_TCP>
+```
+
+**Restart the existing sequencer now** so the chain keeps producing blocks while you prepare the remaining nodes (Steps 6–8). The chain will run uninterrupted until the planned cutover in Step 9.
+
+```bash
+# On node-1 — restart with your original single-sequencer flags
+systemctl start ev-node
 ```
 
 ---
@@ -192,7 +199,7 @@ raft:
   node_id: "node-2"      # change per node
   raft_addr: "0.0.0.0:5001"
   raft_dir: "/var/lib/ev-node/raft"
-  peers: "node-2@10.0.0.2:5001,node-3@10.0.0.3:5001,node-4@10.0.0.4:5001,node-5@10.0.0.5:5001"
+  peers: "node-1@10.0.0.1:5001,node-3@10.0.0.3:5001,node-4@10.0.0.4:5001,node-5@10.0.0.5:5001"
   heartbeat_timeout:    "92ms"
   election_timeout:     "368ms"
   leader_lease_timeout: "46ms"
@@ -250,7 +257,7 @@ Use a coordination mechanism — a simple approach is to open five terminals (or
   --evnode.raft.node_id="node-1" \
   --evnode.raft.raft_addr="0.0.0.0:5001" \
   --evnode.raft.raft_dir="/var/lib/ev-node/raft" \
-  --evnode.raft.peers="node-1@10.0.0.1:5001,node-2@10.0.0.2:5001,node-3@10.0.0.3:5001,node-4@10.0.0.4:5001,node-5@10.0.0.5:5001" \
+  --evnode.raft.peers="node-2@10.0.0.2:5001,node-3@10.0.0.3:5001,node-4@10.0.0.4:5001,node-5@10.0.0.5:5001" \
   --evnode.raft.heartbeat_timeout="92ms" \
   --evnode.raft.election_timeout="368ms" \
   --evnode.raft.leader_lease_timeout="46ms" \
@@ -281,7 +288,7 @@ Repeat for node-3, node-4, node-5.
 
 Within seconds of starting, one node will win the election. Look for:
 
-```
+```text
 INF raft: election won  tally=3  leader=node-1
 INF raft: entering leader state
 INF block produced  height=<N+1>
@@ -291,7 +298,7 @@ where `N` is the last block produced by the old single sequencer.
 
 The followers will show:
 
-```
+```text
 INF raft: entering follower state  leader=node-1
 INF block applied from raft log  height=<N+1>
 ```

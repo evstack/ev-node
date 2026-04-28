@@ -151,7 +151,7 @@ raft:
 **CLI:** `--evnode.raft.peers`  
 **Default:** _(none, required)_
 
-A comma-separated list of **all** remote cluster members, in the format `nodeID@host:port`. The host and port must be the Raft address (`raft_addr`) of each peer as reachable from this node.
+A comma-separated list of the **other** cluster members (exclude the local node), in the format `nodeID@host:port`. The host and port must be the Raft address (`raft_addr`) of each peer as reachable from this node. Do not list the node's own `node_id` in its own `peers` field.
 
  Raft uses this list to:
 - Bootstrap the cluster on first start (when no persisted state exists).
@@ -182,7 +182,7 @@ raft:
 **CLI:** `--evnode.raft.heartbeat_timeout`  
 **Default:** `350ms`
 
-How often the leader sends heartbeat messages to followers. Followers that do not receive a heartbeat within this interval begin a new election.
+The maximum time a follower will wait without receiving a heartbeat from the leader before starting a new election. The leader sends heartbeats more frequently than this value internally; this parameter is purely a follower-side timeout that triggers a new election when crossed.
 
 **Tuning rule:** Set to **4–5× RTT_MAX**. This ensures followers can distinguish a slow network from a dead leader without triggering spurious elections.
 
@@ -268,7 +268,7 @@ The number of committed log entries that must accumulate before Raft automatical
 - **Lower values** (e.g., `500`): snapshots are taken frequently, keeping the log small. A restarting node receives a recent snapshot and has fewer log entries to replay, but snapshot writes happen more often, adding brief I/O bursts.
 - **Higher values** (e.g., `5000`): less frequent snapshots mean less I/O overhead during normal operation, but a lagging node may have more log entries to replay when catching up.
 
-At 10 block/second, `snapshot_threshold: 5000` takes a snapshot roughly every 83 seconds.
+At 10 block/second, `snapshot_threshold: 5000` takes a snapshot roughly every 8.3 minutes (500 seconds).
 
 ---
 
@@ -286,9 +286,9 @@ The number of log entries to **retain after a snapshot** is taken. These entries
 
 **Effect on operations:**
 - **Lower values** (e.g., `200`): tighter disk usage; a node that misses even a few minutes of operation must receive a full snapshot on rejoin.
-- **Higher values** (e.g., `18000`): a lagging node can catch up via log replay for up to 5 minutes at 10 block/second without needing a full snapshot transfer, reducing the cost of brief outages.
+- **Higher values** (e.g., `18000`): a lagging node can catch up via log replay for up to 30 minutes at 10 block/second without needing a full snapshot transfer, reducing the cost of brief outages.
 
-Set this high enough to cover your typical maintenance window (restart, upgrade, brief network partition). At 10 block/second, `trailing_logs: 18000` covers 5 minutes of absence.
+Set this high enough to cover your typical maintenance window (restart, upgrade, brief network partition). At 10 block/second, `trailing_logs: 18000` covers 30 minutes of absence (1800 seconds).
 
 ---
 
@@ -346,7 +346,7 @@ raft:
 
 Measure RTT_MAX first and scale the timing parameters:
 
-```
+```text
 heartbeat_timeout    = RTT_MAX × 4
 election_timeout     = heartbeat_timeout × 4
 leader_lease_timeout = heartbeat_timeout / 2
@@ -361,8 +361,8 @@ Even in a Raft cluster, each node must have P2P configured. Raft handles **hot r
 
 ```yaml
 p2p:
-  listen_address: "/ip4/0.0.0.0/tcp/7676"
-  peers: "/ip4/<PEER_IP>/tcp/<PEER_TCP>/p2p/<PEER_ID>,..."
+  listen_address: "/ip4/0.0.0.0/tcp/26656"
+  peers: "/ip4/<PEER_IP>/tcp/26656/p2p/<PEER_ID>,..."
 ```
 
 Ensure P2P ports are open between nodes in addition to the Raft port.

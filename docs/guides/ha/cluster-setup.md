@@ -26,7 +26,7 @@ Replace these with your actual IP addresses throughout the guide.
 
 P2P peers use the libp2p multiaddr format, which includes each node's peer ID:
 
-```
+```text
 /ip4/<ip>/tcp/<port>/p2p/<peer-id>
 ```
 
@@ -132,7 +132,7 @@ raft:
   node_id: "node-1"
   raft_addr: "0.0.0.0:5001"
   raft_dir: "/var/lib/ev-node/raft"
-  peers: "node-1@10.0.0.1:5001,node-2@10.0.0.2:5001,node-3@10.0.0.3:5001,node-4@10.0.0.4:5001,node-5@10.0.0.5:5001"
+  peers: "node-2@10.0.0.2:5001,node-3@10.0.0.3:5001,node-4@10.0.0.4:5001,node-5@10.0.0.5:5001"
 
   # Timing — tuned for RTT_MAX ≤ 25ms
   heartbeat_timeout:    "92ms"
@@ -194,7 +194,7 @@ Start all five nodes as close together as possible. The order does not matter bu
   --evnode.raft.node_id="node-1" \
   --evnode.raft.raft_addr="0.0.0.0:5001" \
   --evnode.raft.raft_dir="/var/lib/ev-node/raft" \
-  --evnode.raft.peers="node-1@10.0.0.1:5001,node-2@10.0.0.2:5001,node-3@10.0.0.3:5001,node-4@10.0.0.4:5001,node-5@10.0.0.5:5001" \
+  --evnode.raft.peers="node-2@10.0.0.2:5001,node-3@10.0.0.3:5001,node-4@10.0.0.4:5001,node-5@10.0.0.5:5001" \
   --evnode.raft.heartbeat_timeout="92ms" \
   --evnode.raft.election_timeout="368ms" \
   --evnode.raft.leader_lease_timeout="46ms" \
@@ -218,7 +218,7 @@ Adjust flags for your execution layer (e.g., remove EVM flags if you are running
 
 Within a few seconds of starting, you should see one node win the election:
 
-```
+```text
 INF raft: entering candidate state  node=node-1
 INF raft: election won               tally=3
 INF raft: entering leader state      leader=node-1
@@ -227,7 +227,7 @@ INF block produced                   height=1 hash=0xabc...
 
 The other nodes will log:
 
-```
+```text
 INF raft: entering follower state  leader=node-1
 INF block applied from raft log    height=1 hash=0xabc...
 ```
@@ -260,8 +260,14 @@ done
 With all five nodes running and producing blocks, simulate a leader failure:
 
 ```bash
-# Identify the current leader from its logs, then on that machine:
-kill -SIGTERM $(pgrep evm)
+# Identify the current leader from its logs, then on that machine.
+# Preferred: use the systemd unit if ev-node runs as a service
+sudo systemctl stop ev-node
+
+# Fallback: stop the process directly (verify exactly one PID before killing)
+PID=$(pgrep -f "evm start")
+echo "Stopping PID $PID"
+kill -SIGTERM "$PID"
 ```
 
 Within `election_timeout` (368ms in this configuration), the remaining four nodes will elect a new leader and resume block production. Measure the actual gap in your logs:
@@ -294,7 +300,7 @@ ExecStart=/usr/local/bin/evm start \
   --evnode.raft.node_id=node-1 \
   --evnode.raft.raft_addr=0.0.0.0:5001 \
   --evnode.raft.raft_dir=/var/lib/ev-node/raft \
-  --evnode.raft.peers=node-1@10.0.0.1:5001,node-2@10.0.0.2:5001,node-3@10.0.0.3:5001,node-4@10.0.0.4:5001,node-5@10.0.0.5:5001 \
+  --evnode.raft.peers=node-2@10.0.0.2:5001,node-3@10.0.0.3:5001,node-4@10.0.0.4:5001,node-5@10.0.0.5:5001 \
   --evnode.raft.heartbeat_timeout=92ms \
   --evnode.raft.election_timeout=368ms \
   --evnode.raft.leader_lease_timeout=46ms \
