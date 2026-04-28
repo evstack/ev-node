@@ -250,6 +250,10 @@ The key requirement here is that all nodes must start within a short window of e
 Use a coordination mechanism — a simple approach is to open five terminals (or tmux panes) and fire the start commands in quick succession:
 
 ```bash
+# Load the passphrase from the secure env file (avoids it appearing in ps aux)
+# See the cluster-setup guide for how to create /etc/ev-node/env with chmod 600
+source /etc/ev-node/env
+
 # On node-1
 ./evm start \
   --evnode.node.aggregator=true \
@@ -266,7 +270,7 @@ Use a coordination mechanism — a simple approach is to open five terminals (or
   --evnode.raft.snapshot_threshold=5000 \
   --evnode.p2p.listen_address="/ip4/0.0.0.0/tcp/26656" \
   --evnode.p2p.peers="/ip4/10.0.0.2/tcp/26656/p2p/<PEER_ID_NODE_2>,/ip4/10.0.0.3/tcp/26656/p2p/<PEER_ID_NODE_3>,/ip4/10.0.0.4/tcp/26656/p2p/<PEER_ID_NODE_4>,/ip4/10.0.0.5/tcp/26656/p2p/<PEER_ID_NODE_5>" \
-  --evnode.signer.passphrase=<YOUR_PASSPHRASE> \
+  --evnode.signer.passphrase="$EV_SIGNER_PASSPHRASE" \
   --evm.jwt-secret=$(cat /path/to/jwt.hex) \
   --evm.genesis-hash=<YOUR_GENESIS_HASH>
 ```
@@ -350,10 +354,11 @@ If anything goes wrong during the cutover, you can revert to the single sequence
 
 ```bash
 # Emergency rollback — revert node-1 to single sequencer
+source /etc/ev-node/env
 ./evm start \
   --evnode.node.aggregator=true \
   --evnode.raft.enable=false \
-  --evnode.signer.passphrase=<YOUR_PASSPHRASE> \
+  --evnode.signer.passphrase="$EV_SIGNER_PASSPHRASE" \
   # ... your original flags
 ```
 

@@ -74,8 +74,10 @@ Run this on every node. Each node gets its own home directory where the config, 
 
 ```bash
 # Run on every node (the binary name depends on your chain)
-./evm init --evnode.node.aggregator=true --evnode.signer.passphrase <YOUR_PASSPHRASE>
+./evm init --evnode.node.aggregator=true --evnode.signer.passphrase "$EV_SIGNER_PASSPHRASE"
 ```
+
+> Set `EV_SIGNER_PASSPHRASE` in your shell session before running this command so the passphrase does not appear in `ps aux` or your shell history. The [EnvironmentFile setup](#running-as-a-systemd-service) later in this guide shows how to store it securely.
 
 This creates the home directory structure (default `~/.evm`) with a `config/evnode.yaml` file and generates the signer key.
 
@@ -186,8 +188,10 @@ Raft requires a majority of configured peers to be online before it can elect a 
 Start all five nodes as close together as possible. The order does not matter but they should all be up within a few seconds of each other.
 
 ```bash
-# Run this on each node, substituting the correct binary name and flags for your chain
+# Load the passphrase from the secure env file (avoids it appearing in ps aux)
+source /etc/ev-node/env
 
+# Run this on each node, substituting the correct binary name and flags for your chain
 ./evm start \
   --evnode.node.aggregator=true \
   --evnode.raft.enable=true \
@@ -203,7 +207,7 @@ Start all five nodes as close together as possible. The order does not matter bu
   --evnode.raft.snapshot_threshold=5000 \
   --evnode.p2p.listen_address="/ip4/0.0.0.0/tcp/26656" \
   --evnode.p2p.peers="/ip4/10.0.0.2/tcp/26656/p2p/<PEER_ID_NODE_2>,/ip4/10.0.0.3/tcp/26656/p2p/<PEER_ID_NODE_3>,/ip4/10.0.0.4/tcp/26656/p2p/<PEER_ID_NODE_4>,/ip4/10.0.0.5/tcp/26656/p2p/<PEER_ID_NODE_5>" \
-  --evnode.signer.passphrase=<YOUR_PASSPHRASE> \
+  --evnode.signer.passphrase="$EV_SIGNER_PASSPHRASE" \
   --evm.jwt-secret=$(cat /path/to/jwt.hex) \
   --evm.genesis-hash=<YOUR_GENESIS_HASH>
 ```
@@ -285,6 +289,20 @@ The gap should be well under 1 second in most cases (a few election cycles at mo
 
 For production, manage each node with systemd.
 
+### Create the environment file
+
+Store secrets in a file that only the service user can read. systemd loads it at start time, so the passphrase never appears in `ps aux`, `journalctl`, or the unit file itself.
+
+```bash
+# Run on every node
+sudo mkdir -p /etc/ev-node
+echo "EV_SIGNER_PASSPHRASE=<YOUR_PASSPHRASE>" | sudo tee /etc/ev-node/env > /dev/null
+sudo chmod 600 /etc/ev-node/env
+sudo chown ev-node:ev-node /etc/ev-node/env
+```
+
+### Unit file
+
 ```ini
 # /etc/systemd/system/ev-node.service
 [Unit]
@@ -294,6 +312,7 @@ Wants=network-online.target
 
 [Service]
 User=ev-node
+EnvironmentFile=/etc/ev-node/env
 ExecStart=/usr/local/bin/evm start \
   --evnode.node.aggregator=true \
   --evnode.raft.enable=true \
@@ -309,7 +328,7 @@ ExecStart=/usr/local/bin/evm start \
   --evnode.raft.snapshot_threshold=5000 \
   --evnode.p2p.listen_address=/ip4/0.0.0.0/tcp/26656 \
   --evnode.p2p.peers=/ip4/10.0.0.2/tcp/26656/p2p/<PEER_ID_NODE_2>,/ip4/10.0.0.3/tcp/26656/p2p/<PEER_ID_NODE_3>,/ip4/10.0.0.4/tcp/26656/p2p/<PEER_ID_NODE_4>,/ip4/10.0.0.5/tcp/26656/p2p/<PEER_ID_NODE_5> \
-  --evnode.signer.passphrase=<YOUR_PASSPHRASE>
+  --evnode.signer.passphrase=$EV_SIGNER_PASSPHRASE
 Restart=on-failure
 RestartSec=5s
 
