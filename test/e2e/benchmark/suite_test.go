@@ -11,7 +11,6 @@ import (
 	tastoradocker "github.com/celestiaorg/tastora/framework/docker"
 	"github.com/celestiaorg/tastora/framework/docker/evstack/reth"
 	"github.com/celestiaorg/tastora/framework/docker/evstack/spamoor"
-	"github.com/celestiaorg/tastora/framework/docker/victoriatraces"
 	"github.com/celestiaorg/tastora/framework/testutil/maps"
 	tastoratypes "github.com/celestiaorg/tastora/framework/types"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -40,11 +39,11 @@ func (s *SpamoorSuite) SetupTest() {
 
 // env holds a fully-wired environment created by setupEnv.
 type env struct {
-	traces             traceProvider
-	spamoorAPI         *spamoor.API
-	ethClient          *ethclient.Client
-	evNodeServiceName  string
-	evRethServiceName  string
+	traces            traceProvider
+	spamoorAPI        *spamoor.API
+	ethClient         *ethclient.Client
+	evNodeServiceName string
+	evRethServiceName string
 }
 
 // TODO: temporary hardcoded tag, will be replaced with a proper release tag
@@ -75,8 +74,8 @@ func (s *SpamoorSuite) setupLocalEnv(cfg benchConfig) *env {
 	sut := e2e.NewSystemUnderTest(t)
 
 	// victoriatraces
-	vtCfg := victoriatraces.Config{Logger: zaptest.NewLogger(t), DockerClient: s.dockerCli, DockerNetworkID: s.networkID}
-	vt, err := victoriatraces.New(ctx, vtCfg, t.Name(), 0)
+	vtCfg := victoriaTracesConfig{Logger: zaptest.NewLogger(t), DockerClient: s.dockerCli, DockerNetworkID: s.networkID}
+	vt, err := newVictoriaTracesNode(ctx, vtCfg, t.Name(), 0)
 	s.Require().NoError(err, "failed to create victoriatraces node")
 	t.Cleanup(func() { _ = vt.Remove(t.Context()) })
 	s.Require().NoError(vt.Start(ctx), "failed to start victoriatraces node")
@@ -129,7 +128,7 @@ func (s *SpamoorSuite) setupLocalEnv(cfg benchConfig) *env {
 	s.Require().NoError(err, "failed to get reth network info")
 	internalRPC := "http://" + ni.Internal.RPCAddress()
 
-	spBuilder := spamoor.NewNodeBuilder(t.Name()).
+	spBuilder := newSpamoorNodeBuilder(t.Name()).
 		WithDockerClient(evmEnv.RethNode.DockerClient).
 		WithDockerNetworkID(evmEnv.RethNode.NetworkID).
 		WithLogger(evmEnv.RethNode.Logger).
@@ -179,7 +178,7 @@ func (s *SpamoorSuite) setupExternalEnv(cfg benchConfig, rpcURL string) *env {
 
 	// spamoor — connects to the external RPC via host networking so it can
 	// resolve the same hostnames as the host machine.
-	spBuilder := spamoor.NewNodeBuilder(t.Name()).
+	spBuilder := newSpamoorNodeBuilder(t.Name()).
 		WithDockerClient(s.dockerCli).
 		WithDockerNetworkID(s.networkID).
 		WithLogger(zaptest.NewLogger(t)).
@@ -252,4 +251,3 @@ func (s *SpamoorSuite) collectTraces(e *env) *traceResult {
 	tr.displayFlowcharts(t, e.evNodeServiceName)
 	return tr
 }
-
