@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -337,7 +338,7 @@ func TestCachedStore_Close_FlushesPendingWrites(t *testing.T) {
 	cs.startWriteLoop()
 
 	const n = 100
-	for i := 0; i < n; i++ {
+	for i := range n {
 		k := fmt.Sprintf("key-%d", i)
 		require.NoError(t, cs.SetMetadata(ctx, k, []byte(k)))
 	}
@@ -348,7 +349,7 @@ func TestCachedStore_Close_FlushesPendingWrites(t *testing.T) {
 	cs.stopMu.Unlock()
 	<-done
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		k := fmt.Sprintf("key-%d", i)
 		v, err := base.GetMetadata(ctx, k)
 		require.NoError(t, err)
@@ -371,4 +372,39 @@ func TestCachedStore_WriteAfterClose_FallsBack(t *testing.T) {
 
 	err = cs.SetMetadata(ctx, "after", []byte("sync"))
 	require.Error(t, err)
+}
+
+func TestCachedStore_CoalescesSameKeyOps(t *testing.T) {
+	ctx := context.Background()
+
+	kv, err := NewTestInMemoryKVStore()
+	require.NoError(t, err)
+
+	require.NoError(t, kv.Put(ctx, ds.NewKey(GetMetaKey("k")), []byte("original")))
+
+	base := New(kv)
+
+	writeCh := make(chan asyncWriteOp, asyncWriteBufferSize)
+	done := make(chan struct{})
+	cs := &CachedStore{
+		Store:   base,
+		writeCh: writeCh,
+		done:    done,
+		logger:  zerolog.Nop(),
+	}
+	cs.startWriteLoop()
+
+	require.NoError(t, cs.SetMetadata(ctx, "k", []byte("v1")))
+	require.NoError(t, cs.DeleteMetadata(ctx, "k"))
+	require.NoError(t, cs.SetMetadata(ctx, "k", []byte("v2")))
+
+	cs.stopMu.Lock()
+	cs.stopped = true
+	close(writeCh)
+	cs.stopMu.Unlock()
+	<-done
+
+	v, err := base.GetMetadata(ctx, "k")
+	require.NoError(t, err)
+	require.Equal(t, []byte("v2"), v, "last write (Set) should win over delete")
 }

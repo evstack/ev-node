@@ -121,7 +121,7 @@ func (cs *CachedStore) startWriteLoop() {
 			ops := []asyncWriteOp{op}
 
 			timer := time.NewTimer(batchWindow)
-			collect:
+		collect:
 			for {
 				select {
 				case op, ok := <-cs.writeCh:
@@ -135,9 +135,14 @@ func (cs *CachedStore) startWriteLoop() {
 				}
 			}
 
+			last := make(map[string]asyncWriteOp, len(ops))
+			for _, o := range ops {
+				last[o.key] = o
+			}
+
 			var puts []MetadataKV
 			var deletes []string
-			for _, o := range ops {
+			for _, o := range last {
 				if o.isDelete {
 					deletes = append(deletes, o.key)
 				} else {
@@ -145,7 +150,7 @@ func (cs *CachedStore) startWriteLoop() {
 				}
 			}
 
-			if err := cs.Store.BatchMetadata(context.Background(), puts, deletes); err != nil {
+			if err := cs.BatchMetadata(context.Background(), puts, deletes); err != nil {
 				for _, o := range ops {
 					cs.logger.Error().Err(err).Str("key", o.key).
 						Bool("delete", o.isDelete).
