@@ -27,7 +27,7 @@ const (
 
 	// DefaultTxCacheRetention is the default time to keep transaction hashes in cache.
 	// Keeping a too high value can lead to OOM during heavy transaction load.
-	DefaultTxCacheRetention = 45 * time.Second
+	DefaultTxCacheRetention = 30 * time.Minute
 )
 
 // CacheManager provides thread-safe cache operations for tracking seen blocks
