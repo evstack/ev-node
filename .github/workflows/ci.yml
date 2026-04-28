@@ -9,8 +9,30 @@ name: CI
 
 permissions: {}
 jobs:
+  changes:
+    name: Detect code changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - '**'
+              - '!docs/**'
+              - '!**/*.md'
+              - '!.github/workflows/docs_*.yml'
+
   determine-image-tag:
     name: Determine Image Tag
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -39,12 +61,15 @@ jobs:
           echo "tag=$TAG" >> $GITHUB_OUTPUT
 
   lint:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     permissions:
       contents: read
     uses: ./.github/workflows/lint.yml
 
   docker:
-    needs: determine-image-tag
+    needs: [determine-image-tag, changes]
+    if: needs.changes.outputs.code == 'true'
     uses: ./.github/workflows/docker-build-push.yml
     secrets: inherit
     permissions:
@@ -60,6 +85,8 @@ jobs:
         ]
 
   test:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     permissions:
       actions: read
       contents: read
@@ -68,7 +95,8 @@ jobs:
     secrets: inherit
 
   docker-tests:
-    needs: [determine-image-tag, docker]
+    needs: [determine-image-tag, docker, changes]
+    if: needs.changes.outputs.code == 'true'
     uses: ./.github/workflows/docker-tests.yml
     secrets: inherit
     permissions:
@@ -77,6 +105,8 @@ jobs:
       image-tag: ${{ needs.determine-image-tag.outputs.tag }}
 
   proto:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     permissions:
       contents: read
       pull-requests: write
