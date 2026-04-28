@@ -153,9 +153,30 @@ raft:
 
 A comma-separated list of the **other** cluster members (exclude the local node), in the format `nodeID@host:port`. The host and port must be the Raft address (`raft_addr`) of each peer as reachable from this node. Do not list the node's own `node_id` in its own `peers` field.
 
- Raft uses this list to:
+Raft uses this list to:
 - Bootstrap the cluster on first start (when no persisted state exists).
 - Know which addresses to dial when sending log entries or heartbeats.
+
+> **Limitation — static membership only.** Changing the peer set at runtime (adding or removing nodes without a full cluster restart) is not currently supported. All nodes that will ever participate in the cluster must be listed in `peers` before the cluster is first bootstrapped.
+
+---
+
+#### `raft.bootstrap`
+
+```yaml
+raft:
+  bootstrap: false
+```
+
+**CLI:** `--evnode.raft.bootstrap`  
+**Default:** `false`
+
+Compatibility flag retained for older deployments. **You do not need to set this.** ev-node auto-detects the correct startup mode from the state of `raft_dir`:
+
+- If `raft_dir` contains existing Raft state → the node **rejoins** the cluster automatically.
+- If `raft_dir` is empty or does not exist → the node **bootstraps** a new cluster from the `peers` list.
+
+Setting `bootstrap: true` explicitly has no additional effect beyond what auto-detection already does.
 
 ---
 
