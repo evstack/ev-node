@@ -24,18 +24,7 @@ const (
 
 	// CleanupInterval is how often the reaper sweeps expired hashes
 	// out of the seen-tx cache.
-	//
-	// HACK(fiber-throughput): dropped from 1h to 5s. The original
-	// 1h was effectively coupled to the previous 24h retention —
-	// sweeping every hour against a 24h window means a cache entry
-	// can outlive its retention by 1h, which is fine when retention
-	// is a day but completely breaks at 30s retention (entries
-	// would survive 12× past expiry). Whatever the right retention
-	// turns out to be (see DefaultTxCacheRetention's note in
-	// cache/manager.go), this value should be a small fraction of
-	// it — not a fixed time. Better to derive: e.g.
-	// retention/10 with a sane min/max.
-	CleanupInterval = 5 * time.Second
+	CleanupInterval = max(cache.DefaultTxCacheRetention/10, 5*time.Second)
 )
 
 // Reaper is responsible for periodically retrieving transactions from the executor,
