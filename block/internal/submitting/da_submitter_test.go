@@ -35,18 +35,15 @@ const (
 func setupDASubmitterTest(t *testing.T) (*DASubmitter, store.Store, cache.Manager, *mocks.MockClient, genesis.Genesis) {
 	t.Helper()
 
-	// Create store and cache
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
-	// Create config
 	cfg := config.DefaultConfig()
 	cfg.DA.Namespace = testHeaderNamespace
 	cfg.DA.DataNamespace = testDataNamespace
 
-	// Mock DA client
 	mockDA := mocks.NewMockClient(t)
 	headerNamespace := datypes.NamespaceFromString(cfg.DA.Namespace).Bytes()
 	dataNamespace := datypes.NamespaceFromString(cfg.DA.DataNamespace).Bytes()
@@ -55,7 +52,6 @@ func setupDASubmitterTest(t *testing.T) (*DASubmitter, store.Store, cache.Manage
 	mockDA.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 	mockDA.On("HasForcedInclusionNamespace").Return(false).Maybe()
 
-	// Create genesis
 	gen := genesis.Genesis{
 		ChainID:         "test-chain",
 		InitialHeight:   1,
@@ -63,7 +59,6 @@ func setupDASubmitterTest(t *testing.T) (*DASubmitter, store.Store, cache.Manage
 		ProposerAddress: []byte("test-proposer"),
 	}
 
-	// Create DA submitter
 	daSubmitter := NewDASubmitter(
 		mockDA,
 		cfg,
@@ -218,10 +213,10 @@ func TestDASubmitter_SubmitHeaders_Success(t *testing.T) {
 	// Get headers from cache and submit
 	headers, marshalledHeaders, err := cm.GetPendingHeaders(ctx)
 	require.NoError(t, err)
-	err = submitter.SubmitHeaders(ctx, headers, marshalledHeaders, cm, signer)
+	err = submitter.SubmitHeaders(ctx, headers, marshalledHeaders, cm, signer, nil, nil)
 	require.NoError(t, err)
+	submitter.Close()
 
-	// Verify headers are marked as DA included
 	_, ok1 := cm.GetHeaderDAIncludedByHeight(1)
 	assert.True(t, ok1)
 	_, ok2 := cm.GetHeaderDAIncludedByHeight(2)
@@ -238,7 +233,7 @@ func TestDASubmitter_SubmitHeaders_NoPendingHeaders(t *testing.T) {
 	// Get headers from cache (should be empty) and submit
 	headers, marshalledHeaders, err := cm.GetPendingHeaders(ctx)
 	require.NoError(t, err)
-	err = submitter.SubmitHeaders(ctx, headers, marshalledHeaders, cm, signer)
+	err = submitter.SubmitHeaders(ctx, headers, marshalledHeaders, cm, signer, nil, nil)
 	require.NoError(t, err) // Should succeed with no action
 	mockDA.AssertNotCalled(t, "Submit", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
@@ -333,8 +328,9 @@ func TestDASubmitter_SubmitData_Success(t *testing.T) {
 	// Get data from cache and submit
 	signedDataList, marshalledData, err := cm.GetPendingData(ctx)
 	require.NoError(t, err)
-	err = submitter.SubmitData(ctx, signedDataList, marshalledData, cm, signer, gen)
+	err = submitter.SubmitData(ctx, signedDataList, marshalledData, cm, signer, gen, nil, nil)
 	require.NoError(t, err)
+	submitter.Close()
 
 	// Verify data is marked as DA included
 	_, ok := cm.GetDataDAIncludedByHeight(1)
@@ -387,7 +383,7 @@ func TestDASubmitter_SubmitData_SkipsEmptyData(t *testing.T) {
 	// Get data from cache and submit
 	signedDataList, marshalledData, err := cm.GetPendingData(ctx)
 	require.NoError(t, err)
-	err = submitter.SubmitData(ctx, signedDataList, marshalledData, cm, signer, gen)
+	err = submitter.SubmitData(ctx, signedDataList, marshalledData, cm, signer, gen, nil, nil)
 	require.NoError(t, err)
 	mockDA.AssertNotCalled(t, "Submit", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 
@@ -406,7 +402,7 @@ func TestDASubmitter_SubmitData_NoPendingData(t *testing.T) {
 	// Get data from cache (should be empty) and submit
 	dataList, marshalledData, err := cm.GetPendingData(ctx)
 	require.NoError(t, err)
-	err = submitter.SubmitData(ctx, dataList, marshalledData, cm, signer, gen)
+	err = submitter.SubmitData(ctx, dataList, marshalledData, cm, signer, gen, nil, nil)
 	require.NoError(t, err) // Should succeed with no action
 	mockDA.AssertNotCalled(t, "Submit", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
@@ -447,7 +443,7 @@ func TestDASubmitter_SubmitData_NilSigner(t *testing.T) {
 	// Get data from cache and submit with nil signer - should fail
 	signedDataList, marshalledData, err := cm.GetPendingData(ctx)
 	require.NoError(t, err)
-	err = submitter.SubmitData(ctx, signedDataList, marshalledData, cm, nil, gen)
+	err = submitter.SubmitData(ctx, signedDataList, marshalledData, cm, nil, gen, nil, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "signer is nil")
 	mockDA.AssertNotCalled(t, "Submit", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)

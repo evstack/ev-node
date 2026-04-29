@@ -76,8 +76,16 @@ func (ph *PendingHeaders) NumPendingHeaders() uint64 {
 	return ph.base.numPending()
 }
 
+func (ph *PendingHeaders) NumPendingHeadersTotal() uint64 {
+	return ph.base.numPendingTotal()
+}
+
 func (ph *PendingHeaders) SetLastSubmittedHeaderHeight(ctx context.Context, newLastSubmittedHeaderHeight uint64) {
 	ph.base.setLastSubmittedHeight(ctx, newLastSubmittedHeaderHeight)
+}
+
+func (ph *PendingHeaders) ResetInFlightHeaderRange(start, end uint64) {
+	ph.base.resetInFlightRange(start, end)
 }
 
 func (ph *PendingHeaders) GetLastSubmittedHeaderHeight() uint64 {
