@@ -39,6 +39,69 @@ func (_m *MockStore) EXPECT() *MockStore_Expecter {
 	return &MockStore_Expecter{mock: &_m.Mock}
 }
 
+// BatchMetadata provides a mock function for the type MockStore
+func (_mock *MockStore) BatchMetadata(ctx context.Context, puts []store.MetadataKV, deletes []string) error {
+	ret := _mock.Called(ctx, puts, deletes)
+
+	if len(ret) == 0 {
+		panic("no return value specified for BatchMetadata")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []store.MetadataKV, []string) error); ok {
+		r0 = returnFunc(ctx, puts, deletes)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockStore_BatchMetadata_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'BatchMetadata'
+type MockStore_BatchMetadata_Call struct {
+	*mock.Call
+}
+
+// BatchMetadata is a helper method to define mock.On call
+//   - ctx context.Context
+//   - puts []store.MetadataKV
+//   - deletes []string
+func (_e *MockStore_Expecter) BatchMetadata(ctx interface{}, puts interface{}, deletes interface{}) *MockStore_BatchMetadata_Call {
+	return &MockStore_BatchMetadata_Call{Call: _e.mock.On("BatchMetadata", ctx, puts, deletes)}
+}
+
+func (_c *MockStore_BatchMetadata_Call) Run(run func(ctx context.Context, puts []store.MetadataKV, deletes []string)) *MockStore_BatchMetadata_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 []store.MetadataKV
+		if args[1] != nil {
+			arg1 = args[1].([]store.MetadataKV)
+		}
+		var arg2 []string
+		if args[2] != nil {
+			arg2 = args[2].([]string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockStore_BatchMetadata_Call) Return(err error) *MockStore_BatchMetadata_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockStore_BatchMetadata_Call) RunAndReturn(run func(ctx context.Context, puts []store.MetadataKV, deletes []string) error) *MockStore_BatchMetadata_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Close provides a mock function for the type MockStore
 func (_mock *MockStore) Close() error {
 	ret := _mock.Called()

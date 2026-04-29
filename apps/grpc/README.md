@@ -1,13 +1,13 @@
 # gRPC Single Sequencer App
 
-This application runs a Evolve node with a single sequencer that connects to a remote execution client via gRPC. It allows you to use any execution layer that implements the Evolve execution gRPC interface.
+This application runs an Evolve node with a single sequencer that connects to an execution client via gRPC. It allows you to use any execution layer that implements the Evolve execution gRPC interface.
 
 ## Overview
 
 The gRPC single sequencer app provides:
 
-- A Evolve consensus node with single sequencer
-- Connection to remote execution clients via gRPC
+- An Evolve consensus node with single sequencer
+- Connection to execution clients via TCP or Unix domain socket gRPC
 - Full data availability layer integration
 - P2P networking capabilities
 
@@ -58,11 +58,20 @@ Start the Evolve node with:
   --da.auth-token your-da-token
 ```
 
+For a same-machine executor, use a Unix domain socket endpoint:
+
+```bash
+./evgrpc start \
+  --root-dir ~/.evgrpc \
+  --grpc-executor-url unix:///tmp/evolve-executor.sock \
+  --da.address http://localhost:7980
+```
+
 ## Command-Line Flags
 
 ### gRPC-specific Flags
 
-- `--grpc-executor-url`: URL of the gRPC execution service (default: `http://localhost:50051`)
+- `--grpc-executor-url`: URL of the gRPC execution service, either `http://host:port` or `unix:///path/to/socket` (default: `http://localhost:50051`)
 
 ### Common Evolve Flags
 

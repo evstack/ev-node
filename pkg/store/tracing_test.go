@@ -28,6 +28,7 @@ type tracingMockStore struct {
 	getMetadataFn      func(ctx context.Context, key string) ([]byte, error)
 
 	setMetadataFn         func(ctx context.Context, key string, value []byte) error
+	batchMetadataFn       func(ctx context.Context, puts []MetadataKV, deletes []string) error
 	deleteMetadataFn      func(ctx context.Context, key string) error
 	rollbackFn            func(ctx context.Context, height uint64, aggregator bool) error
 	pruneBlocksFn         func(ctx context.Context, height uint64) error
@@ -101,6 +102,13 @@ func (m *tracingMockStore) GetMetadata(ctx context.Context, key string) ([]byte,
 func (m *tracingMockStore) SetMetadata(ctx context.Context, key string, value []byte) error {
 	if m.setMetadataFn != nil {
 		return m.setMetadataFn(ctx, key, value)
+	}
+	return nil
+}
+
+func (m *tracingMockStore) BatchMetadata(ctx context.Context, puts []MetadataKV, deletes []string) error {
+	if m.batchMetadataFn != nil {
+		return m.batchMetadataFn(ctx, puts, deletes)
 	}
 	return nil
 }

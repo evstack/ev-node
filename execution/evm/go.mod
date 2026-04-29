@@ -4,11 +4,11 @@ go 1.25.7
 
 require (
 	github.com/ethereum/go-ethereum v1.17.2
-	github.com/evstack/ev-node v1.1.0
+	github.com/evstack/ev-node v1.1.1
 	github.com/evstack/ev-node/core v1.0.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/ipfs/go-datastore v0.9.1
-	github.com/rs/zerolog v1.35.0
+	github.com/rs/zerolog v1.35.1
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/otel v1.43.0
 	go.opentelemetry.io/otel/sdk v1.43.0

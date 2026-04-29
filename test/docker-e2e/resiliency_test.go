@@ -13,7 +13,7 @@ import (
 	da "github.com/celestiaorg/tastora/framework/docker/dataavailability"
 	"github.com/celestiaorg/tastora/framework/docker/evstack"
 	tastoratypes "github.com/celestiaorg/tastora/framework/types"
-	"github.com/docker/docker/api/types/container"
+	mobyclient "github.com/moby/moby/client"
 )
 
 // TestEvNodeRestart tests the ability to stop and restart an EV node,
@@ -889,27 +889,27 @@ func (s *DockerTestSuite) monitorDARecoveryInLogs(ctx context.Context, node *evs
 // execCommandInContainer executes a command inside a Docker container
 func (s *DockerTestSuite) execCommandInContainer(ctx context.Context, containerID string, cmd []string) ([]byte, error) {
 	// Create exec configuration
-	execConfig := container.ExecOptions{
+	execConfig := mobyclient.ExecCreateOptions{
 		Cmd:          cmd,
 		AttachStdout: true,
 		AttachStderr: true,
 	}
 
 	// Create the exec instance
-	exec, err := s.dockerClient.ContainerExecCreate(ctx, containerID, execConfig)
+	exec, err := s.dockerClient.ExecCreate(ctx, containerID, execConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create exec: %w", err)
 	}
 
 	// Attach to exec to get output
-	resp, err := s.dockerClient.ContainerExecAttach(ctx, exec.ID, container.ExecStartOptions{})
+	resp, err := s.dockerClient.ExecAttach(ctx, exec.ID, mobyclient.ExecAttachOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to attach to exec: %w", err)
 	}
 	defer resp.Close()
 
 	// Start the exec
-	err = s.dockerClient.ContainerExecStart(ctx, exec.ID, container.ExecStartOptions{})
+	_, err = s.dockerClient.ExecStart(ctx, exec.ID, mobyclient.ExecStartOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to start exec: %w", err)
 	}
@@ -926,7 +926,7 @@ func (s *DockerTestSuite) execCommandInContainer(ctx context.Context, containerI
 // getContainerLogs retrieves logs from a Docker container
 func (s *DockerTestSuite) getContainerLogs(ctx context.Context, containerID string) (string, error) {
 	// Get container logs
-	containerLogs, err := s.dockerClient.ContainerLogs(ctx, containerID, container.LogsOptions{
+	containerLogs, err := s.dockerClient.ContainerLogs(ctx, containerID, mobyclient.ContainerLogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
 		Tail:       "100", // Get last 100 lines
