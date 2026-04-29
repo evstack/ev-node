@@ -154,7 +154,6 @@ func (s *Submitter) Stop() error {
 	if s.cancel != nil {
 		s.cancel()
 	}
-	s.daSubmitter.Close()
 	// Wait for goroutines to finish with a timeout to prevent hanging
 	done := make(chan struct{})
 	go func() {
@@ -163,10 +162,10 @@ func (s *Submitter) Stop() error {
 	}()
 	select {
 	case <-done:
-		// All goroutines finished cleanly
 	case <-time.After(5 * time.Second):
 		s.logger.Warn().Msg("submitter shutdown timed out waiting for goroutines, proceeding anyway")
 	}
+	s.daSubmitter.Close()
 	s.logger.Info().Msg("submitter stopped")
 	return nil
 }
@@ -256,7 +255,9 @@ func (s *Submitter) daSubmissionLoop() {
 								s.sendCriticalError(fmt.Errorf("unrecoverable DA submission error: %w", err))
 								return
 							}
-							s.logger.Error().Err(err).Msg("failed to submit headers")
+							if err != nil {
+								s.logger.Error().Err(err).Msg("failed to submit headers")
+							}
 						}
 						if err := s.daSubmitter.SubmitHeaders(s.ctx, headers, marshalledHeaders, s.cache, s.signer, onSuccess, onError); err != nil {
 							if len(headers) > 0 {
@@ -334,7 +335,9 @@ func (s *Submitter) daSubmissionLoop() {
 								s.sendCriticalError(fmt.Errorf("unrecoverable DA submission error: %w", err))
 								return
 							}
-							s.logger.Error().Err(err).Msg("failed to submit data")
+							if err != nil {
+								s.logger.Error().Err(err).Msg("failed to submit data")
+							}
 						}
 						if err := s.daSubmitter.SubmitData(s.ctx, signedDataList, marshalledData, s.cache, s.signer, s.genesis, onSuccess, onError); err != nil {
 							if len(signedDataList) > 0 {

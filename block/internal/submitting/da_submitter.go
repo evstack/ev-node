@@ -223,11 +223,14 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, headers []*types.Signed
 
 	postSubmit := s.makeHeaderPostSubmit(ctx, cache)
 	namespace := s.client.GetHeaderNamespace()
+	submittedOffset := 0
 
 	s.wg.Go(func() {
 		s.submitWithRetry(ctx, envelopes, namespace, func(submittedCount int, daHeight uint64) {
 			if submittedCount > 0 {
-				postSubmit(headers[:submittedCount], &datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, SubmittedCount: uint64(submittedCount), Height: daHeight}})
+				end := submittedOffset + submittedCount
+				postSubmit(headers[submittedOffset:end], &datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, SubmittedCount: uint64(submittedCount), Height: daHeight}})
+				submittedOffset = end
 			}
 			if onSubmitSuccess != nil {
 				onSubmitSuccess()
@@ -280,11 +283,14 @@ func (s *DASubmitter) SubmitData(ctx context.Context, unsignedDataList []*types.
 
 	postSubmit := s.makeDataPostSubmit(ctx, cache)
 	namespace := s.client.GetDataNamespace()
+	submittedOffset := 0
 
 	s.wg.Go(func() {
 		s.submitWithRetry(ctx, signedDataListBz, namespace, func(submittedCount int, daHeight uint64) {
 			if submittedCount > 0 {
-				postSubmit(signedDataList[:submittedCount], &datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, SubmittedCount: uint64(submittedCount), Height: daHeight}})
+				end := submittedOffset + submittedCount
+				postSubmit(signedDataList[submittedOffset:end], &datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, SubmittedCount: uint64(submittedCount), Height: daHeight}})
+				submittedOffset = end
 			}
 			if onSubmitSuccess != nil {
 				onSubmitSuccess()
@@ -383,6 +389,15 @@ func (s *DASubmitter) submitWithRetry(
 		switch res.Code {
 		case datypes.StatusSuccess:
 			submitted := int(res.SubmittedCount)
+			if submitted <= 0 || submitted > len(marshaled) {
+				err := fmt.Errorf("invalid submitted count %d for batch size %d", submitted, len(marshaled))
+				s.recordFailure(common.DASubmitterFailureReasonUnknown)
+				s.logger.Error().Err(err).Str("itemType", itemType).Msg("DA layer returned invalid submitted count")
+				if onError != nil {
+					onError(err)
+				}
+				return
+			}
 			if onSuccess != nil {
 				onSuccess(submitted, res.Height)
 			}
