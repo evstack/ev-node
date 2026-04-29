@@ -320,22 +320,13 @@ func TestCachedStore_AsyncDeleteMetadata(t *testing.T) {
 func TestCachedStore_Close_FlushesPendingWrites(t *testing.T) {
 	ctx := context.Background()
 
-	kv, err := NewTestInMemoryKVStore()
+	dir := t.TempDir()
+	kv, err := NewDefaultKVStore(dir, "", "test-db")
 	require.NoError(t, err)
 
 	base := New(kv)
-
-	writeCh := make(chan asyncWriteOp, asyncWriteBufferSize)
-	done := make(chan struct{})
-
-	cs := &CachedStore{
-		Store:   base,
-		writeCh: writeCh,
-		done:    done,
-		logger:  zerolog.Nop(),
-	}
-
-	cs.startWriteLoop()
+	cs, err := NewCachedStore(base)
+	require.NoError(t, err)
 
 	const n = 100
 	for i := range n {
@@ -343,15 +334,16 @@ func TestCachedStore_Close_FlushesPendingWrites(t *testing.T) {
 		require.NoError(t, cs.SetMetadata(ctx, k, []byte(k)))
 	}
 
-	cs.stopMu.Lock()
-	cs.stopped = true
-	close(writeCh)
-	cs.stopMu.Unlock()
-	<-done
+	require.NoError(t, cs.Close())
+
+	kv2, err := NewDefaultKVStore(dir, "", "test-db")
+	require.NoError(t, err)
+	t.Cleanup(func() { kv2.Close() })
+	reopened := New(kv2)
 
 	for i := range n {
 		k := fmt.Sprintf("key-%d", i)
-		v, err := base.GetMetadata(ctx, k)
+		v, err := reopened.GetMetadata(ctx, k)
 		require.NoError(t, err)
 		require.Equal(t, []byte(k), v)
 	}

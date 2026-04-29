@@ -239,7 +239,7 @@ func (cs *CachedStore) Rollback(ctx context.Context, height uint64, aggregator b
 }
 
 // PruneBlocks wraps the underlying store's PruneBlocks and invalidates caches
-// up to the heigh that we purne
+// up to the height that we prune
 func (cs *CachedStore) PruneBlocks(ctx context.Context, height uint64) error {
 	if err := cs.Store.PruneBlocks(ctx, height); err != nil {
 		return err
