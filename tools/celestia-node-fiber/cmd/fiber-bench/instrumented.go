@@ -40,6 +40,10 @@ func newInstrumentedAdapter(inner block.FiberClient) *instrumentedAdapter {
 	}
 }
 
+func (m *instrumentedAdapter) Head(ctx context.Context) (uint64, error) {
+	return 0, nil
+}
+
 func (a *instrumentedAdapter) Upload(ctx context.Context, namespace []byte, data []byte) (block.FiberUploadResult, error) {
 	start := time.Now()
 	res, err := a.inner.Upload(ctx, namespace, data)
