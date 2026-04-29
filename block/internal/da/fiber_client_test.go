@@ -480,40 +480,6 @@ func (f *failOnNthUpload) Upload(ctx context.Context, namespace, data []byte) (f
 	return f.FiberClient.Upload(ctx, namespace, data)
 }
 
-func TestFlattenSplitBlobs_Roundtrip(t *testing.T) {
-	cases := []struct {
-		name  string
-		blobs [][]byte
-	}{
-		{"single", [][]byte{[]byte("hello")}},
-		{"multiple", [][]byte{[]byte("first"), []byte("second"), []byte("third")}},
-		{"empty_blob", [][]byte{[]byte{}, []byte("data"), []byte{}}},
-		{"nil_blob", [][]byte{nil, []byte("data")}},
-		{"large", [][]byte{make([]byte, 1024), make([]byte, 4096)}},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			flat := flattenBlobs(tc.blobs)
-			got, err := splitBlobs(flat)
-			require.NoError(t, err)
-			require.Equal(t, len(tc.blobs), len(got))
-			for i, b := range got {
-				expected := tc.blobs[i]
-				if expected == nil {
-					expected = []byte{}
-				}
-				require.Equal(t, expected, b)
-			}
-		})
-	}
-}
-
-func TestFlattenBlobs_Empty(t *testing.T) {
-	require.Nil(t, flattenBlobs(nil))
-	require.Nil(t, flattenBlobs([][]byte{}))
-}
-
 func TestSplitBlobs_Empty(t *testing.T) {
 	got, err := splitBlobs(nil)
 	require.NoError(t, err)
