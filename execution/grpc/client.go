@@ -15,8 +15,8 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/evstack/ev-node/core/execution"
-	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
-	"github.com/evstack/ev-node/types/pb/evnode/v1/v1connect"
+	pb "github.com/evstack/ev-node/execution/grpc/types/pb/evnode/v1"
+	"github.com/evstack/ev-node/execution/grpc/types/pb/evnode/v1/v1connect"
 )
 
 // Ensure Client implements the execution.Executor interface

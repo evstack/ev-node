@@ -787,7 +787,7 @@ const file_evnode_v1_execution_proto_rawDesc = "" +
 	"ExecuteTxs\x12\x1c.evnode.v1.ExecuteTxsRequest\x1a\x1d.evnode.v1.ExecuteTxsResponse\"\x00\x12E\n" +
 	"\bSetFinal\x12\x1a.evnode.v1.SetFinalRequest\x1a\x1b.evnode.v1.SetFinalResponse\"\x00\x12]\n" +
 	"\x10GetExecutionInfo\x12\".evnode.v1.GetExecutionInfoRequest\x1a#.evnode.v1.GetExecutionInfoResponse\"\x00\x12H\n" +
-	"\tFilterTxs\x12\x1b.evnode.v1.FilterTxsRequest\x1a\x1c.evnode.v1.FilterTxsResponse\"\x00B/Z-github.com/evstack/ev-node/types/pb/evnode/v1b\x06proto3"
+	"\tFilterTxs\x12\x1b.evnode.v1.FilterTxsRequest\x1a\x1c.evnode.v1.FilterTxsResponse\"\x00B>Z<github.com/evstack/ev-node/execution/grpc/types/pb/evnode/v1b\x06proto3"
 
 var (
 	file_evnode_v1_execution_proto_rawDescOnce sync.Once

@@ -51,8 +51,12 @@ func TestInboundMetadataCreatesChildSpanWithSameTraceID(t *testing.T) {
 	ts := httptest.NewServer(handler)
 	defer ts.Close()
 
-	client := NewClient(ts.URL)
-	_, err := client.GetTxs(parentCtx)
+	client, err := NewClient(ts.URL)
+	if err != nil {
+		t.Fatalf("NewClient failed: %v", err)
+	}
+
+	_, err = client.GetTxs(parentCtx)
 	if err != nil {
 		t.Fatalf("GetTxs failed: %v", err)
 	}
@@ -93,8 +97,12 @@ func TestOutboundGRPCCallCarriesTraceparentMetadata(t *testing.T) {
 	ts := httptest.NewServer(handler)
 	defer ts.Close()
 
-	client := NewClient(ts.URL)
-	if _, err := client.GetTxs(ctx); err != nil {
+	client, err := NewClient(ts.URL)
+	if err != nil {
+		t.Fatalf("NewClient failed: %v", err)
+	}
+
+	if _, err = client.GetTxs(ctx); err != nil {
 		t.Fatalf("GetTxs failed: %v", err)
 	}
 	if gotTraceparent == "" {
@@ -135,8 +143,12 @@ func TestOutboundGRPCCallCarriesPropagationHeaders(t *testing.T) {
 	ts := httptest.NewServer(handler)
 	defer ts.Close()
 
-	client := NewClient(ts.URL)
-	if _, err := client.GetTxs(ctx); err != nil {
+	client, err := NewClient(ts.URL)
+	if err != nil {
+		t.Fatalf("NewClient failed: %v", err)
+	}
+
+	if _, err = client.GetTxs(ctx); err != nil {
 		t.Fatalf("GetTxs failed: %v", err)
 	}
 
@@ -163,7 +175,10 @@ func TestEndToEndParentChildAcrossServerClientHop(t *testing.T) {
 	downstreamHandler := NewExecutorServiceHandler(downstreamExec)
 	downstreamSrv := httptest.NewServer(downstreamHandler)
 	defer downstreamSrv.Close()
-	downstreamClient := NewClient(downstreamSrv.URL)
+	downstreamClient, err := NewClient(downstreamSrv.URL)
+	if err != nil {
+		t.Fatalf("NewClient failed: %v", err)
+	}
 
 	upstreamExec := &mockExecutor{getTxsFunc: func(ctx context.Context) ([][]byte, error) {
 		ctx, span := tracer.Start(ctx, "upstream-mid")
@@ -179,7 +194,11 @@ func TestEndToEndParentChildAcrossServerClientHop(t *testing.T) {
 	upstreamSrv := httptest.NewServer(upstreamHandler)
 	defer upstreamSrv.Close()
 
-	client := NewClient(upstreamSrv.URL)
+	client, err := NewClient(upstreamSrv.URL)
+	if err != nil {
+		t.Fatalf("NewClient failed: %v", err)
+	}
+
 	rootCtx, root := tracer.Start(context.Background(), "root")
 	defer root.End()
 	if _, err := client.GetTxs(rootCtx); err != nil {
