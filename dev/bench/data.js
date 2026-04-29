@@ -1,0 +1,56 @@
+window.BENCHMARK_DATA = {
+  "lastUpdate": 1777452411604,
+  "repoUrl": "https://github.com/evstack/ev-node",
+  "entries": {
+    "EVM Contract Roundtrip": [
+      {
+        "commit": {
+          "author": {
+            "email": "27022259+auricom@users.noreply.github.com",
+            "name": "auricom",
+            "username": "auricom"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "0900dc504b67821d6703431ee8fbe0bdd6de8318",
+          "message": "docs: high availability sequencer guide (#3293)\n\n* docs: ev-node high availability\n\n* docs: node placement\n\n* docs(ha): address PR review feedback\n\nCritical fixes:\n- Fix snapshot_threshold math: 5000 ÷ 10 = 500s ≈ 8.3 min (not 83s)\n- Fix trailing_logs math: 18000 ÷ 10 = 1800s = 30 min (not 5 min)\n\nMedium fixes:\n- Fix heartbeat_timeout description: it is a follower-side election trigger,\n  not the interval at which the leader sends heartbeats\n- Add explicit restart instruction after Step 5 data copy in single-to-ha.md\n  so the chain keeps producing blocks during preparation (Steps 6-8)\n- Replace priv_validator_key.json with signer.json in single-to-ha.md\n  to match cluster-setup.md and the E2E tests\n\nMinor fixes:\n- Exclude self from raft.peers in all examples (cluster-setup.md node-1\n  yaml/CLI/systemd, single-to-ha.md node-1 and node-2)\n- Add \"exclude local node\" note to raft.peers description in overview.md\n- Fix P2P port in overview.md Interaction with P2P section (7676 → 26656)\n- Add text language tag to all bare fenced blocks (MD040): multiaddr\n  example, RTT equations, and all log snippets\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n* docs(ha): absorb raft_production.md into ha/overview.md\n\nraft_production.md had no sidebar entry and its content was fully\nsuperseded by the new ha/ guides. Extract the three pieces that were\nunique to it — bootstrap flag docs, auto-detection startup mode\nexplanation, and static-membership limitation note — into\nha/overview.md, then delete the file.\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n* docs(ha): use EnvironmentFile for signer passphrase\n\nPassing --evnode.signer.passphrase inline exposes the secret in\nps aux, journalctl, and shell history.\n\n- Add EnvironmentFile=/etc/ev-node/env (chmod 600) to the systemd\n  unit in cluster-setup.md with setup instructions\n- Replace all inline <YOUR_PASSPHRASE> occurrences with\n  $EV_SIGNER_PASSPHRASE sourced from /etc/ev-node/env in every\n  evm start / evm init snippet across both guides\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n* docs(ha): explicit node-2 peers and action-based rolling restart\n\n- Replace \"peers list is identical\" stub in node-2 config with an\n  explicit peers list that excludes node-2 itself, and add a note\n  that each node must omit itself from raft.peers\n- Replace \"Wait ~30 seconds\" in rolling restart with journalctl\n  one-liners that exit as soon as the node logs follower/leader state,\n  giving a deterministic signal instead of an arbitrary timeout\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n* docs(ha): fix raft.peers self-inclusion startup bug\n\nThe abbreviated node-2 snippet with \"# peers list is identical\" caused\na startup failure: with raft_addr=0.0.0.0:5001 the bootstrap code's\nliteral address comparison does not recognise node-2@10.0.0.2:5001 as\nself, so node-2 is appended twice and deduplicateServers returns\n\"duplicate peers found in config\".\n\n- Fix intro text: \"only raft.node_id and raft_addr differ\" →\n  \"raft.node_id is unique; raft.peers and p2p.peers must exclude self\"\n- Expand node-2 snippet to a full evnode.yaml with the correct peers\n  list (node-1, node-3, node-4, node-5 — no node-2) and an inline\n  explanation of the wildcard address pitfall\n- Align overview.md trailing_logs example to 1 block/s (matching\n  block_time: \"1s\" used throughout) and note the 10 block/s rate too\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n* docs(ha): fix passphrase flag and failover kill cardinality check\n\nReplace non-existent --evnode.signer.passphrase with the actual\n--evnode.signer.passphrase_file flag throughout cluster-setup and\nsingle-to-ha guides. Update passphrase setup to create a chmod 600\nfile at /etc/ev-node/passphrase referenced directly by the flag.\n\nAdd mapfile-based cardinality check in the failover test fallback\nkill command to guard against killing the wrong process.\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n* docs(ha): fix RPC endpoints, init ordering, and snap_count CLI flag\n\nReplace incorrect CometBFT RPC calls (port 26657/status) with the\nactual ev-node HTTP API (port 7331 /health/ready, /raft/node) and\nEVM execution layer (cast block latest) throughout both guides.\n\nAlign single-to-ha Step 2 init ordering with cluster-setup: create\npassphrase file before evm init so the signer key is encrypted from\nthe start, and pass --evnode.node.aggregator and passphrase_file flags.\n\nFix Step 9a fallback kill in single-to-ha to use mapfile cardinality\ncheck, matching the pattern already applied in cluster-setup.\n\nAdd --evnode.raft.snap_count=3 to the CLI start example to match\nthe YAML config block.\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n---------\n\nCo-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>",
+          "timestamp": "2026-04-29T08:26:25Z",
+          "tree_id": "87ae53ee2fd23172f4d08ae2e82d790f017c6252",
+          "url": "https://github.com/evstack/ev-node/commit/0900dc504b67821d6703431ee8fbe0bdd6de8318"
+        },
+        "date": 1777452407874,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 898871345,
+            "unit": "ns/op\t32267336 B/op\t  180756 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 898871345,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 32267336,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 180756,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      }
+    ]
+  }
+}
