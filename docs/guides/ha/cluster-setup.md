@@ -231,6 +231,7 @@ Start all five nodes as close together as possible. The order does not matter bu
   --evnode.raft.send_timeout="50ms" \
   --evnode.raft.trailing_logs=18000 \
   --evnode.raft.snapshot_threshold=5000 \
+  --evnode.raft.snap_count=3 \
   --evnode.p2p.listen_address="/ip4/0.0.0.0/tcp/26656" \
   --evnode.p2p.peers="/ip4/10.0.0.2/tcp/26656/p2p/<PEER_ID_NODE_2>,/ip4/10.0.0.3/tcp/26656/p2p/<PEER_ID_NODE_3>,/ip4/10.0.0.4/tcp/26656/p2p/<PEER_ID_NODE_4>,/ip4/10.0.0.5/tcp/26656/p2p/<PEER_ID_NODE_5>" \
   --evnode.signer.passphrase_file=/etc/ev-node/passphrase \
@@ -262,24 +263,37 @@ INF raft: entering follower state  leader=node-1
 INF block applied from raft log    height=1 hash=0xabc...
 ```
 
-### Check block production
+### Check node health
 
-Query the RPC endpoint of any node to confirm blocks are being produced:
+Verify each node's HTTP API is responding:
 
 ```bash
-curl http://10.0.0.1:26657/status | jq '.result.sync_info.latest_block_height'
+# ev-node exposes its health endpoint on port 7331 by default
+curl http://10.0.0.1:7331/health/ready
+
+# Check which node is the current leader
+curl http://10.0.0.1:7331/raft/node | jq '{node_id, is_leader}'
 ```
 
-Increment a few seconds and check again — the height should be increasing.
+### Check block production
+
+For EVM chains, query the execution layer to confirm blocks are being produced:
+
+```bash
+# Run from any node; the height should increase each time
+cast block latest --rpc-url http://10.0.0.1:8545
+```
+
+Repeat after a few seconds — the block number should be increasing.
 
 ### Verify all nodes are synced
 
-Query each node; all five should report the same `latest_block_height` (or within 1–2 blocks of each other):
+Query each node; all five should report the same block height (or within 1–2 blocks of each other):
 
 ```bash
 for ip in 10.0.0.1 10.0.0.2 10.0.0.3 10.0.0.4 10.0.0.5; do
   echo -n "$ip: height="
-  curl -s http://$ip:26657/status | jq -r '.result.sync_info.latest_block_height'
+  cast block latest --rpc-url http://$ip:8545 | jq -r '.number'
 done
 ```
 

@@ -63,11 +63,20 @@ On each of the four new machines, install the same ev-node binary version as the
 ./evm version
 ```
 
+Create the passphrase file before initializing so the signer key is encrypted from the start:
+
+```bash
+# On each new node
+sudo mkdir -p /etc/ev-node
+echo -n "<YOUR_PASSPHRASE>" | sudo tee /etc/ev-node/passphrase > /dev/null
+sudo chmod 600 /etc/ev-node/passphrase
+```
+
 Initialize each new node's home directory:
 
 ```bash
-# On each new node — do NOT pass --evnode.node.aggregator here yet
-./evm init
+# On each new node
+./evm init --evnode.node.aggregator=true --evnode.signer.passphrase_file /etc/ev-node/passphrase
 ```
 
 ---
@@ -122,8 +131,8 @@ rsync -avz ~/.evm/data/ user@10.0.0.5:~/.evm/data/
 After the copy, note the **latest block height** — this is your reference point:
 
 ```bash
-# Note the height before shutdown
-cast block --rpc-url http://<EV_RETH_IP>:<EV_RETH_TCP>
+# Note the height before shutdown — replace 8545 with your EVM RPC port
+cast block latest --rpc-url http://10.0.0.1:8545 | jq -r '.number'
 ```
 
 **Restart the existing sequencer now** so the chain keeps producing blocks while you prepare the remaining nodes (Steps 6–8). The chain will run uninterrupted until the planned cutover in Step 9.
@@ -239,7 +248,17 @@ This is the planned maintenance window. The chain pauses block production from w
 
 ```bash
 # On node-1 (existing sequencer)
-systemctl stop ev-node    # or kill -SIGTERM $(pgrep evm)
+# Preferred: use systemd if the node runs as a service
+sudo systemctl stop ev-node
+
+# Fallback: stop the process directly
+mapfile -t PIDS < <(pgrep -f "evm start")
+if [ "${#PIDS[@]}" -ne 1 ]; then
+  echo "Expected exactly 1 evm PID, found ${#PIDS[@]}: ${PIDS[*]}"
+  exit 1
+fi
+echo "Stopping PID ${PIDS[0]}"
+kill -SIGTERM "${PIDS[0]}"
 ```
 
 Confirm it has stopped:
@@ -310,14 +329,14 @@ INF block applied from raft log  height=<N+1>
 
 ### Verify block height continuity
 
-The new cluster must continue from exactly where the old sequencer left off. Query the RPC:
+The new cluster must continue from exactly where the old sequencer left off. Query the EVM execution layer:
 
 ```bash
 # From the existing sequencer's last known height (noted in step 5)
 LAST_HEIGHT=<height-before-shutdown>
 
-# Query node-1 (or any node)
-NEW_HEIGHT=$(cast block --rpc-url http://<EV_RETH_IP>:<EV_RETH_TCP>)
+# Query node-1 (or any node) — replace 8545 with your EVM RPC port
+NEW_HEIGHT=$(cast block latest --rpc-url http://10.0.0.1:8545 | jq -r '.number')
 
 echo "Last old height: $LAST_HEIGHT"
 echo "New cluster height: $NEW_HEIGHT"
@@ -330,7 +349,7 @@ echo "New cluster height: $NEW_HEIGHT"
 ```bash
 for ip in 10.0.0.1 10.0.0.2 10.0.0.3 10.0.0.4 10.0.0.5; do
   echo -n "$ip: height="
-  curl -s http://$ip:26657/status | jq -r '.result.sync_info.latest_block_height'
+  cast block latest --rpc-url http://$ip:8545 | jq -r '.number'
 done
 ```
 
