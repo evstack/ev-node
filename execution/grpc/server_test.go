@@ -10,7 +10,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/evstack/ev-node/core/execution"
-	pb "github.com/evstack/ev-node/execution/grpc/types/pb"
+	pb "github.com/evstack/ev-node/execution/grpc/types/pb/evnode/v1"
 )
 
 func TestServer_InitChain(t *testing.T) {

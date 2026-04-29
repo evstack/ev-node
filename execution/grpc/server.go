@@ -8,7 +8,7 @@ import (
 	"connectrpc.com/connect"
 
 	"github.com/evstack/ev-node/core/execution"
-	pb "github.com/evstack/ev-node/execution/grpc/types/pb"
+	pb "github.com/evstack/ev-node/execution/grpc/types/pb/evnode/v1"
 )
 
 // Server is a gRPC server that wraps an execution.Executor implementation.

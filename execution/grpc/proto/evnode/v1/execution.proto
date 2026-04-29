@@ -3,7 +3,7 @@ package evnode.v1;
 
 import "google/protobuf/timestamp.proto";
 
-option go_package = "github.com/evstack/ev-node/execution/grpc/types/pb";
+option go_package = "github.com/evstack/ev-node/execution/grpc/types/pb/evnode/v1";
 
 // ExecutorService defines the execution layer interface for execution/grpc
 service ExecutorService {
