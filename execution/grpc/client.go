@@ -50,7 +50,7 @@ func newHTTP2Client() *http.Client {
 // - *Client: The initialized gRPC client
 func NewClient(url string, opts ...connect.ClientOption) *Client {
 	// Prepend WithGRPC to use the native gRPC protocol (required for tonic/gRPC servers)
-	opts = append([]connect.ClientOption{connect.WithGRPC()}, opts...)
+	opts = append([]connect.ClientOption{connect.WithInterceptors(outboundPropagationInterceptor()), connect.WithGRPC()}, opts...)
 	return &Client{
 		client: v1connect.NewExecutorServiceClient(
 			newHTTP2Client(),
