@@ -359,8 +359,18 @@ func (c *fiberDAClient) Subscribe(ctx context.Context, namespace []byte, _ bool)
 	return out, nil
 }
 
-func (c *fiberDAClient) GetLatestDAHeight(context.Context) (uint64, error) {
-	panic(fmt.Errorf("p2p should not be enabled"))
+// GetLatestDAHeight returns the latest height available on the DA layer by
+// querying the network head.
+func (c *fiberDAClient) GetLatestDAHeight(ctx context.Context) (uint64, error) {
+	headCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
+	defer cancel()
+
+	heigth, err := c.fiber.Head(headCtx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get DA network head: %w", err)
+	}
+
+	return heigth, nil
 }
 
 func (c *fiberDAClient) GetProofs(_ context.Context, ids []datypes.ID, _ []byte) ([]datypes.Proof, error) {

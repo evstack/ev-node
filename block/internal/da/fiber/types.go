@@ -48,6 +48,8 @@ type BlobEvent struct {
 
 // DA is the interface for interacting with the Fiber data availability layer.
 type DA interface {
+	Head(ctx context.Context) (uint64, error)
+
 	// Upload submits a blob under the given namespace to the DA network.
 	// Returns after the blob is uploaded and the payment transaction is broadcast.
 	// Does NOT wait for on-chain confirmation (see package doc for rationale).

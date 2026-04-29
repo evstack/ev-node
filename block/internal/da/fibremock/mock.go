@@ -74,6 +74,12 @@ func NewMockDA(cfg MockDAConfig) *MockDA {
 	}
 }
 
+func (m *MockDA) Head(ctx context.Context) (uint64, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.height, nil
+}
+
 // Upload stores the blob in memory and notifies listeners.
 func (m *MockDA) Upload(ctx context.Context, namespace []byte, data []byte) (fiber.UploadResult, error) {
 	if len(data) == 0 {
