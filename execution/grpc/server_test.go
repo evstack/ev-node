@@ -9,6 +9,7 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/evstack/ev-node/core/execution"
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
 
@@ -172,8 +173,17 @@ func TestServer_GetTxs(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 
-			if len(resp.Msg.Txs) != len(expectedTxs) {
-				t.Fatalf("expected %d txs, got %d", len(expectedTxs), len(resp.Msg.Txs))
+			txs, err := decodeTxBatch(resp.Msg.TxBatch)
+			if err != nil {
+				t.Fatalf("unexpected tx batch decode error: %v", err)
+			}
+			if len(txs) != len(expectedTxs) {
+				t.Fatalf("expected %d txs, got %d", len(expectedTxs), len(txs))
+			}
+			for i := range expectedTxs {
+				if string(txs[i]) != string(expectedTxs[i]) {
+					t.Fatalf("tx batch tx %d: expected %q, got %q", i, expectedTxs[i], txs[i])
+				}
 			}
 		})
 	}
@@ -197,7 +207,7 @@ func TestServer_ExecuteTxs(t *testing.T) {
 		{
 			name: "success",
 			req: &pb.ExecuteTxsRequest{
-				Txs:           txs,
+				TxBatch:       mustEncodeTxBatch(t, txs),
 				BlockHeight:   blockHeight,
 				Timestamp:     timestamppb.New(timestamp),
 				PrevStateRoot: prevStateRoot,
@@ -210,7 +220,7 @@ func TestServer_ExecuteTxs(t *testing.T) {
 		{
 			name: "missing block height",
 			req: &pb.ExecuteTxsRequest{
-				Txs:           txs,
+				TxBatch:       mustEncodeTxBatch(t, txs),
 				Timestamp:     timestamppb.New(timestamp),
 				PrevStateRoot: prevStateRoot,
 			},
@@ -220,7 +230,7 @@ func TestServer_ExecuteTxs(t *testing.T) {
 		{
 			name: "missing timestamp",
 			req: &pb.ExecuteTxsRequest{
-				Txs:           txs,
+				TxBatch:       mustEncodeTxBatch(t, txs),
 				BlockHeight:   blockHeight,
 				PrevStateRoot: prevStateRoot,
 			},
@@ -230,7 +240,7 @@ func TestServer_ExecuteTxs(t *testing.T) {
 		{
 			name: "missing prev state root",
 			req: &pb.ExecuteTxsRequest{
-				Txs:         txs,
+				TxBatch:     mustEncodeTxBatch(t, txs),
 				BlockHeight: blockHeight,
 				Timestamp:   timestamppb.New(timestamp),
 			},
@@ -238,9 +248,20 @@ func TestServer_ExecuteTxs(t *testing.T) {
 			wantCode: connect.CodeInvalidArgument,
 		},
 		{
+			name: "invalid tx batch",
+			req: &pb.ExecuteTxsRequest{
+				TxBatch:       &pb.TxBatch{Data: []byte("tx"), TxSizes: []uint32{3}},
+				BlockHeight:   blockHeight,
+				Timestamp:     timestamppb.New(timestamp),
+				PrevStateRoot: prevStateRoot,
+			},
+			wantErr:  true,
+			wantCode: connect.CodeInvalidArgument,
+		},
+		{
 			name: "executor error",
 			req: &pb.ExecuteTxsRequest{
-				Txs:           txs,
+				TxBatch:       mustEncodeTxBatch(t, txs),
 				BlockHeight:   blockHeight,
 				Timestamp:     timestamppb.New(timestamp),
 				PrevStateRoot: prevStateRoot,
@@ -358,6 +379,99 @@ func TestServer_SetFinal(t *testing.T) {
 
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestServer_FilterTxs(t *testing.T) {
+	ctx := context.Background()
+	txs := [][]byte{[]byte("tx1"), []byte("tx2")}
+	expectedStatuses := []execution.FilterStatus{execution.FilterOK, execution.FilterPostpone}
+
+	tests := []struct {
+		name     string
+		req      *pb.FilterTxsRequest
+		mockFunc func(ctx context.Context, txs [][]byte, maxBytes, maxGas uint64, hasForceIncludedTransaction bool) ([]execution.FilterStatus, error)
+		wantErr  bool
+		wantCode connect.Code
+	}{
+		{
+			name: "success",
+			req: &pb.FilterTxsRequest{
+				TxBatch:                     mustEncodeTxBatch(t, txs),
+				MaxBytes:                    100,
+				MaxGas:                      200,
+				HasForceIncludedTransaction: true,
+			},
+			mockFunc: func(ctx context.Context, txsIn [][]byte, maxBytes, maxGas uint64, forced bool) ([]execution.FilterStatus, error) {
+				if len(txsIn) != len(txs) {
+					t.Fatalf("expected %d txs, got %d", len(txs), len(txsIn))
+				}
+				if maxBytes != 100 {
+					t.Fatalf("expected max bytes 100, got %d", maxBytes)
+				}
+				if maxGas != 200 {
+					t.Fatalf("expected max gas 200, got %d", maxGas)
+				}
+				if !forced {
+					t.Fatalf("expected forced transaction flag")
+				}
+				return expectedStatuses, nil
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid tx batch",
+			req: &pb.FilterTxsRequest{
+				TxBatch: &pb.TxBatch{Data: []byte("tx"), TxSizes: []uint32{3}},
+			},
+			wantErr:  true,
+			wantCode: connect.CodeInvalidArgument,
+		},
+		{
+			name: "executor error",
+			req: &pb.FilterTxsRequest{
+				TxBatch: mustEncodeTxBatch(t, txs),
+			},
+			mockFunc: func(ctx context.Context, txs [][]byte, maxBytes, maxGas uint64, hasForceIncludedTransaction bool) ([]execution.FilterStatus, error) {
+				return nil, errors.New("filter failed")
+			},
+			wantErr:  true,
+			wantCode: connect.CodeInternal,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockExec := &mockExecutor{
+				filterTxsFunc: tt.mockFunc,
+			}
+			server := NewServer(mockExec)
+
+			req := connect.NewRequest(tt.req)
+			resp, err := server.FilterTxs(ctx, req)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error but got none")
+				}
+				var connectErr *connect.Error
+				if errors.As(err, &connectErr) {
+					if connectErr.Code() != tt.wantCode {
+						t.Errorf("expected error code %v, got %v", tt.wantCode, connectErr.Code())
+					}
+				} else {
+					t.Errorf("expected connect error, got %v", err)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(resp.Msg.Statuses) != len(expectedStatuses) {
+				t.Fatalf("expected %d statuses, got %d", len(expectedStatuses), len(resp.Msg.Statuses))
 			}
 		})
 	}

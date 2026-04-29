@@ -28,7 +28,7 @@ import (
 
 const (
 	grpcDbName = "grpc-single"
-	// FlagGrpcExecutorURL is the flag for the gRPC executor endpoint
+	// FlagGrpcExecutorURL is the flag for the gRPC executor endpoint.
 	FlagGrpcExecutorURL = "grpc-executor-url"
 )
 
@@ -163,11 +163,10 @@ func createGRPCExecutionClient(cmd *cobra.Command) (execution.Executor, error) {
 		return nil, fmt.Errorf("%s flag is required", FlagGrpcExecutorURL)
 	}
 
-	// Create and return the gRPC client
-	return executiongrpc.NewClient(executorURL), nil
+	return executiongrpc.NewClient(executorURL)
 }
 
 // addGRPCFlags adds flags specific to the gRPC execution client
 func addGRPCFlags(cmd *cobra.Command) {
-	cmd.Flags().String(FlagGrpcExecutorURL, "http://localhost:50051", "URL of the gRPC execution service")
+	cmd.Flags().String(FlagGrpcExecutorURL, "http://localhost:50051", "URL of the gRPC execution service, or unix:///path/to/executor.sock")
 }

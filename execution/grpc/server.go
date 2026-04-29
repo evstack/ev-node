@@ -77,8 +77,13 @@ func (s *Server) GetTxs(
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get txs: %w", err))
 	}
 
+	txBatch, err := encodeTxBatch(txs)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to encode tx batch: %w", err))
+	}
+
 	return connect.NewResponse(&pb.GetTxsResponse{
-		Txs: txs,
+		TxBatch: txBatch,
 	}), nil
 }
 
@@ -102,9 +107,14 @@ func (s *Server) ExecuteTxs(
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("prev_state_root is required"))
 	}
 
+	txs, err := decodeTxBatch(req.Msg.TxBatch)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid tx_batch: %w", err))
+	}
+
 	updatedStateRoot, err := s.executor.ExecuteTxs(
 		ctx,
-		req.Msg.Txs,
+		txs,
 		req.Msg.BlockHeight,
 		req.Msg.Timestamp.AsTime(),
 		req.Msg.PrevStateRoot,
@@ -162,7 +172,12 @@ func (s *Server) FilterTxs(
 	ctx context.Context,
 	req *connect.Request[pb.FilterTxsRequest],
 ) (*connect.Response[pb.FilterTxsResponse], error) {
-	result, err := s.executor.FilterTxs(ctx, req.Msg.Txs, req.Msg.MaxBytes, req.Msg.MaxGas, req.Msg.HasForceIncludedTransaction)
+	txs, err := decodeTxBatch(req.Msg.TxBatch)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid tx_batch: %w", err))
+	}
+
+	result, err := s.executor.FilterTxs(ctx, txs, req.Msg.MaxBytes, req.Msg.MaxGas, req.Msg.HasForceIncludedTransaction)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to filter transactions: %w", err))
 	}
