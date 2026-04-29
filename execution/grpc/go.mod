@@ -2,6 +2,8 @@ module github.com/evstack/ev-node/execution/grpc
 
 go 1.25.7
 
+replace github.com/evstack/ev-node => ../..
+
 require (
 	connectrpc.com/connect v1.19.2
 	connectrpc.com/grpcreflect v1.3.0

@@ -1,13 +1,12 @@
 package submitting
 
 import (
-	"context"
 	"testing"
 	"time"
 
 	"github.com/rs/zerolog"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/pkg/config"
@@ -16,10 +15,9 @@ import (
 	"github.com/evstack/ev-node/test/mocks"
 )
 
-// helper to build a basic submitter with provided DA mock client and config overrides
-func newTestSubmitter(t *testing.T, mockClient *mocks.MockClient, override func(*config.Config)) *DASubmitter {
+func newTestBatchSubmitter(t *testing.T, mockClient *mocks.MockClient, override func(*config.Config)) *DASubmitter {
+	t.Helper()
 	cfg := config.Config{}
-	// Keep retries small and backoffs minimal
 	cfg.DA.BlockTime.Duration = 1 * time.Millisecond
 	cfg.DA.MaxSubmitAttempts = 3
 	cfg.DA.SubmitOptions = "opts"
@@ -35,115 +33,69 @@ func newTestSubmitter(t *testing.T, mockClient *mocks.MockClient, override func(
 	mockClient.On("GetDataNamespace").Return([]byte(cfg.DA.DataNamespace)).Maybe()
 	mockClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 	mockClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
-	return NewDASubmitter(mockClient, cfg, genesis.Genesis{} /*options=*/, common.BlockOptions{}, common.NopMetrics(), zerolog.Nop(), nil, nil)
+	return NewDASubmitter(mockClient, cfg, genesis.Genesis{}, common.BlockOptions{}, common.NopMetrics(), zerolog.Nop(), nil, nil)
 }
 
-func TestSubmitToDA_MempoolRetry_IncreasesGasAndSucceeds(t *testing.T) {
+func TestSubmitWithRetry_MempoolRetry_Succeeds(t *testing.T) {
 	t.Parallel()
 
 	client := mocks.NewMockClient(t)
-
 	nsBz := datypes.NamespaceFromString("ns").Bytes()
-	opts := []byte("opts")
-	var usedGas []float64
 
-	client.On("Submit", mock.Anything, mock.Anything, mock.AnythingOfType("float64"), nsBz, opts).
-		Run(func(args mock.Arguments) {
-			usedGas = append(usedGas, args.Get(2).(float64))
-		}).
-		Return(datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusNotIncludedInBlock, SubmittedCount: 0}}).
+	client.On("Submit", mock.Anything, mock.Anything, mock.AnythingOfType("float64"), nsBz, mock.Anything).
+		Return(datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusNotIncludedInBlock}}).
 		Once()
 
-	ids := [][]byte{[]byte("id1"), []byte("id2"), []byte("id3")}
-	client.On("Submit", mock.Anything, mock.Anything, mock.AnythingOfType("float64"), nsBz, opts).
-		Run(func(args mock.Arguments) {
-			usedGas = append(usedGas, args.Get(2).(float64))
-		}).
-		Return(datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: ids, SubmittedCount: uint64(len(ids))}}).
+	client.On("Submit", mock.Anything, mock.Anything, mock.AnythingOfType("float64"), nsBz, mock.Anything).
+		Return(datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, SubmittedCount: 2}}).
 		Once()
 
-	s := newTestSubmitter(t, client, nil)
+	s := newTestBatchSubmitter(t, client, nil)
+	defer s.Close()
 
-	items := []string{"a", "b", "c"}
-	marshalledItems := make([][]byte, len(items))
-	for idx, item := range items {
-		marshalledItems[idx] = []byte(item)
-	}
+	var submittedCount int
+	s.submitWithRetry(t.Context(), [][]byte{[]byte("a"), []byte("b")}, nsBz, func(count int, _ uint64) {
+		submittedCount = count
+	}, nil, "item")
 
-	ctx := context.Background()
-	err := submitToDA[string](
-		s,
-		ctx,
-		items,
-		marshalledItems,
-		func(_ []string, _ *datypes.ResultSubmit) {},
-		"item",
-		nsBz,
-		opts,
-	)
-	assert.NoError(t, err)
-
-	// Sentinel value is preserved on retry
-	assert.Equal(t, []float64{-1, -1}, usedGas)
+	require.Equal(t, 2, submittedCount)
+	client.AssertExpectations(t)
 }
 
-func TestSubmitToDA_UnknownError_RetriesSameGasThenSucceeds(t *testing.T) {
+func TestSubmitWithRetry_UnknownError_RetriesThenSucceeds(t *testing.T) {
 	t.Parallel()
 
 	client := mocks.NewMockClient(t)
-
 	nsBz := datypes.NamespaceFromString("ns").Bytes()
 
-	opts := []byte("opts")
-	var usedGas []float64
-
-	// First attempt: unknown failure -> reasonFailure, gas unchanged for next attempt
-	client.On("Submit", mock.Anything, mock.Anything, mock.AnythingOfType("float64"), nsBz, opts).
-		Run(func(args mock.Arguments) { usedGas = append(usedGas, args.Get(2).(float64)) }).
+	client.On("Submit", mock.Anything, mock.Anything, mock.AnythingOfType("float64"), nsBz, mock.Anything).
 		Return(datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusError, Message: "boom"}}).
 		Once()
 
-	// Second attempt: same gas, success
-	ids := [][]byte{[]byte("id1")}
-	client.On("Submit", mock.Anything, mock.Anything, mock.AnythingOfType("float64"), nsBz, opts).
-		Run(func(args mock.Arguments) { usedGas = append(usedGas, args.Get(2).(float64)) }).
-		Return(datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: ids, SubmittedCount: uint64(len(ids))}}).
+	client.On("Submit", mock.Anything, mock.Anything, mock.AnythingOfType("float64"), nsBz, mock.Anything).
+		Return(datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, SubmittedCount: 1}}).
 		Once()
 
-	s := newTestSubmitter(t, client, nil)
+	s := newTestBatchSubmitter(t, client, nil)
+	defer s.Close()
 
-	items := []string{"x"}
-	marshalledItems := make([][]byte, len(items))
-	for idx, item := range items {
-		marshalledItems[idx] = []byte(item)
-	}
+	var submittedCount int
+	s.submitWithRetry(t.Context(), [][]byte{[]byte("x")}, nsBz, func(count int, _ uint64) {
+		submittedCount = count
+	}, nil, "item")
 
-	ctx := context.Background()
-	err := submitToDA[string](
-		s,
-		ctx,
-		items,
-		marshalledItems,
-		func(_ []string, _ *datypes.ResultSubmit) {},
-		"item",
-		nsBz,
-		opts,
-	)
-	assert.NoError(t, err)
-	assert.Equal(t, []float64{-1, -1}, usedGas)
+	require.Equal(t, 1, submittedCount)
+	client.AssertExpectations(t)
 }
 
-func TestSubmitToDA_TooBig_HalvesBatch(t *testing.T) {
+func TestSubmitWithRetry_TooBig_HalvesBatch(t *testing.T) {
 	t.Parallel()
 
 	client := mocks.NewMockClient(t)
-
 	nsBz := datypes.NamespaceFromString("ns").Bytes()
-
-	opts := []byte("opts")
 	var batchSizes []int
 
-	client.On("Submit", mock.Anything, mock.Anything, mock.Anything, nsBz, opts).
+	client.On("Submit", mock.Anything, mock.Anything, mock.Anything, nsBz, mock.Anything).
 		Run(func(args mock.Arguments) {
 			blobs := args.Get(1).([][]byte)
 			batchSizes = append(batchSizes, len(blobs))
@@ -151,121 +103,152 @@ func TestSubmitToDA_TooBig_HalvesBatch(t *testing.T) {
 		Return(datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusTooBig}}).
 		Once()
 
-	ids := [][]byte{[]byte("id1"), []byte("id2")}
-	client.On("Submit", mock.Anything, mock.Anything, mock.Anything, nsBz, opts).
+	client.On("Submit", mock.Anything, mock.Anything, mock.Anything, nsBz, mock.Anything).
 		Run(func(args mock.Arguments) {
 			blobs := args.Get(1).([][]byte)
 			batchSizes = append(batchSizes, len(blobs))
 		}).
-		Return(datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: ids, SubmittedCount: uint64(len(ids))}}).
+		Return(datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, SubmittedCount: 2}}).
 		Once()
 
-	s := newTestSubmitter(t, client, nil)
+	s := newTestBatchSubmitter(t, client, nil)
+	defer s.Close()
 
-	items := []string{"a", "b", "c", "d"}
-	marshalledItems := make([][]byte, len(items))
-	for idx, item := range items {
-		marshalledItems[idx] = []byte(item)
-	}
+	s.submitWithRetry(t.Context(), [][]byte{[]byte("a"), []byte("b"), []byte("c"), []byte("d")}, nsBz, nil, nil, "item")
 
-	ctx := context.Background()
-	err := submitToDA[string](
-		s,
-		ctx,
-		items,
-		marshalledItems,
-		func(_ []string, _ *datypes.ResultSubmit) {},
-		"item",
-		nsBz,
-		opts,
-	)
-	assert.NoError(t, err)
-	assert.Equal(t, []int{4, 2}, batchSizes)
+	require.Equal(t, []int{4, 2}, batchSizes)
+	client.AssertExpectations(t)
 }
 
-func TestSubmitToDA_SentinelNoGas_PreservesGasAcrossRetries(t *testing.T) {
+func TestSubmitWithRetry_PartialSuccess_Advances(t *testing.T) {
 	t.Parallel()
 
 	client := mocks.NewMockClient(t)
-
 	nsBz := datypes.NamespaceFromString("ns").Bytes()
 
-	opts := []byte("opts")
-	var usedGas []float64
+	client.On("Submit", mock.Anything, mock.Anything, mock.Anything, nsBz, mock.Anything).
+		Return(datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, SubmittedCount: 2}}).
+		Once()
 
-	client.On("Submit", mock.Anything, mock.Anything, mock.AnythingOfType("float64"), nsBz, opts).
-		Run(func(args mock.Arguments) { usedGas = append(usedGas, args.Get(2).(float64)) }).
+	client.On("Submit", mock.Anything, mock.Anything, mock.Anything, nsBz, mock.Anything).
+		Return(datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, SubmittedCount: 1}}).
+		Once()
+
+	s := newTestBatchSubmitter(t, client, nil)
+	defer s.Close()
+
+	var totalSubmitted int
+	s.submitWithRetry(t.Context(), [][]byte{[]byte("a"), []byte("b"), []byte("c")}, nsBz, func(count int, _ uint64) {
+		totalSubmitted += count
+	}, nil, "item")
+
+	require.Equal(t, 3, totalSubmitted)
+	client.AssertExpectations(t)
+}
+
+func TestSubmitWithRetry_MaxAttempts_Exhausted(t *testing.T) {
+	t.Parallel()
+
+	client := mocks.NewMockClient(t)
+	nsBz := datypes.NamespaceFromString("ns").Bytes()
+
+	client.On("Submit", mock.Anything, mock.Anything, mock.Anything, nsBz, mock.Anything).
+		Return(datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusError, Message: "fail"}}).
+		Times(3)
+
+	s := newTestBatchSubmitter(t, client, nil)
+	defer s.Close()
+
+	var errReceived error
+	s.submitWithRetry(t.Context(), [][]byte{[]byte("a")}, nsBz, nil, func(err error) {
+		errReceived = err
+	}, "item")
+
+	require.Error(t, errReceived)
+	client.AssertExpectations(t)
+}
+
+func TestSubmitWithRetry_AlreadyInMempool_Retries(t *testing.T) {
+	t.Parallel()
+
+	client := mocks.NewMockClient(t)
+	nsBz := datypes.NamespaceFromString("ns").Bytes()
+
+	client.On("Submit", mock.Anything, mock.Anything, mock.Anything, nsBz, mock.Anything).
 		Return(datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusAlreadyInMempool}}).
 		Once()
 
-	ids := [][]byte{[]byte("id1")}
-	client.On("Submit", mock.Anything, mock.Anything, mock.AnythingOfType("float64"), nsBz, opts).
-		Run(func(args mock.Arguments) { usedGas = append(usedGas, args.Get(2).(float64)) }).
-		Return(datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: ids, SubmittedCount: uint64(len(ids))}}).
+	client.On("Submit", mock.Anything, mock.Anything, mock.Anything, nsBz, mock.Anything).
+		Return(datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, SubmittedCount: 1}}).
 		Once()
 
-	s := newTestSubmitter(t, client, nil)
+	s := newTestBatchSubmitter(t, client, nil)
+	defer s.Close()
 
-	items := []string{"only"}
-	marshalledItems := make([][]byte, len(items))
-	for idx, item := range items {
-		marshalledItems[idx] = []byte(item)
-	}
+	var submittedCount int
+	s.submitWithRetry(t.Context(), [][]byte{[]byte("a")}, nsBz, func(count int, _ uint64) {
+		submittedCount = count
+	}, nil, "item")
 
-	ctx := context.Background()
-	err := submitToDA[string](
-		s,
-		ctx,
-		items,
-		marshalledItems,
-		func(_ []string, _ *datypes.ResultSubmit) {},
-		"item",
-		nsBz,
-		opts,
-	)
-	assert.NoError(t, err)
-	assert.Equal(t, []float64{-1, -1}, usedGas)
+	require.Equal(t, 1, submittedCount)
+	client.AssertExpectations(t)
 }
 
-func TestSubmitToDA_PartialSuccess_AdvancesWindow(t *testing.T) {
+func TestSubmitWithRetry_EmptyBatch_Noop(t *testing.T) {
 	t.Parallel()
 
 	client := mocks.NewMockClient(t)
+	s := newTestBatchSubmitter(t, client, nil)
+	defer s.Close()
 
+	var errReceived error
+	s.submitWithRetry(t.Context(), nil, nil, nil, func(err error) {
+		errReceived = err
+	}, "item")
+
+	require.NoError(t, errReceived)
+}
+
+func TestSubmitWithRetry_ContextCanceled_Stops(t *testing.T) {
+	t.Parallel()
+
+	client := mocks.NewMockClient(t)
 	nsBz := datypes.NamespaceFromString("ns").Bytes()
 
-	opts := []byte("opts")
-	var totalSubmitted int
-
-	firstIDs := [][]byte{[]byte("id1"), []byte("id2")}
-	client.On("Submit", mock.Anything, mock.Anything, mock.Anything, nsBz, opts).
-		Return(datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: firstIDs, SubmittedCount: uint64(len(firstIDs))}}).
+	client.On("Submit", mock.Anything, mock.Anything, mock.Anything, nsBz, mock.Anything).
+		Return(datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusContextCanceled}}).
 		Once()
 
-	secondIDs := [][]byte{[]byte("id3")}
-	client.On("Submit", mock.Anything, mock.Anything, mock.Anything, nsBz, opts).
-		Return(datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: secondIDs, SubmittedCount: uint64(len(secondIDs))}}).
+	s := newTestBatchSubmitter(t, client, nil)
+	defer s.Close()
+
+	var errReceived error
+	s.submitWithRetry(t.Context(), [][]byte{[]byte("a")}, nsBz, nil, func(err error) {
+		errReceived = err
+	}, "item")
+
+	require.NoError(t, errReceived)
+	client.AssertExpectations(t)
+}
+
+func TestSubmitWithRetry_SingleItemTooBig_Fails(t *testing.T) {
+	t.Parallel()
+
+	client := mocks.NewMockClient(t)
+	nsBz := datypes.NamespaceFromString("ns").Bytes()
+
+	client.On("Submit", mock.Anything, mock.Anything, mock.Anything, nsBz, mock.Anything).
+		Return(datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusTooBig}}).
 		Once()
 
-	s := newTestSubmitter(t, client, nil)
+	s := newTestBatchSubmitter(t, client, nil)
+	defer s.Close()
 
-	items := []string{"a", "b", "c"}
-	marshalledItems := make([][]byte, len(items))
-	for idx, item := range items {
-		marshalledItems[idx] = []byte(item)
-	}
+	var errReceived error
+	s.submitWithRetry(t.Context(), [][]byte{[]byte("a")}, nsBz, nil, func(err error) {
+		errReceived = err
+	}, "item")
 
-	ctx := context.Background()
-	err := submitToDA[string](
-		s,
-		ctx,
-		items,
-		marshalledItems,
-		func(submitted []string, _ *datypes.ResultSubmit) { totalSubmitted += len(submitted) },
-		"item",
-		nsBz,
-		opts,
-	)
-	assert.NoError(t, err)
-	assert.Equal(t, 3, totalSubmitted)
+	require.ErrorIs(t, errReceived, common.ErrOversizedItem)
+	client.AssertExpectations(t)
 }

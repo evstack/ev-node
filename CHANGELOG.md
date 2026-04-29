@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changes
 
 - Optimization of mutex usage in cache for reaper [#3286](https://github.com/evstack/ev-node/pull/3286)
+- Add Unix domain socket support for gRPC execution endpoints via `unix:///path/to/socket` [#3297](https://github.com/evstack/ev-node/pull/3297)
+- **BREAKING:** Replace legacy gRPC execution `txs` payload fields with `tx_batch` so clients and servers use contiguous transaction buffers [#3297](https://github.com/evstack/ev-node/pull/3297)
 - Optimize metadata writes by making it async in cache store [#3298](https://github.com/evstack/ev-node/pull/3298)
 - Reduce tx cache retention to avoid OOM under (really) heavy tx load [#3299](https://github.com/evstack/ev-node/pull/3299)
 

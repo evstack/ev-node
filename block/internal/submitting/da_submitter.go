@@ -122,8 +122,7 @@ type DASubmitter struct {
 	addressSelector pkgda.AddressSelector
 
 	// envelopeCache caches fully signed DA envelopes by height to avoid re-signing on retries
-	envelopeCache   *lru.Cache[uint64, []byte]
-	envelopeCacheMu sync.RWMutex
+	envelopeCache *lru.Cache[uint64, []byte]
 
 	// lastSubmittedHeight tracks the last successfully submitted height for lazy cache invalidation.
 	// This avoids O(N) iteration over the cache on every submission.
@@ -131,6 +130,8 @@ type DASubmitter struct {
 
 	// signingWorkers is the number of parallel workers for signing
 	signingWorkers int
+
+	wg sync.WaitGroup
 }
 
 // NewDASubmitter creates a new DA submitter
@@ -194,22 +195,12 @@ func NewDASubmitter(
 	}
 }
 
-// recordFailure records a DA submission failure in metrics
-func (s *DASubmitter) recordFailure(reason common.DASubmitterFailureReason) {
-	counter, ok := s.metrics.DASubmitterFailures[reason]
-	if !ok {
-		s.logger.Warn().Str("reason", string(reason)).Msg("unregistered failure reason, metric not recorded")
-		return
-	}
-	counter.Add(1)
-
-	if gauge, ok := s.metrics.DASubmitterLastFailure[reason]; ok {
-		gauge.Set(float64(time.Now().Unix()))
-	}
+func (s *DASubmitter) Close() {
+	s.wg.Wait()
 }
 
 // SubmitHeaders submits pending headers to DA layer
-func (s *DASubmitter) SubmitHeaders(ctx context.Context, headers []*types.SignedHeader, marshalledHeaders [][]byte, cache cache.Manager, signer signer.Signer) error {
+func (s *DASubmitter) SubmitHeaders(ctx context.Context, headers []*types.SignedHeader, marshalledHeaders [][]byte, cache cache.Manager, signer signer.Signer, onSubmitSuccess func(), onSubmitError func(error)) error {
 	if len(headers) == 0 {
 		return nil
 	}
@@ -230,28 +221,274 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, headers []*types.Signed
 		return err
 	}
 
-	return submitToDA(s, ctx, headers, envelopes,
-		func(submitted []*types.SignedHeader, res *datypes.ResultSubmit) {
-			heights := make([]uint64, len(submitted))
-			for i, header := range submitted {
-				cache.SetHeaderDAIncluded(header.Hash().String(), res.Height, header.Height())
-				heights[i] = header.Height()
+	postSubmit := s.makeHeaderPostSubmit(ctx, cache)
+	namespace := s.client.GetHeaderNamespace()
+
+	s.wg.Go(func() {
+		s.submitWithRetry(ctx, envelopes, namespace, func(submittedCount int, daHeight uint64) {
+			if submittedCount > 0 {
+				postSubmit(headers[:submittedCount], &datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, SubmittedCount: uint64(submittedCount), Height: daHeight}})
 			}
-			if err := s.headerDAHintAppender.AppendDAHint(ctx, res.Height, heights...); err != nil {
-				s.logger.Error().Err(err).Msg("failed to append da height hint in header p2p store")
-				// ignoring error here, since we don't want to block the block submission'
+			if onSubmitSuccess != nil {
+				onSubmitSuccess()
 			}
-			if l := len(submitted); l > 0 {
-				lastHeight := submitted[l-1].Height()
-				cache.SetLastSubmittedHeaderHeight(ctx, lastHeight)
-				// Update last submitted height for lazy cache invalidation (O(1) instead of O(N))
-				s.lastSubmittedHeight.Store(lastHeight)
+		}, onSubmitError, "header")
+	})
+
+	return nil
+}
+
+func (s *DASubmitter) makeHeaderPostSubmit(ctx context.Context, cache cache.Manager) func([]*types.SignedHeader, *datypes.ResultSubmit) {
+	return func(submitted []*types.SignedHeader, res *datypes.ResultSubmit) {
+		heights := make([]uint64, len(submitted))
+		for i, header := range submitted {
+			cache.SetHeaderDAIncluded(header.Hash().String(), res.Height, header.Height())
+			heights[i] = header.Height()
+		}
+		if err := s.headerDAHintAppender.AppendDAHint(ctx, res.Height, heights...); err != nil {
+			s.logger.Error().Err(err).Msg("failed to append da height hint in header p2p store")
+		}
+		if l := len(submitted); l > 0 {
+			lastHeight := submitted[l-1].Height()
+			cache.SetLastSubmittedHeaderHeight(ctx, lastHeight)
+			s.lastSubmittedHeight.Store(lastHeight)
+		}
+	}
+}
+
+// SubmitData submits pending data to DA layer
+func (s *DASubmitter) SubmitData(ctx context.Context, unsignedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis, onSubmitSuccess func(), onSubmitError func(error)) error {
+	if len(unsignedDataList) == 0 {
+		return nil
+	}
+
+	if len(marshalledData) != len(unsignedDataList) {
+		return fmt.Errorf("marshalledData length (%d) does not match unsignedDataList length (%d)", len(marshalledData), len(unsignedDataList))
+	}
+
+	// Sign the data (cache returns unsigned SignedData structs)
+	signedDataList, signedDataListBz, err := s.signData(ctx, unsignedDataList, marshalledData, signer, genesis)
+	if err != nil {
+		return fmt.Errorf("failed to sign data: %w", err)
+	}
+
+	if len(signedDataList) == 0 {
+		return nil
+	}
+
+	s.logger.Info().Int("count", len(signedDataList)).Msg("submitting data to DA")
+
+	postSubmit := s.makeDataPostSubmit(ctx, cache)
+	namespace := s.client.GetDataNamespace()
+
+	s.wg.Go(func() {
+		s.submitWithRetry(ctx, signedDataListBz, namespace, func(submittedCount int, daHeight uint64) {
+			if submittedCount > 0 {
+				postSubmit(signedDataList[:submittedCount], &datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, SubmittedCount: uint64(submittedCount), Height: daHeight}})
 			}
-		},
-		"header",
-		s.client.GetHeaderNamespace(),
-		[]byte(s.config.DA.SubmitOptions),
-	)
+			if onSubmitSuccess != nil {
+				onSubmitSuccess()
+			}
+		}, onSubmitError, "data")
+	})
+
+	return nil
+}
+
+func (s *DASubmitter) makeDataPostSubmit(ctx context.Context, cache cache.Manager) func([]*types.SignedData, *datypes.ResultSubmit) {
+	return func(submitted []*types.SignedData, res *datypes.ResultSubmit) {
+		heights := make([]uint64, len(submitted))
+		for i, sd := range submitted {
+			cache.SetDataDAIncluded(sd.Data.DACommitment().String(), res.Height, sd.Height())
+			heights[i] = sd.Height()
+		}
+		if err := s.dataDAHintAppender.AppendDAHint(ctx, res.Height, heights...); err != nil {
+			s.logger.Error().Err(err).Msg("failed to append da height hint in data p2p store")
+		}
+		if l := len(submitted); l > 0 {
+			lastHeight := submitted[l-1].Height()
+			cache.SetLastSubmittedDataHeight(ctx, lastHeight)
+		}
+	}
+}
+
+func (s *DASubmitter) submitWithRetry(
+	ctx context.Context,
+	marshaled [][]byte,
+	namespace []byte,
+	onSuccess func(submittedCount int, daHeight uint64),
+	onError func(error),
+	itemType string,
+) {
+	pol := defaultRetryPolicy(s.config.DA.MaxSubmitAttempts, s.config.DA.BlockTime.Duration)
+	options := []byte(s.config.DA.SubmitOptions)
+
+	if len(marshaled) == 0 {
+		if onError != nil {
+			onError(nil)
+		}
+		return
+	}
+
+	limitedMarshaled, oversized := limitBatchBySizeBytes(marshaled, pol.MaxBlobBytes)
+	if oversized {
+		s.logger.Error().
+			Str("itemType", itemType).
+			Uint64("maxBlobBytes", pol.MaxBlobBytes).
+			Msg("CRITICAL: item exceeds maximum blob size")
+		if onError != nil {
+			onError(common.ErrOversizedItem)
+		}
+		return
+	}
+	marshaled = limitedMarshaled
+
+	rs := retryState{}
+
+	// Start the retry loop
+	for rs.Attempt < pol.MaxAttempts {
+		// Record resend metric for retry attempts (not the first attempt)
+		if rs.Attempt > 0 {
+			s.metrics.DASubmitterResends.Add(1)
+		}
+
+		if err := waitForBackoffOrContext(ctx, rs.Backoff); err != nil {
+			if onError != nil {
+				onError(nil)
+			}
+			return
+		}
+
+		// Select signing address and merge with options
+		signingAddress := s.addressSelector.Next()
+		mergedOptions, err := mergeSubmitOptions(options, signingAddress)
+		if err != nil {
+			s.logger.Error().Err(err).Msg("failed to merge submit options with signing address")
+			if onError != nil {
+				onError(err)
+			}
+			return
+		}
+
+		// Perform submission
+		start := time.Now()
+		res := s.client.Submit(ctx, marshaled, -1, namespace, mergedOptions)
+		s.logger.Debug().Int("attempts", rs.Attempt).Dur("elapsed", time.Since(start)).Uint64("code", uint64(res.Code)).Msg("got Submit response")
+
+		// Record submission result for observability
+		if vis := server.GetDAVisualizationServer(); vis != nil {
+			vis.RecordSubmission(&res, 0, uint64(len(marshaled)), namespace)
+		}
+
+		switch res.Code {
+		case datypes.StatusSuccess:
+			submitted := int(res.SubmittedCount)
+			if onSuccess != nil {
+				onSuccess(submitted, res.Height)
+			}
+			s.logger.Info().Str("itemType", itemType).Int("count", submitted).Msg("successfully submitted items to DA layer")
+			if submitted == len(marshaled) {
+				return
+			}
+			// partial success: advance window
+			marshaled = marshaled[submitted:]
+			rs.Next(reasonSuccess, pol)
+
+		case datypes.StatusTooBig:
+			// Record failure metric
+			s.recordFailure(common.DASubmitterFailureReasonTooBig)
+			// Iteratively halve until it fits or single-item too big
+			if len(marshaled) == 1 {
+				s.logger.Error().
+					Str("itemType", itemType).
+					Msg("CRITICAL: single item exceeds DA blob size limit")
+				if onError != nil {
+					onError(common.ErrOversizedItem)
+				}
+				return
+			}
+			half := len(marshaled) / 2
+			if half == 0 {
+				half = 1
+			}
+			marshaled = marshaled[:half]
+			s.logger.Debug().Int("newBatchSize", half).Msg("batch too big; halving and retrying")
+			rs.Next(reasonTooBig, pol)
+
+		case datypes.StatusNotIncludedInBlock:
+			// Record failure metric
+			s.recordFailure(common.DASubmitterFailureReasonNotIncludedInBlock)
+			s.logger.Info().Dur("backoff", pol.MaxBackoff).Msg("retrying due to mempool state")
+			rs.Next(reasonMempool, pol)
+
+		case datypes.StatusAlreadyInMempool:
+			// Record failure metric
+			s.recordFailure(common.DASubmitterFailureReasonAlreadyInMempool)
+			s.logger.Info().Dur("backoff", pol.MaxBackoff).Msg("retrying due to mempool state")
+			rs.Next(reasonMempool, pol)
+
+		case datypes.StatusContextCanceled:
+			// Record failure metric
+			s.recordFailure(common.DASubmitterFailureReasonContextCanceled)
+			s.logger.Info().Msg("DA layer submission canceled due to context cancellation")
+			if onError != nil {
+				onError(nil)
+			}
+			return
+
+		default:
+			// Record failure metric
+			s.recordFailure(common.DASubmitterFailureReasonUnknown)
+			s.logger.Error().Str("error", res.Message).Int("attempt", rs.Attempt+1).Msg("DA layer submission failed")
+			rs.Next(reasonFailure, pol)
+		}
+	}
+
+	// Final failure after max attempts
+	s.recordFailure(common.DASubmitterFailureReasonTimeout)
+	s.logger.Error().Str("itemType", itemType).Int("attempts", rs.Attempt).Msg("failed to submit all items to DA layer after max attempts")
+	if onError != nil {
+		onError(fmt.Errorf("failed to submit after %d attempts", rs.Attempt))
+	}
+}
+
+// limitBatchBySizeBytes returns a prefix of marshaled blobs whose total size does not exceed maxBytes.
+// If the first blob exceeds maxBytes, it returns (nil, true) to indicate an unrecoverable oversized item.
+func limitBatchBySizeBytes(marshaled [][]byte, maxBytes uint64) ([][]byte, bool) {
+	total := uint64(0)
+	count := 0
+	for i, b := range marshaled {
+		sz := uint64(len(b))
+		if sz > maxBytes {
+			if i == 0 {
+				return nil, true
+			}
+			break
+		}
+		if total+sz > maxBytes {
+			break
+		}
+		total += sz
+		count++
+	}
+	if count == 0 {
+		return nil, true
+	}
+	return marshaled[:count], false
+}
+
+// recordFailure records a DA submission failure in metrics
+func (s *DASubmitter) recordFailure(reason common.DASubmitterFailureReason) {
+	counter, ok := s.metrics.DASubmitterFailures[reason]
+	if !ok {
+		s.logger.Warn().Str("reason", string(reason)).Msg("unregistered failure reason, metric not recorded")
+		return
+	}
+	counter.Add(1)
+
+	if gauge, ok := s.metrics.DASubmitterLastFailure[reason]; ok {
+		gauge.Set(float64(time.Now().Unix()))
+	}
 }
 
 // createDAEnvelopes creates signed DA envelopes for the given headers.
@@ -283,6 +520,7 @@ func (s *DASubmitter) createDAEnvelopes(ctx context.Context, headers []*types.Si
 
 	// For small batches, sign sequentially to avoid goroutine overhead
 	if len(needSigning) <= 2 || s.signingWorkers <= 1 {
+		// Send jobs
 		for _, i := range needSigning {
 			envelope, err := s.signAndCacheEnvelope(ctx, headers[i], marshalledHeaders[i], signer)
 			if err != nil {
@@ -330,7 +568,6 @@ func (s *DASubmitter) signEnvelopesParallel(
 		})
 	}
 
-	// Send jobs
 	for _, i := range needSigning {
 		jobs <- signJob{index: i}
 	}
@@ -391,9 +628,6 @@ func (s *DASubmitter) getCachedEnvelope(height uint64) []byte {
 	if height <= s.lastSubmittedHeight.Load() {
 		return nil
 	}
-	s.envelopeCacheMu.RLock()
-	defer s.envelopeCacheMu.RUnlock()
-
 	if envelope, ok := s.envelopeCache.Get(height); ok {
 		return envelope
 	}
@@ -410,54 +644,7 @@ func (s *DASubmitter) setCachedEnvelope(height uint64, envelope []byte) {
 	if height <= s.lastSubmittedHeight.Load() {
 		return
 	}
-	s.envelopeCacheMu.Lock()
-	defer s.envelopeCacheMu.Unlock()
-
 	s.envelopeCache.Add(height, envelope)
-}
-
-// SubmitData submits pending data to DA layer
-func (s *DASubmitter) SubmitData(ctx context.Context, unsignedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis) error {
-	if len(unsignedDataList) == 0 {
-		return nil
-	}
-
-	if len(marshalledData) != len(unsignedDataList) {
-		return fmt.Errorf("marshalledData length (%d) does not match unsignedDataList length (%d)", len(marshalledData), len(unsignedDataList))
-	}
-
-	// Sign the data (cache returns unsigned SignedData structs)
-	signedDataList, signedDataListBz, err := s.signData(ctx, unsignedDataList, marshalledData, signer, genesis)
-	if err != nil {
-		return fmt.Errorf("failed to sign data: %w", err)
-	}
-
-	if len(signedDataList) == 0 {
-		return nil // No non-empty data to submit
-	}
-
-	s.logger.Info().Int("count", len(signedDataList)).Msg("submitting data to DA")
-
-	return submitToDA(s, ctx, signedDataList, signedDataListBz,
-		func(submitted []*types.SignedData, res *datypes.ResultSubmit) {
-			heights := make([]uint64, len(submitted))
-			for i, sd := range submitted {
-				cache.SetDataDAIncluded(sd.Data.DACommitment().String(), res.Height, sd.Height())
-				heights[i] = sd.Height()
-			}
-			if err := s.dataDAHintAppender.AppendDAHint(ctx, res.Height, heights...); err != nil {
-				s.logger.Error().Err(err).Msg("failed to append da height hint in data p2p store")
-				// ignoring error here, since we don't want to block the block submission'
-			}
-			if l := len(submitted); l > 0 {
-				lastHeight := submitted[l-1].Height()
-				cache.SetLastSubmittedDataHeight(ctx, lastHeight)
-			}
-		},
-		"data",
-		s.client.GetDataNamespace(),
-		[]byte(s.config.DA.SubmitOptions),
-	)
 }
 
 // signData signs unsigned SignedData structs returned from cache
@@ -554,163 +741,6 @@ func mergeSubmitOptions(baseOptions []byte, signingAddress string) ([]byte, erro
 	}
 
 	return mergedOptions, nil
-}
-
-// submitToDA is a generic helper for submitting items to the DA layer with retry, backoff, and gas price logic.
-func submitToDA[T any](
-	s *DASubmitter,
-	ctx context.Context,
-	items []T,
-	marshaled [][]byte,
-	postSubmit func([]T, *datypes.ResultSubmit),
-	itemType string,
-	namespace []byte,
-	options []byte,
-) error {
-	if len(items) != len(marshaled) {
-		return fmt.Errorf("items length (%d) does not match marshaled length (%d)", len(items), len(marshaled))
-	}
-
-	pol := defaultRetryPolicy(s.config.DA.MaxSubmitAttempts, s.config.DA.BlockTime.Duration)
-
-	rs := retryState{Attempt: 0, Backoff: 0}
-
-	// Limit this submission to a single size-capped batch
-	if len(marshaled) > 0 {
-		batchItems, batchMarshaled, err := limitBatchBySize(items, marshaled, pol.MaxBlobBytes)
-		if err != nil {
-			s.logger.Error().
-				Str("itemType", itemType).
-				Uint64("maxBlobBytes", pol.MaxBlobBytes).
-				Err(err).
-				Msg("CRITICAL: Unrecoverable error - item exceeds maximum blob size")
-			return fmt.Errorf("unrecoverable error: no %s items fit within max blob size: %w", itemType, err)
-		}
-		items = batchItems
-		marshaled = batchMarshaled
-	}
-
-	// Start the retry loop
-	for rs.Attempt < pol.MaxAttempts {
-		// Record resend metric for retry attempts (not the first attempt)
-		if rs.Attempt > 0 {
-			s.metrics.DASubmitterResends.Add(1)
-		}
-
-		if err := waitForBackoffOrContext(ctx, rs.Backoff); err != nil {
-			return err
-		}
-
-		// Select signing address and merge with options
-		signingAddress := s.addressSelector.Next()
-		mergedOptions, err := mergeSubmitOptions(options, signingAddress)
-		if err != nil {
-			s.logger.Error().Err(err).Msg("failed to merge submit options with signing address")
-			return fmt.Errorf("failed to merge submit options: %w", err)
-		}
-
-		if signingAddress != "" {
-			s.logger.Debug().Str("signingAddress", signingAddress).Msg("using signing address for DA submission")
-		}
-
-		// Perform submission
-		start := time.Now()
-		res := s.client.Submit(ctx, marshaled, -1, namespace, mergedOptions)
-		s.logger.Debug().Int("attempts", rs.Attempt).Dur("elapsed", time.Since(start)).Uint64("code", uint64(res.Code)).Msg("got SubmitWithHelpers response from celestia")
-
-		// Record submission result for observability
-		if daVisualizationServer := server.GetDAVisualizationServer(); daVisualizationServer != nil {
-			daVisualizationServer.RecordSubmission(&res, 0, uint64(len(items)), namespace)
-		}
-
-		switch res.Code {
-		case datypes.StatusSuccess:
-			submitted := items[:res.SubmittedCount]
-			postSubmit(submitted, &res)
-			s.logger.Info().Str("itemType", itemType).Uint64("count", res.SubmittedCount).Msg("successfully submitted items to DA layer")
-			if int(res.SubmittedCount) == len(items) {
-				rs.Next(reasonSuccess, pol)
-				return nil
-			}
-			// partial success: advance window
-			items = items[res.SubmittedCount:]
-			marshaled = marshaled[res.SubmittedCount:]
-			rs.Next(reasonSuccess, pol)
-
-		case datypes.StatusTooBig:
-			// Record failure metric
-			s.recordFailure(common.DASubmitterFailureReasonTooBig)
-			// Iteratively halve until it fits or single-item too big
-			if len(items) == 1 {
-				s.logger.Error().
-					Str("itemType", itemType).
-					Uint64("maxBlobBytes", pol.MaxBlobBytes).
-					Msg("CRITICAL: Unrecoverable error - single item exceeds DA blob size limit")
-				return fmt.Errorf("unrecoverable error: %w: single %s item exceeds DA blob size limit", common.ErrOversizedItem, itemType)
-			}
-			half := len(items) / 2
-			if half == 0 {
-				half = 1
-			}
-			items = items[:half]
-			marshaled = marshaled[:half]
-			s.logger.Debug().Int("newBatchSize", half).Msg("batch too big; halving and retrying")
-			rs.Next(reasonTooBig, pol)
-
-		case datypes.StatusNotIncludedInBlock:
-			// Record failure metric
-			s.recordFailure(common.DASubmitterFailureReasonNotIncludedInBlock)
-			s.logger.Info().Dur("backoff", pol.MaxBackoff).Msg("retrying due to mempool state")
-			rs.Next(reasonMempool, pol)
-
-		case datypes.StatusAlreadyInMempool:
-			// Record failure metric
-			s.recordFailure(common.DASubmitterFailureReasonAlreadyInMempool)
-			s.logger.Info().Dur("backoff", pol.MaxBackoff).Msg("retrying due to mempool state")
-			rs.Next(reasonMempool, pol)
-
-		case datypes.StatusContextCanceled:
-			// Record failure metric
-			s.recordFailure(common.DASubmitterFailureReasonContextCanceled)
-			s.logger.Info().Msg("DA layer submission canceled due to context cancellation")
-			return context.Canceled
-
-		default:
-			// Record failure metric
-			s.recordFailure(common.DASubmitterFailureReasonUnknown)
-			s.logger.Error().Str("error", res.Message).Int("attempt", rs.Attempt+1).Msg("DA layer submission failed")
-			rs.Next(reasonFailure, pol)
-		}
-	}
-
-	// Final failure after max attempts
-	s.recordFailure(common.DASubmitterFailureReasonTimeout)
-	return fmt.Errorf("failed to submit all %s(s) to DA layer after %d attempts", itemType, rs.Attempt)
-}
-
-// limitBatchBySize returns a prefix of items whose total marshaled size does not exceed maxBytes.
-// If the first item exceeds maxBytes, it returns ErrOversizedItem which is unrecoverable.
-func limitBatchBySize[T any](items []T, marshaled [][]byte, maxBytes uint64) ([]T, [][]byte, error) {
-	total := uint64(0)
-	count := 0
-	for i := range items {
-		sz := uint64(len(marshaled[i]))
-		if sz > maxBytes {
-			if i == 0 {
-				return nil, nil, fmt.Errorf("%w: item size %d exceeds max %d", common.ErrOversizedItem, sz, maxBytes)
-			}
-			break
-		}
-		if total+sz > maxBytes {
-			break
-		}
-		total += sz
-		count++
-	}
-	if count == 0 {
-		return nil, nil, fmt.Errorf("no items fit within %d bytes", maxBytes)
-	}
-	return items[:count], marshaled[:count], nil
 }
 
 func waitForBackoffOrContext(ctx context.Context, backoff time.Duration) error {

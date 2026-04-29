@@ -49,16 +49,28 @@ message GetTxsRequest {
   // Empty for now, may include filtering criteria in the future
 }
 
+// TxBatch stores ordered transactions in one contiguous bytes buffer.
+message TxBatch {
+  // Concatenated transaction bytes.
+  bytes data = 1;
+
+  // Byte length for each transaction in order.
+  repeated uint32 tx_sizes = 2;
+}
+
 // GetTxsResponse contains the available transactions
 message GetTxsResponse {
-  // Slice of valid transactions from mempool
-  repeated bytes txs = 1;
+  reserved 1;
+  reserved "txs";
+
+  // Valid transactions from mempool in contiguous batch form.
+  TxBatch tx_batch = 2;
 }
 
 // ExecuteTxsRequest contains transactions and block context for execution
 message ExecuteTxsRequest {
-  // Ordered list of transactions to execute
-  repeated bytes txs = 1;
+  reserved 1;
+  reserved "txs";
 
   // Height of block being created (must be > 0)
   uint64 block_height = 2;
@@ -68,6 +80,9 @@ message ExecuteTxsRequest {
 
   // Previous block's state root hash
   bytes prev_state_root = 4;
+
+  // Ordered transactions to execute in contiguous batch form.
+  TxBatch tx_batch = 5;
 }
 
 // ExecuteTxsResponse contains the result of transaction execution
@@ -112,8 +127,8 @@ enum FilterStatus {
 
 // FilterTxsRequest contains transactions to validate and filter
 message FilterTxsRequest {
-  // All transactions (force-included + mempool)
-  repeated bytes txs = 1;
+  reserved 1;
+  reserved "txs";
 
   // Maximum cumulative size allowed (0 means no size limit)
   uint64 max_bytes = 2;
@@ -123,6 +138,9 @@ message FilterTxsRequest {
 
   // Whether force-included transactions are present
   bool has_force_included_transaction = 4;
+
+  // All transactions (force-included + mempool) in contiguous batch form.
+  TxBatch tx_batch = 5;
 }
 
 // FilterTxsResponse contains the filter status for each transaction

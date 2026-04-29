@@ -484,8 +484,8 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 		shouldCheck := e.config.Node.MaxPendingHeadersAndData <= pendingCheckInterval ||
 			e.pendingCheckCounter%pendingCheckInterval == 0
 		if shouldCheck {
-			pendingHeaders := e.cache.NumPendingHeaders()
-			pendingData := e.cache.NumPendingData()
+			pendingHeaders := e.cache.NumPendingHeadersTotal()
+			pendingData := e.cache.NumPendingDataTotal()
 			if pendingHeaders >= e.config.Node.MaxPendingHeadersAndData ||
 				pendingData >= e.config.Node.MaxPendingHeadersAndData {
 				e.logger.Warn().

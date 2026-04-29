@@ -47,6 +47,7 @@ func TestPendingHeaders_BasicFlow(t *testing.T) {
 
 	// advance last submitted height and verify persistence + filtering
 	pendingHeaders.SetLastSubmittedHeaderHeight(ctx, 2)
+	pendingHeaders.ResetInFlightHeaderRange(1, 3)
 	metadataRaw, err := store.GetMetadata(ctx, storepkg.LastSubmittedHeaderHeightKey)
 	require.NoError(t, err)
 	require.Len(t, metadataRaw, 8)

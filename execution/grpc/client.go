@@ -3,9 +3,11 @@ package grpc
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -26,6 +28,11 @@ type Client struct {
 	client v1connect.ExecutorServiceClient
 }
 
+const (
+	unixURLPrefix   = "unix://"
+	unixHTTPBaseURL = "http://unix"
+)
+
 // newHTTP2Client creates an HTTP/2 client that supports cleartext (h2c) connections.
 // This is required to connect to native gRPC servers without TLS.
 func newHTTP2Client() *http.Client {
@@ -40,24 +47,64 @@ func newHTTP2Client() *http.Client {
 	}
 }
 
+// newUnixHTTP2Client creates an HTTP/2 client that speaks h2c over a Unix domain socket.
+func newUnixHTTP2Client(socketPath string) (*http.Client, error) {
+	if socketPath == "" {
+		return nil, errors.New("unix socket path is required")
+	}
+	return &http.Client{
+		Transport: &http2.Transport{
+			AllowHTTP: true,
+			DialTLSContext: func(ctx context.Context, _, _ string, _ *tls.Config) (net.Conn, error) {
+				var d net.Dialer
+				return d.DialContext(ctx, "unix", socketPath)
+			},
+		},
+	}, nil
+}
+
+func clientTransportForTarget(target string) (*http.Client, string, error) {
+	socketPath, ok := unixSocketPath(target)
+	if ok {
+		httpClient, err := newUnixHTTP2Client(socketPath)
+		if err != nil {
+			return nil, "", err
+		}
+		return httpClient, unixHTTPBaseURL, nil
+	}
+	return newHTTP2Client(), target, nil
+}
+
+func unixSocketPath(target string) (string, bool) {
+	if !strings.HasPrefix(target, unixURLPrefix) {
+		return "", false
+	}
+	return strings.TrimPrefix(target, unixURLPrefix), true
+}
+
 // NewClient creates a new gRPC execution client.
 //
 // Parameters:
-// - url: The URL of the gRPC server (e.g., "http://localhost:50051")
+// - url: The URL of the gRPC server (e.g., "http://localhost:50051" or "unix:///tmp/executor.sock")
 // - opts: Optional Connect client options for configuring the connection
 //
 // Returns:
 // - *Client: The initialized gRPC client
-func NewClient(url string, opts ...connect.ClientOption) *Client {
+// - error: Any client construction error
+func NewClient(url string, opts ...connect.ClientOption) (*Client, error) {
 	// Prepend WithGRPC to use the native gRPC protocol (required for tonic/gRPC servers)
 	opts = append([]connect.ClientOption{connect.WithGRPC()}, opts...)
+	httpClient, targetURL, err := clientTransportForTarget(url)
+	if err != nil {
+		return nil, err
+	}
 	return &Client{
 		client: v1connect.NewExecutorServiceClient(
-			newHTTP2Client(),
-			url,
+			httpClient,
+			targetURL,
 			opts...,
 		),
-	}
+	}, nil
 }
 
 // InitChain initializes a new blockchain instance with genesis parameters.
@@ -91,7 +138,12 @@ func (c *Client) GetTxs(ctx context.Context) ([][]byte, error) {
 		return nil, fmt.Errorf("grpc client: failed to get txs: %w", err)
 	}
 
-	return resp.Msg.Txs, nil
+	txs, err := decodeTxBatch(resp.Msg.TxBatch)
+	if err != nil {
+		return nil, fmt.Errorf("grpc client: invalid get txs response: %w", err)
+	}
+
+	return txs, nil
 }
 
 // ExecuteTxs processes transactions to produce a new block state.
@@ -100,8 +152,13 @@ func (c *Client) GetTxs(ctx context.Context) ([][]byte, error) {
 // returns the updated state root after execution. The execution service ensures
 // deterministic execution and validates the state transition.
 func (c *Client) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (updatedStateRoot []byte, err error) {
+	txBatch, err := encodeTxBatch(txs)
+	if err != nil {
+		return nil, fmt.Errorf("grpc client: failed to encode tx batch: %w", err)
+	}
+
 	req := connect.NewRequest(&pb.ExecuteTxsRequest{
-		Txs:           txs,
+		TxBatch:       txBatch,
 		BlockHeight:   blockHeight,
 		Timestamp:     timestamppb.New(timestamp),
 		PrevStateRoot: prevStateRoot,
@@ -154,8 +211,13 @@ func (c *Client) GetExecutionInfo(ctx context.Context) (execution.ExecutionInfo,
 // This method sends transactions to the remote execution service for validation.
 // Returns a slice of FilterStatus for each transaction.
 func (c *Client) FilterTxs(ctx context.Context, txs [][]byte, maxBytes, maxGas uint64, hasForceIncludedTransaction bool) ([]execution.FilterStatus, error) {
+	txBatch, err := encodeTxBatch(txs)
+	if err != nil {
+		return nil, fmt.Errorf("grpc client: failed to encode tx batch: %w", err)
+	}
+
 	req := connect.NewRequest(&pb.FilterTxsRequest{
-		Txs:                         txs,
+		TxBatch:                     txBatch,
 		MaxBytes:                    maxBytes,
 		MaxGas:                      maxGas,
 		HasForceIncludedTransaction: hasForceIncludedTransaction,
