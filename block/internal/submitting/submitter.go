@@ -154,18 +154,18 @@ func (s *Submitter) Stop() error {
 	if s.cancel != nil {
 		s.cancel()
 	}
-	// Wait for goroutines to finish with a timeout to prevent hanging
 	done := make(chan struct{})
 	go func() {
 		s.wg.Wait()
+		s.daSubmitter.Close()
 		close(done)
 	}()
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		s.logger.Warn().Msg("submitter shutdown timed out waiting for goroutines, proceeding anyway")
+		s.daSubmitter.Close()
 	}
-	s.daSubmitter.Close()
 	s.logger.Info().Msg("submitter stopped")
 	return nil
 }

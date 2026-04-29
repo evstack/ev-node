@@ -87,6 +87,7 @@ func (pb *pendingBase[T]) getPending(ctx context.Context) ([]T, error) {
 	}
 
 	pb.inFlightMu.Lock()
+	lastSubmitted = pb.lastHeight.Load()
 	rangeStart, rangeEnd := findAvailableRange(pb.gaps, pb.inFlightClaims, lastSubmitted, storeHeight)
 	pb.inFlightMu.Unlock()
 

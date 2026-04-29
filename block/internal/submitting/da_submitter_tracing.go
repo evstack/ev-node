@@ -36,7 +36,6 @@ func (t *tracedDASubmitter) SubmitHeaders(ctx context.Context, headers []*types.
 			attribute.Int("header.count", len(headers)),
 		),
 	)
-	defer span.End()
 
 	var totalBytes int
 	for _, h := range marshalledHeaders {
@@ -51,11 +50,28 @@ func (t *tracedDASubmitter) SubmitHeaders(ctx context.Context, headers []*types.
 		)
 	}
 
-	err := t.inner.SubmitHeaders(ctx, headers, marshalledHeaders, cache, signer, onSubmitError)
+	var wrappedOnError func(error)
+	if onSubmitError != nil {
+		wrappedOnError = func(err error) {
+			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, err.Error())
+			}
+			span.End()
+			onSubmitError(err)
+		}
+	}
+
+	err := t.inner.SubmitHeaders(ctx, headers, marshalledHeaders, cache, signer, wrappedOnError)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
+		span.End()
 		return err
+	}
+
+	if onSubmitError == nil {
+		span.End()
 	}
 
 	return nil
@@ -67,7 +83,6 @@ func (t *tracedDASubmitter) SubmitData(ctx context.Context, signedDataList []*ty
 			attribute.Int("data.count", len(signedDataList)),
 		),
 	)
-	defer span.End()
 
 	var totalBytes int
 	for _, d := range marshalledData {
@@ -82,11 +97,28 @@ func (t *tracedDASubmitter) SubmitData(ctx context.Context, signedDataList []*ty
 		)
 	}
 
-	err := t.inner.SubmitData(ctx, signedDataList, marshalledData, cache, signer, genesis, onSubmitError)
+	var wrappedOnError func(error)
+	if onSubmitError != nil {
+		wrappedOnError = func(err error) {
+			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, err.Error())
+			}
+			span.End()
+			onSubmitError(err)
+		}
+	}
+
+	err := t.inner.SubmitData(ctx, signedDataList, marshalledData, cache, signer, genesis, wrappedOnError)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
+		span.End()
 		return err
+	}
+
+	if onSubmitError == nil {
+		span.End()
 	}
 
 	return nil
