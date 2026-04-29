@@ -1,0 +1,928 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log"
+	"os"
+	"os/exec"
+	"path"
+	"path/filepath"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/digitalocean/godo"
+	"github.com/spf13/cobra"
+	"golang.org/x/oauth2"
+)
+
+func upCmd() *cobra.Command {
+	var rootDir string
+	var cfgPath string
+	var SSHPubKeyPath string
+	var SSHKeyName string
+	var DOAPIToken string
+	var GCProject string
+	var GCKeyJSONPath string
+	var AWSRegion string
+	var workers int
+
+	cmd := &cobra.Command{
+		Use:   "up",
+		Short: "Uses the config to spin up a distributed network",
+		Long:  "Initialize the Talis network with the provided configuration.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := LoadConfig(rootDir)
+			if err != nil {
+				return fmt.Errorf("failed to load config: %w", err)
+			}
+
+			if len(cfg.Validators) == 0 {
+				return fmt.Errorf("no validators found in config")
+			}
+
+			// overwrite the config values if flags or env vars are set
+			// flag > env > config
+			cfg.SSHKeyName = resolveValue(SSHKeyName, EnvVarSSHKeyName, cfg.SSHKeyName)
+			cfg.SSHPubKeyPath = resolveValue(SSHPubKeyPath, EnvVarSSHKeyPath, cfg.SSHPubKeyPath)
+			cfg.DigitalOceanToken = resolveValue(DOAPIToken, EnvVarDigitalOceanToken, cfg.DigitalOceanToken)
+			cfg.GoogleCloudProject = resolveValue(GCProject, EnvVarGoogleCloudProject, cfg.GoogleCloudProject)
+			cfg.GoogleCloudKeyJSONPath = resolveValue(GCKeyJSONPath, EnvVarGoogleCloudKeyJSONPath, cfg.GoogleCloudKeyJSONPath)
+			cfg.AWSRegion = resolveValue(AWSRegion, EnvVarAWSRegion, cfg.AWSRegion)
+
+			if err := checkForRunningExperiments(cmd.Context(), cfg); err != nil {
+				return err
+			}
+
+			client, err := NewClient(cfg)
+			if err != nil {
+				return fmt.Errorf("failed to create client: %w", err)
+			}
+
+			if err := client.Up(cmd.Context(), workers); err != nil {
+				return fmt.Errorf("failed to spin up network: %w", err)
+			}
+
+			if err := client.GetConfig().Save(rootDir); err != nil {
+				return fmt.Errorf("failed to save config: %w", err)
+			}
+
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVarP(&SSHPubKeyPath, "ssh-pub-key-path", "s", "", "path to the user's SSH public key")
+	cmd.Flags().StringVarP(&rootDir, "directory", "d", ".", "root directory in which to initialize")
+	cmd.Flags().StringVarP(&cfgPath, "config", "c", "config.json", "name of the config")
+	cmd.Flags().StringVarP(&SSHKeyName, "ssh-key-name", "n", "", "name for the SSH key")
+	cmd.Flags().StringVarP(&DOAPIToken, "do-api-token", "t", "", "digital ocean api token (defaults to config or env)")
+	cmd.Flags().StringVar(&GCProject, "gc-project", "", "google cloud project (defaults to config or env)")
+	cmd.Flags().StringVar(&GCKeyJSONPath, "gc-key-json-path", "", "path to google cloud service account key JSON file (defaults to config or env)")
+	cmd.Flags().StringVar(&AWSRegion, "aws-region", "", "AWS default region for EC2 (defaults to config or AWS_DEFAULT_REGION)")
+	cmd.Flags().IntVarP(&workers, "workers", "w", 10, "number of concurrent workers for parallel operations (should be > 0)")
+
+	return cmd
+}
+
+func deployCmd() *cobra.Command {
+	var (
+		rootDir      string
+		cfgPath      string
+		SSHKeyPath   string
+		directUpload bool
+		ignoreFailed bool
+		workers      int
+	)
+
+	cmd := &cobra.Command{
+		Use:   "deploy",
+		Short: "Uses the config to spin up a distributed network",
+		Long:  "Initialize the Talis network with the provided configuration.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			tarPath := filepath.Join(rootDir, "payload.tar.gz")
+			log.Printf("Compressing payload to %s\n", tarPath)
+			tarCmd := exec.Command("tar", "-czf", tarPath, "-C", rootDir, "payload")
+			tarCmd.Env = append(os.Environ(), "COPYFILE_DISABLE=1") // suppress macOS ._* resource-fork files
+			if output, err := tarCmd.CombinedOutput(); err != nil {
+				return fmt.Errorf("failed to compress payload: %w, output: %s", err, string(output))
+			}
+			log.Printf("✅ Payload compressed to %s\n", tarPath)
+
+			cfg, err := LoadConfig(rootDir)
+			if err != nil {
+				return fmt.Errorf("failed to load config: %w", err)
+			}
+
+			if len(cfg.Validators) == 0 {
+				return fmt.Errorf("no validators found in config")
+			}
+
+			log.Printf("Sending payload to validators...")
+			if directUpload {
+				if err := deployPayloadDirect(cfg.Validators, tarPath, SSHKeyPath, "/root", "payload/validator_init.sh", 7*time.Minute, workers); err != nil {
+					if !ignoreFailed {
+						return err
+					}
+					log.Printf("continuing despite validator deployment errors: %v", err)
+				}
+				if err := deployObservabilityIfConfigured(cmd.Context(), cfg, rootDir, SSHKeyPath, directUpload); err != nil {
+					return err
+				}
+				if err := deployEncodersIfConfigured(cmd.Context(), cfg, rootDir, SSHKeyPath, directUpload, workers); err != nil {
+					return err
+				}
+				if err := deployBridgesIfConfigured(cmd.Context(), cfg, rootDir, SSHKeyPath, directUpload, workers); err != nil {
+					return err
+				}
+				if err := deployEvnodesIfConfigured(cmd.Context(), cfg, rootDir, SSHKeyPath, directUpload, workers); err != nil {
+					return err
+				}
+				return deployLoadgensIfConfigured(cmd.Context(), cfg, rootDir, SSHKeyPath, directUpload, workers)
+			}
+			if err := deployPayloadViaS3(cmd.Context(), rootDir, cfg.Validators, tarPath, SSHKeyPath, "/root", "payload/validator_init.sh", 7*time.Minute, cfg.S3Config, workers); err != nil {
+				if !ignoreFailed {
+					return err
+				}
+				log.Printf("continuing despite validator deployment errors: %v", err)
+			}
+			if err := deployObservabilityIfConfigured(cmd.Context(), cfg, rootDir, SSHKeyPath, directUpload); err != nil {
+				return err
+			}
+			if err := deployEncodersIfConfigured(cmd.Context(), cfg, rootDir, SSHKeyPath, directUpload, workers); err != nil {
+				return err
+			}
+			if err := deployBridgesIfConfigured(cmd.Context(), cfg, rootDir, SSHKeyPath, directUpload, workers); err != nil {
+				return err
+			}
+			if err := deployEvnodesIfConfigured(cmd.Context(), cfg, rootDir, SSHKeyPath, directUpload, workers); err != nil {
+				return err
+			}
+			return deployLoadgensIfConfigured(cmd.Context(), cfg, rootDir, SSHKeyPath, directUpload, workers)
+		},
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		log.Fatalf("failed to get user home directory: %v", err)
+	}
+	defaultKeyPath := filepath.Join(homeDir, ".ssh", "id_ed25519")
+	cmd.Flags().StringVarP(&SSHKeyPath, "ssh-pub-key-path", "s", defaultKeyPath, "path to the user's SSH key")
+	cmd.Flags().StringVarP(&rootDir, "directory", "d", ".", "root directory in which to initialize")
+	cmd.Flags().StringVarP(&cfgPath, "config", "c", "config.json", "name of the config")
+	cmd.Flags().BoolVar(&directUpload, "direct-payload-upload", false, "Upload payload directly to nodes instead of using S3")
+	cmd.Flags().BoolVar(&ignoreFailed, "ignore-failed-validators", false, "Continue deploying observability monitoring even if some validators fail")
+	cmd.Flags().IntVarP(&workers, "workers", "w", 10, "number of concurrent workers for parallel operations (should be > 0)")
+
+	return cmd
+}
+
+func deployObservabilityIfConfigured(ctx context.Context, cfg Config, rootDir, sshKeyPath string, directUpload bool) error {
+	if len(cfg.Observability) == 0 {
+		return nil
+	}
+
+	observabilityNode := cfg.Observability[0]
+
+	observabilityTarPath := filepath.Join(rootDir, "observability-payload.tar.gz")
+	log.Printf("Compressing observability payload to %s\n", observabilityTarPath)
+	tarCmd := exec.Command("tar", "-czf", observabilityTarPath, "-C", filepath.Join(rootDir, "payload"), "observability")
+	tarCmd.Env = append(os.Environ(), "COPYFILE_DISABLE=1") // suppress macOS ._* resource-fork files
+	if output, err := tarCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to compress observability payload: %w, output: %s", err, string(output))
+	}
+	log.Printf("✅ Observability payload compressed to %s\n", observabilityTarPath)
+
+	log.Printf("Sending observability payload to observability monitoring node...")
+	var err error
+	if directUpload {
+		err = deployObservabilityPayloadDirect(observabilityNode, observabilityTarPath, sshKeyPath, "/root", 15*time.Minute)
+	} else {
+		err = deployObservabilityPayloadViaS3(ctx, rootDir, observabilityNode, observabilityTarPath, sshKeyPath, "/root", 15*time.Minute, cfg.S3Config)
+	}
+	if err != nil {
+		return err
+	}
+
+	printGrafanaInfo(observabilityNode, rootDir)
+	return nil
+}
+
+// deployBridgesIfConfigured tars the bridge-payload directory (celestia
+// binary + genesis + bridge_init.sh) and ships it to each bridge
+// instance. The init script then runs `celestia bridge init/start` in
+// a tmux session and generates a JWT to /root/bridge-jwt.txt.
+func deployBridgesIfConfigured(ctx context.Context, cfg Config, rootDir, sshKeyPath string, directUpload bool, workers int) error {
+	if len(cfg.Bridges) == 0 {
+		return nil
+	}
+
+	bridgePayloadDir := filepath.Join(rootDir, "bridge-payload")
+	if _, err := os.Stat(bridgePayloadDir); os.IsNotExist(err) {
+		return fmt.Errorf("bridge-payload directory not found — run 'talis genesis' first")
+	}
+
+	bridgeTarPath := filepath.Join(rootDir, "bridge-payload.tar.gz")
+	log.Printf("Compressing bridge payload to %s\n", bridgeTarPath)
+	tarCmd := exec.Command("tar", "-czf", bridgeTarPath, "-C", rootDir, "bridge-payload")
+	tarCmd.Env = append(os.Environ(), "COPYFILE_DISABLE=1")
+	if output, err := tarCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to compress bridge payload: %w, output: %s", err, string(output))
+	}
+	log.Printf("Sending bridge payload to %d bridge(s)...\n", len(cfg.Bridges))
+
+	if directUpload {
+		if err := deployPayloadDirect(cfg.Bridges, bridgeTarPath, sshKeyPath, "/root", "bridge-payload/bridge_init.sh", 7*time.Minute, workers); err != nil {
+			return fmt.Errorf("bridge deployment: %w", err)
+		}
+	} else {
+		if err := deployPayloadViaS3(ctx, rootDir, cfg.Bridges, bridgeTarPath, sshKeyPath, "/root", "bridge-payload/bridge_init.sh", 7*time.Minute, cfg.S3Config, workers); err != nil {
+			return fmt.Errorf("bridge deployment: %w", err)
+		}
+	}
+
+	log.Printf("Bridge deployment complete\n")
+	return nil
+}
+
+// deployLoadgensIfConfigured tars the loadgen-payload directory
+// (evnode-txsim binary + templated init script) and ships it to each
+// load-gen instance. The init script poll-waits for ev-node's /stats
+// endpoint to become reachable, then bursts traffic at /tx for the
+// configured duration, writing a final TXSIM: line to /root/txsim.log.
+func deployLoadgensIfConfigured(ctx context.Context, cfg Config, rootDir, sshKeyPath string, directUpload bool, workers int) error {
+	if len(cfg.Loadgens) == 0 {
+		return nil
+	}
+
+	lgPayloadDir := filepath.Join(rootDir, "loadgen-payload")
+	if _, err := os.Stat(lgPayloadDir); os.IsNotExist(err) {
+		return fmt.Errorf("loadgen-payload directory not found — run 'talis genesis' first")
+	}
+
+	lgTarPath := filepath.Join(rootDir, "loadgen-payload.tar.gz")
+	log.Printf("Compressing loadgen payload to %s\n", lgTarPath)
+	tarCmd := exec.Command("tar", "-czf", lgTarPath, "-C", rootDir, "loadgen-payload")
+	tarCmd.Env = append(os.Environ(), "COPYFILE_DISABLE=1")
+	if output, err := tarCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to compress loadgen payload: %w, output: %s", err, string(output))
+	}
+	log.Printf("Sending loadgen payload to %d loadgen(s)...\n", len(cfg.Loadgens))
+
+	if directUpload {
+		if err := deployPayloadDirect(cfg.Loadgens, lgTarPath, sshKeyPath, "/root", "loadgen-payload/loadgen_init.sh", 7*time.Minute, workers); err != nil {
+			return fmt.Errorf("loadgen deployment: %w", err)
+		}
+	} else {
+		if err := deployPayloadViaS3(ctx, rootDir, cfg.Loadgens, lgTarPath, sshKeyPath, "/root", "loadgen-payload/loadgen_init.sh", 7*time.Minute, cfg.S3Config, workers); err != nil {
+			return fmt.Errorf("loadgen deployment: %w", err)
+		}
+	}
+
+	log.Printf("loadgen deployment complete (init script will poll-wait for ev-node /stats then start txsim)\n")
+	return nil
+}
+
+// deployEvnodesIfConfigured tars the evnode-payload directory (evnode
+// binary + templated init script) and ships it to each ev-node
+// instance. The init script poll-waits for the bridge JWT + fibre
+// keyring, both scp'd in separately, before starting the daemon.
+func deployEvnodesIfConfigured(ctx context.Context, cfg Config, rootDir, sshKeyPath string, directUpload bool, workers int) error {
+	if len(cfg.Evnodes) == 0 {
+		return nil
+	}
+
+	evPayloadDir := filepath.Join(rootDir, "evnode-payload")
+	if _, err := os.Stat(evPayloadDir); os.IsNotExist(err) {
+		return fmt.Errorf("evnode-payload directory not found — run 'talis genesis' first")
+	}
+
+	evTarPath := filepath.Join(rootDir, "evnode-payload.tar.gz")
+	log.Printf("Compressing evnode payload to %s\n", evTarPath)
+	tarCmd := exec.Command("tar", "-czf", evTarPath, "-C", rootDir, "evnode-payload")
+	tarCmd.Env = append(os.Environ(), "COPYFILE_DISABLE=1")
+	if output, err := tarCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to compress evnode payload: %w, output: %s", err, string(output))
+	}
+	log.Printf("Sending evnode payload to %d evnode(s)...\n", len(cfg.Evnodes))
+
+	if directUpload {
+		if err := deployPayloadDirect(cfg.Evnodes, evTarPath, sshKeyPath, "/root", "evnode-payload/evnode_init.sh", 7*time.Minute, workers); err != nil {
+			return fmt.Errorf("evnode deployment: %w", err)
+		}
+	} else {
+		if err := deployPayloadViaS3(ctx, rootDir, cfg.Evnodes, evTarPath, sshKeyPath, "/root", "evnode-payload/evnode_init.sh", 7*time.Minute, cfg.S3Config, workers); err != nil {
+			return fmt.Errorf("evnode deployment: %w", err)
+		}
+	}
+
+	log.Printf("evnode deployment complete (init script will poll-wait for bridge JWT + fibre keyring on each box)\n")
+	return nil
+}
+
+// deployEncodersIfConfigured creates a lightweight encoder-payload tar and deploys
+// it to all configured encoder instances.
+func deployEncodersIfConfigured(ctx context.Context, cfg Config, rootDir, sshKeyPath string, directUpload bool, workers int) error {
+	if len(cfg.Encoders) == 0 {
+		return nil
+	}
+
+	encoderPayloadDir := filepath.Join(rootDir, "encoder-payload")
+	if _, err := os.Stat(encoderPayloadDir); os.IsNotExist(err) {
+		return fmt.Errorf("encoder-payload directory not found — run 'talis genesis' first")
+	}
+
+	encoderTarPath := filepath.Join(rootDir, "encoder-payload.tar.gz")
+	log.Printf("Compressing encoder payload to %s\n", encoderTarPath)
+	tarCmd := exec.Command("tar", "-czf", encoderTarPath, "-C", rootDir, "encoder-payload")
+	tarCmd.Env = append(os.Environ(), "COPYFILE_DISABLE=1")
+	if output, err := tarCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to compress encoder payload: %w, output: %s", err, string(output))
+	}
+	log.Printf("Sending encoder payload to %d encoder(s)...\n", len(cfg.Encoders))
+
+	if directUpload {
+		if err := deployPayloadDirect(cfg.Encoders, encoderTarPath, sshKeyPath, "/root", "encoder-payload/encoder_init.sh", 7*time.Minute, workers); err != nil {
+			return fmt.Errorf("encoder deployment: %w", err)
+		}
+	} else {
+		if err := deployPayloadViaS3(ctx, rootDir, cfg.Encoders, encoderTarPath, sshKeyPath, "/root", "encoder-payload/encoder_init.sh", 7*time.Minute, cfg.S3Config, workers); err != nil {
+			return fmt.Errorf("encoder deployment: %w", err)
+		}
+	}
+
+	log.Printf("Encoder deployment complete\n")
+	return nil
+}
+
+// printGrafanaInfo prints the Grafana URL and a pointer to where credentials can be found.
+func printGrafanaInfo(node Instance, rootDir string) {
+	envPath := filepath.Join(rootDir, "payload", "observability", "docker", ".env")
+	fmt.Println()
+	fmt.Println("Grafana available at:")
+	fmt.Printf("  http://%s:3000\n", node.PublicIP)
+	fmt.Printf("  Credentials: admin / <password in %s>\n", envPath)
+	fmt.Println()
+}
+
+// deployPayloadDirect copies a local archive to each remote host, unpacks it,
+// and launches the specified remote script inside a detached tmux session.
+// It runs all operations in parallel and returns an error if any host fails.
+func deployPayloadDirect(
+	ips []Instance,
+	archivePath string, // e.g. "./payload.tar.gz"
+	sshKeyPath string, // e.g. "~/.ssh/id_ed25519"
+	remoteDir string, // e.g. "/root"
+	remoteScript string, // e.g. "start.sh"
+	timeout time.Duration, // per‐host timeout
+	workers int, // number of concurrent workers
+) error {
+	var wg sync.WaitGroup
+	errCh := make(chan error, len(ips))
+	archiveFile := path.Base(archivePath)
+
+	counter := atomic.Uint32{}
+
+	workerChan := make(chan struct{}, workers)
+	for _, inst := range ips {
+		workerChan <- struct{}{}
+		wg.Add(1)
+		go func(inst Instance) {
+			defer func() {
+				<-workerChan
+				wg.Done()
+			}()
+			ctx, cancel := context.WithTimeout(context.Background(), timeout)
+			defer cancel()
+
+			scp := exec.CommandContext(ctx,
+				"scp",
+				"-i", sshKeyPath,
+				"-o", "StrictHostKeyChecking=no",
+				"-o", "UserKnownHostsFile=/dev/null",
+				archivePath,
+				fmt.Sprintf("root@%s:%s/", inst.PublicIP, remoteDir),
+			)
+			if out, err := scp.CombinedOutput(); err != nil {
+				errCh <- fmt.Errorf("[%s:%s] scp error in region %s: %v\n%s", inst.Name, inst.PublicIP, inst.Region, err, out)
+				return
+			}
+
+			log.Printf("sent payload to instance 📦 %s: %s\n", inst.Name, inst.PublicIP)
+
+			remoteCmd := strings.Join([]string{
+				// unpack
+				fmt.Sprintf("tar -xzf %s -C %s", filepath.Join(remoteDir, archiveFile), remoteDir),
+				// make sure script is executable
+				fmt.Sprintf("chmod +x %s", filepath.Join(remoteDir, remoteScript)),
+				// start in a named, detached tmux session
+				fmt.Sprintf("tmux new-session -d -s app '%s'", filepath.Join(remoteDir, remoteScript)),
+			}, " && ")
+
+			ssh := exec.CommandContext(ctx,
+				"ssh",
+				"-i", sshKeyPath,
+				"-o", "StrictHostKeyChecking=no",
+				"-o", "UserKnownHostsFile=/dev/null",
+				fmt.Sprintf("root@%s", inst.PublicIP),
+				remoteCmd,
+			)
+			if out, err := ssh.CombinedOutput(); err != nil {
+				errCh <- fmt.Errorf("[%s:%s] ssh error in region %s: %v\n%s", inst.Name, inst.PublicIP, inst.Region, err, out)
+				return
+			}
+			log.Printf("started instance ✅ %s: %s (total %d/%d)\n", inst.Name, inst.PublicIP, counter.Add(1), len(ips))
+		}(inst)
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	var errs []error //nolint:prealloc
+	for e := range errCh {
+		errs = append(errs, e)
+	}
+	if len(errs) > 0 {
+		var sb strings.Builder
+		sb.WriteString("deployment errors:\n")
+		for _, e := range errs {
+			sb.WriteString("- " + e.Error() + "\n")
+		}
+		return errors.New(sb.String())
+	}
+	return nil
+}
+
+// deployPayloadViaS3 uploads the payload to S3 first, then has each node download it
+func deployPayloadViaS3(
+	ctx context.Context,
+	rootDir string,
+	ips []Instance,
+	archivePath string,
+	sshKeyPath string,
+	remoteDir string,
+	remoteScript string,
+	timeout time.Duration,
+	s3cfg S3Config,
+	workers int,
+) error {
+	cfg, err := LoadConfig(rootDir)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+	s3Client, err := createS3Client(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create S3 client: %w", err)
+	}
+
+	log.Printf("Uploading payload to S3...\n")
+	s3URL, err := uploadToS3(ctx, s3Client, s3cfg, archivePath)
+	if err != nil {
+		return fmt.Errorf("failed to upload to S3: %w", err)
+	}
+
+	log.Printf("✅ Payload uploaded to S3: %s\n", s3URL)
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, len(ips))
+	counter := atomic.Uint32{}
+	workersChan := make(chan struct{}, workers)
+
+	for _, inst := range ips {
+		wg.Add(1)
+		go func(inst Instance) {
+			workersChan <- struct{}{}
+			defer func() {
+				wg.Done()
+				<-workersChan
+			}()
+			ctx, cancel := context.WithTimeout(ctx, timeout)
+			defer cancel()
+
+			archiveFile := filepath.Base(archivePath)
+			remoteCmd := strings.Join([]string{
+				fmt.Sprintf("curl -L '%s' -o %s", s3URL, filepath.Join(remoteDir, archiveFile)),
+				fmt.Sprintf("tar -xzf %s -C %s", filepath.Join(remoteDir, archiveFile), remoteDir),
+				fmt.Sprintf("chmod +x %s", filepath.Join(remoteDir, remoteScript)),
+				fmt.Sprintf("tmux new-session -d -s app '%s'", filepath.Join(remoteDir, remoteScript)),
+			}, " && ")
+
+			ssh := exec.CommandContext(ctx,
+				"ssh",
+				"-i", sshKeyPath,
+				"-o", "StrictHostKeyChecking=no",
+				"-o", "UserKnownHostsFile=/dev/null",
+				fmt.Sprintf("root@%s", inst.PublicIP),
+				remoteCmd,
+			)
+			if out, err := ssh.CombinedOutput(); err != nil {
+				errCh <- fmt.Errorf("[%s:%s] ssh error in region %s: %v\n%s", inst.Name, inst.PublicIP, inst.Region, err, out)
+				return
+			}
+			log.Printf("started instance ✅ %s: %s (total %d/%d)\n", inst.Name, inst.PublicIP, counter.Add(1), len(ips))
+		}(inst)
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	errs := make([]error, 0)
+	for e := range errCh {
+		errs = append(errs, e)
+	}
+	if len(errs) > 0 {
+		var sb strings.Builder
+		sb.WriteString("deployment errors:\n")
+		for _, e := range errs {
+			sb.WriteString("- " + e.Error() + "\n")
+		}
+		return errors.New(sb.String())
+	}
+	return nil
+}
+
+// deployObservabilityPayloadDirect copies an observability archive to the observability monitoring host, unpacks it,
+// installs prerequisites, and launches the observability stack in a detached tmux session.
+func deployObservabilityPayloadDirect(
+	inst Instance,
+	archivePath string,
+	sshKeyPath string,
+	remoteDir string,
+	timeout time.Duration,
+) error {
+	archiveFile := path.Base(archivePath)
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	scp := exec.CommandContext(ctx,
+		"scp",
+		"-i", sshKeyPath,
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile=/dev/null",
+		archivePath,
+		fmt.Sprintf("root@%s:%s/", inst.PublicIP, remoteDir),
+	)
+	if out, err := scp.CombinedOutput(); err != nil {
+		return fmt.Errorf("[%s:%s] scp error in region %s: %v\n%s", inst.Name, inst.PublicIP, inst.Region, err, out)
+	}
+
+	log.Printf("sent observability payload to instance 📦 %s: %s\n", inst.Name, inst.PublicIP)
+
+	remoteCmd := strings.Join([]string{
+		fmt.Sprintf("tar -xzf %s -C %s", filepath.Join(remoteDir, archiveFile), remoteDir),
+		fmt.Sprintf("chmod +x %s %s",
+			filepath.Join(remoteDir, "observability/install_metrics.sh"),
+			filepath.Join(remoteDir, "observability/start_metrics.sh"),
+		),
+		filepath.Join(remoteDir, "observability/install_metrics.sh"),
+		filepath.Join(remoteDir, "observability/start_metrics.sh"),
+	}, " && ")
+
+	ssh := exec.CommandContext(ctx,
+		"ssh",
+		"-i", sshKeyPath,
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile=/dev/null",
+		fmt.Sprintf("root@%s", inst.PublicIP),
+		remoteCmd,
+	)
+	if out, err := ssh.CombinedOutput(); err != nil {
+		return fmt.Errorf("[%s:%s] ssh error in region %s: %v\n%s", inst.Name, inst.PublicIP, inst.Region, err, out)
+	}
+	log.Printf("started observability instance ✅ %s: %s\n", inst.Name, inst.PublicIP)
+
+	return nil
+}
+
+// deployObservabilityPayloadViaS3 uploads the observability payload to S3 first, then has the node download it.
+func deployObservabilityPayloadViaS3(
+	ctx context.Context,
+	rootDir string,
+	inst Instance,
+	archivePath string,
+	sshKeyPath string,
+	remoteDir string,
+	timeout time.Duration,
+	s3cfg S3Config,
+) error {
+	cfg, err := LoadConfig(rootDir)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+	s3Client, err := createS3Client(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create S3 client: %w", err)
+	}
+
+	log.Printf("Uploading observability payload to S3...\n")
+	s3URL, err := uploadToS3(ctx, s3Client, s3cfg, archivePath)
+	if err != nil {
+		return fmt.Errorf("failed to upload observability payload to S3: %w", err)
+	}
+
+	log.Printf("✅ Observability payload uploaded to S3: %s\n", s3URL)
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	archiveFile := filepath.Base(archivePath)
+	remoteCmd := strings.Join([]string{
+		fmt.Sprintf("curl -L '%s' -o %s", s3URL, filepath.Join(remoteDir, archiveFile)),
+		fmt.Sprintf("tar -xzf %s -C %s", filepath.Join(remoteDir, archiveFile), remoteDir),
+		fmt.Sprintf("chmod +x %s %s",
+			filepath.Join(remoteDir, "observability/install_metrics.sh"),
+			filepath.Join(remoteDir, "observability/start_metrics.sh"),
+		),
+		filepath.Join(remoteDir, "observability/install_metrics.sh"),
+		filepath.Join(remoteDir, "observability/start_metrics.sh"),
+	}, " && ")
+
+	ssh := exec.CommandContext(ctx,
+		"ssh",
+		"-i", sshKeyPath,
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile=/dev/null",
+		fmt.Sprintf("root@%s", inst.PublicIP),
+		remoteCmd,
+	)
+	if out, err := ssh.CombinedOutput(); err != nil {
+		return fmt.Errorf("[%s:%s] ssh error in region %s: %v\n%s", inst.Name, inst.PublicIP, inst.Region, err, out)
+	}
+	log.Printf("started observability instance ✅ %s: %s\n", inst.Name, inst.PublicIP)
+
+	return nil
+}
+
+func uploadToS3(ctx context.Context, client *s3.Client, cfg S3Config, localPath string) (string, error) {
+	file, err := os.Open(localPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	filename := filepath.Base(localPath)
+	uploader := manager.NewUploader(client)
+
+	if _, err := uploader.Upload(ctx, &s3.PutObjectInput{
+		Bucket: &cfg.BucketName,
+		Key:    &filename,
+		Body:   file,
+	}); err != nil {
+		return "", fmt.Errorf("failed to upload file: %w", err)
+	}
+
+	// Return a presigned GET URL valid for an hour so remote hosts can curl
+	// the object without the bucket/object needing public-read ACLs. Works
+	// for real AWS S3 (where public access is blocked by default) and for
+	// S3-compatible providers like DigitalOcean Spaces.
+	presign := s3.NewPresignClient(client)
+	req, err := presign.PresignGetObject(ctx, &s3.GetObjectInput{
+		Bucket: &cfg.BucketName,
+		Key:    &filename,
+	}, s3.WithPresignExpires(time.Hour))
+	if err != nil {
+		return "", fmt.Errorf("failed to presign GET: %w", err)
+	}
+
+	return req.URL, nil
+}
+
+func downCmd() *cobra.Command {
+	var rootDir string
+	var cfgPath string
+	var SSHPubKeyPath string
+	var SSHKeyName string
+	var DOAPIToken string
+	var GCProject string
+	var GCKeyJSONPath string
+	var AWSRegion string
+	var workers int
+	var all bool
+
+	cmd := &cobra.Command{
+		Use:   "down",
+		Short: "Uses the config to spin down a distributed network",
+		Long:  "Destroys the Talis network with the provided configuration.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := LoadConfig(rootDir)
+			if err != nil && !all {
+				return fmt.Errorf("failed to load config: %w", err)
+			}
+
+			// overwrite the config values if flags or env vars are set
+			// flag > env > config
+			cfg.DigitalOceanToken = resolveValue(DOAPIToken, EnvVarDigitalOceanToken, cfg.DigitalOceanToken)
+			cfg.GoogleCloudProject = resolveValue(GCProject, EnvVarGoogleCloudProject, cfg.GoogleCloudProject)
+			cfg.GoogleCloudKeyJSONPath = resolveValue(GCKeyJSONPath, EnvVarGoogleCloudKeyJSONPath, cfg.GoogleCloudKeyJSONPath)
+			cfg.AWSRegion = resolveValue(AWSRegion, EnvVarAWSRegion, cfg.AWSRegion)
+
+			if all {
+				return destroyAllInstances(cmd.Context(), cfg, workers)
+			}
+
+			if len(cfg.Validators) == 0 {
+				return fmt.Errorf("no validators found in config")
+			}
+
+			cfg.SSHKeyName = resolveValue(SSHKeyName, EnvVarSSHKeyName, cfg.SSHKeyName)
+			cfg.SSHPubKeyPath = resolveValue(SSHPubKeyPath, EnvVarSSHKeyPath, cfg.SSHPubKeyPath)
+
+			client, err := NewClient(cfg)
+			if err != nil {
+				return fmt.Errorf("failed to create client: %w", err)
+			}
+
+			if err := client.Down(cmd.Context(), workers); err != nil {
+				return fmt.Errorf("failed to spin down network: %w", err)
+			}
+
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVarP(&SSHPubKeyPath, "ssh-pub-key-path", "s", "", "path to the user's SSH public key")
+	cmd.Flags().StringVarP(&rootDir, "directory", "d", ".", "root directory in which to initialize")
+	cmd.Flags().StringVarP(&cfgPath, "config", "c", "config.json", "name of the config")
+	cmd.Flags().StringVarP(&SSHKeyName, "ssh-key-name", "n", "", "name for the SSH key")
+	cmd.Flags().StringVarP(&DOAPIToken, "do-api-token", "t", "", "digital ocean api token (defaults to config or env)")
+	cmd.Flags().StringVar(&GCProject, "gc-project", "", "google cloud project (defaults to config or env)")
+	cmd.Flags().StringVar(&GCKeyJSONPath, "gc-key-json-path", "", "path to google cloud service account key JSON file (defaults to config or env)")
+	cmd.Flags().StringVar(&AWSRegion, "aws-region", "", "AWS default region for EC2 (defaults to config or AWS_DEFAULT_REGION)")
+	cmd.Flags().IntVarP(&workers, "workers", "w", 10, "number of concurrent workers for parallel operations (should be > 0)")
+	cmd.Flags().BoolVar(&all, "all", false, "destroy all talis instances across all providers and all experiments")
+
+	return cmd
+}
+
+// resolveValue selects a value based on priority: flag > env > config
+func resolveValue(flagVal, envKey, configVal string) string {
+	if flagVal != "" {
+		return flagVal
+	}
+	if env := os.Getenv(envKey); env != "" {
+		if configVal != "" {
+			log.Printf("Using %s from environment variable instead of config", envKey)
+		}
+		return env
+	}
+	return configVal
+}
+
+func listCmd() *cobra.Command {
+	var rootDir string
+	var cfgPath string
+	var DOAPIToken string
+	var GCProject string
+	var GCKeyJSONPath string
+	var AWSRegion string
+
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "Lists the instances in the network",
+		Long:  "Lists the instances in the network. Can be used to see if someone is running experiments at the moment",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := LoadConfig(rootDir)
+			if err != nil {
+				return fmt.Errorf("failed to load config: %w", err)
+			}
+
+			// overwrite the config values if flags or env vars are set
+			// flag > env > config
+			cfg.DigitalOceanToken = resolveValue(DOAPIToken, EnvVarDigitalOceanToken, cfg.DigitalOceanToken)
+			cfg.GoogleCloudProject = resolveValue(GCProject, EnvVarGoogleCloudProject, cfg.GoogleCloudProject)
+			cfg.GoogleCloudKeyJSONPath = resolveValue(GCKeyJSONPath, EnvVarGoogleCloudKeyJSONPath, cfg.GoogleCloudKeyJSONPath)
+			cfg.AWSRegion = resolveValue(AWSRegion, EnvVarAWSRegion, cfg.AWSRegion)
+
+			client, err := NewClient(cfg)
+			if err != nil {
+				return fmt.Errorf("failed to create client: %w", err)
+			}
+
+			return client.List(cmd.Context())
+		},
+	}
+
+	cmd.Flags().StringVarP(&rootDir, "directory", "d", ".", "root directory in which to initialize")
+	cmd.Flags().StringVarP(&cfgPath, "config", "c", "config.json", "name of the config")
+	cmd.Flags().StringVarP(&DOAPIToken, "do-api-token", "t", "", "digital ocean api token (defaults to config or env)")
+	cmd.Flags().StringVar(&GCProject, "gc-project", "", "google cloud project (defaults to config or env)")
+	cmd.Flags().StringVar(&GCKeyJSONPath, "gc-key-json-path", "", "path to google cloud service account key JSON file (defaults to config or env)")
+	cmd.Flags().StringVar(&AWSRegion, "aws-region", "", "AWS default region for EC2 (defaults to config or AWS_DEFAULT_REGION)")
+
+	return cmd
+}
+
+func checkForRunningExperiments(ctx context.Context, cfg Config) error {
+	var hasRunningExperiments bool
+
+	if cfg.DigitalOceanToken != "" {
+		tokenSource := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: cfg.DigitalOceanToken})
+		doClient := godo.NewClient(oauth2.NewClient(ctx, tokenSource))
+		running, err := checkForRunningDOExperiments(ctx, doClient, cfg.Experiment, cfg.ChainID)
+		if err != nil {
+			log.Printf("⚠️  Warning: failed to check DigitalOcean for running experiments: %v", err)
+		} else if running {
+			hasRunningExperiments = true
+			log.Printf("⚠️  Found experiment '%s' with chainID '%s' already running in DigitalOcean", cfg.Experiment, cfg.ChainID)
+		}
+	}
+
+	if cfg.GoogleCloudProject != "" {
+		opts, err := gcClientOptions(cfg)
+		if err != nil {
+			log.Printf("⚠️  Warning: failed to create Google Cloud client options: %v", err)
+		} else {
+			running, err := checkForRunningGCExperiments(ctx, cfg.GoogleCloudProject, opts, cfg.Experiment, cfg.ChainID)
+			if err != nil {
+				log.Printf("⚠️  Warning: failed to check Google Cloud for running experiments: %v", err)
+			} else if running {
+				hasRunningExperiments = true
+				log.Printf("⚠️  Found experiment '%s' with chainID '%s' already running in Google Cloud", cfg.Experiment, cfg.ChainID)
+			}
+		}
+	}
+
+	if cfg.AWSRegion != "" {
+		running, err := checkForRunningAWSExperiments(ctx, true, cfg.Experiment, cfg.ChainID)
+		if err != nil {
+			log.Printf("⚠️  Warning: failed to check AWS for running experiments: %v", err)
+		} else if running {
+			hasRunningExperiments = true
+			log.Printf("⚠️  Found experiment '%s' with chainID '%s' already running in AWS", cfg.Experiment, cfg.ChainID)
+		}
+	}
+
+	if hasRunningExperiments {
+		return fmt.Errorf("experiment '%s' with chainID '%s' is already running", cfg.Experiment, cfg.ChainID)
+	}
+
+	return nil
+}
+
+func destroyAllInstances(ctx context.Context, cfg Config, workers int) error {
+	var wg sync.WaitGroup
+	// One slot per potential provider goroutine (DO + GCP + AWS). Sized
+	// to match max writers so a three-way all-fail doesn't deadlock on
+	// errCh<- (wg.Wait() below blocks on the goroutine, which blocks on
+	// the channel send if capacity < writers).
+	errCh := make(chan error, 3)
+
+	if cfg.DigitalOceanToken != "" {
+		wg.Go(func() {
+			log.Println("Destroying all DigitalOcean instances...")
+			tokenSource := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: cfg.DigitalOceanToken})
+			doClient := godo.NewClient(oauth2.NewClient(ctx, tokenSource))
+			if _, err := destroyAllTalisDroplets(ctx, doClient, workers); err != nil {
+				errCh <- fmt.Errorf("DigitalOcean: %w", err)
+			}
+		})
+	}
+
+	if cfg.GoogleCloudProject != "" {
+		wg.Go(func() {
+			log.Println("Destroying all Google Cloud instances...")
+			opts, err := gcClientOptions(cfg)
+			if err != nil {
+				errCh <- fmt.Errorf("google Cloud client options: %w", err)
+				return
+			}
+			if _, err := destroyAllTalisGCInstances(ctx, cfg.GoogleCloudProject, opts, workers); err != nil {
+				errCh <- fmt.Errorf("google Cloud: %w", err)
+			}
+		})
+	}
+
+	if cfg.AWSRegion != "" || os.Getenv(EnvVarAWSAccessKeyID) != "" {
+		wg.Go(func() {
+			log.Println("Destroying all AWS instances...")
+			if _, err := destroyAllTalisAWSInstances(ctx, workers); err != nil {
+				errCh <- fmt.Errorf("AWS: %w", err)
+			}
+		})
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	errs := make([]error, 0, 3)
+	for err := range errCh {
+		errs = append(errs, err)
+	}
+
+	if len(errs) > 0 {
+		var sb strings.Builder
+		sb.WriteString("errors destroying instances:\n")
+		for _, err := range errs {
+			sb.WriteString("- " + err.Error() + "\n")
+		}
+		return errors.New(sb.String())
+	}
+
+	log.Println("✅ All talis instances destroyed")
+	return nil
+}

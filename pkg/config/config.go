@@ -343,6 +343,33 @@ func (d *DAConfig) IsFiberEnabled() bool {
 	return d.Fiber.Enabled
 }
 
+// ApplyFiberDefaults flips the DA client to Fiber-friendly defaults
+// when the Fiber profile is enabled — adaptive batching, a 1 s
+// DA.BlockTime so inclusion-tracking keeps pace with Fibre's
+// settlement, and a bounded pending-cache window so a Fibre stall
+// can't grow memory unbounded. Caller-provided non-zero values for
+// the tunables (BatchSizeThreshold, BatchMinItems) are preserved.
+//
+// Intended to be invoked once at runner startup, after parsing the
+// usual config but before constructing the DA client.
+func (c *Config) ApplyFiberDefaults() {
+	if !c.DA.IsFiberEnabled() {
+		return
+	}
+
+	c.DA.BatchingStrategy = "adaptive"
+	if c.DA.BatchSizeThreshold <= 0 || c.DA.BatchSizeThreshold > 1 {
+		c.DA.BatchSizeThreshold = 0.5
+	}
+	c.DA.BatchMaxDelay = DurationWrapper{Duration: 8 * time.Second}
+	if c.DA.BatchMinItems == 0 {
+		c.DA.BatchMinItems = 1
+	}
+
+	c.DA.BlockTime = DurationWrapper{Duration: 1 * time.Second}
+	c.Node.MaxPendingHeadersAndData = 50
+}
+
 // GetNamespace returns the namespace for header submissions.
 func (d *DAConfig) GetNamespace() string {
 	return d.Namespace
