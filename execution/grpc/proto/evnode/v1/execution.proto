@@ -3,9 +3,9 @@ package evnode.v1;
 
 import "google/protobuf/timestamp.proto";
 
-option go_package = "github.com/evstack/ev-node/types/pb/evnode/v1";
+option go_package = "github.com/evstack/ev-node/execution/grpc/types/pb/evnode/v1";
 
-// ExecutorService defines the execution layer interface for EVNode
+// ExecutorService defines the execution layer interface for execution/grpc
 service ExecutorService {
   // InitChain initializes a new blockchain instance with genesis parameters
   rpc InitChain(InitChainRequest) returns (InitChainResponse) {}

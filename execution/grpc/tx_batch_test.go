@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
+	pb "github.com/evstack/ev-node/execution/grpc/types/pb/evnode/v1"
 )
 
 func mustEncodeTxBatch(t *testing.T, txs [][]byte) *pb.TxBatch {

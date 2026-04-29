@@ -3,7 +3,7 @@ package grpc
 import (
 	"fmt"
 
-	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
+	pb "github.com/evstack/ev-node/execution/grpc/types/pb/evnode/v1"
 )
 
 // maxTxBatchTxSize is the largest transaction length representable in TxBatch.TxSizes:
