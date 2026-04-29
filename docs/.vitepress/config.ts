@@ -280,6 +280,24 @@ function sidebarHome() {
           ],
         },
         {
+          text: "High Availability",
+          collapsed: true,
+          items: [
+            {
+              text: "Overview & Configuration",
+              link: "/guides/ha/overview",
+            },
+            {
+              text: "Bootstrap a 5-Node Cluster",
+              link: "/guides/ha/cluster-setup",
+            },
+            {
+              text: "Migrate Single → HA",
+              link: "/guides/ha/single-to-ha",
+            },
+          ],
+        },
+        {
           text: "Run a Full Node",
           link: "/guides/full-node",
         },

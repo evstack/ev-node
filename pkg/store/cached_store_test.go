@@ -2,8 +2,12 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"testing"
+	"time"
 
+	ds "github.com/ipfs/go-datastore"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -269,4 +273,130 @@ func TestCachedStore_Close(t *testing.T) {
 	// Close should not error
 	err = cachedStore.Close()
 	require.NoError(t, err)
+}
+
+func TestCachedStore_AsyncSetMetadata(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	kv, err := NewTestInMemoryKVStore()
+	require.NoError(t, err)
+
+	base := New(kv)
+	cs, err := NewCachedStore(base)
+	require.NoError(t, err)
+	t.Cleanup(func() { cs.Close() })
+
+	require.NoError(t, cs.SetMetadata(ctx, "key1", []byte("value1")))
+
+	require.Eventually(t, func() bool {
+		v, err := base.GetMetadata(ctx, "key1")
+		return err == nil && string(v) == "value1"
+	}, time.Second, 10*time.Millisecond)
+}
+
+func TestCachedStore_AsyncDeleteMetadata(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	kv, err := NewTestInMemoryKVStore()
+	require.NoError(t, err)
+
+	base := New(kv)
+	require.NoError(t, base.SetMetadata(ctx, "key1", []byte("value1")))
+
+	cs, err := NewCachedStore(base)
+	require.NoError(t, err)
+	t.Cleanup(func() { cs.Close() })
+
+	require.NoError(t, cs.DeleteMetadata(ctx, "key1"))
+
+	require.Eventually(t, func() bool {
+		_, err := base.GetMetadata(ctx, "key1")
+		return err != nil
+	}, time.Second, 10*time.Millisecond)
+}
+
+func TestCachedStore_Close_FlushesPendingWrites(t *testing.T) {
+	ctx := context.Background()
+
+	dir := t.TempDir()
+	kv, err := NewDefaultKVStore(dir, "", "test-db")
+	require.NoError(t, err)
+
+	base := New(kv)
+	cs, err := NewCachedStore(base)
+	require.NoError(t, err)
+
+	const n = 100
+	for i := range n {
+		k := fmt.Sprintf("key-%d", i)
+		require.NoError(t, cs.SetMetadata(ctx, k, []byte(k)))
+	}
+
+	require.NoError(t, cs.Close())
+
+	kv2, err := NewDefaultKVStore(dir, "", "test-db")
+	require.NoError(t, err)
+	t.Cleanup(func() { kv2.Close() })
+	reopened := New(kv2)
+
+	for i := range n {
+		k := fmt.Sprintf("key-%d", i)
+		v, err := reopened.GetMetadata(ctx, k)
+		require.NoError(t, err)
+		require.Equal(t, []byte(k), v)
+	}
+}
+
+func TestCachedStore_WriteAfterClose_FallsBack(t *testing.T) {
+	kv, err := NewTestInMemoryKVStore()
+	require.NoError(t, err)
+
+	base := New(kv)
+	cs, err := NewCachedStore(base)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	require.NoError(t, cs.SetMetadata(ctx, "before", []byte("ok")))
+
+	require.NoError(t, cs.Close())
+
+	err = cs.SetMetadata(ctx, "after", []byte("sync"))
+	require.Error(t, err)
+}
+
+func TestCachedStore_CoalescesSameKeyOps(t *testing.T) {
+	ctx := context.Background()
+
+	kv, err := NewTestInMemoryKVStore()
+	require.NoError(t, err)
+
+	require.NoError(t, kv.Put(ctx, ds.NewKey(GetMetaKey("k")), []byte("original")))
+
+	base := New(kv)
+
+	writeCh := make(chan asyncWriteOp, asyncWriteBufferSize)
+	done := make(chan struct{})
+	cs := &CachedStore{
+		Store:   base,
+		writeCh: writeCh,
+		done:    done,
+		logger:  zerolog.Nop(),
+	}
+	cs.startWriteLoop()
+
+	require.NoError(t, cs.SetMetadata(ctx, "k", []byte("v1")))
+	require.NoError(t, cs.DeleteMetadata(ctx, "k"))
+	require.NoError(t, cs.SetMetadata(ctx, "k", []byte("v2")))
+
+	cs.stopMu.Lock()
+	cs.stopped = true
+	close(writeCh)
+	cs.stopMu.Unlock()
+	<-done
+
+	v, err := base.GetMetadata(ctx, "k")
+	require.NoError(t, err)
+	require.Equal(t, []byte("v2"), v, "last write (Set) should win over delete")
 }

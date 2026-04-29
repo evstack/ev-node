@@ -211,6 +211,25 @@ func (t *tracedStore) DeleteMetadata(ctx context.Context, key string) error {
 	return nil
 }
 
+func (t *tracedStore) BatchMetadata(ctx context.Context, puts []MetadataKV, deletes []string) error {
+	ctx, span := t.tracer.Start(ctx, "Store.BatchMetadata",
+		trace.WithAttributes(
+			attribute.Int("puts", len(puts)),
+			attribute.Int("deletes", len(deletes)),
+		),
+	)
+	defer span.End()
+
+	err := t.inner.BatchMetadata(ctx, puts, deletes)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return err
+	}
+
+	return nil
+}
+
 func (t *tracedStore) DeleteStateAtHeight(ctx context.Context, height uint64) error {
 	ctx, span := t.tracer.Start(ctx, "Store.DeleteStateAtHeight",
 		trace.WithAttributes(attribute.Int64("height", int64(height))),
