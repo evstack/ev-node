@@ -2,6 +2,7 @@ version: v2
 
 modules:
   - path: proto
+  - path: execution/grpc/proto
 lint:
   use:
     - COMMENTS
@@ -14,6 +15,3 @@ lint:
 breaking:
   use:
     - FILE
-  ignore_only:
-    FIELD_NO_DELETE:
-      - proto/evnode/v1/execution.proto
