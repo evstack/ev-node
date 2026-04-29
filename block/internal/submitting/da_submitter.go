@@ -43,48 +43,14 @@ type retryPolicy struct {
 	MinBackoff   time.Duration
 	MaxBackoff   time.Duration
 	MaxBlobBytes uint64
-	// MaxItems caps the number of items packed into a single Submit
-	// call. DA clients that fan out per-item Uploads (fiber) benefit
-	// linearly from larger batches — settlement throughput scales
-	// with concurrency until per-Upload latency dominates. Default
-	// 1 preserves legacy single-item-per-Submit semantics for
-	// backends that flatten a batch into one blob (JSON-RPC blob
-	// client). The fiber path overrides this from config.
-	MaxItems int
 }
-
-// defaultBatchItems is the conservative default for non-fiber backends
-// that historically expected one item per Submit call. The fiber path
-// raises this via config because it can fan out per-item Uploads.
-const defaultBatchItems = 1
-
-// fiberDefaultBatchItems is the upper bound on items packed into a
-// single fiber Submit. Each item gets its own concurrent Upload, so
-// this caps the per-batch goroutine fan-out.
-//
-// HACK(fiber-throughput): hardcoded at 16. The right value depends on
-// memory budget × per-item Upload size × Fibre validator-side
-// throughput, none of which the submitter can know at compile time.
-// Should be a config knob (FiberDAConfig.UploadConcurrency was
-// scaffolded for exactly this earlier — wire it through here when the
-// concurrent-uploads change graduates from prototype). 16 is a
-// pragmatic measurement default that gives meaningful concurrency
-// without overwhelming celestia-node's per-FSP rate.
-const fiberDefaultBatchItems = 16
 
 func defaultRetryPolicy(maxAttempts int, maxDuration time.Duration) retryPolicy {
 	return retryPolicy{
-		MaxAttempts: maxAttempts,
-		MinBackoff:  initialBackoff,
-		MaxBackoff:  maxDuration,
-		// TODO(throughput-cleanup): same value is used by
-		// executing/executor.go::RetrieveBatch as the raw-tx budget
-		// (with a 2% reservation) and again here as the marshaled
-		// blob ceiling. They are semantically different limits;
-		// the duplication is what made packed-block-larger-than-cap
-		// failures non-obvious. See common/consts.go.
+		MaxAttempts:  maxAttempts,
+		MinBackoff:   initialBackoff,
+		MaxBackoff:   maxDuration,
 		MaxBlobBytes: common.DefaultMaxBlobSize,
-		MaxItems:     defaultBatchItems,
 	}
 }
 
@@ -606,19 +572,12 @@ func submitToDA[T any](
 	}
 
 	pol := defaultRetryPolicy(s.config.DA.MaxSubmitAttempts, s.config.DA.BlockTime.Duration)
-	// Fiber's DA client fans out per-item Uploads concurrently, so
-	// packing more items per Submit lifts settlement throughput. For
-	// non-fiber backends the default of 1 preserves the legacy
-	// flatten-one-blob behavior.
-	if s.config.DA.IsFiberEnabled() {
-		pol.MaxItems = fiberDefaultBatchItems
-	}
 
 	rs := retryState{Attempt: 0, Backoff: 0}
 
 	// Limit this submission to a single size-capped batch
 	if len(marshaled) > 0 {
-		batchItems, batchMarshaled, err := limitBatchBySize(items, marshaled, pol.MaxBlobBytes, pol.MaxItems)
+		batchItems, batchMarshaled, err := limitBatchBySize(items, marshaled, pol.MaxBlobBytes)
 		if err != nil {
 			s.logger.Error().
 				Str("itemType", itemType).
@@ -729,42 +688,27 @@ func submitToDA[T any](
 	return fmt.Errorf("failed to submit all %s(s) to DA layer after %d attempts", itemType, rs.Attempt)
 }
 
-// limitBatchBySize returns a prefix of items whose per-item marshaled size
-// fits within maxItemBytes. The total batch size is bounded by item count
-// (maxItems), not by total bytes — DA clients that can fan out per-item
-// Uploads (e.g. the fiber DA client) settle each item in its own
-// concurrent Upload call, so packing more items per batch lifts the
-// effective settlement throughput. DA clients that flatten a batch into
-// a single blob still get one item per call when maxItems == 1.
-//
-// If the first item exceeds maxItemBytes, returns ErrOversizedItem
-// (unrecoverable). If no items fit at all (empty inputs), returns a
-// distinct error so the caller can distinguish "nothing to send".
-//
-// TODO(throughput-cleanup): see common/consts.go — maxItemBytes is the
-// per-item chain ceiling, separate from the raw-tx budget driving
-// FilterTxs. Once that split lands, the duplicate-cap-everywhere
-// problem these fixes work around goes away.
-func limitBatchBySize[T any](items []T, marshaled [][]byte, maxItemBytes uint64, maxItems int) ([]T, [][]byte, error) {
-	if maxItems <= 0 {
-		maxItems = 1
-	}
+// limitBatchBySize returns a prefix of items whose total marshaled size does not exceed maxBytes.
+// If the first item exceeds maxBytes, it returns ErrOversizedItem which is unrecoverable.
+func limitBatchBySize[T any](items []T, marshaled [][]byte, maxBytes uint64) ([]T, [][]byte, error) {
+	total := uint64(0)
 	count := 0
 	for i := range items {
-		if count >= maxItems {
-			break
-		}
 		sz := uint64(len(marshaled[i]))
-		if sz > maxItemBytes {
+		if sz > maxBytes {
 			if i == 0 {
-				return nil, nil, fmt.Errorf("%w: item size %d exceeds max %d", common.ErrOversizedItem, sz, maxItemBytes)
+				return nil, nil, fmt.Errorf("%w: item size %d exceeds max %d", common.ErrOversizedItem, sz, maxBytes)
 			}
 			break
 		}
+		if total+sz > maxBytes {
+			break
+		}
+		total += sz
 		count++
 	}
 	if count == 0 {
-		return nil, nil, fmt.Errorf("no items fit within %d bytes", maxItemBytes)
+		return nil, nil, fmt.Errorf("no items fit within %d bytes", maxBytes)
 	}
 	return items[:count], marshaled[:count], nil
 }
