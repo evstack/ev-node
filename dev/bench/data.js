@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1777465804459,
+  "lastUpdate": 1777465806965,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -482,6 +482,102 @@ window.BENCHMARK_DATA = {
             "value": 54,
             "unit": "allocs/op",
             "extra": "29217 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "marko@baricevic.me",
+            "name": "Marko",
+            "username": "tac0turtle"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "406369874b2faf7cf0664752f9284dc94ece780a",
+          "message": "feat: add grpc socket and flattn tx batches to allow for lower allocations (#3297)\n\n* add grpc socket and flattn tx batches to allow for lower allocations\n\n* redo proto\n\n* docs: update changelog for grpc execution transport\n\n* remove extra txs",
+          "timestamp": "2026-04-29T14:04:12+02:00",
+          "tree_id": "73c5304f4d8c2dc277cd754e8912062c9f188052",
+          "url": "https://github.com/evstack/ev-node/commit/406369874b2faf7cf0664752f9284dc94ece780a"
+        },
+        "date": 1777465806328,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 37607,
+            "unit": "ns/op\t    4975 B/op\t      54 allocs/op",
+            "extra": "31592 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 37607,
+            "unit": "ns/op",
+            "extra": "31592 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 4975,
+            "unit": "B/op",
+            "extra": "31592 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 54,
+            "unit": "allocs/op",
+            "extra": "31592 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 44134,
+            "unit": "ns/op\t   10240 B/op\t      54 allocs/op",
+            "extra": "28201 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 44134,
+            "unit": "ns/op",
+            "extra": "28201 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 10240,
+            "unit": "B/op",
+            "extra": "28201 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 54,
+            "unit": "allocs/op",
+            "extra": "28201 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 37320,
+            "unit": "ns/op\t    4780 B/op\t      50 allocs/op",
+            "extra": "31692 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 37320,
+            "unit": "ns/op",
+            "extra": "31692 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 4780,
+            "unit": "B/op",
+            "extra": "31692 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 50,
+            "unit": "allocs/op",
+            "extra": "31692 times\n4 procs"
           }
         ]
       }
