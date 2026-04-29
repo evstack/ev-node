@@ -213,7 +213,7 @@ func TestDASubmitter_SubmitHeaders_Success(t *testing.T) {
 	// Get headers from cache and submit
 	headers, marshalledHeaders, err := cm.GetPendingHeaders(ctx)
 	require.NoError(t, err)
-	err = submitter.SubmitHeaders(ctx, headers, marshalledHeaders, cm, signer, nil, nil)
+	err = submitter.SubmitHeaders(ctx, headers, marshalledHeaders, cm, signer, nil)
 	require.NoError(t, err)
 	submitter.Close()
 
@@ -233,7 +233,7 @@ func TestDASubmitter_SubmitHeaders_NoPendingHeaders(t *testing.T) {
 	// Get headers from cache (should be empty) and submit
 	headers, marshalledHeaders, err := cm.GetPendingHeaders(ctx)
 	require.NoError(t, err)
-	err = submitter.SubmitHeaders(ctx, headers, marshalledHeaders, cm, signer, nil, nil)
+	err = submitter.SubmitHeaders(ctx, headers, marshalledHeaders, cm, signer, nil)
 	require.NoError(t, err) // Should succeed with no action
 	mockDA.AssertNotCalled(t, "Submit", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
@@ -328,7 +328,7 @@ func TestDASubmitter_SubmitData_Success(t *testing.T) {
 	// Get data from cache and submit
 	signedDataList, marshalledData, err := cm.GetPendingData(ctx)
 	require.NoError(t, err)
-	err = submitter.SubmitData(ctx, signedDataList, marshalledData, cm, signer, gen, nil, nil)
+	err = submitter.SubmitData(ctx, signedDataList, marshalledData, cm, signer, gen, nil)
 	require.NoError(t, err)
 	submitter.Close()
 
@@ -383,7 +383,7 @@ func TestDASubmitter_SubmitData_SkipsEmptyData(t *testing.T) {
 	// Get data from cache and submit
 	signedDataList, marshalledData, err := cm.GetPendingData(ctx)
 	require.NoError(t, err)
-	err = submitter.SubmitData(ctx, signedDataList, marshalledData, cm, signer, gen, nil, nil)
+	err = submitter.SubmitData(ctx, signedDataList, marshalledData, cm, signer, gen, nil)
 	require.NoError(t, err)
 	mockDA.AssertNotCalled(t, "Submit", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 
@@ -402,7 +402,7 @@ func TestDASubmitter_SubmitData_NoPendingData(t *testing.T) {
 	// Get data from cache (should be empty) and submit
 	dataList, marshalledData, err := cm.GetPendingData(ctx)
 	require.NoError(t, err)
-	err = submitter.SubmitData(ctx, dataList, marshalledData, cm, signer, gen, nil, nil)
+	err = submitter.SubmitData(ctx, dataList, marshalledData, cm, signer, gen, nil)
 	require.NoError(t, err) // Should succeed with no action
 	mockDA.AssertNotCalled(t, "Submit", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
@@ -443,7 +443,7 @@ func TestDASubmitter_SubmitData_NilSigner(t *testing.T) {
 	// Get data from cache and submit with nil signer - should fail
 	signedDataList, marshalledData, err := cm.GetPendingData(ctx)
 	require.NoError(t, err)
-	err = submitter.SubmitData(ctx, signedDataList, marshalledData, cm, nil, gen, nil, nil)
+	err = submitter.SubmitData(ctx, signedDataList, marshalledData, cm, nil, gen, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "signer is nil")
 	mockDA.AssertNotCalled(t, "Submit", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)

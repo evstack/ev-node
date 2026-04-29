@@ -30,7 +30,7 @@ func WithTracingDASubmitter(inner DASubmitterAPI) DASubmitterAPI {
 	}
 }
 
-func (t *tracedDASubmitter) SubmitHeaders(ctx context.Context, headers []*types.SignedHeader, marshalledHeaders [][]byte, cache cache.Manager, signer signer.Signer, onSubmitSuccess func(), onSubmitError func(error)) error {
+func (t *tracedDASubmitter) SubmitHeaders(ctx context.Context, headers []*types.SignedHeader, marshalledHeaders [][]byte, cache cache.Manager, signer signer.Signer, onSubmitError func(error)) error {
 	ctx, span := t.tracer.Start(ctx, "DASubmitter.SubmitHeaders",
 		trace.WithAttributes(
 			attribute.Int("header.count", len(headers)),
@@ -51,7 +51,7 @@ func (t *tracedDASubmitter) SubmitHeaders(ctx context.Context, headers []*types.
 		)
 	}
 
-	err := t.inner.SubmitHeaders(ctx, headers, marshalledHeaders, cache, signer, onSubmitSuccess, onSubmitError)
+	err := t.inner.SubmitHeaders(ctx, headers, marshalledHeaders, cache, signer, onSubmitError)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
@@ -61,7 +61,7 @@ func (t *tracedDASubmitter) SubmitHeaders(ctx context.Context, headers []*types.
 	return nil
 }
 
-func (t *tracedDASubmitter) SubmitData(ctx context.Context, signedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis, onSubmitSuccess func(), onSubmitError func(error)) error {
+func (t *tracedDASubmitter) SubmitData(ctx context.Context, signedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis, onSubmitError func(error)) error {
 	ctx, span := t.tracer.Start(ctx, "DASubmitter.SubmitData",
 		trace.WithAttributes(
 			attribute.Int("data.count", len(signedDataList)),
@@ -82,7 +82,7 @@ func (t *tracedDASubmitter) SubmitData(ctx context.Context, signedDataList []*ty
 		)
 	}
 
-	err := t.inner.SubmitData(ctx, signedDataList, marshalledData, cache, signer, genesis, onSubmitSuccess, onSubmitError)
+	err := t.inner.SubmitData(ctx, signedDataList, marshalledData, cache, signer, genesis, onSubmitError)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())

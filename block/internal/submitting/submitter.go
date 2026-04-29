@@ -25,8 +25,8 @@ import (
 
 // DASubmitterAPI defines minimal methods needed by Submitter for DA submissions.
 type DASubmitterAPI interface {
-	SubmitHeaders(ctx context.Context, headers []*types.SignedHeader, marshalledHeaders [][]byte, cache cache.Manager, signer signer.Signer, onSubmitSuccess func(), onSubmitError func(error)) error
-	SubmitData(ctx context.Context, signedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis, onSubmitSuccess func(), onSubmitError func(error)) error
+	SubmitHeaders(ctx context.Context, headers []*types.SignedHeader, marshalledHeaders [][]byte, cache cache.Manager, signer signer.Signer, onSubmitError func(error)) error
+	SubmitData(ctx context.Context, signedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis, onSubmitError func(error)) error
 	Close()
 }
 
@@ -244,7 +244,7 @@ func (s *Submitter) daSubmissionLoop() {
 							Dur("time_since_last", timeSinceLastSubmit).
 							Msg("batching strategy triggered header submission")
 
-						onSuccess := func() { s.lastHeaderSubmit.Store(time.Now().UnixNano()) }
+						s.lastHeaderSubmit.Store(time.Now().UnixNano())
 						onError := func(err error) {
 							if errors.Is(err, common.ErrOversizedItem) {
 								s.logger.Error().Err(err).
@@ -259,7 +259,7 @@ func (s *Submitter) daSubmissionLoop() {
 								s.logger.Error().Err(err).Msg("failed to submit headers")
 							}
 						}
-						if err := s.daSubmitter.SubmitHeaders(s.ctx, headers, marshalledHeaders, s.cache, s.signer, onSuccess, onError); err != nil {
+						if err := s.daSubmitter.SubmitHeaders(s.ctx, headers, marshalledHeaders, s.cache, s.signer, onError); err != nil {
 							if len(headers) > 0 {
 								s.cache.ResetInFlightHeaderRange(headers[0].Height(), headers[len(headers)-1].Height())
 							}
@@ -324,7 +324,7 @@ func (s *Submitter) daSubmissionLoop() {
 							Dur("time_since_last", timeSinceLastSubmit).
 							Msg("batching strategy triggered data submission")
 
-						onSuccess := func() { s.lastDataSubmit.Store(time.Now().UnixNano()) }
+						s.lastDataSubmit.Store(time.Now().UnixNano())
 						onError := func(err error) {
 							if errors.Is(err, common.ErrOversizedItem) {
 								s.logger.Error().Err(err).
@@ -339,7 +339,7 @@ func (s *Submitter) daSubmissionLoop() {
 								s.logger.Error().Err(err).Msg("failed to submit data")
 							}
 						}
-						if err := s.daSubmitter.SubmitData(s.ctx, signedDataList, marshalledData, s.cache, s.signer, s.genesis, onSuccess, onError); err != nil {
+						if err := s.daSubmitter.SubmitData(s.ctx, signedDataList, marshalledData, s.cache, s.signer, s.genesis, onError); err != nil {
 							if len(signedDataList) > 0 {
 								s.cache.ResetInFlightDataRange(signedDataList[0].Height(), signedDataList[len(signedDataList)-1].Height())
 							}
