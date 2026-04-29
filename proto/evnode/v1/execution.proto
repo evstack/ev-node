@@ -60,8 +60,8 @@ message TxBatch {
 
 // GetTxsResponse contains the available transactions
 message GetTxsResponse {
-  // Valid transactions from mempool.
-  repeated bytes txs = 1;
+  reserved 1;
+  reserved "txs";
 
   // Valid transactions from mempool in contiguous batch form.
   TxBatch tx_batch = 2;
@@ -69,8 +69,8 @@ message GetTxsResponse {
 
 // ExecuteTxsRequest contains transactions and block context for execution
 message ExecuteTxsRequest {
-  // Ordered transactions to execute.
-  repeated bytes txs = 1;
+  reserved 1;
+  reserved "txs";
 
   // Height of block being created (must be > 0)
   uint64 block_height = 2;
@@ -127,8 +127,8 @@ enum FilterStatus {
 
 // FilterTxsRequest contains transactions to validate and filter
 message FilterTxsRequest {
-  // All transactions (force-included + mempool).
-  repeated bytes txs = 1;
+  reserved 1;
+  reserved "txs";
 
   // Maximum cumulative size allowed (0 means no size limit)
   uint64 max_bytes = 2;

@@ -31,6 +31,11 @@ func ListenUnix(socketPath string) (net.Listener, error) {
 }
 
 // ListenAndServeUnix serves the gRPC execution service over a Unix domain socket.
+//
+// The NewExecutorServiceHandler handler is passed to http.Serve, so this
+// function blocks until http.Serve returns an error. When it returns, deferred
+// cleanup closes the listener with listener.Close and then removes the socket
+// with removeStaleUnixSocket. Cleanup errors are currently ignored.
 func ListenAndServeUnix(socketPath string, executor execution.Executor, opts ...connect.HandlerOption) error {
 	listener, err := ListenUnix(socketPath)
 	if err != nil {

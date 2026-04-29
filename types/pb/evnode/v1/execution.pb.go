@@ -280,8 +280,6 @@ func (x *TxBatch) GetTxSizes() []uint32 {
 // GetTxsResponse contains the available transactions
 type GetTxsResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Valid transactions from mempool.
-	Txs [][]byte `protobuf:"bytes,1,rep,name=txs,proto3" json:"txs,omitempty"`
 	// Valid transactions from mempool in contiguous batch form.
 	TxBatch       *TxBatch `protobuf:"bytes,2,opt,name=tx_batch,json=txBatch,proto3" json:"tx_batch,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -318,13 +316,6 @@ func (*GetTxsResponse) Descriptor() ([]byte, []int) {
 	return file_evnode_v1_execution_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *GetTxsResponse) GetTxs() [][]byte {
-	if x != nil {
-		return x.Txs
-	}
-	return nil
-}
-
 func (x *GetTxsResponse) GetTxBatch() *TxBatch {
 	if x != nil {
 		return x.TxBatch
@@ -335,8 +326,6 @@ func (x *GetTxsResponse) GetTxBatch() *TxBatch {
 // ExecuteTxsRequest contains transactions and block context for execution
 type ExecuteTxsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Ordered transactions to execute.
-	Txs [][]byte `protobuf:"bytes,1,rep,name=txs,proto3" json:"txs,omitempty"`
 	// Height of block being created (must be > 0)
 	BlockHeight uint64 `protobuf:"varint,2,opt,name=block_height,json=blockHeight,proto3" json:"block_height,omitempty"`
 	// Block creation time in UTC
@@ -377,13 +366,6 @@ func (x *ExecuteTxsRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use ExecuteTxsRequest.ProtoReflect.Descriptor instead.
 func (*ExecuteTxsRequest) Descriptor() ([]byte, []int) {
 	return file_evnode_v1_execution_proto_rawDescGZIP(), []int{5}
-}
-
-func (x *ExecuteTxsRequest) GetTxs() [][]byte {
-	if x != nil {
-		return x.Txs
-	}
-	return nil
 }
 
 func (x *ExecuteTxsRequest) GetBlockHeight() uint64 {
@@ -639,8 +621,6 @@ func (x *GetExecutionInfoResponse) GetMaxGas() uint64 {
 // FilterTxsRequest contains transactions to validate and filter
 type FilterTxsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// All transactions (force-included + mempool).
-	Txs [][]byte `protobuf:"bytes,1,rep,name=txs,proto3" json:"txs,omitempty"`
 	// Maximum cumulative size allowed (0 means no size limit)
 	MaxBytes uint64 `protobuf:"varint,2,opt,name=max_bytes,json=maxBytes,proto3" json:"max_bytes,omitempty"`
 	// Maximum cumulative gas allowed (0 means no gas limit)
@@ -681,13 +661,6 @@ func (x *FilterTxsRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use FilterTxsRequest.ProtoReflect.Descriptor instead.
 func (*FilterTxsRequest) Descriptor() ([]byte, []int) {
 	return file_evnode_v1_execution_proto_rawDescGZIP(), []int{11}
-}
-
-func (x *FilterTxsRequest) GetTxs() [][]byte {
-	if x != nil {
-		return x.Txs
-	}
-	return nil
 }
 
 func (x *FilterTxsRequest) GetMaxBytes() uint64 {
@@ -779,16 +752,14 @@ const file_evnode_v1_execution_proto_rawDesc = "" +
 	"\rGetTxsRequest\"8\n" +
 	"\aTxBatch\x12\x12\n" +
 	"\x04data\x18\x01 \x01(\fR\x04data\x12\x19\n" +
-	"\btx_sizes\x18\x02 \x03(\rR\atxSizes\"Q\n" +
-	"\x0eGetTxsResponse\x12\x10\n" +
-	"\x03txs\x18\x01 \x03(\fR\x03txs\x12-\n" +
-	"\btx_batch\x18\x02 \x01(\v2\x12.evnode.v1.TxBatchR\atxBatch\"\xd9\x01\n" +
-	"\x11ExecuteTxsRequest\x12\x10\n" +
-	"\x03txs\x18\x01 \x03(\fR\x03txs\x12!\n" +
+	"\btx_sizes\x18\x02 \x03(\rR\atxSizes\"J\n" +
+	"\x0eGetTxsResponse\x12-\n" +
+	"\btx_batch\x18\x02 \x01(\v2\x12.evnode.v1.TxBatchR\atxBatchJ\x04\b\x01\x10\x02R\x03txs\"\xd2\x01\n" +
+	"\x11ExecuteTxsRequest\x12!\n" +
 	"\fblock_height\x18\x02 \x01(\x04R\vblockHeight\x128\n" +
 	"\ttimestamp\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12&\n" +
 	"\x0fprev_state_root\x18\x04 \x01(\fR\rprevStateRoot\x12-\n" +
-	"\btx_batch\x18\x05 \x01(\v2\x12.evnode.v1.TxBatchR\atxBatch\"_\n" +
+	"\btx_batch\x18\x05 \x01(\v2\x12.evnode.v1.TxBatchR\atxBatchJ\x04\b\x01\x10\x02R\x03txs\"_\n" +
 	"\x12ExecuteTxsResponse\x12,\n" +
 	"\x12updated_state_root\x18\x01 \x01(\fR\x10updatedStateRoot\x12\x1b\n" +
 	"\tmax_bytes\x18\x02 \x01(\x04R\bmaxBytes\"4\n" +
@@ -797,13 +768,12 @@ const file_evnode_v1_execution_proto_rawDesc = "" +
 	"\x10SetFinalResponse\"\x19\n" +
 	"\x17GetExecutionInfoRequest\"3\n" +
 	"\x18GetExecutionInfoResponse\x12\x17\n" +
-	"\amax_gas\x18\x01 \x01(\x04R\x06maxGas\"\xce\x01\n" +
-	"\x10FilterTxsRequest\x12\x10\n" +
-	"\x03txs\x18\x01 \x03(\fR\x03txs\x12\x1b\n" +
+	"\amax_gas\x18\x01 \x01(\x04R\x06maxGas\"\xc7\x01\n" +
+	"\x10FilterTxsRequest\x12\x1b\n" +
 	"\tmax_bytes\x18\x02 \x01(\x04R\bmaxBytes\x12\x17\n" +
 	"\amax_gas\x18\x03 \x01(\x04R\x06maxGas\x12C\n" +
 	"\x1ehas_force_included_transaction\x18\x04 \x01(\bR\x1bhasForceIncludedTransaction\x12-\n" +
-	"\btx_batch\x18\x05 \x01(\v2\x12.evnode.v1.TxBatchR\atxBatch\"H\n" +
+	"\btx_batch\x18\x05 \x01(\v2\x12.evnode.v1.TxBatchR\atxBatchJ\x04\b\x01\x10\x02R\x03txs\"H\n" +
 	"\x11FilterTxsResponse\x123\n" +
 	"\bstatuses\x18\x01 \x03(\x0e2\x17.evnode.v1.FilterStatusR\bstatuses*E\n" +
 	"\fFilterStatus\x12\r\n" +

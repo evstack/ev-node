@@ -1,12 +1,12 @@
 # gRPC Single Sequencer App
 
-This application runs a Evolve node with a single sequencer that connects to an execution client via gRPC. It allows you to use any execution layer that implements the Evolve execution gRPC interface.
+This application runs an Evolve node with a single sequencer that connects to an execution client via gRPC. It allows you to use any execution layer that implements the Evolve execution gRPC interface.
 
 ## Overview
 
 The gRPC single sequencer app provides:
 
-- A Evolve consensus node with single sequencer
+- An Evolve consensus node with single sequencer
 - Connection to execution clients via TCP or Unix domain socket gRPC
 - Full data availability layer integration
 - P2P networking capabilities

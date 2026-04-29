@@ -72,14 +72,3 @@ func decodeTxBatch(batch *pb.TxBatch) ([][]byte, error) {
 	}
 	return txs, nil
 }
-
-func decodeTxBatchOrTxs(batch *pb.TxBatch, txs [][]byte) ([][]byte, error) {
-	if hasTxBatchData(batch) {
-		return decodeTxBatch(batch)
-	}
-	return txs, nil
-}
-
-func hasTxBatchData(batch *pb.TxBatch) bool {
-	return batch != nil && (len(batch.Data) != 0 || len(batch.TxSizes) != 0)
-}

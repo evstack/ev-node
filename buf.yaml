@@ -14,3 +14,6 @@ lint:
 breaking:
   use:
     - FILE
+  ignore_only:
+    FIELD_NO_DELETE:
+      - proto/evnode/v1/execution.proto

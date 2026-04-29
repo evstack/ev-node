@@ -180,6 +180,11 @@ func TestServer_GetTxs(t *testing.T) {
 			if len(txs) != len(expectedTxs) {
 				t.Fatalf("expected %d txs, got %d", len(expectedTxs), len(txs))
 			}
+			for i := range expectedTxs {
+				if string(txs[i]) != string(expectedTxs[i]) {
+					t.Fatalf("tx batch tx %d: expected %q, got %q", i, expectedTxs[i], txs[i])
+				}
+			}
 		})
 	}
 }
@@ -208,22 +213,6 @@ func TestServer_ExecuteTxs(t *testing.T) {
 				PrevStateRoot: prevStateRoot,
 			},
 			mockFunc: func(ctx context.Context, t [][]byte, bh uint64, ts time.Time, psr []byte) ([]byte, error) {
-				return expectedStateRoot, nil
-			},
-			wantErr: false,
-		},
-		{
-			name: "legacy txs fallback",
-			req: &pb.ExecuteTxsRequest{
-				Txs:           txs,
-				BlockHeight:   blockHeight,
-				Timestamp:     timestamppb.New(timestamp),
-				PrevStateRoot: prevStateRoot,
-			},
-			mockFunc: func(ctx context.Context, txsIn [][]byte, bh uint64, ts time.Time, psr []byte) ([]byte, error) {
-				if len(txsIn) != len(txs) {
-					t.Fatalf("expected %d txs, got %d", len(txs), len(txsIn))
-				}
 				return expectedStateRoot, nil
 			},
 			wantErr: false,
@@ -427,21 +416,6 @@ func TestServer_FilterTxs(t *testing.T) {
 				}
 				if !forced {
 					t.Fatalf("expected forced transaction flag")
-				}
-				return expectedStatuses, nil
-			},
-			wantErr: false,
-		},
-		{
-			name: "legacy txs fallback",
-			req: &pb.FilterTxsRequest{
-				Txs:      txs,
-				MaxBytes: 100,
-				MaxGas:   200,
-			},
-			mockFunc: func(ctx context.Context, txsIn [][]byte, maxBytes, maxGas uint64, forced bool) ([]execution.FilterStatus, error) {
-				if len(txsIn) != len(txs) {
-					t.Fatalf("expected %d txs, got %d", len(txs), len(txsIn))
 				}
 				return expectedStatuses, nil
 			},

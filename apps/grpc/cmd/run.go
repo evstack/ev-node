@@ -163,8 +163,7 @@ func createGRPCExecutionClient(cmd *cobra.Command) (execution.Executor, error) {
 		return nil, fmt.Errorf("%s flag is required", FlagGrpcExecutorURL)
 	}
 
-	// Create and return the gRPC client
-	return executiongrpc.NewClient(executorURL), nil
+	return executiongrpc.NewClient(executorURL)
 }
 
 // addGRPCFlags adds flags specific to the gRPC execution client

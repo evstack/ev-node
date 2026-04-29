@@ -48,27 +48,31 @@ func newHTTP2Client() *http.Client {
 }
 
 // newUnixHTTP2Client creates an HTTP/2 client that speaks h2c over a Unix domain socket.
-func newUnixHTTP2Client(socketPath string) *http.Client {
+func newUnixHTTP2Client(socketPath string) (*http.Client, error) {
+	if socketPath == "" {
+		return nil, errors.New("unix socket path is required")
+	}
 	return &http.Client{
 		Transport: &http2.Transport{
 			AllowHTTP: true,
 			DialTLSContext: func(ctx context.Context, _, _ string, _ *tls.Config) (net.Conn, error) {
-				if socketPath == "" {
-					return nil, errors.New("unix socket path is required")
-				}
 				var d net.Dialer
 				return d.DialContext(ctx, "unix", socketPath)
 			},
 		},
-	}
+	}, nil
 }
 
-func clientTransportForTarget(target string) (*http.Client, string) {
+func clientTransportForTarget(target string) (*http.Client, string, error) {
 	socketPath, ok := unixSocketPath(target)
 	if ok {
-		return newUnixHTTP2Client(socketPath), unixHTTPBaseURL
+		httpClient, err := newUnixHTTP2Client(socketPath)
+		if err != nil {
+			return nil, "", err
+		}
+		return httpClient, unixHTTPBaseURL, nil
 	}
-	return newHTTP2Client(), target
+	return newHTTP2Client(), target, nil
 }
 
 func unixSocketPath(target string) (string, bool) {
@@ -86,17 +90,21 @@ func unixSocketPath(target string) (string, bool) {
 //
 // Returns:
 // - *Client: The initialized gRPC client
-func NewClient(url string, opts ...connect.ClientOption) *Client {
+// - error: Any client construction error
+func NewClient(url string, opts ...connect.ClientOption) (*Client, error) {
 	// Prepend WithGRPC to use the native gRPC protocol (required for tonic/gRPC servers)
 	opts = append([]connect.ClientOption{connect.WithGRPC()}, opts...)
-	httpClient, targetURL := clientTransportForTarget(url)
+	httpClient, targetURL, err := clientTransportForTarget(url)
+	if err != nil {
+		return nil, err
+	}
 	return &Client{
 		client: v1connect.NewExecutorServiceClient(
 			httpClient,
 			targetURL,
 			opts...,
 		),
-	}
+	}, nil
 }
 
 // InitChain initializes a new blockchain instance with genesis parameters.
@@ -130,7 +138,7 @@ func (c *Client) GetTxs(ctx context.Context) ([][]byte, error) {
 		return nil, fmt.Errorf("grpc client: failed to get txs: %w", err)
 	}
 
-	txs, err := decodeTxBatchOrTxs(resp.Msg.TxBatch, resp.Msg.Txs)
+	txs, err := decodeTxBatch(resp.Msg.TxBatch)
 	if err != nil {
 		return nil, fmt.Errorf("grpc client: invalid get txs response: %w", err)
 	}

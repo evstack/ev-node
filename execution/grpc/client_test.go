@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -69,6 +70,16 @@ func (m *mockExecutor) FilterTxs(ctx context.Context, txs [][]byte, maxBytes, ma
 	return result, nil
 }
 
+func newTestClient(t *testing.T, url string) *Client {
+	t.Helper()
+
+	client, err := NewClient(url)
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	return client
+}
+
 func TestClient_InitChain(t *testing.T) {
 	ctx := context.Background()
 	expectedStateRoot := []byte("test_state_root")
@@ -97,7 +108,7 @@ func TestClient_InitChain(t *testing.T) {
 	defer server.Close()
 
 	// Create client
-	client := NewClient(server.URL)
+	client := newTestClient(t, server.URL)
 
 	// Test InitChain
 	stateRoot, err := client.InitChain(ctx, genesisTime, initialHeight, chainID)
@@ -126,7 +137,7 @@ func TestClient_GetTxs(t *testing.T) {
 	defer server.Close()
 
 	// Create client
-	client := NewClient(server.URL)
+	client := newTestClient(t, server.URL)
 
 	// Test GetTxs
 	txs, err := client.GetTxs(ctx)
@@ -177,7 +188,7 @@ func TestClient_ExecuteTxs(t *testing.T) {
 	defer server.Close()
 
 	// Create client
-	client := NewClient(server.URL)
+	client := newTestClient(t, server.URL)
 
 	// Test ExecuteTxs
 	stateRoot, err := client.ExecuteTxs(ctx, txs, blockHeight, timestamp, prevStateRoot)
@@ -209,7 +220,7 @@ func TestClient_SetFinal(t *testing.T) {
 	defer server.Close()
 
 	// Create client
-	client := NewClient(server.URL)
+	client := newTestClient(t, server.URL)
 
 	// Test SetFinal
 	err := client.SetFinal(ctx, blockHeight)
@@ -257,7 +268,7 @@ func TestClient_FilterTxs(t *testing.T) {
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
-	client := NewClient(server.URL)
+	client := newTestClient(t, server.URL)
 
 	statuses, err := client.FilterTxs(ctx, txs, maxBytes, maxGas, hasForced)
 	if err != nil {
@@ -286,7 +297,7 @@ func TestClient_UnixSocket(t *testing.T) {
 
 	startUnixTestServer(t, mockExec, socketPath)
 
-	client := NewClient("unix://" + socketPath)
+	client := newTestClient(t, "unix://"+socketPath)
 	txs, err := client.GetTxs(ctx)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -298,6 +309,19 @@ func TestClient_UnixSocket(t *testing.T) {
 		if string(tx) != string(expectedTxs[i]) {
 			t.Fatalf("tx %d: expected %q, got %q", i, expectedTxs[i], tx)
 		}
+	}
+}
+
+func TestNewClientRejectsEmptyUnixSocketPath(t *testing.T) {
+	client, err := NewClient("unix://")
+	if err == nil {
+		t.Fatalf("expected empty unix socket path error")
+	}
+	if client != nil {
+		t.Fatalf("expected nil client, got %v", client)
+	}
+	if !strings.Contains(err.Error(), "unix socket path is required") {
+		t.Fatalf("expected unix socket path error, got %v", err)
 	}
 }
 
