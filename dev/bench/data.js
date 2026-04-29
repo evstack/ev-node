@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1777452413635,
+  "lastUpdate": 1777465748371,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -46,6 +46,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 180756,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "julien@rbrt.fr",
+            "name": "julienrbrt",
+            "username": "julienrbrt"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "fdc79adf064927335bfd57f2240c1e1d26467c04",
+          "message": "perf(store): save metadata async (#3298)\n\n* perf(store): save metadata async\n\n* cl\n\n* Optimize metadata writes with batching\n\n* feedback\n\n* De-duplicate batched writes by key in cached store\n\n* fix\n\n* updates",
+          "timestamp": "2026-04-29T11:43:07Z",
+          "tree_id": "a8cb2add8c0dec60d2b3b9ea46c11b127f15a7e1",
+          "url": "https://github.com/evstack/ev-node/commit/fdc79adf064927335bfd57f2240c1e1d26467c04"
+        },
+        "date": 1777465744168,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 908413220,
+            "unit": "ns/op\t30651044 B/op\t  161685 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 908413220,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 30651044,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 161685,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
