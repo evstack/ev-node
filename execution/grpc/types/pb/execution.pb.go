@@ -2,9 +2,9 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        (unknown)
-// source: evnode/v1/execution.proto
+// source: execution.proto
 
-package v1
+package pb
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -59,11 +59,11 @@ func (x FilterStatus) String() string {
 }
 
 func (FilterStatus) Descriptor() protoreflect.EnumDescriptor {
-	return file_evnode_v1_execution_proto_enumTypes[0].Descriptor()
+	return file_execution_proto_enumTypes[0].Descriptor()
 }
 
 func (FilterStatus) Type() protoreflect.EnumType {
-	return &file_evnode_v1_execution_proto_enumTypes[0]
+	return &file_execution_proto_enumTypes[0]
 }
 
 func (x FilterStatus) Number() protoreflect.EnumNumber {
@@ -72,7 +72,7 @@ func (x FilterStatus) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use FilterStatus.Descriptor instead.
 func (FilterStatus) EnumDescriptor() ([]byte, []int) {
-	return file_evnode_v1_execution_proto_rawDescGZIP(), []int{0}
+	return file_execution_proto_rawDescGZIP(), []int{0}
 }
 
 // InitChainRequest contains the genesis parameters for chain initialization
@@ -90,7 +90,7 @@ type InitChainRequest struct {
 
 func (x *InitChainRequest) Reset() {
 	*x = InitChainRequest{}
-	mi := &file_evnode_v1_execution_proto_msgTypes[0]
+	mi := &file_execution_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -102,7 +102,7 @@ func (x *InitChainRequest) String() string {
 func (*InitChainRequest) ProtoMessage() {}
 
 func (x *InitChainRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_evnode_v1_execution_proto_msgTypes[0]
+	mi := &file_execution_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -115,7 +115,7 @@ func (x *InitChainRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InitChainRequest.ProtoReflect.Descriptor instead.
 func (*InitChainRequest) Descriptor() ([]byte, []int) {
-	return file_evnode_v1_execution_proto_rawDescGZIP(), []int{0}
+	return file_execution_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *InitChainRequest) GetGenesisTime() *timestamppb.Timestamp {
@@ -150,7 +150,7 @@ type InitChainResponse struct {
 
 func (x *InitChainResponse) Reset() {
 	*x = InitChainResponse{}
-	mi := &file_evnode_v1_execution_proto_msgTypes[1]
+	mi := &file_execution_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -162,7 +162,7 @@ func (x *InitChainResponse) String() string {
 func (*InitChainResponse) ProtoMessage() {}
 
 func (x *InitChainResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_evnode_v1_execution_proto_msgTypes[1]
+	mi := &file_execution_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -175,7 +175,7 @@ func (x *InitChainResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InitChainResponse.ProtoReflect.Descriptor instead.
 func (*InitChainResponse) Descriptor() ([]byte, []int) {
-	return file_evnode_v1_execution_proto_rawDescGZIP(), []int{1}
+	return file_execution_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *InitChainResponse) GetStateRoot() []byte {
@@ -194,7 +194,7 @@ type GetTxsRequest struct {
 
 func (x *GetTxsRequest) Reset() {
 	*x = GetTxsRequest{}
-	mi := &file_evnode_v1_execution_proto_msgTypes[2]
+	mi := &file_execution_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -206,7 +206,7 @@ func (x *GetTxsRequest) String() string {
 func (*GetTxsRequest) ProtoMessage() {}
 
 func (x *GetTxsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_evnode_v1_execution_proto_msgTypes[2]
+	mi := &file_execution_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -219,7 +219,7 @@ func (x *GetTxsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTxsRequest.ProtoReflect.Descriptor instead.
 func (*GetTxsRequest) Descriptor() ([]byte, []int) {
-	return file_evnode_v1_execution_proto_rawDescGZIP(), []int{2}
+	return file_execution_proto_rawDescGZIP(), []int{2}
 }
 
 // TxBatch stores ordered transactions in one contiguous bytes buffer.
@@ -235,7 +235,7 @@ type TxBatch struct {
 
 func (x *TxBatch) Reset() {
 	*x = TxBatch{}
-	mi := &file_evnode_v1_execution_proto_msgTypes[3]
+	mi := &file_execution_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -247,7 +247,7 @@ func (x *TxBatch) String() string {
 func (*TxBatch) ProtoMessage() {}
 
 func (x *TxBatch) ProtoReflect() protoreflect.Message {
-	mi := &file_evnode_v1_execution_proto_msgTypes[3]
+	mi := &file_execution_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -260,7 +260,7 @@ func (x *TxBatch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TxBatch.ProtoReflect.Descriptor instead.
 func (*TxBatch) Descriptor() ([]byte, []int) {
-	return file_evnode_v1_execution_proto_rawDescGZIP(), []int{3}
+	return file_execution_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *TxBatch) GetData() []byte {
@@ -288,7 +288,7 @@ type GetTxsResponse struct {
 
 func (x *GetTxsResponse) Reset() {
 	*x = GetTxsResponse{}
-	mi := &file_evnode_v1_execution_proto_msgTypes[4]
+	mi := &file_execution_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -300,7 +300,7 @@ func (x *GetTxsResponse) String() string {
 func (*GetTxsResponse) ProtoMessage() {}
 
 func (x *GetTxsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_evnode_v1_execution_proto_msgTypes[4]
+	mi := &file_execution_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -313,7 +313,7 @@ func (x *GetTxsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTxsResponse.ProtoReflect.Descriptor instead.
 func (*GetTxsResponse) Descriptor() ([]byte, []int) {
-	return file_evnode_v1_execution_proto_rawDescGZIP(), []int{4}
+	return file_execution_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *GetTxsResponse) GetTxBatch() *TxBatch {
@@ -340,7 +340,7 @@ type ExecuteTxsRequest struct {
 
 func (x *ExecuteTxsRequest) Reset() {
 	*x = ExecuteTxsRequest{}
-	mi := &file_evnode_v1_execution_proto_msgTypes[5]
+	mi := &file_execution_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -352,7 +352,7 @@ func (x *ExecuteTxsRequest) String() string {
 func (*ExecuteTxsRequest) ProtoMessage() {}
 
 func (x *ExecuteTxsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_evnode_v1_execution_proto_msgTypes[5]
+	mi := &file_execution_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -365,7 +365,7 @@ func (x *ExecuteTxsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecuteTxsRequest.ProtoReflect.Descriptor instead.
 func (*ExecuteTxsRequest) Descriptor() ([]byte, []int) {
-	return file_evnode_v1_execution_proto_rawDescGZIP(), []int{5}
+	return file_execution_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ExecuteTxsRequest) GetBlockHeight() uint64 {
@@ -409,7 +409,7 @@ type ExecuteTxsResponse struct {
 
 func (x *ExecuteTxsResponse) Reset() {
 	*x = ExecuteTxsResponse{}
-	mi := &file_evnode_v1_execution_proto_msgTypes[6]
+	mi := &file_execution_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -421,7 +421,7 @@ func (x *ExecuteTxsResponse) String() string {
 func (*ExecuteTxsResponse) ProtoMessage() {}
 
 func (x *ExecuteTxsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_evnode_v1_execution_proto_msgTypes[6]
+	mi := &file_execution_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -434,7 +434,7 @@ func (x *ExecuteTxsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecuteTxsResponse.ProtoReflect.Descriptor instead.
 func (*ExecuteTxsResponse) Descriptor() ([]byte, []int) {
-	return file_evnode_v1_execution_proto_rawDescGZIP(), []int{6}
+	return file_execution_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ExecuteTxsResponse) GetUpdatedStateRoot() []byte {
@@ -462,7 +462,7 @@ type SetFinalRequest struct {
 
 func (x *SetFinalRequest) Reset() {
 	*x = SetFinalRequest{}
-	mi := &file_evnode_v1_execution_proto_msgTypes[7]
+	mi := &file_execution_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -474,7 +474,7 @@ func (x *SetFinalRequest) String() string {
 func (*SetFinalRequest) ProtoMessage() {}
 
 func (x *SetFinalRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_evnode_v1_execution_proto_msgTypes[7]
+	mi := &file_execution_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -487,7 +487,7 @@ func (x *SetFinalRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetFinalRequest.ProtoReflect.Descriptor instead.
 func (*SetFinalRequest) Descriptor() ([]byte, []int) {
-	return file_evnode_v1_execution_proto_rawDescGZIP(), []int{7}
+	return file_execution_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *SetFinalRequest) GetBlockHeight() uint64 {
@@ -506,7 +506,7 @@ type SetFinalResponse struct {
 
 func (x *SetFinalResponse) Reset() {
 	*x = SetFinalResponse{}
-	mi := &file_evnode_v1_execution_proto_msgTypes[8]
+	mi := &file_execution_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -518,7 +518,7 @@ func (x *SetFinalResponse) String() string {
 func (*SetFinalResponse) ProtoMessage() {}
 
 func (x *SetFinalResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_evnode_v1_execution_proto_msgTypes[8]
+	mi := &file_execution_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -531,7 +531,7 @@ func (x *SetFinalResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetFinalResponse.ProtoReflect.Descriptor instead.
 func (*SetFinalResponse) Descriptor() ([]byte, []int) {
-	return file_evnode_v1_execution_proto_rawDescGZIP(), []int{8}
+	return file_execution_proto_rawDescGZIP(), []int{8}
 }
 
 // GetExecutionInfoRequest requests execution layer parameters
@@ -543,7 +543,7 @@ type GetExecutionInfoRequest struct {
 
 func (x *GetExecutionInfoRequest) Reset() {
 	*x = GetExecutionInfoRequest{}
-	mi := &file_evnode_v1_execution_proto_msgTypes[9]
+	mi := &file_execution_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -555,7 +555,7 @@ func (x *GetExecutionInfoRequest) String() string {
 func (*GetExecutionInfoRequest) ProtoMessage() {}
 
 func (x *GetExecutionInfoRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_evnode_v1_execution_proto_msgTypes[9]
+	mi := &file_execution_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -568,7 +568,7 @@ func (x *GetExecutionInfoRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetExecutionInfoRequest.ProtoReflect.Descriptor instead.
 func (*GetExecutionInfoRequest) Descriptor() ([]byte, []int) {
-	return file_evnode_v1_execution_proto_rawDescGZIP(), []int{9}
+	return file_execution_proto_rawDescGZIP(), []int{9}
 }
 
 // GetExecutionInfoResponse contains execution layer parameters
@@ -583,7 +583,7 @@ type GetExecutionInfoResponse struct {
 
 func (x *GetExecutionInfoResponse) Reset() {
 	*x = GetExecutionInfoResponse{}
-	mi := &file_evnode_v1_execution_proto_msgTypes[10]
+	mi := &file_execution_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -595,7 +595,7 @@ func (x *GetExecutionInfoResponse) String() string {
 func (*GetExecutionInfoResponse) ProtoMessage() {}
 
 func (x *GetExecutionInfoResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_evnode_v1_execution_proto_msgTypes[10]
+	mi := &file_execution_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -608,7 +608,7 @@ func (x *GetExecutionInfoResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetExecutionInfoResponse.ProtoReflect.Descriptor instead.
 func (*GetExecutionInfoResponse) Descriptor() ([]byte, []int) {
-	return file_evnode_v1_execution_proto_rawDescGZIP(), []int{10}
+	return file_execution_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *GetExecutionInfoResponse) GetMaxGas() uint64 {
@@ -635,7 +635,7 @@ type FilterTxsRequest struct {
 
 func (x *FilterTxsRequest) Reset() {
 	*x = FilterTxsRequest{}
-	mi := &file_evnode_v1_execution_proto_msgTypes[11]
+	mi := &file_execution_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -647,7 +647,7 @@ func (x *FilterTxsRequest) String() string {
 func (*FilterTxsRequest) ProtoMessage() {}
 
 func (x *FilterTxsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_evnode_v1_execution_proto_msgTypes[11]
+	mi := &file_execution_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -660,7 +660,7 @@ func (x *FilterTxsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FilterTxsRequest.ProtoReflect.Descriptor instead.
 func (*FilterTxsRequest) Descriptor() ([]byte, []int) {
-	return file_evnode_v1_execution_proto_rawDescGZIP(), []int{11}
+	return file_execution_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *FilterTxsRequest) GetMaxBytes() uint64 {
@@ -702,7 +702,7 @@ type FilterTxsResponse struct {
 
 func (x *FilterTxsResponse) Reset() {
 	*x = FilterTxsResponse{}
-	mi := &file_evnode_v1_execution_proto_msgTypes[12]
+	mi := &file_execution_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -714,7 +714,7 @@ func (x *FilterTxsResponse) String() string {
 func (*FilterTxsResponse) ProtoMessage() {}
 
 func (x *FilterTxsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_evnode_v1_execution_proto_msgTypes[12]
+	mi := &file_execution_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -727,7 +727,7 @@ func (x *FilterTxsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FilterTxsResponse.ProtoReflect.Descriptor instead.
 func (*FilterTxsResponse) Descriptor() ([]byte, []int) {
-	return file_evnode_v1_execution_proto_rawDescGZIP(), []int{12}
+	return file_execution_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *FilterTxsResponse) GetStatuses() []FilterStatus {
@@ -737,11 +737,11 @@ func (x *FilterTxsResponse) GetStatuses() []FilterStatus {
 	return nil
 }
 
-var File_evnode_v1_execution_proto protoreflect.FileDescriptor
+var File_execution_proto protoreflect.FileDescriptor
 
-const file_evnode_v1_execution_proto_rawDesc = "" +
+const file_execution_proto_rawDesc = "" +
 	"\n" +
-	"\x19evnode/v1/execution.proto\x12\tevnode.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x93\x01\n" +
+	"\x0fexecution.proto\x12\tevnode.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x93\x01\n" +
 	"\x10InitChainRequest\x12=\n" +
 	"\fgenesis_time\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\vgenesisTime\x12%\n" +
 	"\x0einitial_height\x18\x02 \x01(\x04R\rinitialHeight\x12\x19\n" +
@@ -787,23 +787,23 @@ const file_evnode_v1_execution_proto_rawDesc = "" +
 	"ExecuteTxs\x12\x1c.evnode.v1.ExecuteTxsRequest\x1a\x1d.evnode.v1.ExecuteTxsResponse\"\x00\x12E\n" +
 	"\bSetFinal\x12\x1a.evnode.v1.SetFinalRequest\x1a\x1b.evnode.v1.SetFinalResponse\"\x00\x12]\n" +
 	"\x10GetExecutionInfo\x12\".evnode.v1.GetExecutionInfoRequest\x1a#.evnode.v1.GetExecutionInfoResponse\"\x00\x12H\n" +
-	"\tFilterTxs\x12\x1b.evnode.v1.FilterTxsRequest\x1a\x1c.evnode.v1.FilterTxsResponse\"\x00B/Z-github.com/evstack/ev-node/types/pb/evnode/v1b\x06proto3"
+	"\tFilterTxs\x12\x1b.evnode.v1.FilterTxsRequest\x1a\x1c.evnode.v1.FilterTxsResponse\"\x00B4Z2github.com/evstack/ev-node/execution/grpc/types/pbb\x06proto3"
 
 var (
-	file_evnode_v1_execution_proto_rawDescOnce sync.Once
-	file_evnode_v1_execution_proto_rawDescData []byte
+	file_execution_proto_rawDescOnce sync.Once
+	file_execution_proto_rawDescData []byte
 )
 
-func file_evnode_v1_execution_proto_rawDescGZIP() []byte {
-	file_evnode_v1_execution_proto_rawDescOnce.Do(func() {
-		file_evnode_v1_execution_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_evnode_v1_execution_proto_rawDesc), len(file_evnode_v1_execution_proto_rawDesc)))
+func file_execution_proto_rawDescGZIP() []byte {
+	file_execution_proto_rawDescOnce.Do(func() {
+		file_execution_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_execution_proto_rawDesc), len(file_execution_proto_rawDesc)))
 	})
-	return file_evnode_v1_execution_proto_rawDescData
+	return file_execution_proto_rawDescData
 }
 
-var file_evnode_v1_execution_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_evnode_v1_execution_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
-var file_evnode_v1_execution_proto_goTypes = []any{
+var file_execution_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_execution_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_execution_proto_goTypes = []any{
 	(FilterStatus)(0),                // 0: evnode.v1.FilterStatus
 	(*InitChainRequest)(nil),         // 1: evnode.v1.InitChainRequest
 	(*InitChainResponse)(nil),        // 2: evnode.v1.InitChainResponse
@@ -820,7 +820,7 @@ var file_evnode_v1_execution_proto_goTypes = []any{
 	(*FilterTxsResponse)(nil),        // 13: evnode.v1.FilterTxsResponse
 	(*timestamppb.Timestamp)(nil),    // 14: google.protobuf.Timestamp
 }
-var file_evnode_v1_execution_proto_depIdxs = []int32{
+var file_execution_proto_depIdxs = []int32{
 	14, // 0: evnode.v1.InitChainRequest.genesis_time:type_name -> google.protobuf.Timestamp
 	4,  // 1: evnode.v1.GetTxsResponse.tx_batch:type_name -> evnode.v1.TxBatch
 	14, // 2: evnode.v1.ExecuteTxsRequest.timestamp:type_name -> google.protobuf.Timestamp
@@ -846,27 +846,27 @@ var file_evnode_v1_execution_proto_depIdxs = []int32{
 	0,  // [0:6] is the sub-list for field type_name
 }
 
-func init() { file_evnode_v1_execution_proto_init() }
-func file_evnode_v1_execution_proto_init() {
-	if File_evnode_v1_execution_proto != nil {
+func init() { file_execution_proto_init() }
+func file_execution_proto_init() {
+	if File_execution_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_evnode_v1_execution_proto_rawDesc), len(file_evnode_v1_execution_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_execution_proto_rawDesc), len(file_execution_proto_rawDesc)),
 			NumEnums:      1,
 			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_evnode_v1_execution_proto_goTypes,
-		DependencyIndexes: file_evnode_v1_execution_proto_depIdxs,
-		EnumInfos:         file_evnode_v1_execution_proto_enumTypes,
-		MessageInfos:      file_evnode_v1_execution_proto_msgTypes,
+		GoTypes:           file_execution_proto_goTypes,
+		DependencyIndexes: file_execution_proto_depIdxs,
+		EnumInfos:         file_execution_proto_enumTypes,
+		MessageInfos:      file_execution_proto_msgTypes,
 	}.Build()
-	File_evnode_v1_execution_proto = out.File
-	file_evnode_v1_execution_proto_goTypes = nil
-	file_evnode_v1_execution_proto_depIdxs = nil
+	File_execution_proto = out.File
+	file_execution_proto_goTypes = nil
+	file_execution_proto_depIdxs = nil
 }

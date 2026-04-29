@@ -15,8 +15,8 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/evstack/ev-node/core/execution"
-	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
-	"github.com/evstack/ev-node/types/pb/evnode/v1/v1connect"
+	pb "github.com/evstack/ev-node/execution/grpc/types/pb"
+	"github.com/evstack/ev-node/execution/grpc/types/pb/pbconnect"
 )
 
 // Ensure Client implements the execution.Executor interface
@@ -25,7 +25,7 @@ var _ execution.Executor = (*Client)(nil)
 // Client is a gRPC client that implements the execution.Executor interface.
 // It communicates with a remote execution service via gRPC using Connect-RPC.
 type Client struct {
-	client v1connect.ExecutorServiceClient
+	client pbconnect.ExecutorServiceClient
 }
 
 const (
@@ -99,7 +99,7 @@ func NewClient(url string, opts ...connect.ClientOption) (*Client, error) {
 		return nil, err
 	}
 	return &Client{
-		client: v1connect.NewExecutorServiceClient(
+		client: pbconnect.NewExecutorServiceClient(
 			httpClient,
 			targetURL,
 			opts...,

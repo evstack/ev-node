@@ -10,7 +10,7 @@ import (
 	"golang.org/x/net/http2/h2c"
 
 	"github.com/evstack/ev-node/core/execution"
-	"github.com/evstack/ev-node/types/pb/evnode/v1/v1connect"
+	"github.com/evstack/ev-node/execution/grpc/types/pb/pbconnect"
 )
 
 // NewExecutorServiceHandler creates a new HTTP handler for the ExecutorService.
@@ -33,13 +33,13 @@ func NewExecutorServiceHandler(executor execution.Executor, opts ...connect.Hand
 
 	// Set up gRPC reflection for debugging and discovery
 	reflector := grpcreflect.NewStaticReflector(
-		v1connect.ExecutorServiceName,
+		pbconnect.ExecutorServiceName,
 	)
 	mux.Handle(grpcreflect.NewHandlerV1(reflector, compress1KB))
 	mux.Handle(grpcreflect.NewHandlerV1Alpha(reflector, compress1KB))
 
 	// Register the ExecutorService
-	path, handler := v1connect.NewExecutorServiceHandler(server, append(opts, compress1KB)...)
+	path, handler := pbconnect.NewExecutorServiceHandler(server, append(opts, compress1KB)...)
 	mux.Handle(path, handler)
 
 	// Use h2c to support HTTP/2 without TLS
