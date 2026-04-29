@@ -246,14 +246,14 @@ func (s *Submitter) daSubmissionLoop() {
 
 						onSuccess := func() { s.lastHeaderSubmit.Store(time.Now().UnixNano()) }
 						onError := func(err error) {
-							if len(headers) > 0 {
-								s.cache.ResetInFlightHeaderRange(headers[0].Height(), headers[len(headers)-1].Height())
-							}
 							if errors.Is(err, common.ErrOversizedItem) {
 								s.logger.Error().Err(err).
 									Msg("CRITICAL: Header exceeds DA blob size limit - halting to prevent live lock")
 								s.sendCriticalError(fmt.Errorf("unrecoverable DA submission error: %w", err))
 								return
+							}
+							if len(headers) > 0 {
+								s.cache.ResetInFlightHeaderRange(headers[0].Height(), headers[len(headers)-1].Height())
 							}
 							if err != nil {
 								s.logger.Error().Err(err).Msg("failed to submit headers")
@@ -326,14 +326,14 @@ func (s *Submitter) daSubmissionLoop() {
 
 						onSuccess := func() { s.lastDataSubmit.Store(time.Now().UnixNano()) }
 						onError := func(err error) {
-							if len(signedDataList) > 0 {
-								s.cache.ResetInFlightDataRange(signedDataList[0].Height(), signedDataList[len(signedDataList)-1].Height())
-							}
 							if errors.Is(err, common.ErrOversizedItem) {
 								s.logger.Error().Err(err).
 									Msg("CRITICAL: Data exceeds DA blob size limit - halting to prevent live lock")
 								s.sendCriticalError(fmt.Errorf("unrecoverable DA submission error: %w", err))
 								return
+							}
+							if len(signedDataList) > 0 {
+								s.cache.ResetInFlightDataRange(signedDataList[0].Height(), signedDataList[len(signedDataList)-1].Height())
 							}
 							if err != nil {
 								s.logger.Error().Err(err).Msg("failed to submit data")
@@ -474,6 +474,9 @@ func putUint64Metadata(ctx context.Context, st store.Store, key string, val uint
 
 // sendCriticalError sends a critical error to the error channel without blocking
 func (s *Submitter) sendCriticalError(err error) {
+	if s.cancel != nil {
+		s.cancel()
+	}
 	if s.errorCh != nil {
 		select {
 		case s.errorCh <- err:
