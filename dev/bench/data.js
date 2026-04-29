@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1777465792841,
+  "lastUpdate": 1777465804459,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -142,6 +142,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 191025,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "marko@baricevic.me",
+            "name": "Marko",
+            "username": "tac0turtle"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "406369874b2faf7cf0664752f9284dc94ece780a",
+          "message": "feat: add grpc socket and flattn tx batches to allow for lower allocations (#3297)\n\n* add grpc socket and flattn tx batches to allow for lower allocations\n\n* redo proto\n\n* docs: update changelog for grpc execution transport\n\n* remove extra txs",
+          "timestamp": "2026-04-29T14:04:12+02:00",
+          "tree_id": "73c5304f4d8c2dc277cd754e8912062c9f188052",
+          "url": "https://github.com/evstack/ev-node/commit/406369874b2faf7cf0664752f9284dc94ece780a"
+        },
+        "date": 1777465800421,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 914700600,
+            "unit": "ns/op\t32156080 B/op\t  176285 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 914700600,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 32156080,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 176285,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
