@@ -19,20 +19,20 @@ import (
 )
 
 type mockDASubmitterAPI struct {
-	submitHeadersFn func(ctx context.Context, headers []*types.SignedHeader, marshalledHeaders [][]byte, cache cache.Manager, signer signer.Signer, onSubmitSuccess func(), onSubmitError func(error)) error
-	submitDataFn    func(ctx context.Context, signedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis, onSubmitSuccess func(), onSubmitError func(error)) error
+	submitHeadersFn func(ctx context.Context, headers []*types.SignedHeader, marshalledHeaders [][]byte, cache cache.Manager, signer signer.Signer, onSubmitError func(error)) error
+	submitDataFn    func(ctx context.Context, signedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis, onSubmitError func(error)) error
 }
 
-func (m *mockDASubmitterAPI) SubmitHeaders(ctx context.Context, headers []*types.SignedHeader, marshalledHeaders [][]byte, cache cache.Manager, signer signer.Signer, onSubmitSuccess func(), onSubmitError func(error)) error {
+func (m *mockDASubmitterAPI) SubmitHeaders(ctx context.Context, headers []*types.SignedHeader, marshalledHeaders [][]byte, cache cache.Manager, signer signer.Signer, onSubmitError func(error)) error {
 	if m.submitHeadersFn != nil {
-		return m.submitHeadersFn(ctx, headers, marshalledHeaders, cache, signer, onSubmitSuccess, onSubmitError)
+		return m.submitHeadersFn(ctx, headers, marshalledHeaders, cache, signer, onSubmitError)
 	}
 	return nil
 }
 
-func (m *mockDASubmitterAPI) SubmitData(ctx context.Context, signedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis, onSubmitSuccess func(), onSubmitError func(error)) error {
+func (m *mockDASubmitterAPI) SubmitData(ctx context.Context, signedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis, onSubmitError func(error)) error {
 	if m.submitDataFn != nil {
-		return m.submitDataFn(ctx, signedDataList, marshalledData, cache, signer, genesis, onSubmitSuccess, onSubmitError)
+		return m.submitDataFn(ctx, signedDataList, marshalledData, cache, signer, genesis, onSubmitError)
 	}
 	return nil
 }
@@ -50,7 +50,7 @@ func setupDASubmitterTrace(t *testing.T, inner DASubmitterAPI) (DASubmitterAPI, 
 
 func TestTracedDASubmitter_SubmitHeaders_Success(t *testing.T) {
 	mock := &mockDASubmitterAPI{
-		submitHeadersFn: func(ctx context.Context, headers []*types.SignedHeader, marshalledHeaders [][]byte, cache cache.Manager, signer signer.Signer, onSubmitSuccess func(), onSubmitError func(error)) error {
+		submitHeadersFn: func(ctx context.Context, headers []*types.SignedHeader, marshalledHeaders [][]byte, cache cache.Manager, signer signer.Signer, onSubmitError func(error)) error {
 			return nil
 		},
 	}
@@ -68,7 +68,7 @@ func TestTracedDASubmitter_SubmitHeaders_Success(t *testing.T) {
 		[]byte("header3"),
 	}
 
-	err := submitter.SubmitHeaders(ctx, headers, marshalledHeaders, nil, nil, nil, nil)
+	err := submitter.SubmitHeaders(ctx, headers, marshalledHeaders, nil, nil, nil)
 	require.NoError(t, err)
 
 	spans := sr.Ended()
@@ -87,7 +87,7 @@ func TestTracedDASubmitter_SubmitHeaders_Success(t *testing.T) {
 func TestTracedDASubmitter_SubmitHeaders_Error(t *testing.T) {
 	expectedErr := errors.New("DA submission failed")
 	mock := &mockDASubmitterAPI{
-		submitHeadersFn: func(ctx context.Context, headers []*types.SignedHeader, marshalledHeaders [][]byte, cache cache.Manager, signer signer.Signer, onSubmitSuccess func(), onSubmitError func(error)) error {
+		submitHeadersFn: func(ctx context.Context, headers []*types.SignedHeader, marshalledHeaders [][]byte, cache cache.Manager, signer signer.Signer, onSubmitError func(error)) error {
 			return expectedErr
 		},
 	}
@@ -99,7 +99,7 @@ func TestTracedDASubmitter_SubmitHeaders_Error(t *testing.T) {
 	}
 	marshalledHeaders := [][]byte{[]byte("header1")}
 
-	err := submitter.SubmitHeaders(ctx, headers, marshalledHeaders, nil, nil, nil, nil)
+	err := submitter.SubmitHeaders(ctx, headers, marshalledHeaders, nil, nil, nil)
 	require.Error(t, err)
 	require.Equal(t, expectedErr, err)
 
@@ -112,14 +112,14 @@ func TestTracedDASubmitter_SubmitHeaders_Error(t *testing.T) {
 
 func TestTracedDASubmitter_SubmitHeaders_Empty(t *testing.T) {
 	mock := &mockDASubmitterAPI{
-		submitHeadersFn: func(ctx context.Context, headers []*types.SignedHeader, marshalledHeaders [][]byte, cache cache.Manager, signer signer.Signer, onSubmitSuccess func(), onSubmitError func(error)) error {
+		submitHeadersFn: func(ctx context.Context, headers []*types.SignedHeader, marshalledHeaders [][]byte, cache cache.Manager, signer signer.Signer, onSubmitError func(error)) error {
 			return nil
 		},
 	}
 	submitter, sr := setupDASubmitterTrace(t, mock)
 	ctx := context.Background()
 
-	err := submitter.SubmitHeaders(ctx, []*types.SignedHeader{}, [][]byte{}, nil, nil, nil, nil)
+	err := submitter.SubmitHeaders(ctx, []*types.SignedHeader{}, [][]byte{}, nil, nil, nil)
 	require.NoError(t, err)
 
 	spans := sr.Ended()
@@ -133,7 +133,7 @@ func TestTracedDASubmitter_SubmitHeaders_Empty(t *testing.T) {
 
 func TestTracedDASubmitter_SubmitData_Success(t *testing.T) {
 	mock := &mockDASubmitterAPI{
-		submitDataFn: func(ctx context.Context, signedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis, onSubmitSuccess func(), onSubmitError func(error)) error {
+		submitDataFn: func(ctx context.Context, signedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis, onSubmitError func(error)) error {
 			return nil
 		},
 	}
@@ -149,7 +149,7 @@ func TestTracedDASubmitter_SubmitData_Success(t *testing.T) {
 		[]byte("data2data2"),
 	}
 
-	err := submitter.SubmitData(ctx, signedDataList, marshalledData, nil, nil, genesis.Genesis{}, nil, nil)
+	err := submitter.SubmitData(ctx, signedDataList, marshalledData, nil, nil, genesis.Genesis{}, nil)
 	require.NoError(t, err)
 
 	spans := sr.Ended()
@@ -168,7 +168,7 @@ func TestTracedDASubmitter_SubmitData_Success(t *testing.T) {
 func TestTracedDASubmitter_SubmitData_Error(t *testing.T) {
 	expectedErr := errors.New("data submission failed")
 	mock := &mockDASubmitterAPI{
-		submitDataFn: func(ctx context.Context, signedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis, onSubmitSuccess func(), onSubmitError func(error)) error {
+		submitDataFn: func(ctx context.Context, signedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis, onSubmitError func(error)) error {
 			return expectedErr
 		},
 	}
@@ -180,7 +180,7 @@ func TestTracedDASubmitter_SubmitData_Error(t *testing.T) {
 	}
 	marshalledData := [][]byte{[]byte("data1")}
 
-	err := submitter.SubmitData(ctx, signedDataList, marshalledData, nil, nil, genesis.Genesis{}, nil, nil)
+	err := submitter.SubmitData(ctx, signedDataList, marshalledData, nil, nil, genesis.Genesis{}, nil)
 	require.Error(t, err)
 	require.Equal(t, expectedErr, err)
 

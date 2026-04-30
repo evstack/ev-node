@@ -30,13 +30,12 @@ func WithTracingDASubmitter(inner DASubmitterAPI) DASubmitterAPI {
 	}
 }
 
-func (t *tracedDASubmitter) SubmitHeaders(ctx context.Context, headers []*types.SignedHeader, marshalledHeaders [][]byte, cache cache.Manager, signer signer.Signer, onSubmitSuccess func(), onSubmitError func(error)) error {
+func (t *tracedDASubmitter) SubmitHeaders(ctx context.Context, headers []*types.SignedHeader, marshalledHeaders [][]byte, cache cache.Manager, signer signer.Signer, onSubmitError func(error)) error {
 	ctx, span := t.tracer.Start(ctx, "DASubmitter.SubmitHeaders",
 		trace.WithAttributes(
 			attribute.Int("header.count", len(headers)),
 		),
 	)
-	defer span.End()
 
 	var totalBytes int
 	for _, h := range marshalledHeaders {
@@ -51,23 +50,39 @@ func (t *tracedDASubmitter) SubmitHeaders(ctx context.Context, headers []*types.
 		)
 	}
 
-	err := t.inner.SubmitHeaders(ctx, headers, marshalledHeaders, cache, signer, onSubmitSuccess, onSubmitError)
+	var wrappedOnError func(error)
+	if onSubmitError != nil {
+		wrappedOnError = func(err error) {
+			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, err.Error())
+			}
+			span.End()
+			onSubmitError(err)
+		}
+	}
+
+	err := t.inner.SubmitHeaders(ctx, headers, marshalledHeaders, cache, signer, wrappedOnError)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
+		span.End()
 		return err
+	}
+
+	if onSubmitError == nil {
+		span.End()
 	}
 
 	return nil
 }
 
-func (t *tracedDASubmitter) SubmitData(ctx context.Context, signedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis, onSubmitSuccess func(), onSubmitError func(error)) error {
+func (t *tracedDASubmitter) SubmitData(ctx context.Context, signedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis, onSubmitError func(error)) error {
 	ctx, span := t.tracer.Start(ctx, "DASubmitter.SubmitData",
 		trace.WithAttributes(
 			attribute.Int("data.count", len(signedDataList)),
 		),
 	)
-	defer span.End()
 
 	var totalBytes int
 	for _, d := range marshalledData {
@@ -82,11 +97,28 @@ func (t *tracedDASubmitter) SubmitData(ctx context.Context, signedDataList []*ty
 		)
 	}
 
-	err := t.inner.SubmitData(ctx, signedDataList, marshalledData, cache, signer, genesis, onSubmitSuccess, onSubmitError)
+	var wrappedOnError func(error)
+	if onSubmitError != nil {
+		wrappedOnError = func(err error) {
+			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, err.Error())
+			}
+			span.End()
+			onSubmitError(err)
+		}
+	}
+
+	err := t.inner.SubmitData(ctx, signedDataList, marshalledData, cache, signer, genesis, wrappedOnError)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
+		span.End()
 		return err
+	}
+
+	if onSubmitError == nil {
+		span.End()
 	}
 
 	return nil

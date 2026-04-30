@@ -315,10 +315,6 @@ func (m *implementation) SetLastSubmittedHeaderHeight(ctx context.Context, heigh
 	m.pendingHeaders.SetLastSubmittedHeaderHeight(ctx, height)
 }
 
-func (m *implementation) ResetInFlightHeaderHeight() {
-	m.pendingHeaders.ResetInFlightHeaderRange(0, 0)
-}
-
 func (m *implementation) ResetInFlightHeaderRange(start, end uint64) {
 	m.pendingHeaders.ResetInFlightHeaderRange(start, end)
 }

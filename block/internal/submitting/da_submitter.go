@@ -200,7 +200,7 @@ func (s *DASubmitter) Close() {
 }
 
 // SubmitHeaders submits pending headers to DA layer
-func (s *DASubmitter) SubmitHeaders(ctx context.Context, headers []*types.SignedHeader, marshalledHeaders [][]byte, cache cache.Manager, signer signer.Signer, onSubmitSuccess func(), onSubmitError func(error)) error {
+func (s *DASubmitter) SubmitHeaders(ctx context.Context, headers []*types.SignedHeader, marshalledHeaders [][]byte, cache cache.Manager, signer signer.Signer, onSubmitError func(error)) error {
 	if len(headers) == 0 {
 		return nil
 	}
@@ -232,9 +232,6 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, headers []*types.Signed
 				postSubmit(headers[submittedOffset:end], &datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, SubmittedCount: uint64(submittedCount), Height: daHeight}})
 				submittedOffset = end
 			}
-			if onSubmitSuccess != nil {
-				onSubmitSuccess()
-			}
 		}, onSubmitError, "header")
 	})
 
@@ -260,7 +257,7 @@ func (s *DASubmitter) makeHeaderPostSubmit(ctx context.Context, cache cache.Mana
 }
 
 // SubmitData submits pending data to DA layer
-func (s *DASubmitter) SubmitData(ctx context.Context, unsignedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis, onSubmitSuccess func(), onSubmitError func(error)) error {
+func (s *DASubmitter) SubmitData(ctx context.Context, unsignedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis, onSubmitError func(error)) error {
 	if len(unsignedDataList) == 0 {
 		return nil
 	}
@@ -291,9 +288,6 @@ func (s *DASubmitter) SubmitData(ctx context.Context, unsignedDataList []*types.
 				end := submittedOffset + submittedCount
 				postSubmit(signedDataList[submittedOffset:end], &datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, SubmittedCount: uint64(submittedCount), Height: daHeight}})
 				submittedOffset = end
-			}
-			if onSubmitSuccess != nil {
-				onSubmitSuccess()
 			}
 		}, onSubmitError, "data")
 	})
