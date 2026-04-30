@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1777535706973,
+  "lastUpdate": 1777535708691,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -770,6 +770,102 @@ window.BENCHMARK_DATA = {
             "value": 54,
             "unit": "allocs/op",
             "extra": "31827 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "github.qpeyb@simplelogin.fr",
+            "name": "Cian Hatton",
+            "username": "chatton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "03d0d4d60960ffbdb25333e7e0c3826211765b18",
+          "message": "feat(execution/grpc): adding support for grpc otlp (#3300)\n\n* feat: adding support for grpc oltp\n\n* chore: fix linting\n\n* cl\n\n---------\n\nCo-authored-by: Julien Robert <julien@rbrt.fr>",
+          "timestamp": "2026-04-30T07:36:10Z",
+          "tree_id": "be39434dcabf24176c31edb11905bb09c232f470",
+          "url": "https://github.com/evstack/ev-node/commit/03d0d4d60960ffbdb25333e7e0c3826211765b18"
+        },
+        "date": 1777535708296,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 42959,
+            "unit": "ns/op\t   10235 B/op\t      54 allocs/op",
+            "extra": "28360 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 42959,
+            "unit": "ns/op",
+            "extra": "28360 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 10235,
+            "unit": "B/op",
+            "extra": "28360 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 54,
+            "unit": "allocs/op",
+            "extra": "28360 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 36604,
+            "unit": "ns/op\t    4751 B/op\t      50 allocs/op",
+            "extra": "32893 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 36604,
+            "unit": "ns/op",
+            "extra": "32893 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 4751,
+            "unit": "B/op",
+            "extra": "32893 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 50,
+            "unit": "allocs/op",
+            "extra": "32893 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 37183,
+            "unit": "ns/op\t    4949 B/op\t      54 allocs/op",
+            "extra": "32654 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 37183,
+            "unit": "ns/op",
+            "extra": "32654 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 4949,
+            "unit": "B/op",
+            "extra": "32654 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 54,
+            "unit": "allocs/op",
+            "extra": "32654 times\n4 procs"
           }
         ]
       }
