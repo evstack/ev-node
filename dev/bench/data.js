@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1777476028627,
+  "lastUpdate": 1777535706973,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -238,6 +238,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 171208,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "github.qpeyb@simplelogin.fr",
+            "name": "Cian Hatton",
+            "username": "chatton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "03d0d4d60960ffbdb25333e7e0c3826211765b18",
+          "message": "feat(execution/grpc): adding support for grpc otlp (#3300)\n\n* feat: adding support for grpc oltp\n\n* chore: fix linting\n\n* cl\n\n---------\n\nCo-authored-by: Julien Robert <julien@rbrt.fr>",
+          "timestamp": "2026-04-30T07:36:10Z",
+          "tree_id": "be39434dcabf24176c31edb11905bb09c232f470",
+          "url": "https://github.com/evstack/ev-node/commit/03d0d4d60960ffbdb25333e7e0c3826211765b18"
+        },
+        "date": 1777535703203,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 915916748,
+            "unit": "ns/op\t29984804 B/op\t  156875 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 915916748,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 29984804,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 156875,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
