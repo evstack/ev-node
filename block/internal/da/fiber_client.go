@@ -89,7 +89,23 @@ func (c *fiberDAClient) Submit(ctx context.Context, data [][]byte, _ float64, na
 
 	flat := flattenBlobs(data)
 	nsID := namespace[len(namespace)-10:]
+	uploadStart := time.Now()
 	result, err := c.fiber.Upload(context.Background(), nsID, flat)
+	uploadDuration := time.Since(uploadStart)
+	if err != nil {
+		c.logger.Warn().
+			Dur("duration", uploadDuration).
+			Int("flat_size", len(flat)).
+			Int("blob_count", len(data)).
+			Err(err).
+			Msg("fiber upload duration (failed)")
+	} else {
+		c.logger.Info().
+			Dur("duration", uploadDuration).
+			Int("flat_size", len(flat)).
+			Int("blob_count", len(data)).
+			Msg("fiber upload duration (ok)")
+	}
 	if err != nil {
 		code := datypes.StatusError
 		switch {
