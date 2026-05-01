@@ -558,9 +558,17 @@ mkdir -p "$EVNODE_HOME"
 #   2. /root/keyring-fibre/keyring-test  cosmos-sdk file keyring with
 #                                        a Fibre payment account
 # Without them the daemon would crash immediately on startup.
-echo "Waiting for $BRIDGE_JWT_FILE and $FIBRE_KEYRING_DIR..."
+#
+# We check for the *specific* fibre-0.info file (not just the
+# keyring-test directory) because a non-atomic scp -r would create
+# the directory before transferring its contents — so testing -d
+# alone passes mid-scp and the daemon would launch with an empty
+# keyring. fibre-bootstrap-evnode now also stages-and-mvs so this
+# check should never see a partial state, but keep the file-level
+# guard as a defence-in-depth.
+echo "Waiting for $BRIDGE_JWT_FILE and $FIBRE_KEYRING_DIR/keyring-test/fibre-0.info..."
 WAITED=0
-until [ -s "$BRIDGE_JWT_FILE" ] && [ -d "$FIBRE_KEYRING_DIR/keyring-test" ]; do
+until [ -s "$BRIDGE_JWT_FILE" ] && [ -f "$FIBRE_KEYRING_DIR/keyring-test/fibre-0.info" ]; do
   sleep 5
   WAITED=$((WAITED + 5))
   if [ $((WAITED % 60)) -eq 0 ]; then

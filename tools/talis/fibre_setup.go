@@ -51,17 +51,67 @@ func setupFibreCmd() *cobra.Command {
 				// Build script: register host + deposit escrow for validator + all fibre accounts
 				var sb strings.Builder
 
+				// 0. Block until the chain has produced at least one block.
+				// Without this, the very next tx returns
+				// `celestia-app is not ready; please wait for first block`
+				// from the local node — the call appears to succeed at
+				// the CLI level (`--yes` returns the txhash before block
+				// inclusion), but the tx never lands. Polling explicitly
+				// avoids the `sleep 10` heuristic that used to be here.
+				sb.WriteString(fmt.Sprintf(
+					"echo 'waiting for chain to produce first block...'\n"+
+						"DEADLINE=$(( $(date +%%s) + 300 ))\n"+
+						"while true; do\n"+
+						"  H=$(celestia-appd status --chain-id %s 2>/dev/null | "+
+						"      grep -oE '\"latest_block_height\":\"[0-9]+\"' | "+
+						"      grep -oE '[0-9]+' | head -1)\n"+
+						"  if [ -n \"$H\" ] && [ \"$H\" -gt 0 ]; then\n"+
+						"    echo \"chain is at height $H\"\n"+
+						"    break\n"+
+						"  fi\n"+
+						"  if [ $(date +%%s) -gt $DEADLINE ]; then\n"+
+						"    echo 'FATAL: chain never produced a block within 5m' >&2\n"+
+						"    exit 1\n"+
+						"  fi\n"+
+						"  sleep 3\n"+
+						"done\n",
+					cfg.ChainID,
+				))
+
 				// 1. Register fibre host address. Plain `host:port` form —
 				// x/valaddr requires it; the gRPC client dials it via the
 				// passthrough resolver. Don't prefix `dns:///` here.
+				//
+				// Retry until `query valaddr providers` shows OUR host
+				// — `--yes` returns the txhash before inclusion, so a
+				// single one-shot call can succeed at the RPC layer
+				// while the chain rejects the tx (mempool full, signer
+				// not yet in validator set, …) and we'd never know.
+				// 5-minute deadline so a stuck chain doesn't loop
+				// forever.
 				sb.WriteString(fmt.Sprintf(
-					"celestia-appd tx valaddr set-host %s:%d "+
+					"HOST=%s:%d\n"+
+						"DEADLINE=$(( $(date +%%s) + 300 ))\n"+
+						"while true; do\n"+
+						"  celestia-appd tx valaddr set-host \"$HOST\" "+
 						"--from validator --keyring-backend=test --home .celestia-app "+
-						"--chain-id %s --fees %s --yes\n",
+						"--chain-id %s --fees %s --yes >/dev/null 2>&1 || true\n"+
+						"  sleep 6\n"+
+						"  if celestia-appd query valaddr providers --chain-id %s -o json 2>/dev/null \\\n"+
+						"     | grep -q \"\\\"host\\\": *\\\"$HOST\\\"\"; then\n"+
+						"    echo \"set-host confirmed: $HOST\"\n"+
+						"    break\n"+
+						"  fi\n"+
+						"  if [ $(date +%%s) -gt $DEADLINE ]; then\n"+
+						"    echo \"FATAL: set-host did not register $HOST after 5m\" >&2\n"+
+						"    exit 1\n"+
+						"  fi\n"+
+						"  echo 'set-host pending, retrying...'\n"+
+						"done\n",
 					val.PublicIP, fibrePort,
 					cfg.ChainID, fees,
+					cfg.ChainID,
 				))
-				sb.WriteString("sleep 10\n")
 
 				// 2. Deposit escrow for each fibre worker account
 				for i := range fibreAccounts {
@@ -75,6 +125,31 @@ func setupFibreCmd() *cobra.Command {
 						cfg.ChainID, fees,
 					))
 				}
+
+				// 3. Verify the FIRST fibre account's escrow actually
+				// landed before we let the tmux session exit. If even
+				// fibre-0 isn't funded, every Fibre upload from the
+				// runner fails with `escrow account not found for
+				// signer …` — same silent-failure mode as set-host.
+				// Other accounts (fibre-1..N) are funded best-effort:
+				// the runner only signs with fibre-0 by default.
+				sb.WriteString(fmt.Sprintf(
+					"FIBRE0_ADDR=$(celestia-appd keys show fibre-0 --keyring-backend test --home .celestia-app -a)\n"+
+						"DEADLINE=$(( $(date +%%s) + 180 ))\n"+
+						"while true; do\n"+
+						"  if celestia-appd query fibre escrow \"$FIBRE0_ADDR\" --chain-id %s -o json 2>/dev/null \\\n"+
+						"     | grep -q '\"amount\"'; then\n"+
+						"    echo \"escrow confirmed for fibre-0 ($FIBRE0_ADDR)\"\n"+
+						"    break\n"+
+						"  fi\n"+
+						"  if [ $(date +%%s) -gt $DEADLINE ]; then\n"+
+						"    echo \"FATAL: fibre-0 escrow not present after 3m\" >&2\n"+
+						"    exit 1\n"+
+						"  fi\n"+
+						"  sleep 5\n"+
+						"done\n",
+					cfg.ChainID,
+				))
 
 				script := sb.String()
 
@@ -102,6 +177,38 @@ func setupFibreCmd() *cobra.Command {
 			fmt.Printf("Waiting for fibre setup to complete (%d accounts per validator)...\n", fibreAccounts)
 			if err := waitForTmuxSessions(cfg.Validators, resolvedSSHKeyPath, SetupFibreSessionName, 10*time.Minute); err != nil {
 				return fmt.Errorf("waiting for setup-fibre sessions: %w", err)
+			}
+
+			// CLI-side verification that every validator's host is on
+			// the chain's provider list before we hand off to start-
+			// fibre / fibre-bootstrap-evnode. The per-validator script
+			// above already self-verifies its own host, but we
+			// re-check here from a single vantage point so a
+			// concurrent set-host race across validators surfaces
+			// before downstream steps cache an empty registry.
+			if len(cfg.Validators) > 0 {
+				expected := len(cfg.Validators)
+				queryHost := cfg.Validators[0].PublicIP
+				queryCmd := fmt.Sprintf(
+					"celestia-appd query valaddr providers --chain-id %s -o json 2>/dev/null | grep -o '\"host\"' | wc -l",
+					cfg.ChainID,
+				)
+				deadline := time.Now().Add(5 * time.Minute)
+				for {
+					out, err := sshExec("root", queryHost, resolvedSSHKeyPath, queryCmd)
+					if err == nil {
+						count := 0
+						_, _ = fmt.Sscanf(strings.TrimSpace(string(out)), "%d", &count)
+						if count >= expected {
+							break
+						}
+						fmt.Printf("  valaddr providers: %d/%d registered, retrying...\n", count, expected)
+					}
+					if time.Now().After(deadline) {
+						return fmt.Errorf("only some validators registered as fibre providers within 5m — re-run setup-fibre")
+					}
+					time.Sleep(5 * time.Second)
+				}
 			}
 			fmt.Println("Validator setup done!")
 
