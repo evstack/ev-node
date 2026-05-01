@@ -542,10 +542,24 @@ func (e *inMemExecutor) GetExecutionInfo(_ context.Context) (coreexecution.Execu
 	return coreexecution.ExecutionInfo{MaxGas: 0}, nil
 }
 
-func (e *inMemExecutor) FilterTxs(_ context.Context, txs [][]byte, _, _ uint64, _ bool) ([]coreexecution.FilterStatus, error) {
+// FilterTxs admits txs in arrival order until the maxBytes budget is
+// reached, then postpones the rest back to the sequencer queue so they
+// land in a future batch. Skipping this enforcement (a previous version
+// returned FilterOK unconditionally) lets a single block sweep up the
+// entire mempool — under sustained txsim load that produced 369 MiB
+// blocks that exceeded Fibre's per-upload cap and crashed the node
+// with `single item exceeds DA blob size limit`.
+func (e *inMemExecutor) FilterTxs(_ context.Context, txs [][]byte, maxBytes, _ uint64, _ bool) ([]coreexecution.FilterStatus, error) {
 	st := make([]coreexecution.FilterStatus, len(txs))
-	for i := range st {
+	var used uint64
+	for i, tx := range txs {
+		size := uint64(len(tx))
+		if maxBytes > 0 && used+size > maxBytes {
+			st[i] = coreexecution.FilterPostpone
+			continue
+		}
 		st[i] = coreexecution.FilterOK
+		used += size
 	}
 	return st, nil
 }
