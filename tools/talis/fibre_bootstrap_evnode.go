@@ -125,19 +125,43 @@ to fetch, then SCPs to each evnode-*.`,
 					defer wg.Done()
 					log.Printf("[%s] pushing JWT + keyring", ev.Name)
 
+					// JWT is small + atomic on the receive side because
+					// it's a single file, so we push it directly.
 					if err := scpToRemote(sshUser, ev.PublicIP, sshKeyPath, localJWT, "/root/bridge-jwt.txt", false); err != nil {
 						errCh <- fmt.Errorf("[%s] push JWT: %w", ev.Name, err)
 						return
 					}
 
-					// mkdir the parent so scp lands at the exact path
-					// evnode_init.sh waits for.
-					if _, err := sshExec(sshUser, ev.PublicIP, sshKeyPath, "mkdir -p /root/keyring-fibre && rm -rf /root/keyring-fibre/keyring-test"); err != nil {
-						errCh <- fmt.Errorf("[%s] mkdir keyring-fibre: %w", ev.Name, err)
+					// Keyring push is staged through a tmp dir and
+					// promoted via mv. Without staging, evnode_init.sh's
+					// poll loop (which tests `[ -d keyring-test ]`)
+					// passes the moment scp -r mkdir's the directory,
+					// long before fibre-0.info is on disk. evnode then
+					// launches mid-scp and dies with `keyring entry
+					// "fibre-0" not found`. mv is atomic on the same
+					// filesystem so the init script either sees nothing
+					// (keep waiting) or the fully-populated dir (start
+					// the daemon cleanly).
+					stageDir := "/root/.keyring-fibre.staging"
+					prep := fmt.Sprintf(
+						"rm -rf %s && mkdir -p %s && mkdir -p /root/keyring-fibre && rm -rf /root/keyring-fibre/keyring-test",
+						stageDir, stageDir,
+					)
+					if _, err := sshExec(sshUser, ev.PublicIP, sshKeyPath, prep); err != nil {
+						errCh <- fmt.Errorf("[%s] stage keyring: %w", ev.Name, err)
 						return
 					}
-					if err := scpToRemote(sshUser, ev.PublicIP, sshKeyPath, filepath.Join(localKeyringRoot, "keyring-test"), "/root/keyring-fibre/keyring-test", true); err != nil {
+					stageDest := stageDir + "/keyring-test"
+					if err := scpToRemote(sshUser, ev.PublicIP, sshKeyPath, filepath.Join(localKeyringRoot, "keyring-test"), stageDest, true); err != nil {
 						errCh <- fmt.Errorf("[%s] push keyring: %w", ev.Name, err)
+						return
+					}
+					promote := fmt.Sprintf(
+						"mv %s /root/keyring-fibre/keyring-test && rmdir %s",
+						stageDest, stageDir,
+					)
+					if _, err := sshExec(sshUser, ev.PublicIP, sshKeyPath, promote); err != nil {
+						errCh <- fmt.Errorf("[%s] promote keyring: %w", ev.Name, err)
 						return
 					}
 

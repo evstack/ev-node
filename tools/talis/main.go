@@ -37,6 +37,7 @@ func main() {
 		fibreTxsimCmd(),
 		fibreThroughputCmd(),
 		fibreBootstrapEvnodeCmd(),
+		fibreExperimentCmd(),
 		resourceMonitorCmd(),
 		downloadResourcesCmd(),
 		syncNodeCmd(),
