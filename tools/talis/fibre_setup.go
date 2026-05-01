@@ -58,25 +58,24 @@ func setupFibreCmd() *cobra.Command {
 				// the CLI level (`--yes` returns the txhash before block
 				// inclusion), but the tx never lands. Polling explicitly
 				// avoids the `sleep 10` heuristic that used to be here.
-				sb.WriteString(fmt.Sprintf(
-					"echo 'waiting for chain to produce first block...'\n"+
-						"DEADLINE=$(( $(date +%%s) + 300 ))\n"+
-						"while true; do\n"+
-						"  H=$(celestia-appd status --chain-id %s 2>/dev/null | "+
-						"      grep -oE '\"latest_block_height\":\"[0-9]+\"' | "+
-						"      grep -oE '[0-9]+' | head -1)\n"+
-						"  if [ -n \"$H\" ] && [ \"$H\" -gt 0 ]; then\n"+
-						"    echo \"chain is at height $H\"\n"+
-						"    break\n"+
-						"  fi\n"+
-						"  if [ $(date +%%s) -gt $DEADLINE ]; then\n"+
-						"    echo 'FATAL: chain never produced a block within 5m' >&2\n"+
-						"    exit 1\n"+
-						"  fi\n"+
-						"  sleep 3\n"+
+				sb.WriteString(
+					"echo 'waiting for chain to produce first block...'\n" +
+						"DEADLINE=$(( $(date +%s) + 300 ))\n" +
+						"while true; do\n" +
+						"  H=$(celestia-appd status 2>/dev/null | " +
+						"      grep -oE '\"latest_block_height\":\"[0-9]+\"' | " +
+						"      grep -oE '[0-9]+' | head -1)\n" +
+						"  if [ -n \"$H\" ] && [ \"$H\" -gt 0 ]; then\n" +
+						"    echo \"chain is at height $H\"\n" +
+						"    break\n" +
+						"  fi\n" +
+						"  if [ $(date +%s) -gt $DEADLINE ]; then\n" +
+						"    echo 'FATAL: chain never produced a block within 5m' >&2\n" +
+						"    exit 1\n" +
+						"  fi\n" +
+						"  sleep 3\n" +
 						"done\n",
-					cfg.ChainID,
-				))
+				)
 
 				// 1. Register fibre host address. Plain `host:port` form —
 				// x/valaddr requires it; the gRPC client dials it via the
@@ -113,8 +112,43 @@ func setupFibreCmd() *cobra.Command {
 					cfg.ChainID,
 				))
 
-				// 2. Deposit escrow for each fibre worker account
-				for i := range fibreAccounts {
+				// 2. Deposit escrow for fibre-0 inside a retry loop.
+				// Same silent-failure mode as set-host: `--yes` returns
+				// the txhash before inclusion, so a single bounced tx
+				// (mempool full, signer not yet propagated, …) leaves
+				// the runner failing every upload with
+				// `escrow account not found for signer …`. fibre-0 is
+				// the one the runner actually signs with by default,
+				// so it's the only one we hard-block on.
+				sb.WriteString(fmt.Sprintf(
+					"FIBRE0_ADDR=$(celestia-appd keys show fibre-0 --keyring-backend test --home .celestia-app -a)\n"+
+						"DEADLINE=$(( $(date +%%s) + 300 ))\n"+
+						"while true; do\n"+
+						"  celestia-appd tx fibre deposit-to-escrow %s "+
+						"--from fibre-0 --keyring-backend=test --home .celestia-app "+
+						"--chain-id %s --fees %s --yes >/dev/null 2>&1 || true\n"+
+						"  sleep 6\n"+
+						"  if celestia-appd query fibre escrow-account \"$FIBRE0_ADDR\" --chain-id %s -o json 2>/dev/null \\\n"+
+						"     | grep -q '\"found\":true'; then\n"+
+						"    echo \"escrow confirmed for fibre-0 ($FIBRE0_ADDR)\"\n"+
+						"    break\n"+
+						"  fi\n"+
+						"  if [ $(date +%%s) -gt $DEADLINE ]; then\n"+
+						"    echo \"FATAL: fibre-0 escrow did not land after 5m\" >&2\n"+
+						"    exit 1\n"+
+						"  fi\n"+
+						"  echo 'fibre-0 escrow pending, retrying...'\n"+
+						"done\n",
+					escrowAmount,
+					cfg.ChainID, fees,
+					cfg.ChainID,
+				))
+
+				// 3. Best-effort fund fibre-1..N. The runner only signs
+				// with fibre-0 by default, so a missing one of these
+				// doesn't block uploads — they exist as headroom for
+				// future signer rotation.
+				for i := 1; i < fibreAccounts; i++ {
 					keyName := fmt.Sprintf("fibre-%d", i)
 					sb.WriteString(fmt.Sprintf(
 						"celestia-appd tx fibre deposit-to-escrow %s "+
@@ -125,31 +159,6 @@ func setupFibreCmd() *cobra.Command {
 						cfg.ChainID, fees,
 					))
 				}
-
-				// 3. Verify the FIRST fibre account's escrow actually
-				// landed before we let the tmux session exit. If even
-				// fibre-0 isn't funded, every Fibre upload from the
-				// runner fails with `escrow account not found for
-				// signer …` — same silent-failure mode as set-host.
-				// Other accounts (fibre-1..N) are funded best-effort:
-				// the runner only signs with fibre-0 by default.
-				sb.WriteString(fmt.Sprintf(
-					"FIBRE0_ADDR=$(celestia-appd keys show fibre-0 --keyring-backend test --home .celestia-app -a)\n"+
-						"DEADLINE=$(( $(date +%%s) + 180 ))\n"+
-						"while true; do\n"+
-						"  if celestia-appd query fibre escrow \"$FIBRE0_ADDR\" --chain-id %s -o json 2>/dev/null \\\n"+
-						"     | grep -q '\"amount\"'; then\n"+
-						"    echo \"escrow confirmed for fibre-0 ($FIBRE0_ADDR)\"\n"+
-						"    break\n"+
-						"  fi\n"+
-						"  if [ $(date +%%s) -gt $DEADLINE ]; then\n"+
-						"    echo \"FATAL: fibre-0 escrow not present after 3m\" >&2\n"+
-						"    exit 1\n"+
-						"  fi\n"+
-						"  sleep 5\n"+
-						"done\n",
-					cfg.ChainID,
-				))
 
 				script := sb.String()
 

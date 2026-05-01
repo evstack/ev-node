@@ -350,15 +350,27 @@ func CreateAWSInstances(ctx context.Context, insts []Instance, sshKey, keyName s
 		close(results)
 	}()
 
-	var created []Instance
+	var (
+		created  []Instance
+		failures []string
+	)
 	for res := range results {
 		if res.err != nil {
 			fmt.Printf("❌ %s failed after %v %v\n", res.inst.Name, res.timeRequired, res.err)
+			failures = append(failures, fmt.Sprintf("%s: %v", res.inst.Name, res.err))
 		} else {
 			created = append(created, res.inst)
 			fmt.Printf("✅ %s is up (public=%s) in %v\n", res.inst.Name, res.inst.PublicIP, res.timeRequired)
 		}
 		fmt.Printf("---- Progress: %d/%d\n", len(created), total)
+	}
+	if len(failures) > 0 {
+		// Surface partial-failure as an error so `talis up` exits
+		// non-zero; without this, downstream genesis runs against a
+		// half-provisioned config and fails much later with confusing
+		// "X has no public IP yet" messages.
+		return created, fmt.Errorf("%d/%d instance(s) failed to launch: %s",
+			len(failures), total, strings.Join(failures, "; "))
 	}
 	return created, nil
 }
