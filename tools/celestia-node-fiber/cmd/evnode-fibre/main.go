@@ -302,7 +302,12 @@ func run(cli cliFlags) error {
 	// Fiber-tuned profile: BatchingStrategy=adaptive, BatchMaxDelay=1.5s,
 	// DA.BlockTime=1s, MaxPendingHeadersAndData=0, plus 120 MiB blob cap.
 	cfg.ApplyFiberDefaults()
-	block.SetMaxBlobSize(120 * 1024 * 1024)
+	// 100 MiB — bounded by Fibre's hard ~128 MiB per-upload cap (we
+	// hit `data size exceeds maximum 134217723` at 128 MiB - 5 B).
+	// Set the per-block data cap below that so each block_data item
+	// fits in a single Fibre upload after the submitter splits a
+	// multi-blob batch into ≤120 MiB chunks.
+	block.SetMaxBlobSize(100 * 1024 * 1024)
 	cfg.P2P.ListenAddress = cli.p2pListen
 	cfg.P2P.DisableConnectionGater = true
 	cfg.RPC.Address = cli.rpcListen
