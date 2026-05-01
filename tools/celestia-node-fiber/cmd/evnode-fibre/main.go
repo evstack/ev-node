@@ -51,6 +51,7 @@ import (
 
 	"github.com/celestiaorg/celestia-app/v9/app"
 	"github.com/celestiaorg/celestia-app/v9/app/encoding"
+	appfibre "github.com/celestiaorg/celestia-app/v9/fibre"
 	"github.com/celestiaorg/celestia-node/api/client"
 	cnp2p "github.com/celestiaorg/celestia-node/nodebuilder/p2p"
 
@@ -210,14 +211,16 @@ func run(cli cliFlags) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Construct the celestia-node-fiber adapter. We don't override
-	// SubmitConfig.Fibre — the Fibre client defaults (UploadMemoryBudget
-	// 512 MiB, RPCTimeout 15 s) are sized for the FSP-side concurrency
-	// the validators can actually absorb. We tried bumping the budget
-	// to 4 GiB to allow more in-flight blobs; with 16 upload workers
-	// the FSPs couldn't keep up and the box OOM'd at 63.9 GB. Leaving
-	// the defaults in place means the upload pipeline self-bounds at
-	// roughly what the FSPs can sustain.
+	// Construct the celestia-node-fiber adapter. The Fibre client
+	// defaults (UploadMemoryBudget 512 MiB, RPCTimeout 15 s) are sized
+	// for FSP-side concurrency. Bumping the budget alone caused 64 GiB
+	// OOMs (4 GiB budget × 16 workers), so we leave that conservative
+	// AND raise RPCTimeout to 30 s so a slow-but-healthy validator
+	// signature collection isn't cut short under load — under busy
+	// conditions a 32 MiB row upload + sig aggregation can exceed the
+	// 15 s default.
+	fibreCfg := appfibre.DefaultClientConfig()
+	fibreCfg.RPCTimeout = 30 * time.Second
 	adapter, err := cnfiber.New(ctx, cnfiber.Config{
 		Client: client.Config{
 			ReadConfig: client.ReadConfig{
@@ -231,6 +234,7 @@ func run(cli cliFlags) error {
 				CoreGRPCConfig: client.CoreGRPCConfig{
 					Addr: cli.coreGRPCAddr,
 				},
+				Fibre: &fibreCfg,
 			},
 		},
 	}, kr)

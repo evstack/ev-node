@@ -367,7 +367,12 @@ func (c *Config) ApplyFiberDefaults() {
 	}
 
 	c.DA.BlockTime = DurationWrapper{Duration: 1 * time.Second}
-	c.Node.MaxPendingHeadersAndData = 50
+	// Tighter pending cap (was 50). At 50, a Fibre upload stall lets the
+	// submitter accumulate 50 × ~32 MiB blob copies + their per-validator
+	// retry buffers; under load that exceeded c6in.8xlarge's 64 GiB and
+	// OOM-killed evnode at 63.8 GiB. 10 keeps the in-flight footprint
+	// bounded while still letting healthy uploads pipeline.
+	c.Node.MaxPendingHeadersAndData = 10
 }
 
 // GetNamespace returns the namespace for header submissions.
