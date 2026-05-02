@@ -16,6 +16,7 @@ import (
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/sequencers/solo"
 )
 
 const (
@@ -193,6 +194,17 @@ func (r *Reaper) drainMempool(cleanupCh <-chan time.Time) (bool, error) {
 			Id:    []byte(r.chainID),
 			Batch: &coresequencer.Batch{Transactions: newTxs},
 		})
+		if errors.Is(err, solo.ErrQueueFull) {
+			// Sequencer queue is full — backpressure signal. Mark the
+			// batch as "seen" so we don't waste cycles re-hashing the
+			// same dropped txs every reaper tick, and surface the drop
+			// as a warning rather than tearing down the daemon. The
+			// loadgen sees lower acceptance via /tx flow control once
+			// the executor's own mempool fills up.
+			r.cache.SetTxsSeen(newHashes)
+			r.logger.Warn().Int("dropped", len(newTxs)).Msg("sequencer queue full, dropping txs (backpressure)")
+			break
+		}
 		if err != nil {
 			return totalSubmitted > 0, fmt.Errorf("failed to submit txs to sequencer: %w", err)
 		}
