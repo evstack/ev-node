@@ -331,6 +331,19 @@ func run(cli cliFlags) error {
 
 	executor := newInMemExecutor()
 	sequencer := solo.NewSoloSequencer(logger, []byte(genesis.ChainID), executor)
+	// Cap the sequencer's in-memory queue at 10× the per-block tx
+	// budget. Above this, SubmitBatchTxs returns ErrQueueFull and the
+	// runner's reaper-bridge / tx-ingress applies backpressure (txs
+	// stay in the executor's txChan until the sequencer drains, and
+	// the chan's bound 503's /tx). Without this cap a fast loadgen
+	// (32 vCPU pushing >100 MB/s) outruns the 1 block/s drain and
+	// the queue grows monotonically — observed pre-fix as 24 GB of
+	// retained io.ReadAll bytes in heap snapshots before the daemon
+	// hit the 64 GiB box ceiling and OOM-killed.
+	// Sized at 10× the per-block tx budget (matches SetMaxBlobSize
+	// above; both anchor at the per-blob Fibre cap).
+	const seqQueueBytes = 10 * 100 * 1024 * 1024 // 1 GiB
+	sequencer.SetMaxQueueBytes(seqQueueBytes)
 	daClient := block.NewFiberDAClient(adapter, cfg, logger, 0)
 	p2pClient, err := p2p.NewClient(cfg.P2P, nodeKey.PrivKey, datastore.NewMapDatastore(), genesis.ChainID, logger, nil)
 	if err != nil {
@@ -483,23 +496,23 @@ type inMemExecutor struct {
 	totalTxs    atomic.Uint64
 }
 
-// txChan capacity caps in-flight memory: at 10 KB tx and 500 slots
-// we hold ≤ 5 MB queued before /tx blocks the ingress goroutine —
-// which is exactly the backpressure we want against a hot loadgen.
-// Reaper drains every 100 ms into the solo sequencer, which then
-// accumulates batches between block-production ticks; without a tight
-// cap a single block can balloon past the 120 MiB DA blob limit and
-// the rest of the daemon's per-block allocations push the box past
-// its RAM budget within seconds.
+// txChan capacity bounds the HTTP /tx ingest queue. Sized at 10K
+// slots (~100 MiB at 10 KB tx-size) so a 100 ms reaper cycle can
+// absorb a full max-size block's worth of txs without /tx blocking
+// the loadgen. Earlier we used 500 slots (~5 MiB) which forced
+// backpressure at ~5,000 tx/s — that turned txsim into the limiting
+// factor at ~22 MB/s rather than DA upload. With the per-block
+// FilterTxs cap (executor.go:RetrieveBatch via DefaultMaxBlobSize=
+// 100 MiB) and the submitter chunker now enforcing the actual blob
+// budget, the executor doesn't need an extra ingest-side cap.
 //
-// maxBlockTxs caps GetTxs's per-call return so reaper-cycle batches
-// are bounded too. With 500 ≤ 5 MB per block at 10 KB tx-size, we
-// stay an order of magnitude under the DA cap so headers/data signing
-// + envelope cache + retry buffers all fit.
+// maxBlockTxs caps GetTxs's per-call return; pairs with the channel
+// size so a reaper poll can fully drain a 100 MiB-block-worth of
+// queued txs in a single call instead of needing 20× cycles.
 func newInMemExecutor() *inMemExecutor {
 	return &inMemExecutor{
-		txChan:      make(chan []byte, 500),
-		maxBlockTxs: 500,
+		txChan:      make(chan []byte, 10000),
+		maxBlockTxs: 10000,
 	}
 }
 
