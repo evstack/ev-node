@@ -361,17 +361,19 @@ func TestSubmitter_daSubmissionLoop(t *testing.T) {
 	require.NoError(t, err)
 
 	s := &Submitter{
-		store:            st,
-		exec:             exec,
-		cache:            cm,
-		metrics:          metrics,
-		config:           cfg,
-		genesis:          genesis.Genesis{},
-		daSubmitter:      fakeDA,
-		signer:           &fakeSigner{},
-		daIncludedHeight: &atomic.Uint64{},
-		batchingStrategy: batchingStrategy,
-		logger:           zerolog.Nop(),
+		store:               st,
+		exec:                exec,
+		cache:               cm,
+		metrics:             metrics,
+		config:              cfg,
+		genesis:             genesis.Genesis{},
+		daSubmitter:         fakeDA,
+		signer:              &fakeSigner{},
+		daIncludedHeight:    &atomic.Uint64{},
+		batchingStrategy:    batchingStrategy,
+		logger:              zerolog.Nop(),
+		headerSubmissionSem: make(chan struct{}, 1),
+		dataSubmissionSem:   make(chan struct{}, 1),
 	}
 
 	// Set last submit times far in past so strategy allows submission

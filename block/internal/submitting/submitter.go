@@ -52,9 +52,18 @@ type Submitter struct {
 	// DA state
 	daIncludedHeight *atomic.Uint64
 
-	// Submission state to prevent concurrent submissions
-	headerSubmissionMtx sync.Mutex
-	dataSubmissionMtx   sync.Mutex
+	// Submission concurrency: each semaphore is a buffered channel
+	// sized to MaxPendingHeadersAndData. A zero value disables the
+	// limit and falls back to a single in-flight submission per type
+	// (= cap 1) so callers that opt out of pending-cap don't get
+	// unbounded fan-out. Tickets are acquired non-blocking via
+	// `select` and released by the goroutine that started the
+	// submission. Replaces the previous single-flight Mutex which
+	// pinned data-upload throughput at the latency of a single
+	// gRPC round-trip — under sustained load that capped DA at
+	// ~20 MB/s even though Fibre's per-blob upload took ≤1.5 s.
+	headerSubmissionSem chan struct{}
+	dataSubmissionSem   chan struct{}
 
 	// Batching strategy state
 	lastHeaderSubmit atomic.Int64 // stores Unix nanoseconds
@@ -95,20 +104,31 @@ func NewSubmitter(
 		strategy = NewTimeBasedStrategy(config.DA.BlockTime.Duration, 0, 1)
 	}
 
+	// Pool size = pending-cap. Each pending blob gets up to one
+	// in-flight submission; if the cap is 0 (unbounded pending) we
+	// keep at least one slot so we don't reintroduce single-flight
+	// behavior accidentally.
+	poolSize := int(config.Node.MaxPendingHeadersAndData)
+	if poolSize <= 0 {
+		poolSize = 1
+	}
+
 	submitter := &Submitter{
-		store:            store,
-		exec:             exec,
-		cache:            cache,
-		metrics:          metrics,
-		config:           config,
-		genesis:          genesis,
-		daSubmitter:      daSubmitter,
-		sequencer:        sequencer,
-		signer:           signer,
-		daIncludedHeight: &atomic.Uint64{},
-		batchingStrategy: strategy,
-		errorCh:          errorCh,
-		logger:           submitterLogger,
+		store:               store,
+		exec:                exec,
+		cache:               cache,
+		metrics:             metrics,
+		config:              config,
+		genesis:             genesis,
+		daSubmitter:         daSubmitter,
+		sequencer:           sequencer,
+		signer:              signer,
+		daIncludedHeight:    &atomic.Uint64{},
+		batchingStrategy:    strategy,
+		errorCh:             errorCh,
+		logger:              submitterLogger,
+		headerSubmissionSem: make(chan struct{}, poolSize),
+		dataSubmissionSem:   make(chan struct{}, poolSize),
 	}
 
 	now := time.Now().UnixNano()
@@ -194,12 +214,13 @@ func (s *Submitter) daSubmissionLoop() {
 
 				// For strategy decision, we need to estimate the size
 				// We'll fetch headers to check, but only submit if strategy approves
-				if s.headerSubmissionMtx.TryLock() {
+				select {
+				case s.headerSubmissionSem <- struct{}{}:
 					s.logger.Debug().Time("t", time.Now()).Uint64("headers", headersNb).Msg("Header submission in progress")
 					s.wg.Add(1)
 					go func() {
 						defer func() {
-							s.headerSubmissionMtx.Unlock()
+							<-s.headerSubmissionSem
 							s.logger.Debug().Time("t", time.Now()).Uint64("headers", headersNb).Msg("Header submission completed")
 							s.wg.Done()
 						}()
@@ -266,6 +287,8 @@ func (s *Submitter) daSubmissionLoop() {
 							s.logger.Error().Err(err).Msg("failed to enqueue header submission")
 						}
 					}()
+				default:
+					// All header workers busy; try again on the next tick.
 				}
 			}
 
@@ -274,12 +297,13 @@ func (s *Submitter) daSubmissionLoop() {
 			if dataNb > 0 {
 				lastSubmitNanos := s.lastDataSubmit.Load()
 				timeSinceLastSubmit := time.Since(time.Unix(0, lastSubmitNanos))
-				if s.dataSubmissionMtx.TryLock() {
+				select {
+				case s.dataSubmissionSem <- struct{}{}:
 					s.logger.Debug().Time("t", time.Now()).Uint64("data", dataNb).Msg("Data submission in progress")
 					s.wg.Add(1)
 					go func() {
 						defer func() {
-							s.dataSubmissionMtx.Unlock()
+							<-s.dataSubmissionSem
 							s.logger.Debug().Time("t", time.Now()).Uint64("data", dataNb).Msg("Data submission completed")
 							s.wg.Done()
 						}()
@@ -346,6 +370,8 @@ func (s *Submitter) daSubmissionLoop() {
 							s.logger.Error().Err(err).Msg("failed to enqueue data submission")
 						}
 					}()
+				default:
+					// All data workers busy; try again on the next tick.
 				}
 			}
 
