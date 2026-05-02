@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"sort"
@@ -113,7 +114,27 @@ func run(cli cliFlags) error {
 		return fmt.Errorf("seed random pool: %w", err)
 	}
 
-	httpClient := &http.Client{Timeout: cli.timeout}
+	// Bump per-host idle connections so concurrent goroutines reuse
+	// keep-alive sockets instead of churning TCP+TLS handshakes —
+	// stdlib default MaxIdleConnsPerHost=2 caps in-flight requests
+	// to 2 keep-alive sockets per target, which serializes any
+	// concurrency>2 onto fresh connections each request.
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.MaxIdleConns = 2 * cli.concurrency
+	transport.MaxIdleConnsPerHost = 2 * cli.concurrency
+	transport.MaxConnsPerHost = 2 * cli.concurrency
+	httpClient := &http.Client{Timeout: cli.timeout, Transport: transport}
+
+	// pprof on a dedicated listener — `_ "net/http/pprof"` registers
+	// handlers on http.DefaultServeMux. Always-on at 127.0.0.1:6060
+	// since this is a load-tester binary, not a production daemon;
+	// SSH port-forward to grab profiles under load:
+	//
+	//	ssh -L 6060:127.0.0.1:6060 root@loadgen \
+	//	  go tool pprof http://localhost:6060/debug/pprof/profile?seconds=10
+	go func() {
+		_ = http.ListenAndServe("127.0.0.1:6060", nil)
+	}()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	if cli.duration > 0 {
