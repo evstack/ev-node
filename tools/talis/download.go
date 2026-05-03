@@ -193,16 +193,26 @@ func compressAndDownload(table, localPath, user, host, sshKeyPath string) error 
 	return nil
 }
 
-// sshExec runs a command on a remote host via SSH and returns the combined output.
+// sshExec runs a command on a remote host via SSH and returns stdout only.
+//
+// We intentionally do NOT use CombinedOutput here. ssh prints connection
+// chatter ("Warning: Permanently added '...' to the list of known hosts.")
+// on stderr, and a previous `CombinedOutput` revision caused
+// `fmt.Sscanf(out, "%d")` parses to silently return 0 because the leading
+// stderr line had no digits. Capturing only stdout keeps numeric output
+// parseable; -q + LogLevel=ERROR further suppresses the chatter for any
+// caller that does combine streams.
 func sshExec(user, host, sshKeyPath, command string) ([]byte, error) {
 	cmd := exec.Command("ssh",
+		"-q",
+		"-o", "LogLevel=ERROR",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-i", sshKeyPath,
 		fmt.Sprintf("%s@%s", user, host),
 		command,
 	)
-	return cmd.CombinedOutput()
+	return cmd.Output()
 }
 
 func sftpDownload(remotePath, localPath, user, host, sshKeyPath string) error {
