@@ -391,3 +391,26 @@ func TestCache_DeleteAllForHeight_CleansHashAndDA(t *testing.T) {
 	_, ok = c.getDAIncludedByHeight(2)
 	assert.True(t, ok)
 }
+
+func TestCache_getHashByHeight(t *testing.T) {
+	c := NewCache(nil, "")
+
+	h, ok := c.getHashByHeight(42)
+	assert.False(t, ok)
+	assert.Empty(t, h)
+
+	c.setSeen("abc", 42)
+	h, ok = c.getHashByHeight(42)
+	assert.True(t, ok)
+	assert.Equal(t, "abc", h)
+
+	// setDAIncluded also maintains hashByHeight.
+	c.setDAIncluded("def", 7, 100)
+	h, ok = c.getHashByHeight(100)
+	assert.True(t, ok)
+	assert.Equal(t, "def", h)
+
+	c.deleteAllForHeight(42)
+	_, ok = c.getHashByHeight(42)
+	assert.False(t, ok)
+}

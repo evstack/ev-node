@@ -95,6 +95,9 @@ type Syncer struct {
 	wg               sync.WaitGroup
 	hasCriticalError atomic.Bool
 
+	// Double-sign detection
+	doubleSignSeen *doubleSignDedup
+
 	// P2P wait coordination
 	p2pWaitState atomic.Value // stores p2pWaitState
 
@@ -180,15 +183,18 @@ func (s *Syncer) Start(ctx context.Context) (err error) {
 		return fmt.Errorf("failed to initialize syncer state: %w", err)
 	}
 
-	// Initialize handlers
-	s.daRetriever = NewDARetriever(s.daClient, s.cache, s.genesis, s.logger)
+	// Initialize handlers. DA and P2P share dsHandler so cross-path duplicates
+	// are deduped through doubleSignSeen and only reported once.
+	s.doubleSignSeen = newDoubleSignDedup()
+	dsHandler := s.handleDoubleSign
+	s.daRetriever = NewDARetriever(s.daClient, s.cache, s.genesis, s.logger, s.store, dsHandler)
 	if s.config.Instrumentation.IsTracingEnabled() {
 		s.daRetriever = WithTracingDARetriever(s.daRetriever)
 	}
 
 	s.fiRetriever = da.NewForcedInclusionRetriever(s.daClient, s.logger, s.config.DA.BlockTime.Duration, s.config.Instrumentation.IsTracingEnabled(), s.genesis.DAStartHeight, s.genesis.DAEpochForcedInclusion)
 	s.fiRetriever.Start(ctx)
-	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.cache, s.genesis, s.logger)
+	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.cache, s.genesis, s.logger, s.store, dsHandler)
 
 	currentHeight, initErr := s.store.Height(ctx)
 	if initErr != nil {
@@ -798,6 +804,8 @@ func (s *Syncer) trySyncNextBlockWithState(ctx context.Context, event *common.DA
 	if !bytes.Equal(header.DataHash, common.DataHashForEmptyTxs) {
 		s.cache.SetDataSeen(data.DACommitment().String(), newState.LastBlockHeight)
 	}
+	// Subsequent alternates resolve against the persisted header.
+	s.cache.RemovePendingSignedHeader(header.Height())
 
 	if s.p2pHandler != nil {
 		s.p2pHandler.SetProcessedHeight(newState.LastBlockHeight)
@@ -1063,6 +1071,12 @@ func (s *Syncer) sendCriticalError(err error) {
 			// Channel full, error already reported
 		}
 	}
+}
+
+// handleDoubleSign persists evidence, bumps the metric, and halts the syncer
+// via sendCriticalError. Wired into the DA retriever and P2P handler.
+func (s *Syncer) handleDoubleSign(ctx context.Context, ev *types.DoubleSignEvidence) {
+	_ = reportDoubleSign(ctx, s.store, s.metrics, s.logger, s.doubleSignSeen, s.sendCriticalError, ev)
 }
 
 // processPendingEvents fetches and processes pending events from cache

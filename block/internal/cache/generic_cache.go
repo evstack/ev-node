@@ -113,6 +113,13 @@ func (c *Cache) setSeenBatch(hashes []string, height uint64) {
 	}
 }
 
+func (c *Cache) getHashByHeight(height uint64) (string, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	h, ok := c.hashByHeight[height]
+	return h, ok
+}
+
 func (c *Cache) getDAIncluded(hash string) (uint64, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()

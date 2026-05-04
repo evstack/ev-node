@@ -15,6 +15,7 @@ import (
 	"github.com/evstack/ev-node/block/internal/da"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
@@ -34,6 +35,8 @@ type daRetriever struct {
 	cache   cache.CacheManager
 	genesis genesis.Genesis
 	logger  zerolog.Logger
+	store        store.Store
+	onDoubleSign doubleSignHandler // nil disables detection; the retriever aborts the batch on a positive
 
 	mu sync.Mutex
 	// transient cache, only full event need to be passed to the syncer
@@ -46,18 +49,23 @@ type daRetriever struct {
 	strictMode bool
 }
 
-// NewDARetriever creates a new DA retriever
+// NewDARetriever creates a new DA retriever. Double-sign detection is disabled
+// when st or onDoubleSign is nil.
 func NewDARetriever(
 	client da.Client,
 	cache cache.CacheManager,
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
+	st store.Store,
+	onDoubleSign doubleSignHandler,
 ) *daRetriever {
 	return &daRetriever{
 		client:         client,
 		cache:          cache,
 		genesis:        genesis,
 		logger:         logger.With().Str("component", "da_retriever").Logger(),
+		store:          st,
+		onDoubleSign:   onDoubleSign,
 		pendingHeaders: make(map[uint64]*types.SignedHeader),
 		pendingData:    make(map[uint64]*types.Data),
 		strictMode:     false,
@@ -172,9 +180,18 @@ func (r *daRetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 		}
 
 		if header := r.tryDecodeHeader(bz, daHeight); header != nil {
+			// Catches both in-batch alternates and alternates of already-persisted heights.
+			if r.store != nil && r.onDoubleSign != nil {
+				if ev, err := detectDoubleSign(ctx, r.store, r.cache, header, types.EvidenceSourceDA); err == nil && ev != nil {
+					r.onDoubleSign(ctx, ev)
+					return nil
+				} else if err != nil {
+					r.logger.Warn().Err(err).Uint64("height", header.Height()).Msg("double-sign detection error")
+				}
+				r.cache.SetPendingSignedHeader(header, types.EvidenceSourceDA)
+			}
+
 			if _, ok := r.pendingHeaders[header.Height()]; ok {
-				// a (malicious) node may have re-published valid header to another da height (should never happen)
-				// we can already discard it, only the first one is valid
 				r.logger.Debug().Uint64("height", header.Height()).Uint64("da_height", daHeight).Msg("header blob already exists for height, discarding")
 				continue
 			}
@@ -301,6 +318,15 @@ func (r *daRetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedH
 
 	if err := r.assertExpectedProposer(header.ProposerAddress); err != nil {
 		r.logger.Debug().Err(err).Msg("unexpected proposer")
+		return nil
+	}
+
+	// Precondition for the double-sign detector: a forged blob must never
+	// reach the pending cache or be persisted as equivocation evidence.
+	// Required even in strict envelope mode — the inner SignedHeader
+	// signature is a separate commitment from the envelope signature.
+	if err := header.ValidateBasic(); err != nil {
+		r.logger.Debug().Err(err).Msg("signed header failed validation")
 		return nil
 	}
 

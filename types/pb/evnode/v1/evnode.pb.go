@@ -785,6 +785,93 @@ func (x *P2PData) GetDaHeightHint() uint64 {
 	return 0
 }
 
+// DoubleSignEvidence records two validly-signed SignedHeaders at the same
+// height produced by the sequencer. Persisted as proof of equivocation.
+type DoubleSignEvidence struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Height          uint64                 `protobuf:"varint,1,opt,name=height,proto3" json:"height,omitempty"`
+	FirstHeader     *SignedHeader          `protobuf:"bytes,2,opt,name=first_header,json=firstHeader,proto3" json:"first_header,omitempty"`
+	AlternateHeader *SignedHeader          `protobuf:"bytes,3,opt,name=alternate_header,json=alternateHeader,proto3" json:"alternate_header,omitempty"`
+	DetectedAt      int64                  `protobuf:"varint,4,opt,name=detected_at,json=detectedAt,proto3" json:"detected_at,omitempty"`
+	// Ingestion source for each header: "p2p", "da", or "stored".
+	FirstSource     string `protobuf:"bytes,5,opt,name=first_source,json=firstSource,proto3" json:"first_source,omitempty"`
+	AlternateSource string `protobuf:"bytes,6,opt,name=alternate_source,json=alternateSource,proto3" json:"alternate_source,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *DoubleSignEvidence) Reset() {
+	*x = DoubleSignEvidence{}
+	mi := &file_evnode_v1_evnode_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DoubleSignEvidence) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DoubleSignEvidence) ProtoMessage() {}
+
+func (x *DoubleSignEvidence) ProtoReflect() protoreflect.Message {
+	mi := &file_evnode_v1_evnode_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DoubleSignEvidence.ProtoReflect.Descriptor instead.
+func (*DoubleSignEvidence) Descriptor() ([]byte, []int) {
+	return file_evnode_v1_evnode_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *DoubleSignEvidence) GetHeight() uint64 {
+	if x != nil {
+		return x.Height
+	}
+	return 0
+}
+
+func (x *DoubleSignEvidence) GetFirstHeader() *SignedHeader {
+	if x != nil {
+		return x.FirstHeader
+	}
+	return nil
+}
+
+func (x *DoubleSignEvidence) GetAlternateHeader() *SignedHeader {
+	if x != nil {
+		return x.AlternateHeader
+	}
+	return nil
+}
+
+func (x *DoubleSignEvidence) GetDetectedAt() int64 {
+	if x != nil {
+		return x.DetectedAt
+	}
+	return 0
+}
+
+func (x *DoubleSignEvidence) GetFirstSource() string {
+	if x != nil {
+		return x.FirstSource
+	}
+	return ""
+}
+
+func (x *DoubleSignEvidence) GetAlternateSource() string {
+	if x != nil {
+		return x.AlternateSource
+	}
+	return ""
+}
+
 var File_evnode_v1_evnode_proto protoreflect.FileDescriptor
 
 const file_evnode_v1_evnode_proto_rawDesc = "" +
@@ -846,7 +933,15 @@ const file_evnode_v1_evnode_proto_rawDesc = "" +
 	"\bmetadata\x18\x01 \x01(\v2\x13.evnode.v1.MetadataR\bmetadata\x12\x10\n" +
 	"\x03txs\x18\x02 \x03(\fR\x03txs\x12)\n" +
 	"\x0eda_height_hint\x18\x03 \x01(\x04H\x00R\fdaHeightHint\x88\x01\x01B\x11\n" +
-	"\x0f_da_height_hintB/Z-github.com/evstack/ev-node/types/pb/evnode/v1b\x06proto3"
+	"\x0f_da_height_hint\"\x9b\x02\n" +
+	"\x12DoubleSignEvidence\x12\x16\n" +
+	"\x06height\x18\x01 \x01(\x04R\x06height\x12:\n" +
+	"\ffirst_header\x18\x02 \x01(\v2\x17.evnode.v1.SignedHeaderR\vfirstHeader\x12B\n" +
+	"\x10alternate_header\x18\x03 \x01(\v2\x17.evnode.v1.SignedHeaderR\x0falternateHeader\x12\x1f\n" +
+	"\vdetected_at\x18\x04 \x01(\x03R\n" +
+	"detectedAt\x12!\n" +
+	"\ffirst_source\x18\x05 \x01(\tR\vfirstSource\x12)\n" +
+	"\x10alternate_source\x18\x06 \x01(\tR\x0falternateSourceB/Z-github.com/evstack/ev-node/types/pb/evnode/v1b\x06proto3"
 
 var (
 	file_evnode_v1_evnode_proto_rawDescOnce sync.Once
@@ -860,7 +955,7 @@ func file_evnode_v1_evnode_proto_rawDescGZIP() []byte {
 	return file_evnode_v1_evnode_proto_rawDescData
 }
 
-var file_evnode_v1_evnode_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_evnode_v1_evnode_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_evnode_v1_evnode_proto_goTypes = []any{
 	(*Version)(nil),               // 0: evnode.v1.Version
 	(*Header)(nil),                // 1: evnode.v1.Header
@@ -873,7 +968,8 @@ var file_evnode_v1_evnode_proto_goTypes = []any{
 	(*Vote)(nil),                  // 8: evnode.v1.Vote
 	(*P2PSignedHeader)(nil),       // 9: evnode.v1.P2PSignedHeader
 	(*P2PData)(nil),               // 10: evnode.v1.P2PData
-	(*timestamppb.Timestamp)(nil), // 11: google.protobuf.Timestamp
+	(*DoubleSignEvidence)(nil),    // 11: evnode.v1.DoubleSignEvidence
+	(*timestamppb.Timestamp)(nil), // 12: google.protobuf.Timestamp
 }
 var file_evnode_v1_evnode_proto_depIdxs = []int32{
 	0,  // 0: evnode.v1.Header.version:type_name -> evnode.v1.Version
@@ -884,15 +980,17 @@ var file_evnode_v1_evnode_proto_depIdxs = []int32{
 	5,  // 5: evnode.v1.Data.metadata:type_name -> evnode.v1.Metadata
 	6,  // 6: evnode.v1.SignedData.data:type_name -> evnode.v1.Data
 	4,  // 7: evnode.v1.SignedData.signer:type_name -> evnode.v1.Signer
-	11, // 8: evnode.v1.Vote.timestamp:type_name -> google.protobuf.Timestamp
+	12, // 8: evnode.v1.Vote.timestamp:type_name -> google.protobuf.Timestamp
 	1,  // 9: evnode.v1.P2PSignedHeader.header:type_name -> evnode.v1.Header
 	4,  // 10: evnode.v1.P2PSignedHeader.signer:type_name -> evnode.v1.Signer
 	5,  // 11: evnode.v1.P2PData.metadata:type_name -> evnode.v1.Metadata
-	12, // [12:12] is the sub-list for method output_type
-	12, // [12:12] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	2,  // 12: evnode.v1.DoubleSignEvidence.first_header:type_name -> evnode.v1.SignedHeader
+	2,  // 13: evnode.v1.DoubleSignEvidence.alternate_header:type_name -> evnode.v1.SignedHeader
+	14, // [14:14] is the sub-list for method output_type
+	14, // [14:14] is the sub-list for method input_type
+	14, // [14:14] is the sub-list for extension type_name
+	14, // [14:14] is the sub-list for extension extendee
+	0,  // [0:14] is the sub-list for field type_name
 }
 
 func init() { file_evnode_v1_evnode_proto_init() }
@@ -908,7 +1006,7 @@ func file_evnode_v1_evnode_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_evnode_v1_evnode_proto_rawDesc), len(file_evnode_v1_evnode_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   11,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

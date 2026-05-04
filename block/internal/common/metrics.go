@@ -68,6 +68,9 @@ type Metrics struct {
 	ForcedInclusionTxsInGracePeriod metrics.Gauge   // Number of forced inclusion txs currently in grace period
 	ForcedInclusionTxsMalicious     metrics.Counter // Total number of forced inclusion txs marked as malicious
 
+	// Double-sign detection
+	DoubleSignsDetected metrics.Counter // Distinct (height, alternate-hash) pairs observed
+
 	// Syncer metrics
 	BlocksSynchronized map[EventSource]metrics.Counter // Blocks synchronized by source (P2P or DA)
 }
@@ -189,6 +192,13 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 		Help:      "Total number of forced inclusion transactions marked as malicious (past grace boundary)",
 	}, labels).With(labelsAndValues...)
 
+	m.DoubleSignsDetected = prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+		Namespace: namespace,
+		Subsystem: MetricsSubsystem,
+		Name:      "double_signs_detected_total",
+		Help:      "Total number of distinct (height, alternate-hash) double-sign events observed",
+	}, labels).With(labelsAndValues...)
+
 	// DA Submitter metrics
 	m.DASubmitterPendingBlobs = prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 		Namespace: namespace,
@@ -268,6 +278,9 @@ func NopMetrics() *Metrics {
 		// Forced inclusion metrics
 		ForcedInclusionTxsInGracePeriod: discard.NewGauge(),
 		ForcedInclusionTxsMalicious:     discard.NewCounter(),
+
+		// Double-sign detection
+		DoubleSignsDetected: discard.NewCounter(),
 
 		// Syncer metrics
 		BlocksSynchronized: make(map[EventSource]metrics.Counter),

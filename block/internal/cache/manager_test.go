@@ -3,6 +3,8 @@ package cache
 import (
 	"context"
 	"encoding/binary"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -516,6 +518,205 @@ func TestManager_DaHeightAfterCacheClear(t *testing.T) {
 	// node does not re-scan DA from genesis after an operator-triggered clear.
 	assert.Equal(t, uint64(155), m.DaHeight(),
 		"DaHeight should be seeded from finalized-tip metadata even after ClearCache")
+}
+
+// builds a minimal SignedHeader; variant differentiates hashes at the same height.
+func signedHeaderForHeight(height uint64, variant byte) *types.SignedHeader {
+	return &types.SignedHeader{
+		Header: types.Header{
+			BaseHeader: types.BaseHeader{ChainID: "pending-signed", Height: height, Time: 1},
+			AppHash:    []byte{variant, variant, variant},
+		},
+	}
+}
+
+func TestManager_PendingSignedHeader_FirstWriteWins(t *testing.T) {
+	t.Parallel()
+	cfg := tempConfig(t)
+	st := testMemStore(t)
+
+	m, err := NewManager(cfg, st, zerolog.Nop())
+	require.NoError(t, err)
+
+	first := signedHeaderForHeight(5, 0x01)
+	second := signedHeaderForHeight(5, 0x02)
+	require.NotEqual(t, first.Hash().String(), second.Hash().String())
+
+	m.SetPendingSignedHeader(first, "p2p")
+	m.SetPendingSignedHeader(second, "da")
+
+	got, source, ok := m.GetPendingSignedHeader(5)
+	require.True(t, ok)
+	require.Equal(t, first.Hash().String(), got.Hash().String())
+	require.Equal(t, "p2p", source)
+}
+
+func TestManager_PendingSignedHeader_NilHeaderIgnored(t *testing.T) {
+	t.Parallel()
+	cfg := tempConfig(t)
+	st := testMemStore(t)
+
+	m, err := NewManager(cfg, st, zerolog.Nop())
+	require.NoError(t, err)
+
+	m.SetPendingSignedHeader(nil, "p2p")
+	_, _, ok := m.GetPendingSignedHeader(5)
+	require.False(t, ok)
+
+	real := signedHeaderForHeight(5, 0x01)
+	m.SetPendingSignedHeader(real, "p2p")
+	got, _, ok := m.GetPendingSignedHeader(5)
+	require.True(t, ok)
+	require.Equal(t, real.Hash().String(), got.Hash().String())
+}
+
+func TestManager_GetPendingSignedHeader_Miss(t *testing.T) {
+	t.Parallel()
+	cfg := tempConfig(t)
+	st := testMemStore(t)
+
+	m, err := NewManager(cfg, st, zerolog.Nop())
+	require.NoError(t, err)
+
+	hdr, source, ok := m.GetPendingSignedHeader(99)
+	require.False(t, ok)
+	require.Nil(t, hdr)
+	require.Empty(t, source)
+}
+
+func TestManager_RemovePendingSignedHeader_Idempotent(t *testing.T) {
+	t.Parallel()
+	cfg := tempConfig(t)
+	st := testMemStore(t)
+
+	m, err := NewManager(cfg, st, zerolog.Nop())
+	require.NoError(t, err)
+
+	require.NotPanics(t, func() { m.RemovePendingSignedHeader(123) })
+
+	hdr := signedHeaderForHeight(5, 0x01)
+	m.SetPendingSignedHeader(hdr, "p2p")
+	m.RemovePendingSignedHeader(5)
+	m.RemovePendingSignedHeader(5)
+	_, _, ok := m.GetPendingSignedHeader(5)
+	require.False(t, ok)
+}
+
+func TestManager_DeleteHeight_EvictsPendingSignedHeader(t *testing.T) {
+	t.Parallel()
+	cfg := tempConfig(t)
+	st := testMemStore(t)
+
+	m, err := NewManager(cfg, st, zerolog.Nop())
+	require.NoError(t, err)
+
+	hdr := signedHeaderForHeight(5, 0x01)
+	m.SetPendingSignedHeader(hdr, "p2p")
+	_, _, ok := m.GetPendingSignedHeader(5)
+	require.True(t, ok)
+
+	m.DeleteHeight(5)
+
+	_, _, ok = m.GetPendingSignedHeader(5)
+	require.False(t, ok)
+}
+
+func TestManager_ClearFromStore_ResetsPendingSignedHeaders(t *testing.T) {
+	t.Parallel()
+	cfg := tempConfig(t)
+	st := testMemStore(t)
+
+	m, err := NewManager(cfg, st, zerolog.Nop())
+	require.NoError(t, err)
+
+	m.SetPendingSignedHeader(signedHeaderForHeight(5, 0x01), "p2p")
+	m.SetPendingSignedHeader(signedHeaderForHeight(6, 0x02), "da")
+
+	impl, ok := m.(*implementation)
+	require.True(t, ok)
+	require.NoError(t, impl.ClearFromStore())
+
+	for _, h := range []uint64{5, 6} {
+		_, _, present := m.GetPendingSignedHeader(h)
+		require.False(t, present, "pending entry at %d must be cleared", h)
+	}
+}
+
+// Race-detector coverage for the pending-signed-header map. Run with -race.
+func TestManager_PendingSignedHeader_Concurrency(t *testing.T) {
+	t.Parallel()
+	cfg := tempConfig(t)
+	st := testMemStore(t)
+
+	m, err := NewManager(cfg, st, zerolog.Nop())
+	require.NoError(t, err)
+
+	const (
+		writers       = 8
+		readers       = 8
+		removers      = 4
+		heightsPerRun = 200
+	)
+
+	headers := make([]*types.SignedHeader, heightsPerRun)
+	for i := range headers {
+		headers[i] = signedHeaderForHeight(uint64(i+1), byte(i&0xff))
+	}
+
+	var (
+		wg        sync.WaitGroup
+		startCh   = make(chan struct{})
+		writerHit atomic.Int64
+		readerHit atomic.Int64
+	)
+
+	for w := range writers {
+		wg.Add(1)
+		go func(seed int) {
+			defer wg.Done()
+			<-startCh
+			for i := range heightsPerRun {
+				idx := (seed*7 + i) % heightsPerRun
+				m.SetPendingSignedHeader(headers[idx], "p2p")
+				writerHit.Add(1)
+			}
+		}(w)
+	}
+
+	for r := range readers {
+		wg.Add(1)
+		go func(seed int) {
+			defer wg.Done()
+			<-startCh
+			for i := range heightsPerRun {
+				h := uint64((seed*11+i)%heightsPerRun + 1)
+				_, _, _ = m.GetPendingSignedHeader(h)
+				readerHit.Add(1)
+			}
+		}(r)
+	}
+
+	for d := range removers {
+		wg.Add(1)
+		go func(seed int) {
+			defer wg.Done()
+			<-startCh
+			for i := range heightsPerRun {
+				h := uint64((seed*13+i)%heightsPerRun + 1)
+				if i%2 == 0 {
+					m.RemovePendingSignedHeader(h)
+				} else {
+					m.DeleteHeight(h)
+				}
+			}
+		}(d)
+	}
+
+	close(startCh)
+	wg.Wait()
+
+	require.Equal(t, int64(writers*heightsPerRun), writerHit.Load())
+	require.Equal(t, int64(readers*heightsPerRun), readerHit.Load())
 }
 
 func TestManager_DaHeightFromStoreOnRestore(t *testing.T) {
