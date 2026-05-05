@@ -304,6 +304,62 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 	assert.Equal(t, uint64(1), st1.LastBlockHeight)
 }
 
+func TestProcessHeightEvent_UnexpectedProposerFromDAIsNotCriticalStateError(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	require.NoError(t, err)
+
+	expectedAddr, _, _ := buildSyncTestSigner(t)
+	wrongAddr, wrongPub, wrongSigner := buildSyncTestSigner(t)
+
+	cfg := config.DefaultConfig()
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: expectedAddr}
+
+	mockExec := testmocks.NewMockExecutor(t)
+	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), nil).Once()
+
+	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
+	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
+	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
+	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
+
+	errChan := make(chan error, 1)
+	s := NewSyncer(
+		st,
+		mockExec,
+		nil,
+		cm,
+		common.NopMetrics(),
+		cfg,
+		gen,
+		mockHeaderStore,
+		mockDataStore,
+		zerolog.Nop(),
+		common.DefaultBlockOptions(),
+		errChan,
+		nil,
+	)
+
+	require.NoError(t, s.initializeState())
+	s.ctx = t.Context()
+
+	lastState := s.getLastState()
+	data := makeData(gen.ChainID, 1, 0)
+	_, hdr := makeSignedHeaderBytes(t, gen.ChainID, 1, wrongAddr, wrongPub, wrongSigner, lastState.AppHash, data, nil)
+
+	evt := common.DAHeightEvent{Header: hdr, Data: data, Source: common.SourceDA, DaHeight: 1}
+	s.processHeightEvent(t.Context(), &evt)
+
+	requireEmptyChan(t, errChan)
+	assert.False(t, s.hasCriticalError.Load(), "unexpected proposer from DA should be treated as an invalid external block")
+
+	h, err := st.Height(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, uint64(0), h)
+}
+
 func TestSequentialBlockSync(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
