@@ -13,8 +13,9 @@ import (
 
 // Ingestion source identifying which path observed a SignedHeader.
 const (
-	EvidenceSourceP2P = "p2p"
-	EvidenceSourceDA  = "da"
+	EvidenceSourceP2P    = "p2p"
+	EvidenceSourceDA     = "da"
+	EvidenceSourceStored = "stored"
 )
 
 // DoubleSignEvidence records two validly-signed SignedHeaders at the same

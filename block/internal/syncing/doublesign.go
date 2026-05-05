@@ -54,7 +54,7 @@ func detectDoubleSign(
 	if storedHeader == nil {
 		return nil, nil
 	}
-	return buildEvidenceFromPair(storedHeader, incoming, "stored", incomingSource), nil
+	return buildEvidenceFromPair(storedHeader, incoming, types.EvidenceSourceStored, incomingSource), nil
 }
 
 // buildEvidenceFromPair returns evidence for two SignedHeaders at the same

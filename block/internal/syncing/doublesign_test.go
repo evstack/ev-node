@@ -617,11 +617,11 @@ func TestSyncer_DoubleSignHaltsAndEmitsCriticalError(t *testing.T) {
 
 	p2pEv := &types.DoubleSignEvidence{
 		Height: 1, FirstHeader: first, AlternateHeader: alt,
-		DetectedAt: time.Now(), FirstSource: "stored", AlternateSource: types.EvidenceSourceP2P,
+		DetectedAt: time.Now(), FirstSource: types.EvidenceSourceStored, AlternateSource: types.EvidenceSourceP2P,
 	}
 	daEv := &types.DoubleSignEvidence{
 		Height: 1, FirstHeader: first, AlternateHeader: alt,
-		DetectedAt: time.Now(), FirstSource: "stored", AlternateSource: types.EvidenceSourceDA,
+		DetectedAt: time.Now(), FirstSource: types.EvidenceSourceStored, AlternateSource: types.EvidenceSourceDA,
 	}
 
 	s.handleDoubleSign(context.Background(), p2pEv)

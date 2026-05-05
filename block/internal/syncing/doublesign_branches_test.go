@@ -97,7 +97,7 @@ func TestDetectDoubleSign_FirstSourceStoredSentinel(t *testing.T) {
 	ev, err := detectDoubleSign(context.Background(), env.store, env.cache, alt, types.EvidenceSourceP2P)
 	require.NoError(t, err)
 	require.NotNil(t, ev)
-	require.Equal(t, "stored", ev.FirstSource)
+	require.Equal(t, types.EvidenceSourceStored, ev.FirstSource)
 }
 
 // SetMetadata failures must include the canonical key so an operator can
