@@ -43,6 +43,9 @@ func (e *DoubleSignEvidence) ValidateBasic() error {
 	if bytes.Equal(e.FirstHeader.Hash(), e.AlternateHeader.Hash()) {
 		return errors.New("evidence headers have identical hash — no equivocation")
 	}
+	if !bytes.Equal(e.FirstHeader.ProposerAddress, e.AlternateHeader.ProposerAddress) {
+		return errors.New("evidence headers have different proposers — not an equivocation")
+	}
 	return nil
 }
 
@@ -73,6 +76,9 @@ func (e *DoubleSignEvidence) ToProto() (*pb.DoubleSignEvidence, error) {
 func (e *DoubleSignEvidence) FromProto(p *pb.DoubleSignEvidence) error {
 	if p == nil {
 		return errors.New("proto evidence is nil")
+	}
+	if p.FirstHeader == nil || p.AlternateHeader == nil {
+		return errors.New("proto evidence missing first or alternate header")
 	}
 	first := new(SignedHeader)
 	if err := first.FromProto(p.FirstHeader); err != nil {
