@@ -16,7 +16,7 @@ import (
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/genesis"
-	"github.com/evstack/ev-node/pkg/sequencers/solo"
+	seqcommon "github.com/evstack/ev-node/pkg/sequencers/common"
 )
 
 const (
@@ -194,7 +194,7 @@ func (r *Reaper) drainMempool(cleanupCh <-chan time.Time) (bool, error) {
 			Id:    []byte(r.chainID),
 			Batch: &coresequencer.Batch{Transactions: newTxs},
 		})
-		if errors.Is(err, solo.ErrQueueFull) {
+		if errors.Is(err, seqcommon.ErrQueueFull) {
 			// Sequencer queue is full — backpressure signal. Mark the
 			// batch as "seen" so we don't waste cycles re-hashing the
 			// same dropped txs every reaper tick, and surface the drop
