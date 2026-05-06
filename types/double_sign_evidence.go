@@ -55,6 +55,9 @@ func (e *DoubleSignEvidence) ToProto() (*pb.DoubleSignEvidence, error) {
 	if e == nil {
 		return nil, errors.New("evidence is nil")
 	}
+	if e.FirstHeader == nil || e.AlternateHeader == nil {
+		return nil, errors.New("evidence requires both first and alternate headers")
+	}
 	first, err := e.FirstHeader.ToProto()
 	if err != nil {
 		return nil, fmt.Errorf("marshal first header: %w", err)
@@ -111,7 +114,7 @@ func (e *DoubleSignEvidence) MarshalBinary() ([]byte, error) {
 func (e *DoubleSignEvidence) UnmarshalBinary(data []byte) error {
 	p := new(pb.DoubleSignEvidence)
 	if err := proto.Unmarshal(data, p); err != nil {
-		return err
+		return fmt.Errorf("proto unmarshal double sign evidence: %w", err)
 	}
 	return e.FromProto(p)
 }

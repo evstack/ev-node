@@ -465,6 +465,11 @@ func TestDoubleSignEvidence_ValidateBasic(t *testing.T) {
 		e := &types.DoubleSignEvidence{Height: 5, FirstHeader: first, AlternateHeader: first}
 		require.Error(t, e.ValidateBasic())
 	})
+	t.Run("proposer mismatch", func(t *testing.T) {
+		other := env.signHeaderWithOtherProposer(5, 0x02)
+		e := &types.DoubleSignEvidence{Height: 5, FirstHeader: first, AlternateHeader: other}
+		require.ErrorContains(t, e.ValidateBasic(), "different proposers")
+	})
 	t.Run("happy path", func(t *testing.T) {
 		e := &types.DoubleSignEvidence{Height: 5, FirstHeader: first, AlternateHeader: alt}
 		require.NoError(t, e.ValidateBasic())

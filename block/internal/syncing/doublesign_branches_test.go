@@ -230,6 +230,24 @@ func TestDoubleSignEvidence_FromProtoInnerHeaderError(t *testing.T) {
 	require.Error(t, dst.FromProto(p))
 }
 
+// FromProto must reject partial-nil sub-messages (one set, one nil) to keep
+// the (FirstHeader, AlternateHeader) pair invariant after deserialization.
+func TestDoubleSignEvidence_FromProtoPartialNilHeader(t *testing.T) {
+	env := newDSTestEnv(t)
+	hdr := env.signHeaderAtHeight(5, 0x01)
+	hdrPB, err := hdr.ToProto()
+	require.NoError(t, err)
+
+	t.Run("alternate nil", func(t *testing.T) {
+		dst := new(types.DoubleSignEvidence)
+		require.Error(t, dst.FromProto(&pb.DoubleSignEvidence{Height: 5, FirstHeader: hdrPB}))
+	})
+	t.Run("first nil", func(t *testing.T) {
+		dst := new(types.DoubleSignEvidence)
+		require.Error(t, dst.FromProto(&pb.DoubleSignEvidence{Height: 5, AlternateHeader: hdrPB}))
+	})
+}
+
 func TestDoubleSignEvidence_UnmarshalBinaryGarbage(t *testing.T) {
 	dst := new(types.DoubleSignEvidence)
 	require.Error(t, dst.UnmarshalBinary([]byte{0xff, 0xff, 0xff, 0xff}))
