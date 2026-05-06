@@ -27,6 +27,19 @@ var (
 
 var _ coresequencer.Sequencer = (*SoloSequencer)(nil)
 
+// Option configures a SoloSequencer.
+type Option func(*SoloSequencer)
+
+// WithMaxQueueBytes sets a soft cap on the sequencer's in-memory tx queue.
+// SubmitBatchTxs admits txs while the cap has room and returns ErrQueueFull
+// when the incoming batch would exceed it. A zero value (default) disables
+// the cap.
+func WithMaxQueueBytes(n uint64) Option {
+	return func(s *SoloSequencer) {
+		s.maxQueueBytes = n
+	}
+}
+
 // SoloSequencer is a single-leader sequencer without forced inclusion
 // support. It maintains a simple in-memory queue of mempool transactions and
 // produces batches on demand.
@@ -40,30 +53,35 @@ type SoloSequencer struct {
 	mu            sync.Mutex
 	queue         [][]byte
 	queueBytes    uint64
-	maxQueueBytes uint64 // 0 = unbounded
+	maxQueueBytes uint64
 }
 
 func NewSoloSequencer(
 	logger zerolog.Logger,
 	id []byte,
 	executor execution.Executor,
+	opts ...Option,
 ) *SoloSequencer {
-	return &SoloSequencer{
+	if executor == nil {
+		panic("solo: executor must not be nil")
+	}
+
+	s := &SoloSequencer{
 		logger:   logger,
 		id:       id,
 		executor: executor,
 		queue:    make([][]byte, 0),
 	}
-}
 
-// SetMaxQueueBytes sets a soft cap on the sequencer's in-memory tx
-// queue. SubmitBatchTxs admits txs in arrival order while the cap has
-// room and returns ErrQueueFull as soon as one is rejected. A zero value
-// disables the cap. Intended to be called once at startup.
-func (s *SoloSequencer) SetMaxQueueBytes(n uint64) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.maxQueueBytes = n
+	for _, opt := range opts {
+		opt(s)
+	}
+
+	logger.Debug().
+		Uint64("max_queue_bytes", s.maxQueueBytes).
+		Msg("solo sequencer initialized")
+
+	return s
 }
 
 func (s *SoloSequencer) isValid(id []byte) bool {
