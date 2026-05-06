@@ -3,7 +3,6 @@ package solo
 import (
 	"bytes"
 	"context"
-	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -12,16 +11,12 @@ import (
 
 	"github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	"github.com/evstack/ev-node/pkg/sequencers/common"
 )
 
 var (
-	ErrInvalidID = errors.New("invalid chain id")
-	// ErrQueueFull is returned from SubmitBatchTxs when the in-memory
-	// queue is at its byte cap (see SetMaxQueueBytes). Callers should
-	// treat this as transient backpressure (drop or retry); the
-	// reaper bridging executor mempool → sequencer matches it via
-	// errors.Is and downgrades to a warning.
-	ErrQueueFull = errors.New("sequencer queue full")
+	ErrInvalidID = common.ErrInvalidID
+	ErrQueueFull = common.ErrQueueFull
 )
 
 var (
@@ -32,18 +27,22 @@ var (
 
 var _ coresequencer.Sequencer = (*SoloSequencer)(nil)
 
+// Option configures a SoloSequencer.
+type Option func(*SoloSequencer)
+
+// WithMaxQueueBytes sets a soft cap on the sequencer's in-memory tx queue.
+// SubmitBatchTxs admits txs while the cap has room and returns ErrQueueFull
+// when the incoming batch would exceed it. A zero value (default) disables
+// the cap.
+func WithMaxQueueBytes(n uint64) Option {
+	return func(s *SoloSequencer) {
+		s.maxQueueBytes = n
+	}
+}
+
 // SoloSequencer is a single-leader sequencer without forced inclusion
 // support. It maintains a simple in-memory queue of mempool transactions and
 // produces batches on demand.
-//
-// The queue can be bounded in bytes via SetMaxQueueBytes. A bound is
-// strongly recommended in any high-throughput configuration: under
-// sustained ingest above the block-production drain rate the queue
-// otherwise grows monotonically until OOM. With a bound set,
-// SubmitBatchTxs admits only as many incoming txs as fit and returns
-// ErrQueueFull if the bound rejected at least one tx, so callers can
-// surface backpressure (e.g. via HTTP 503) instead of silently
-// retaining bytes.
 type SoloSequencer struct {
 	logger   zerolog.Logger
 	id       []byte
@@ -54,30 +53,35 @@ type SoloSequencer struct {
 	mu            sync.Mutex
 	queue         [][]byte
 	queueBytes    uint64
-	maxQueueBytes uint64 // 0 = unbounded (legacy default)
+	maxQueueBytes uint64
 }
 
 func NewSoloSequencer(
 	logger zerolog.Logger,
 	id []byte,
 	executor execution.Executor,
+	opts ...Option,
 ) *SoloSequencer {
-	return &SoloSequencer{
+	if executor == nil {
+		panic("solo: executor must not be nil")
+	}
+
+	s := &SoloSequencer{
 		logger:   logger,
 		id:       id,
 		executor: executor,
 		queue:    make([][]byte, 0),
 	}
-}
 
-// SetMaxQueueBytes sets a soft cap on the sequencer's in-memory tx
-// queue. SubmitBatchTxs admits txs in arrival order while the cap has
-// room and returns ErrQueueFull as soon as one is rejected. A zero value
-// disables the cap. Intended to be called once at startup.
-func (s *SoloSequencer) SetMaxQueueBytes(n uint64) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.maxQueueBytes = n
+	for _, opt := range opts {
+		opt(s)
+	}
+
+	logger.Debug().
+		Uint64("max_queue_bytes", s.maxQueueBytes).
+		Msg("solo sequencer initialized")
+
+	return s
 }
 
 func (s *SoloSequencer) isValid(id []byte) bool {
@@ -97,8 +101,6 @@ func (s *SoloSequencer) SubmitBatchTxs(ctx context.Context, req coresequencer.Su
 	defer s.mu.Unlock()
 
 	if s.maxQueueBytes == 0 {
-		// Unbounded path (legacy). Suitable for tests and small
-		// deployments; in production use SetMaxQueueBytes.
 		s.queue = append(s.queue, req.Batch.Transactions...)
 		return submitBatchResp, nil
 	}
@@ -115,11 +117,14 @@ func (s *SoloSequencer) SubmitBatchTxs(ctx context.Context, req coresequencer.Su
 	for _, tx := range req.Batch.Transactions {
 		batchBytes += uint64(len(tx))
 	}
+
 	if s.queueBytes+batchBytes > s.maxQueueBytes {
 		return submitBatchResp, ErrQueueFull
 	}
+
 	s.queue = append(s.queue, req.Batch.Transactions...)
 	s.queueBytes += batchBytes
+
 	return submitBatchResp, nil
 }
 
