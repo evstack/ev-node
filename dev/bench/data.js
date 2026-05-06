@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1778054422575,
+  "lastUpdate": 1778085867685,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -382,6 +382,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 171719,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "julien@rbrt.fr",
+            "name": "julienrbrt",
+            "username": "julienrbrt"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "495c6215793c3efc3512ba8bde9cd4c17ebbf572",
+          "message": "feat(pkg/sequencers): add queue limit in solo sequencer (#3312)\n\n* feat(pkg/sequencers): add queue limit in solo sequencer\n\n* use option\n\n* cl\n\n* move test files",
+          "timestamp": "2026-05-06T16:25:26Z",
+          "tree_id": "45f2f3e5c7b73d4a69a5cb9bf67ea602444bebfe",
+          "url": "https://github.com/evstack/ev-node/commit/495c6215793c3efc3512ba8bde9cd4c17ebbf572"
+        },
+        "date": 1778085862694,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 891726465,
+            "unit": "ns/op\t31477080 B/op\t  175260 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 891726465,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 31477080,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 175260,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
