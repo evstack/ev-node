@@ -41,6 +41,12 @@ func TestDefaultConfig(t *testing.T) {
 }
 
 func TestAddFlags(t *testing.T) {
+	// Freeze the time source feeding randString so AddFlags' internal DefaultConfig()
+	// and the per-assertion DefaultConfig() calls below produce the same DA.Namespace seed.
+	origNowUnix := nowUnix
+	nowUnix = func() int64 { return 2_000_000_000 }
+	t.Cleanup(func() { nowUnix = origNowUnix })
+
 	// Create a command with flags
 	cmd := &cobra.Command{Use: "test"}
 	AddGlobalFlags(cmd, "test") // Add basic flags first
