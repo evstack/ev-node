@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changes
 
+- Add max bytes contraints in simple solo sequnecer [#3312](https://github.com/evstack/ev-node/pull/3312)
 - Add support for otlp in execution/grpc. [#3300](https://github.com/evstack/ev-node/pull/3300)
 - Optimization of mutex usage in cache for reaper [#3286](https://github.com/evstack/ev-node/pull/3286)
 - Add Unix domain socket support for gRPC execution endpoints via `unix:///path/to/socket` [#3297](https://github.com/evstack/ev-node/pull/3297)

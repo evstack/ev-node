@@ -217,3 +217,91 @@ func TestSoloSequencer_DAHeight(t *testing.T) {
 	seq.SetDAHeight(42)
 	assert.Equal(t, uint64(42), seq.GetDAHeight())
 }
+
+func TestSoloSequencer_SubmitBatchTxs_QueueFull(t *testing.T) {
+	seq := NewSoloSequencer(
+		zerolog.Nop(),
+		[]byte("test"),
+		createDefaultMockExecutor(t),
+		WithMaxQueueBytes(10),
+	)
+
+	_, err := seq.SubmitBatchTxs(context.Background(), coresequencer.SubmitBatchTxsRequest{
+		Id:    []byte("test"),
+		Batch: &coresequencer.Batch{Transactions: [][]byte{make([]byte, 6)}},
+	})
+	require.NoError(t, err)
+
+	_, err = seq.SubmitBatchTxs(context.Background(), coresequencer.SubmitBatchTxsRequest{
+		Id:    []byte("test"),
+		Batch: &coresequencer.Batch{Transactions: [][]byte{make([]byte, 5)}},
+	})
+	assert.ErrorIs(t, err, ErrQueueFull)
+}
+
+func TestSoloSequencer_SubmitBatchTxs_QueueFull_AllOrNothing(t *testing.T) {
+	seq := NewSoloSequencer(
+		zerolog.Nop(),
+		[]byte("test"),
+		createDefaultMockExecutor(t),
+		WithMaxQueueBytes(5),
+	)
+
+	_, err := seq.SubmitBatchTxs(context.Background(), coresequencer.SubmitBatchTxsRequest{
+		Id:    []byte("test"),
+		Batch: &coresequencer.Batch{Transactions: [][]byte{{1}, {2}, {3}}},
+	})
+	require.NoError(t, err)
+
+	_, err = seq.SubmitBatchTxs(context.Background(), coresequencer.SubmitBatchTxsRequest{
+		Id:    []byte("test"),
+		Batch: &coresequencer.Batch{Transactions: [][]byte{{4}, {5}, {6}}},
+	})
+	assert.ErrorIs(t, err, ErrQueueFull)
+
+	assert.Len(t, seq.queue, 3, "queue should contain only the first batch")
+}
+
+func TestSoloSequencer_SubmitBatchTxs_DrainReleasesCapacity(t *testing.T) {
+	seq := NewSoloSequencer(
+		zerolog.Nop(),
+		[]byte("test"),
+		createDefaultMockExecutor(t),
+		WithMaxQueueBytes(10),
+	)
+
+	_, err := seq.SubmitBatchTxs(context.Background(), coresequencer.SubmitBatchTxsRequest{
+		Id:    []byte("test"),
+		Batch: &coresequencer.Batch{Transactions: [][]byte{make([]byte, 10)}},
+	})
+	require.NoError(t, err)
+
+	_, err = seq.SubmitBatchTxs(context.Background(), coresequencer.SubmitBatchTxsRequest{
+		Id:    []byte("test"),
+		Batch: &coresequencer.Batch{Transactions: [][]byte{{1}}},
+	})
+	assert.ErrorIs(t, err, ErrQueueFull)
+
+	_, err = seq.GetNextBatch(context.Background(), coresequencer.GetNextBatchRequest{Id: []byte("test")})
+	require.NoError(t, err)
+
+	_, err = seq.SubmitBatchTxs(context.Background(), coresequencer.SubmitBatchTxsRequest{
+		Id:    []byte("test"),
+		Batch: &coresequencer.Batch{Transactions: [][]byte{{1}}},
+	})
+	assert.NoError(t, err, "submit should succeed after queue is drained")
+}
+
+func TestSoloSequencer_SubmitBatchTxs_UnboundedByDefault(t *testing.T) {
+	seq := newTestSequencer(t)
+
+	bigTx := make([]byte, 1024*1024)
+	for i := 0; i < 10; i++ {
+		_, err := seq.SubmitBatchTxs(context.Background(), coresequencer.SubmitBatchTxsRequest{
+			Id:    []byte("test"),
+			Batch: &coresequencer.Batch{Transactions: [][]byte{bigTx}},
+		})
+		require.NoError(t, err)
+	}
+	assert.Len(t, seq.queue, 10)
+}
