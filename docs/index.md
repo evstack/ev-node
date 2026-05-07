@@ -4,6 +4,8 @@ title: Evolve Documentation
 titleTemplate: ':title'
 ---
 
+<!-- markdownlint-disable MD025 MD033 -->
+
 <script setup>
 import constants from './.vitepress/constants/constants.js'
 </script>
