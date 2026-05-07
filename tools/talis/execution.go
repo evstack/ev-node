@@ -101,7 +101,6 @@ func waitForTmuxSessions(instances []Instance, sshKeyPath, sessionName string, t
 	for len(remaining) > 0 && time.Now().Before(deadline) {
 		time.Sleep(poll)
 
-		// Check all remaining validators in parallel
 		type result struct {
 			name     string
 			finished bool
@@ -122,14 +121,10 @@ func waitForTmuxSessions(instances []Instance, sshKeyPath, sessionName string, t
 				err := ssh.Run()
 				switch {
 				case err == nil:
-					// tmux has-session exited 0 → session still running.
 					results <- result{name: name, finished: false}
 				case errors.As(err, new(*exec.ExitError)):
-					// Remote command ran but returned non-zero → session gone.
 					results <- result{name: name, finished: true}
 				default:
-					// SSH connection error (network blip, refused, etc.) →
-					// cannot determine session state; treat as still running.
 					log.Printf("warning: SSH probe failed for %s (%s): %v", name, inst.PublicIP, err)
 					results <- result{name: name, finished: false}
 				}
@@ -143,8 +138,12 @@ func waitForTmuxSessions(instances []Instance, sshKeyPath, sessionName string, t
 			}
 		}
 
-		if len(remaining) > 0 {
-			fmt.Printf("  still waiting on %d validator(s)...\n", len(remaining))
+		for name, inst := range remaining {
+			out, err := sshExec("root", inst.PublicIP, sshKeyPath,
+				fmt.Sprintf("tail -5 /root/talis-%s.log 2>/dev/null", sessionName))
+			if err == nil && len(strings.TrimSpace(string(out))) > 0 {
+				fmt.Printf("[%s] %s\n", name, strings.TrimSpace(string(out)))
+			}
 		}
 	}
 
