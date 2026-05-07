@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -14,12 +13,12 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	"github.com/evstack/ev-node/pkg/sequencers/common"
 	"github.com/evstack/ev-node/pkg/store"
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
 
-// ErrQueueFull is returned when the batch queue has reached its maximum size
-var ErrQueueFull = errors.New("batch queue is full")
+var ErrQueueFull = common.ErrQueueFull
 
 // initialSeqNum is the starting sequence number for new queues.
 // It is set to the middle of the uint64 range to allow for both
