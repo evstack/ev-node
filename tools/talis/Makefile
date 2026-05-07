@@ -25,10 +25,10 @@
 #
 #   make build-bins CELESTIA_APP_REPO=/path/to/celestia-app
 
-CELESTIA_APP_REPO  ?= ../../../celestia-app
+CELESTIA_APP_REPO  ?= ./celestia-app
 CELESTIA_APP_REF   ?= feat/fibre-payments
 
-CELESTIA_NODE_REPO ?= ../../../celestia-node
+CELESTIA_NODE_REPO ?= ./celestia-node
 CELESTIA_NODE_REF  ?= feature/fibre-experimental
 
 EVNODE_RUNNER_PATH ?= ../celestia-node-fiber/cmd/evnode-fibre

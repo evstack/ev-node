@@ -326,7 +326,6 @@ func run(cli cliFlags) error {
 	}
 
 	executor := newInMemExecutor()
-	sequencer := solo.NewSoloSequencer(logger, []byte(genesis.ChainID), executor)
 	// Cap the sequencer's in-memory queue at 10× the per-block tx
 	// budget. Above this, SubmitBatchTxs returns ErrQueueFull and the
 	// runner's reaper-bridge / tx-ingress applies backpressure (txs
@@ -339,7 +338,7 @@ func run(cli cliFlags) error {
 	// Sized at 10× the per-block tx budget (matches SetMaxBlobSize
 	// above; both anchor at the per-blob Fibre cap).
 	const seqQueueBytes = 10 * 100 * 1024 * 1024 // 1 GiB
-	sequencer.SetMaxQueueBytes(seqQueueBytes)
+	sequencer := solo.NewSoloSequencer(logger, []byte(genesis.ChainID), executor, solo.WithMaxQueueBytes(seqQueueBytes))
 	daClient := block.NewFiberDAClient(adapter, cfg, logger, 0)
 	p2pClient, err := p2p.NewClient(cfg.P2P, nodeKey.PrivKey, datastore.NewMapDatastore(), genesis.ChainID, logger, nil)
 	if err != nil {
@@ -554,8 +553,8 @@ func (e *inMemExecutor) ExecuteTxs(_ context.Context, txs [][]byte, height uint6
 	return root, nil
 }
 
-func (e *inMemExecutor) SetFinal(_ context.Context, _ uint64) error            { return nil }
-func (e *inMemExecutor) Rollback(_ context.Context, _ uint64) error            { return nil }
+func (e *inMemExecutor) SetFinal(_ context.Context, _ uint64) error { return nil }
+func (e *inMemExecutor) Rollback(_ context.Context, _ uint64) error { return nil }
 func (e *inMemExecutor) GetExecutionInfo(_ context.Context) (coreexecution.ExecutionInfo, error) {
 	return coreexecution.ExecutionInfo{MaxGas: 0}, nil
 }
