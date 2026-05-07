@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -32,7 +31,7 @@ func startFibreCmd() *cobra.Command {
 				return fmt.Errorf("no validators found in config")
 			}
 
-			resolvedSSHKeyPath := resolveValue(SSHKeyPath, EnvVarSSHKeyPath, strings.ReplaceAll(cfg.SSHPubKeyPath, ".pub", ""))
+			resolvedSSHKeyPath := resolveSSHPrivateKey(SSHKeyPath, cfg.SSHPubKeyPath)
 
 			// Select first N validators (default all)
 			if instances <= 0 || instances > len(cfg.Validators) {

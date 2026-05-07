@@ -55,7 +55,7 @@ func startLatencyMonitorCmd() *cobra.Command {
 				promtailConfig = filepath.Join(rootDir, "observability", "promtail", "promtail-config.yml")
 			}
 
-			resolvedSSHKeyPath := resolveValue(SSHKeyPath, EnvVarSSHKeyPath, strings.ReplaceAll(cfg.SSHPubKeyPath, ".pub", ""))
+			resolvedSSHKeyPath := resolveSSHPrivateKey(SSHKeyPath, cfg.SSHPubKeyPath)
 
 			// Only operate on the number of instances that were specified
 			insts := []Instance{}

@@ -33,7 +33,7 @@ func resetCmd() *cobra.Command {
 				return fmt.Errorf("no validators found in config")
 			}
 
-			resolvedKey := resolveValue(SSHKeyPath, EnvVarSSHKeyPath, strings.ReplaceAll(cfg.SSHPubKeyPath, ".pub", ""))
+			resolvedKey := resolveSSHPrivateKey(SSHKeyPath, cfg.SSHPubKeyPath)
 
 			// Filter validators if specific ones were requested
 			targetValidators := cfg.Validators

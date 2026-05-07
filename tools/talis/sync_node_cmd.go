@@ -176,7 +176,7 @@ from genesis with --block-sync-only), measures sync time, and tears down the ins
 				return fmt.Errorf("google cloud project is required (use --gc-project, env GOOGLE_CLOUD_PROJECT, or config)")
 			}
 
-			resolvedSSHKeyPath := resolveValue(sshKeyPath, EnvVarSSHKeyPath, strings.ReplaceAll(cfg.SSHPubKeyPath, ".pub", ""))
+			resolvedSSHKeyPath := resolveSSHPrivateKey(sshKeyPath, cfg.SSHPubKeyPath)
 			if resolvedSSHKeyPath == "" {
 				return fmt.Errorf("SSH private key path is required (use --ssh-key-path or set ssh_pub_key_path in config)")
 			}

@@ -773,6 +773,19 @@ func resolveValue(flagVal, envKey, configVal string) string {
 	return configVal
 }
 
+func resolveSSHPrivateKey(flagVal, cfgPubKeyPath string) string {
+	if flagVal != "" {
+		return flagVal
+	}
+	if env := os.Getenv(EnvVarSSHKeyPath); env != "" {
+		if cfgPubKeyPath != "" {
+			log.Printf("Using %s from environment variable instead of config", EnvVarSSHKeyPath)
+		}
+		return strings.TrimSuffix(env, ".pub")
+	}
+	return strings.TrimSuffix(cfgPubKeyPath, ".pub")
+}
+
 func listCmd() *cobra.Command {
 	var rootDir string
 	var cfgPath string

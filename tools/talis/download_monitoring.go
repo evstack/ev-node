@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 
 	"github.com/spf13/cobra"
@@ -33,7 +32,7 @@ Files are saved to {output}/{validator-name}/monitor.jsonl.`,
 				return fmt.Errorf("no validators found in config")
 			}
 
-			resolvedSSHKeyPath := resolveValue(SSHKeyPath, EnvVarSSHKeyPath, strings.ReplaceAll(cfg.SSHPubKeyPath, ".pub", ""))
+			resolvedSSHKeyPath := resolveSSHPrivateKey(SSHKeyPath, cfg.SSHPubKeyPath)
 
 			validators, err := filterMatchingInstances(cfg.Validators, nodes)
 			if err != nil {

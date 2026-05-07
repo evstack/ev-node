@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -41,7 +40,7 @@ func startTxsimCmd() *cobra.Command {
 				return fmt.Errorf("no validators found in config")
 			}
 
-			resolvedSSHKeyPath := resolveValue(SSHKeyPath, EnvVarSSHKeyPath, strings.ReplaceAll(cfg.SSHPubKeyPath, ".pub", ""))
+			resolvedSSHKeyPath := resolveSSHPrivateKey(SSHKeyPath, cfg.SSHPubKeyPath)
 
 			txsimScript := fmt.Sprintf(
 				"txsim .celestia-app/ --blob %d --blob-amounts %d --blob-sizes %d-%d --grpc-endpoint localhost:9091 --feegrant",
@@ -112,7 +111,7 @@ func killTmuxSessionCmd() *cobra.Command {
 			}
 
 			// Resolve SSH key
-			resolvedKey := resolveValue(SSHKeyPath, EnvVarSSHKeyPath, strings.ReplaceAll(cfg.SSHPubKeyPath, ".pub", ""))
+			resolvedKey := resolveSSHPrivateKey(SSHKeyPath, cfg.SSHPubKeyPath)
 
 			// Raw kill session (suppress errors so no output if session doesn't exist)
 			killScript := fmt.Sprintf(

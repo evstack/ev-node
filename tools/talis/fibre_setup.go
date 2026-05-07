@@ -38,7 +38,7 @@ func setupFibreCmd() *cobra.Command {
 				return fmt.Errorf("no validators found in config")
 			}
 
-			resolvedSSHKeyPath := resolveValue(SSHKeyPath, EnvVarSSHKeyPath, strings.ReplaceAll(cfg.SSHPubKeyPath, ".pub", ""))
+			resolvedSSHKeyPath := resolveSSHPrivateKey(SSHKeyPath, cfg.SSHPubKeyPath)
 
 			sem := make(chan struct{}, workers)
 			var (

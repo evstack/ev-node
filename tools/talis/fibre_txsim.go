@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -39,7 +38,7 @@ func fibreTxsimCmd() *cobra.Command {
 				return fmt.Errorf("no validators found in config")
 			}
 
-			resolvedSSHKeyPath := resolveValue(SSHKeyPath, EnvVarSSHKeyPath, strings.ReplaceAll(cfg.SSHPubKeyPath, ".pub", ""))
+			resolvedSSHKeyPath := resolveSSHPrivateKey(SSHKeyPath, cfg.SSHPubKeyPath)
 
 			if onEncoders {
 				return startFibreTxsimOnEncoders(cfg, resolvedSSHKeyPath, instances, concurrency, blobSize, interval, duration, download, uploadOnly, pyroscopeEndpoint)

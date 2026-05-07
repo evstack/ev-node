@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -30,11 +29,7 @@ func uploadDataCmd() *cobra.Command {
 				return fmt.Errorf("no validators (nodes) found in config")
 			}
 
-			resolvedKey := resolveValue(
-				SSHKeyPath,
-				EnvVarSSHKeyPath,
-				strings.ReplaceAll(cfg.SSHPubKeyPath, ".pub", ""),
-			)
+			resolvedKey := resolveSSHPrivateKey(SSHKeyPath, cfg.SSHPubKeyPath)
 
 			const sessionName = "traces"
 			return runScriptInTMux(

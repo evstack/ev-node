@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -17,12 +18,12 @@ import (
 // It then invokes — in order — the same subcommands the operator would
 // run by hand:
 //
-//   1. up                       — provision instances
-//   2. genesis -b <build>       — stage validator/bridge/evnode/loadgen payloads
-//   3. deploy                   — ship payloads + start init scripts
-//   4. setup-fibre              — register host + deposit escrow on each validator
-//   5. start-fibre              — launch the fibre server on each validator
-//   6. fibre-bootstrap-evnode   — scp bridge JWT + fibre keyring onto evnode-*
+//  1. up                       — provision instances
+//  2. genesis -b <build>       — stage validator/bridge/evnode/loadgen payloads
+//  3. deploy                   — ship payloads + start init scripts
+//  4. setup-fibre              — register host + deposit escrow on each validator
+//  5. start-fibre              — launch the fibre server on each validator
+//  6. fibre-bootstrap-evnode   — scp bridge JWT + fibre keyring onto evnode-*
 //
 // Each step is invoked via os/exec on the running binary. Any failure
 // surfaces immediately; nothing is retried at this layer (the
@@ -50,13 +51,15 @@ or watch for inter-step races.`,
 				return fmt.Errorf("locate own binary: %w", err)
 			}
 
+			sshKeyPath := resolveSSHPrivateKeyFromEnv()
+
 			steps := []struct {
 				name string
 				args []string
 			}{
 				{"up", []string{"up", "-d", rootDir}},
 				{"genesis", []string{"genesis", "-d", rootDir, "-b", buildDir}},
-				{"deploy", []string{"deploy", "-d", rootDir}},
+				{"deploy", []string{"deploy", "-d", rootDir, "--direct-payload-upload", "-s", sshKeyPath}},
 				{"setup-fibre", []string{"setup-fibre", "-d", rootDir}},
 				{"start-fibre", []string{"start-fibre", "-d", rootDir}},
 				{"fibre-bootstrap-evnode", []string{"fibre-bootstrap-evnode", "-d", rootDir}},
@@ -86,4 +89,12 @@ or watch for inter-step races.`,
 	cmd.Flags().StringVarP(&buildDir, "build-dir", "b", "./build", "directory containing the cross-compiled linux/amd64 binaries")
 
 	return cmd
+}
+
+func resolveSSHPrivateKeyFromEnv() string {
+	if pubKeyPath := os.Getenv(EnvVarSSHKeyPath); pubKeyPath != "" {
+		return strings.TrimSuffix(pubKeyPath, ".pub")
+	}
+
+	panic("SSH key path not set via " + EnvVarSSHKeyPath)
 }
