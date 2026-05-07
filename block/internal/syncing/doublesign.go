@@ -19,42 +19,33 @@ import (
 // ErrDoubleSign is returned when two validly-signed SignedHeaders are observed at the same height.
 var ErrDoubleSign = errors.New("double-sign detected")
 
-// doubleSignHandler is fired when an equivocation is confirmed. It persists
-// evidence, bumps metrics, and halts the syncer.
-type doubleSignHandler func(ctx context.Context, evidence *types.DoubleSignEvidence)
+// doubleSignDetector reports an observed header for equivocation detection.
+// Returns true on a confirmed double-sign so the caller can abort.
+type doubleSignDetector func(ctx context.Context, header *types.SignedHeader, source string) bool
 
-// detectDoubleSign compares incoming against the first-seen SignedHeader at
-// the same height (cache then store) and returns non-nil evidence when their
-// hashes differ. Caller must verify proposer + signature first.
-func detectDoubleSign(
+// firstObservation returns the first-seen SignedHeader at this height,
+// preferring the cache over the store. Returns (nil, "", nil) when none.
+func firstObservation(
 	ctx context.Context,
 	st store.Store,
 	cm cache.CacheManager,
-	incoming *types.SignedHeader,
-	incomingSource string,
-) (*types.DoubleSignEvidence, error) {
-	if incoming == nil {
-		return nil, errors.New("incoming header is nil")
-	}
-	height := incoming.Height()
-
-	// Cache wins over store: the cached entry is the literal first observation
-	// and carries the original FirstSource.
+	height uint64,
+) (*types.SignedHeader, string, error) {
 	if cached, source, ok := cm.GetPendingSignedHeader(height); ok {
-		return buildEvidenceFromPair(cached, incoming, source, incomingSource), nil
+		return cached, source, nil
 	}
 
-	storedHeader, storeErr := st.GetHeader(ctx, height)
-	if storeErr != nil {
-		if store.IsNotFound(storeErr) {
-			return nil, nil
+	storedHeader, err := st.GetHeader(ctx, height)
+	if err != nil {
+		if store.IsNotFound(err) {
+			return nil, "", nil
 		}
-		return nil, fmt.Errorf("lookup stored header at %d: %w", height, storeErr)
+		return nil, "", fmt.Errorf("lookup stored header at %d: %w", height, err)
 	}
 	if storedHeader == nil {
-		return nil, nil
+		return nil, "", nil
 	}
-	return buildEvidenceFromPair(storedHeader, incoming, types.EvidenceSourceStored, incomingSource), nil
+	return storedHeader, types.EvidenceSourceStored, nil
 }
 
 // buildEvidenceFromPair returns evidence for two SignedHeaders at the same
@@ -99,16 +90,15 @@ func persistEvidence(ctx context.Context, st store.Store, ev *types.DoubleSignEv
 	return nil
 }
 
-// reportDoubleSign persists evidence, logs, bumps the metric (once per
-// distinct alternate hash via seen), fires criticalErr, and returns the
-// wrapped ErrDoubleSign for the caller to propagate as the halt cause.
+// reportDoubleSign persists evidence and bumps the metric, deduping by
+// (height, altHash). Returns a wrapped ErrDoubleSign on first sighting,
+// nil when already seen.
 func reportDoubleSign(
 	ctx context.Context,
 	st store.Store,
 	metrics *common.Metrics,
 	logger zerolog.Logger,
 	seen *doubleSignDedup,
-	criticalErr func(error),
 	ev *types.DoubleSignEvidence,
 ) error {
 	altHashStr := ev.AlternateHeader.Hash().String()
@@ -144,15 +134,11 @@ func reportDoubleSign(
 		Str("evidence_key", key).
 		Msg("DOUBLE-SIGN DETECTED — sequencer equivocation; halting syncer")
 
-	halt := fmt.Errorf(
+	return fmt.Errorf(
 		"double-sign detected at height %d: sequencer signed conflicting headers %s and %s. "+
 			"Evidence persisted at metadata key %s. Manual intervention required: %w",
 		ev.Height, firstHashStr, altHashStr, key, ErrDoubleSign,
 	)
-	if criticalErr != nil {
-		criticalErr(halt)
-	}
-	return halt
 }
 
 // doubleSignDedup collapses (height, altHash) duplicates so the same

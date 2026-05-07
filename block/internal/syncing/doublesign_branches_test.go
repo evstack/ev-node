@@ -56,48 +56,40 @@ func (nilHeaderStore) GetHeader(context.Context, uint64) (*types.SignedHeader, e
 	return nil, nil
 }
 
-func TestDetectDoubleSign_NilIncomingReturnsError(t *testing.T) {
-	env := newDSTestEnv(t)
-	ev, err := detectDoubleSign(context.Background(), env.store, env.cache, nil, types.EvidenceSourceP2P)
-	require.Error(t, err)
-	require.Nil(t, ev)
-}
-
 // A non-NotFound store failure must be surfaced, not swallowed.
-func TestDetectDoubleSign_StoreErrorWrapped(t *testing.T) {
+func TestFirstObservation_StoreErrorWrapped(t *testing.T) {
 	env := newDSTestEnv(t)
 	wrapped := &errStore{Store: env.store, getHeaderErr: errors.New("backend down")}
 
-	alt := env.signHeaderAtHeight(5, 0x01)
-	ev, err := detectDoubleSign(context.Background(), wrapped, env.cache, alt, types.EvidenceSourceP2P)
+	prior, priorSource, err := firstObservation(context.Background(), wrapped, env.cache, 5)
 	require.Error(t, err)
-	require.Nil(t, ev)
+	require.Nil(t, prior)
+	require.Empty(t, priorSource)
 	require.Contains(t, err.Error(), "lookup stored header")
 	require.ErrorContains(t, err, "backend down")
 }
 
-func TestDetectDoubleSign_StoredHeaderNilDefensive(t *testing.T) {
+func TestFirstObservation_StoredHeaderNilDefensive(t *testing.T) {
 	env := newDSTestEnv(t)
 	wrapped := nilHeaderStore{Store: env.store}
 
-	alt := env.signHeaderAtHeight(5, 0x01)
-	ev, err := detectDoubleSign(context.Background(), wrapped, env.cache, alt, types.EvidenceSourceP2P)
+	prior, priorSource, err := firstObservation(context.Background(), wrapped, env.cache, 5)
 	require.NoError(t, err)
-	require.Nil(t, ev)
+	require.Nil(t, prior)
+	require.Empty(t, priorSource)
 }
 
-// Store-path detections must use the "stored" sentinel as FirstSource so
-// downstream consumers can disambiguate it from in-flight observations.
-func TestDetectDoubleSign_FirstSourceStoredSentinel(t *testing.T) {
+// Store-path observations must use the "stored" sentinel as the source so
+// downstream consumers can disambiguate them from in-flight observations.
+func TestFirstObservation_StoredSourceSentinel(t *testing.T) {
 	env := newDSTestEnv(t)
 	first := env.signHeaderAtHeight(5, 0x01)
 	env.saveHeader(first)
 
-	alt := env.signHeaderAtHeight(5, 0x02)
-	ev, err := detectDoubleSign(context.Background(), env.store, env.cache, alt, types.EvidenceSourceP2P)
+	prior, priorSource, err := firstObservation(context.Background(), env.store, env.cache, first.Height())
 	require.NoError(t, err)
-	require.NotNil(t, ev)
-	require.Equal(t, types.EvidenceSourceStored, ev.FirstSource)
+	require.NotNil(t, prior)
+	require.Equal(t, types.EvidenceSourceStored, priorSource)
 }
 
 // SetMetadata failures must include the canonical key so an operator can
@@ -118,7 +110,7 @@ func TestPersistEvidence_StoreError(t *testing.T) {
 }
 
 // Persistence failure must not break the halt contract: metric still
-// increments, criticalErr still fires, returned error still wraps ErrDoubleSign.
+// increments and the returned error still wraps ErrDoubleSign.
 func TestReportDoubleSign_PersistFailureLoggedNotBlocking(t *testing.T) {
 	env := newDSTestEnv(t)
 	wrapped := &errStore{Store: env.store, setMetadataErr: errors.New("disk full")}
@@ -132,16 +124,12 @@ func TestReportDoubleSign_PersistFailureLoggedNotBlocking(t *testing.T) {
 	metrics := common.NopMetrics()
 	metrics.DoubleSignsDetected = &counterCtr{n: &dsCount}
 
-	var fired atomic.Pointer[error]
-	crit := func(err error) { fired.Store(&err) }
-
 	halt := reportDoubleSign(context.Background(), wrapped, metrics, zerolog.Nop(),
-		newDoubleSignDedup(), crit, ev)
+		newDoubleSignDedup(), ev)
 	require.Error(t, halt)
 	require.ErrorIs(t, halt, ErrDoubleSign)
 
 	require.Equal(t, int64(1), dsCount.Load())
-	require.NotNil(t, fired.Load())
 }
 
 // Dedup is keyed on (height, altHash), so two distinct alts at the same
@@ -163,12 +151,11 @@ func TestReportDoubleSign_TwoDistinctAltsAtSameHeight(t *testing.T) {
 	metrics.DoubleSignsDetected = &counterCtr{n: &dsCount}
 
 	seen := newDoubleSignDedup()
-	noopCrit := func(error) {}
 
 	require.Error(t, reportDoubleSign(context.Background(), env.store, metrics,
-		zerolog.Nop(), seen, noopCrit, ev1))
+		zerolog.Nop(), seen, ev1))
 	require.Error(t, reportDoubleSign(context.Background(), env.store, metrics,
-		zerolog.Nop(), seen, noopCrit, ev2))
+		zerolog.Nop(), seen, ev2))
 
 	require.Equal(t, int64(2), dsCount.Load())
 
@@ -189,14 +176,14 @@ func TestReportDoubleSign_NilSeenAndNilGuards(t *testing.T) {
 
 	t.Run("nil seen still halts", func(t *testing.T) {
 		halt := reportDoubleSign(context.Background(), env.store, common.NopMetrics(),
-			zerolog.Nop(), nil, func(error) {}, ev)
+			zerolog.Nop(), nil, ev)
 		require.Error(t, halt)
 		require.ErrorIs(t, halt, ErrDoubleSign)
 	})
 
 	t.Run("nil metrics still halts", func(t *testing.T) {
 		halt := reportDoubleSign(context.Background(), env.store, nil,
-			zerolog.Nop(), newDoubleSignDedup(), func(error) {}, ev)
+			zerolog.Nop(), newDoubleSignDedup(), ev)
 		require.Error(t, halt)
 		require.ErrorIs(t, halt, ErrDoubleSign)
 	})
@@ -205,14 +192,7 @@ func TestReportDoubleSign_NilSeenAndNilGuards(t *testing.T) {
 		m := common.NopMetrics()
 		m.DoubleSignsDetected = nil
 		halt := reportDoubleSign(context.Background(), env.store, m,
-			zerolog.Nop(), newDoubleSignDedup(), func(error) {}, ev)
-		require.Error(t, halt)
-		require.ErrorIs(t, halt, ErrDoubleSign)
-	})
-
-	t.Run("nil criticalErr still halts", func(t *testing.T) {
-		halt := reportDoubleSign(context.Background(), env.store, common.NopMetrics(),
-			zerolog.Nop(), newDoubleSignDedup(), nil, ev)
+			zerolog.Nop(), newDoubleSignDedup(), ev)
 		require.Error(t, halt)
 		require.ErrorIs(t, halt, ErrDoubleSign)
 	})
@@ -270,7 +250,7 @@ func TestDARetriever_AbortsBatchOnDetection(t *testing.T) {
 
 	mockClient := newMockDAClient(t)
 
-	r := NewDARetriever(mockClient, env.cache, env.gen, zerolog.Nop(), env.store, env.onDouble)
+	r := NewDARetriever(mockClient, env.cache, env.gen, zerolog.Nop(), env.detectDoubleSign)
 
 	events := r.ProcessBlobs(context.Background(),
 		[][]byte{firstBin, altBin, nextBin}, 100)
@@ -290,7 +270,7 @@ func TestDARetriever_DetectorErrorWarnAndContinue(t *testing.T) {
 
 	mockClient := newMockDAClient(t)
 
-	r := NewDARetriever(mockClient, env.cache, env.gen, zerolog.Nop(), wrapped, env.onDouble)
+	r := NewDARetriever(mockClient, env.cache, env.gen, zerolog.Nop(), env.makeDetectDoubleSign(wrapped))
 
 	_ = r.ProcessBlobs(context.Background(), [][]byte{bin}, 100)
 
@@ -324,7 +304,7 @@ func TestDARetriever_StrictModeEnvelopeDoubleSign(t *testing.T) {
 
 	mockClient := newMockDAClient(t)
 
-	r := NewDARetriever(mockClient, env.cache, env.gen, zerolog.Nop(), env.store, env.onDouble)
+	r := NewDARetriever(mockClient, env.cache, env.gen, zerolog.Nop(), env.detectDoubleSign)
 
 	events := r.ProcessBlobs(context.Background(), [][]byte{firstBin, altBin}, 100)
 	require.Empty(t, events)
@@ -348,7 +328,7 @@ func TestDARetriever_SetsPendingSignedHeaderOnFirstObservation(t *testing.T) {
 
 	mockClient := newMockDAClient(t)
 
-	r := NewDARetriever(mockClient, env.cache, env.gen, zerolog.Nop(), env.store, env.onDouble)
+	r := NewDARetriever(mockClient, env.cache, env.gen, zerolog.Nop(), env.detectDoubleSign)
 	_ = r.ProcessBlobs(context.Background(), [][]byte{bin}, 100)
 
 	got, src, ok := env.cache.GetPendingSignedHeader(5)
@@ -356,4 +336,3 @@ func TestDARetriever_SetsPendingSignedHeaderOnFirstObservation(t *testing.T) {
 	require.Equal(t, first.Hash().String(), got.Hash().String())
 	require.Equal(t, types.EvidenceSourceDA, src)
 }
-

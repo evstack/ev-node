@@ -183,18 +183,17 @@ func (s *Syncer) Start(ctx context.Context) (err error) {
 		return fmt.Errorf("failed to initialize syncer state: %w", err)
 	}
 
-	// Initialize handlers. DA and P2P share dsHandler so cross-path duplicates
-	// are deduped through doubleSignSeen and only reported once.
+	// Initialize handlers. DA and P2P share s.detectDoubleSign so cross-path
+	// duplicates are deduped through doubleSignSeen and only reported once.
 	s.doubleSignSeen = newDoubleSignDedup()
-	dsHandler := s.handleDoubleSign
-	s.daRetriever = NewDARetriever(s.daClient, s.cache, s.genesis, s.logger, s.store, dsHandler)
+	s.daRetriever = NewDARetriever(s.daClient, s.cache, s.genesis, s.logger, s.detectDoubleSign)
 	if s.config.Instrumentation.IsTracingEnabled() {
 		s.daRetriever = WithTracingDARetriever(s.daRetriever)
 	}
 
 	s.fiRetriever = da.NewForcedInclusionRetriever(s.daClient, s.logger, s.config.DA.BlockTime.Duration, s.config.Instrumentation.IsTracingEnabled(), s.genesis.DAStartHeight, s.genesis.DAEpochForcedInclusion)
 	s.fiRetriever.Start(ctx)
-	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.cache, s.genesis, s.logger, s.store, dsHandler)
+	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.cache, s.genesis, s.logger, s.detectDoubleSign)
 
 	currentHeight, initErr := s.store.Height(ctx)
 	if initErr != nil {
@@ -1074,9 +1073,28 @@ func (s *Syncer) sendCriticalError(err error) {
 }
 
 // handleDoubleSign persists evidence, bumps the metric, and halts the syncer
-// via sendCriticalError. Wired into the DA retriever and P2P handler.
+// via sendCriticalError on the first equivocation sighting.
 func (s *Syncer) handleDoubleSign(ctx context.Context, ev *types.DoubleSignEvidence) {
-	_ = reportDoubleSign(ctx, s.store, s.metrics, s.logger, s.doubleSignSeen, s.sendCriticalError, ev)
+	if err := reportDoubleSign(ctx, s.store, s.metrics, s.logger, s.doubleSignSeen, ev); err != nil {
+		s.sendCriticalError(err)
+	}
+}
+
+// detectDoubleSign records the observation and returns true when header equivocates
+// with a prior observation at the same height, halting the syncer as a side effect.
+func (s *Syncer) detectDoubleSign(ctx context.Context, header *types.SignedHeader, source string) bool {
+	if header == nil {
+		return false
+	}
+	prior, priorSource, err := firstObservation(ctx, s.store, s.cache, header.Height())
+	if err != nil {
+		s.logger.Warn().Err(err).Uint64("height", header.Height()).Msg("double-sign detection error")
+	} else if ev := buildEvidenceFromPair(prior, header, priorSource, source); ev != nil {
+		s.handleDoubleSign(ctx, ev)
+		return true
+	}
+	s.cache.SetPendingSignedHeader(header, source)
+	return false
 }
 
 // processPendingEvents fetches and processes pending events from cache

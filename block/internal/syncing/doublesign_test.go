@@ -30,16 +30,16 @@ import (
 // dsTestEnv bundles the store, cache, genesis and signer used by the
 // double-sign tests.
 type dsTestEnv struct {
-	t        *testing.T
-	store    store.Store
-	cache    cache.CacheManager
-	gen      genesis.Genesis
-	addr     []byte
-	pub      crypto.PubKey
-	signer   signerpkg.Signer
-	chainID  string
-	capLock  atomic.Pointer[[]*types.DoubleSignEvidence]
-	onDouble doubleSignHandler
+	t                *testing.T
+	store            store.Store
+	cache            cache.CacheManager
+	gen              genesis.Genesis
+	addr             []byte
+	pub              crypto.PubKey
+	signer           signerpkg.Signer
+	chainID          string
+	capLock          atomic.Pointer[[]*types.DoubleSignEvidence]
+	detectDoubleSign doubleSignDetector
 }
 
 func newDSTestEnv(t *testing.T) *dsTestEnv {
@@ -69,20 +69,35 @@ func newDSTestEnv(t *testing.T) *dsTestEnv {
 	}
 	empty := []*types.DoubleSignEvidence{}
 	env.capLock.Store(&empty)
-	env.onDouble = func(ctx context.Context, ev *types.DoubleSignEvidence) {
-		require.NoError(t, ev.ValidateBasic())
-		for {
-			cur := env.capLock.Load()
-			next := append([]*types.DoubleSignEvidence(nil), *cur...)
-			next = append(next, ev)
-			if env.capLock.CompareAndSwap(cur, &next) {
-				break
-			}
-		}
-		// Persist immediately so tests can verify round-trip decoding.
-		require.NoError(t, persistEvidence(ctx, st, ev))
-	}
+	env.detectDoubleSign = env.makeDetectDoubleSign(st)
 	return env
+}
+
+// makeDetectDoubleSign mimics Syncer.detectDoubleSign for tests, capturing
+// evidence into env.capLock instead of halting.
+func (e *dsTestEnv) makeDetectDoubleSign(st store.Store) doubleSignDetector {
+	return func(ctx context.Context, header *types.SignedHeader, source string) bool {
+		prior, priorSource, err := firstObservation(ctx, st, e.cache, header.Height())
+		if err != nil {
+			e.cache.SetPendingSignedHeader(header, source)
+			return false
+		}
+		if ev := buildEvidenceFromPair(prior, header, priorSource, source); ev != nil {
+			require.NoError(e.t, ev.ValidateBasic())
+			for {
+				cur := e.capLock.Load()
+				next := append([]*types.DoubleSignEvidence(nil), *cur...)
+				next = append(next, ev)
+				if e.capLock.CompareAndSwap(cur, &next) {
+					break
+				}
+			}
+			require.NoError(e.t, persistEvidence(ctx, st, ev))
+			return true
+		}
+		e.cache.SetPendingSignedHeader(header, source)
+		return false
+	}
 }
 
 func (e *dsTestEnv) captured() []*types.DoubleSignEvidence {
@@ -125,7 +140,7 @@ func (e *dsTestEnv) saveHeader(hdr *types.SignedHeader) {
 	require.NoError(e.t, batch.Commit())
 }
 
-func TestDetectDoubleSign_TwoValidHeadersSameHeight(t *testing.T) {
+func TestFirstObservation_StoredHeaderProducesEvidence(t *testing.T) {
 	env := newDSTestEnv(t)
 	first := env.signHeaderAtHeight(5, 0x01)
 	env.saveHeader(first)
@@ -133,8 +148,12 @@ func TestDetectDoubleSign_TwoValidHeadersSameHeight(t *testing.T) {
 	alt := env.signHeaderAtHeight(5, 0x02)
 	require.NotEqual(t, first.Hash().String(), alt.Hash().String())
 
-	ev, err := detectDoubleSign(context.Background(), env.store, env.cache, alt, types.EvidenceSourceP2P)
+	prior, priorSource, err := firstObservation(context.Background(), env.store, env.cache, alt.Height())
 	require.NoError(t, err)
+	require.Equal(t, first.Hash().String(), prior.Hash().String())
+	require.Equal(t, types.EvidenceSourceStored, priorSource)
+
+	ev := buildEvidenceFromPair(prior, alt, priorSource, types.EvidenceSourceP2P)
 	require.NotNil(t, ev)
 	require.Equal(t, uint64(5), ev.Height)
 	require.Equal(t, first.Hash().String(), ev.FirstHeader.Hash().String())
@@ -153,22 +172,23 @@ func TestDetectDoubleSign_TwoValidHeadersSameHeight(t *testing.T) {
 	require.Equal(t, ev.AlternateSource, decoded.AlternateSource)
 }
 
-func TestDetectDoubleSign_IdenticalHashNoEvidence(t *testing.T) {
+func TestFirstObservation_IdenticalHashNoEvidence(t *testing.T) {
 	env := newDSTestEnv(t)
 	first := env.signHeaderAtHeight(5, 0x01)
 	env.saveHeader(first)
 
-	ev, err := detectDoubleSign(context.Background(), env.store, env.cache, first, types.EvidenceSourceP2P)
+	prior, priorSource, err := firstObservation(context.Background(), env.store, env.cache, first.Height())
 	require.NoError(t, err)
-	require.Nil(t, ev)
+	require.NotNil(t, prior)
+	require.Nil(t, buildEvidenceFromPair(prior, first, priorSource, types.EvidenceSourceP2P))
 }
 
-func TestDetectDoubleSign_NoPriorRecordReturnsNil(t *testing.T) {
+func TestFirstObservation_NoPriorRecordReturnsNil(t *testing.T) {
 	env := newDSTestEnv(t)
-	alt := env.signHeaderAtHeight(5, 0x01)
-	ev, err := detectDoubleSign(context.Background(), env.store, env.cache, alt, types.EvidenceSourceP2P)
+	prior, priorSource, err := firstObservation(context.Background(), env.store, env.cache, 5)
 	require.NoError(t, err)
-	require.Nil(t, ev)
+	require.Nil(t, prior)
+	require.Empty(t, priorSource)
 }
 
 func TestBuildEvidenceFromPair_ProposerMismatch(t *testing.T) {
@@ -226,17 +246,14 @@ func TestReportDoubleSign_PersistsAndHalts(t *testing.T) {
 
 	metrics := common.NopMetrics()
 	seen := newDoubleSignDedup()
-	var halted atomic.Pointer[error]
-	crit := func(err error) { halted.Store(&err) }
 
-	halt1 := reportDoubleSign(context.Background(), env.store, metrics, zerolog.Nop(), seen, crit, ev)
+	halt1 := reportDoubleSign(context.Background(), env.store, metrics, zerolog.Nop(), seen, ev)
 	require.Error(t, halt1)
+	require.ErrorIs(t, halt1, ErrDoubleSign)
 
 	// Second call must be a no-op via dedup.
-	halted.Store(nil)
-	halt2 := reportDoubleSign(context.Background(), env.store, metrics, zerolog.Nop(), seen, crit, ev)
+	halt2 := reportDoubleSign(context.Background(), env.store, metrics, zerolog.Nop(), seen, ev)
 	require.NoError(t, halt2)
-	require.Nil(t, halted.Load())
 
 	key := store.GetDoubleSignEvidenceKey(ev.Height, ev.AlternateHeader.Hash())
 	blob, err := env.store.GetMetadata(context.Background(), key)
@@ -263,7 +280,7 @@ func TestP2PHandler_DoubleSignTriggersCriticalError(t *testing.T) {
 		Return(&types.P2PSignedHeader{SignedHeader: alt}, nil).
 		Once()
 
-	h := NewP2PHandler(headerStoreMock, dataStoreMock, env.cache, env.gen, zerolog.Nop(), env.store, env.onDouble)
+	h := NewP2PHandler(headerStoreMock, dataStoreMock, env.cache, env.gen, zerolog.Nop(), env.detectDoubleSign)
 
 	ch := make(chan common.DAHeightEvent, 1)
 	require.NoError(t, h.ProcessHeight(context.Background(), 5, ch))
@@ -300,7 +317,7 @@ func TestP2PHandler_ProposerMismatchIsNotEvidence(t *testing.T) {
 		Return(&types.P2PSignedHeader{SignedHeader: badHdr}, nil).
 		Once()
 
-	h := NewP2PHandler(headerStoreMock, dataStoreMock, env.cache, env.gen, zerolog.Nop(), env.store, env.onDouble)
+	h := NewP2PHandler(headerStoreMock, dataStoreMock, env.cache, env.gen, zerolog.Nop(), env.detectDoubleSign)
 
 	ch := make(chan common.DAHeightEvent, 1)
 	err := h.ProcessHeight(context.Background(), 5, ch)
@@ -324,7 +341,7 @@ func TestDARetriever_DoubleSignSamePendingBatch(t *testing.T) {
 	mockClient.On("GetHeaderNamespace").Return([]byte("ns")).Maybe()
 	mockClient.On("GetDataNamespace").Return([]byte("ns")).Maybe()
 
-	r := NewDARetriever(mockClient, env.cache, env.gen, zerolog.Nop(), env.store, env.onDouble)
+	r := NewDARetriever(mockClient, env.cache, env.gen, zerolog.Nop(), env.detectDoubleSign)
 	events := r.ProcessBlobs(context.Background(), [][]byte{firstBin, altBin}, 100)
 	require.Empty(t, events)
 
@@ -349,7 +366,7 @@ func TestDARetriever_DoubleSignAcrossBatches(t *testing.T) {
 	mockClient.On("GetHeaderNamespace").Return([]byte("ns")).Maybe()
 	mockClient.On("GetDataNamespace").Return([]byte("ns")).Maybe()
 
-	r := NewDARetriever(mockClient, env.cache, env.gen, zerolog.Nop(), env.store, env.onDouble)
+	r := NewDARetriever(mockClient, env.cache, env.gen, zerolog.Nop(), env.detectDoubleSign)
 	events := r.ProcessBlobs(context.Background(), [][]byte{altBin}, 101)
 	require.Empty(t, events)
 
@@ -372,7 +389,7 @@ func TestDARetriever_BenignDuplicateAcrossBatchesDoesNotFire(t *testing.T) {
 	mockClient.On("GetHeaderNamespace").Return([]byte("ns")).Maybe()
 	mockClient.On("GetDataNamespace").Return([]byte("ns")).Maybe()
 
-	r := NewDARetriever(mockClient, env.cache, env.gen, zerolog.Nop(), env.store, env.onDouble)
+	r := NewDARetriever(mockClient, env.cache, env.gen, zerolog.Nop(), env.detectDoubleSign)
 	_ = r.ProcessBlobs(context.Background(), [][]byte{sameBin}, 101)
 	require.Empty(t, env.captured())
 }
@@ -396,7 +413,7 @@ func TestDARetriever_LegacyForgedSignatureRejected(t *testing.T) {
 	mockClient.On("GetHeaderNamespace").Return([]byte("ns")).Maybe()
 	mockClient.On("GetDataNamespace").Return([]byte("ns")).Maybe()
 
-	r := NewDARetriever(mockClient, env.cache, env.gen, zerolog.Nop(), env.store, env.onDouble)
+	r := NewDARetriever(mockClient, env.cache, env.gen, zerolog.Nop(), env.detectDoubleSign)
 	require.Nil(t, r.tryDecodeHeader(bin, 100))
 
 	_, _, ok := env.cache.GetPendingSignedHeader(5)
@@ -404,7 +421,7 @@ func TestDARetriever_LegacyForgedSignatureRejected(t *testing.T) {
 }
 
 // Detection must trigger from a pending cache entry too, before persistence.
-func TestDetectDoubleSign_PendingCacheHitProducesEvidence(t *testing.T) {
+func TestFirstObservation_PendingCacheHitProducesEvidence(t *testing.T) {
 	env := newDSTestEnv(t)
 
 	first := env.signHeaderAtHeight(5, 0x01)
@@ -412,8 +429,12 @@ func TestDetectDoubleSign_PendingCacheHitProducesEvidence(t *testing.T) {
 	// First header is in-flight, not yet on disk.
 
 	alt := env.signHeaderAtHeight(5, 0x02)
-	ev, err := detectDoubleSign(context.Background(), env.store, env.cache, alt, types.EvidenceSourceP2P)
+	prior, priorSource, err := firstObservation(context.Background(), env.store, env.cache, alt.Height())
 	require.NoError(t, err)
+	require.Equal(t, first.Hash().String(), prior.Hash().String())
+	require.Equal(t, types.EvidenceSourceDA, priorSource)
+
+	ev := buildEvidenceFromPair(prior, alt, priorSource, types.EvidenceSourceP2P)
 	require.NotNil(t, ev)
 	require.Equal(t, first.Hash().String(), ev.FirstHeader.Hash().String())
 	require.Equal(t, alt.Hash().String(), ev.AlternateHeader.Hash().String())
@@ -421,28 +442,28 @@ func TestDetectDoubleSign_PendingCacheHitProducesEvidence(t *testing.T) {
 	require.Equal(t, types.EvidenceSourceP2P, ev.AlternateSource)
 }
 
-func TestDetectDoubleSign_PendingCacheBenignDuplicate(t *testing.T) {
+func TestFirstObservation_PendingCacheBenignDuplicate(t *testing.T) {
 	env := newDSTestEnv(t)
 
 	first := env.signHeaderAtHeight(5, 0x01)
 	env.cache.SetPendingSignedHeader(first, types.EvidenceSourceDA)
 
-	ev, err := detectDoubleSign(context.Background(), env.store, env.cache, first, types.EvidenceSourceP2P)
+	prior, priorSource, err := firstObservation(context.Background(), env.store, env.cache, first.Height())
 	require.NoError(t, err)
-	require.Nil(t, ev)
+	require.NotNil(t, prior)
+	require.Nil(t, buildEvidenceFromPair(prior, first, priorSource, types.EvidenceSourceP2P))
 }
 
-func TestDetectDoubleSign_PendingEvictedAfterRemoval(t *testing.T) {
+func TestFirstObservation_PendingEvictedAfterRemoval(t *testing.T) {
 	env := newDSTestEnv(t)
 
 	first := env.signHeaderAtHeight(5, 0x01)
 	env.cache.SetPendingSignedHeader(first, types.EvidenceSourceDA)
 	env.cache.RemovePendingSignedHeader(5)
 
-	alt := env.signHeaderAtHeight(5, 0x02)
-	ev, err := detectDoubleSign(context.Background(), env.store, env.cache, alt, types.EvidenceSourceP2P)
+	prior, _, err := firstObservation(context.Background(), env.store, env.cache, first.Height())
 	require.NoError(t, err)
-	require.Nil(t, ev)
+	require.Nil(t, prior)
 }
 
 func TestDoubleSignEvidence_ValidateBasic(t *testing.T) {
@@ -516,7 +537,7 @@ func TestDARetriever_DoubleSignEvidenceHasMatchingProposers(t *testing.T) {
 	mockClient.On("GetHeaderNamespace").Return([]byte("ns")).Maybe()
 	mockClient.On("GetDataNamespace").Return([]byte("ns")).Maybe()
 
-	r := NewDARetriever(mockClient, env.cache, env.gen, zerolog.Nop(), env.store, env.onDouble)
+	r := NewDARetriever(mockClient, env.cache, env.gen, zerolog.Nop(), env.detectDoubleSign)
 	_ = r.ProcessBlobs(context.Background(), [][]byte{firstBin, altBin}, 100)
 
 	captured := env.captured()

@@ -33,7 +33,7 @@ func TestP2PHandler_DetectsAtAlreadyProcessedHeight(t *testing.T) {
 		Once()
 
 	h := NewP2PHandler(headerStoreMock, dataStoreMock, env.cache, env.gen,
-		zerolog.Nop(), env.store, env.onDouble)
+		zerolog.Nop(), env.detectDoubleSign)
 
 	h.SetProcessedHeight(5)
 
@@ -60,7 +60,7 @@ func TestP2PHandler_LegacyShortCircuitWhenDetectionDisabled(t *testing.T) {
 	dataStoreMock := extmocks.NewMockStore[*types.P2PData](t)
 
 	h := NewP2PHandler(headerStoreMock, dataStoreMock, env.cache, env.gen,
-		zerolog.Nop(), nil, nil)
+		zerolog.Nop(), nil)
 
 	h.SetProcessedHeight(5)
 
@@ -97,7 +97,7 @@ func TestP2PHandler_InvalidSigRejectedBeforeDetector(t *testing.T) {
 		Once()
 
 	h := NewP2PHandler(headerStoreMock, dataStoreMock, env.cache, env.gen,
-		zerolog.Nop(), env.store, env.onDouble)
+		zerolog.Nop(), env.detectDoubleSign)
 
 	ch := make(chan common.DAHeightEvent, 1)
 	err = h.ProcessHeight(context.Background(), 5, ch)
@@ -132,7 +132,7 @@ func TestP2PHandler_SetsPendingSignedHeaderOnFirstObservation(t *testing.T) {
 		Once()
 
 	h := NewP2PHandler(headerStoreMock, dataStoreMock, env.cache, env.gen,
-		zerolog.Nop(), env.store, env.onDouble)
+		zerolog.Nop(), env.detectDoubleSign)
 
 	ch := make(chan common.DAHeightEvent, 1)
 	require.NoError(t, h.ProcessHeight(context.Background(), 5, ch))

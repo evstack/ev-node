@@ -12,7 +12,6 @@ import (
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/pkg/genesis"
-	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -34,31 +33,28 @@ type P2PHandler struct {
 	genesis     genesis.Genesis
 	logger      zerolog.Logger
 
-	store        store.Store
-	onDoubleSign doubleSignHandler // nil disables detection
+	// detectDoubleSign returns true on a confirmed double-sign. Nil disables.
+	detectDoubleSign doubleSignDetector
 
 	processedHeight atomic.Uint64
 }
 
-// NewP2PHandler creates a new P2P handler. Double-sign detection is disabled
-// when st or onDoubleSign is nil.
+// NewP2PHandler creates a new P2P handler.
 func NewP2PHandler(
 	headerStore header.Store[*types.P2PSignedHeader],
 	dataStore header.Store[*types.P2PData],
 	cache cache.CacheManager,
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
-	st store.Store,
-	onDoubleSign doubleSignHandler,
+	detectDoubleSign doubleSignDetector,
 ) *P2PHandler {
 	return &P2PHandler{
-		headerStore:  headerStore,
-		dataStore:    dataStore,
-		cache:        cache,
-		genesis:      genesis,
-		logger:       logger.With().Str("component", "p2p_handler").Logger(),
-		store:        st,
-		onDoubleSign: onDoubleSign,
+		headerStore:      headerStore,
+		dataStore:        dataStore,
+		cache:            cache,
+		genesis:          genesis,
+		logger:           logger.With().Str("component", "p2p_handler").Logger(),
+		detectDoubleSign: detectDoubleSign,
 	}
 }
 
@@ -82,7 +78,7 @@ func (h *P2PHandler) SetProcessedHeight(height uint64) {
 // When double-sign detection is enabled, the processedHeight short-circuit is
 // deferred so alternates at already-processed heights still trigger detection.
 func (h *P2PHandler) ProcessHeight(ctx context.Context, height uint64, heightInCh chan<- common.DAHeightEvent) error {
-	if h.store == nil || h.onDoubleSign == nil {
+	if h.detectDoubleSign == nil {
 		if height <= h.processedHeight.Load() {
 			return nil
 		}
@@ -101,18 +97,14 @@ func (h *P2PHandler) ProcessHeight(ctx context.Context, height uint64, heightInC
 	}
 
 	// ValidateBasic is the precondition for treating an alternate as evidence.
-	if h.store != nil && h.onDoubleSign != nil {
+	if h.detectDoubleSign != nil {
 		if err := p2pHeader.SignedHeader.ValidateBasic(); err != nil {
 			h.logger.Debug().Uint64("height", height).Err(err).Msg("invalid signed header from P2P")
 			return err
 		}
-		if ev, derr := detectDoubleSign(ctx, h.store, h.cache, p2pHeader.SignedHeader, types.EvidenceSourceP2P); derr == nil && ev != nil {
-			h.onDoubleSign(ctx, ev)
+		if h.detectDoubleSign(ctx, p2pHeader.SignedHeader, types.EvidenceSourceP2P) {
 			return nil
-		} else if derr != nil {
-			h.logger.Warn().Err(derr).Uint64("height", height).Msg("double-sign detection error")
 		}
-		h.cache.SetPendingSignedHeader(p2pHeader.SignedHeader, types.EvidenceSourceP2P)
 		if height <= h.processedHeight.Load() {
 			return nil
 		}
