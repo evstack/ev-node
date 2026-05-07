@@ -133,13 +133,10 @@ func DefaultConfig() Config {
 	}
 }
 
-// nowUnix returns the current Unix timestamp; package-level so tests can stub it.
-var nowUnix = func() int64 { return time.Now().Unix() }
-
 func randString(length int) string {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	result := make([]byte, length)
-	rng := rand.New(rand.NewSource(nowUnix())) //nolint:gosec // even half random is good enough here.
+	rng := rand.New(rand.NewSource(time.Now().Unix())) //nolint:gosec // even half random is good enough here.
 	for i := range result {
 		result[i] = charset[rng.Intn(len(charset))]
 	}
