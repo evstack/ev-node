@@ -8,7 +8,7 @@ import (
 	connect "connectrpc.com/connect"
 	context "context"
 	errors "errors"
-	v1 "github.com/evstack/ev-node/types/pb/evnode/v1"
+	v1 "github.com/evstack/ev-node/execution/grpc/types/pb/evnode/v1"
 	http "net/http"
 	strings "strings"
 )

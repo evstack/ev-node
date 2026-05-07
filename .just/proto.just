@@ -4,6 +4,7 @@ proto-gen:
     @echo "--> Generating Protobuf files"
     buf generate --path="./proto/evnode" --template="buf.gen.yaml" --config="buf.yaml"
     buf generate --path="./proto/execution/evm" --template="buf.gen.evm.yaml" --config="buf.yaml"
+    buf generate --template="buf.gen.grpc.yaml" --config="buf.yaml"
 
 # Lint protobuf files (requires Docker)
 [group('proto')]
