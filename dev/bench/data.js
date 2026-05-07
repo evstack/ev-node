@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1778085869923,
+  "lastUpdate": 1778148156413,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -430,6 +430,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 175260,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "caelrowley@pm.me",
+            "name": "Cael Rowley",
+            "username": "CaelRowley"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "01791ca1b4b528357b70896c296023fa5e621f5d",
+          "message": "test(config): use `synctest` in TestAddFlags for avoiding nondeterminism  (#3311)\n\n* fix(config): de-flake TestAddFlags by stubbing time source\n\n* test(config): de-flake TestAddFlags via testing/synctest",
+          "timestamp": "2026-05-07T11:57:50+02:00",
+          "tree_id": "1a3f313873483be0c46eb038f1cb6b6a0f86199f",
+          "url": "https://github.com/evstack/ev-node/commit/01791ca1b4b528357b70896c296023fa5e621f5d"
+        },
+        "date": 1778148151924,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 924315706,
+            "unit": "ns/op\t28769124 B/op\t  142243 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 924315706,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 28769124,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 142243,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
