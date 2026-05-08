@@ -187,11 +187,8 @@ to fetch, then SCPs to each evnode-*.`,
 		},
 	}
 
-	homeDir, _ := os.UserHomeDir()
-	defaultKeyPath := filepath.Join(homeDir, ".ssh", "id_ed25519")
-
 	cmd.Flags().StringVarP(&rootDir, "directory", "d", ".", "experiment root directory")
-	cmd.Flags().StringVarP(&sshKeyPath, "ssh-key-path", "s", defaultKeyPath, "SSH private key for talis instances")
+	cmd.Flags().StringVarP(&sshKeyPath, "ssh-key-path", "s", "", "SSH private key for talis instances (defaults to TALIS_SSH_KEY_PATH env)")
 	cmd.Flags().StringVar(&sshUser, "ssh-user", "root", "SSH user (talis instances boot as root)")
 	cmd.Flags().DurationVar(&jwtTimeout, "jwt-timeout", 5*time.Minute, "max wall time to wait for the bridge JWT to appear on bridge-0")
 
