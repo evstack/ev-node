@@ -57,6 +57,8 @@ to fetch, then SCPs to each evnode-*.`,
 			if len(cfg.Evnodes) == 0 {
 				return fmt.Errorf("no evnodes in config — nothing to bootstrap")
 			}
+
+			resolvedSSHKeyPath := resolveSSHPrivateKey(sshKeyPath, cfg.SSHPubKeyPath)
 			bridge := cfg.Bridges[0]
 			validator := cfg.Validators[0]
 			if bridge.PublicIP == "" || bridge.PublicIP == "TBD" {
@@ -84,7 +86,7 @@ to fetch, then SCPs to each evnode-*.`,
 			log.Printf("Fetching bridge JWT from bridge-0 (%s) — up to %s", bridge.PublicIP, jwtTimeout)
 			deadline := time.Now().Add(jwtTimeout)
 			for {
-				if err := scpFromRemote(sshUser, bridge.PublicIP, sshKeyPath, "/root/bridge-jwt.txt", localJWT, false); err == nil {
+				if err := scpFromRemote(sshUser, bridge.PublicIP, resolvedSSHKeyPath, "/root/bridge-jwt.txt", localJWT, false); err == nil {
 					if info, statErr := os.Stat(localJWT); statErr == nil && info.Size() > 0 {
 						break
 					}
@@ -102,7 +104,7 @@ to fetch, then SCPs to each evnode-*.`,
 			// outbound push lands at /root/keyring-fibre/keyring-test/
 			// — exactly where evnode_init.sh expects it.
 			log.Printf("Fetching keyring-test from validator-0 (%s)", validator.PublicIP)
-			if err := scpFromRemote(sshUser, validator.PublicIP, sshKeyPath, "/root/.celestia-app/keyring-test", localKeyringRoot, true); err != nil {
+			if err := scpFromRemote(sshUser, validator.PublicIP, resolvedSSHKeyPath, "/root/.celestia-app/keyring-test", localKeyringRoot, true); err != nil {
 				return fmt.Errorf("scp keyring from validator-0: %w", err)
 			}
 			if _, err := os.Stat(filepath.Join(localKeyringRoot, "keyring-test")); err != nil {
@@ -127,7 +129,7 @@ to fetch, then SCPs to each evnode-*.`,
 
 					// JWT is small + atomic on the receive side because
 					// it's a single file, so we push it directly.
-					if err := scpToRemote(sshUser, ev.PublicIP, sshKeyPath, localJWT, "/root/bridge-jwt.txt", false); err != nil {
+					if err := scpToRemote(sshUser, ev.PublicIP, resolvedSSHKeyPath, localJWT, "/root/bridge-jwt.txt", false); err != nil {
 						errCh <- fmt.Errorf("[%s] push JWT: %w", ev.Name, err)
 						return
 					}
@@ -147,12 +149,12 @@ to fetch, then SCPs to each evnode-*.`,
 						"rm -rf %s && mkdir -p %s && mkdir -p /root/keyring-fibre && rm -rf /root/keyring-fibre/keyring-test",
 						stageDir, stageDir,
 					)
-					if _, err := sshExec(sshUser, ev.PublicIP, sshKeyPath, prep); err != nil {
+					if _, err := sshExec(sshUser, ev.PublicIP, resolvedSSHKeyPath, prep); err != nil {
 						errCh <- fmt.Errorf("[%s] stage keyring: %w", ev.Name, err)
 						return
 					}
 					stageDest := stageDir + "/keyring-test"
-					if err := scpToRemote(sshUser, ev.PublicIP, sshKeyPath, filepath.Join(localKeyringRoot, "keyring-test"), stageDest, true); err != nil {
+					if err := scpToRemote(sshUser, ev.PublicIP, resolvedSSHKeyPath, filepath.Join(localKeyringRoot, "keyring-test"), stageDest, true); err != nil {
 						errCh <- fmt.Errorf("[%s] push keyring: %w", ev.Name, err)
 						return
 					}
@@ -160,7 +162,7 @@ to fetch, then SCPs to each evnode-*.`,
 						"mv %s /root/keyring-fibre/keyring-test && rmdir %s",
 						stageDest, stageDir,
 					)
-					if _, err := sshExec(sshUser, ev.PublicIP, sshKeyPath, promote); err != nil {
+					if _, err := sshExec(sshUser, ev.PublicIP, resolvedSSHKeyPath, promote); err != nil {
 						errCh <- fmt.Errorf("[%s] promote keyring: %w", ev.Name, err)
 						return
 					}
