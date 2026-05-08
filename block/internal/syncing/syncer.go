@@ -1088,7 +1088,8 @@ func (s *Syncer) detectDoubleSign(ctx context.Context, header *types.SignedHeade
 	}
 	prior, priorSource, err := firstObservation(ctx, s.store, s.cache, header.Height())
 	if err != nil {
-		s.logger.Warn().Err(err).Uint64("height", header.Height()).Msg("double-sign detection error")
+		// Detection bypassed for this observation, still cached below so a later arrival can match against this header
+		s.logger.Error().Err(err).Uint64("height", header.Height()).Msg("double-sign detection bypassed")
 	} else if ev := buildEvidenceFromPair(prior, header, priorSource, source); ev != nil {
 		s.handleDoubleSign(ctx, ev)
 		return true

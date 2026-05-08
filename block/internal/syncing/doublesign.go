@@ -105,16 +105,12 @@ func reportDoubleSign(
 	firstHashStr := ev.FirstHeader.Hash().String()
 	key := store.GetDoubleSignEvidenceKey(ev.Height, ev.AlternateHeader.Hash())
 
-	// Persist on every call: idempotent, and a retry covers a transient
-	// failure on the first attempt.
-	persistErr := persistEvidence(ctx, st, ev)
-
 	if seen != nil && !seen.markSeen(ev.Height, altHashStr) {
 		return nil
 	}
 
-	if persistErr != nil {
-		logger.Error().Err(persistErr).
+	if err := persistEvidence(ctx, st, ev); err != nil {
+		logger.Error().Err(err).
 			Uint64("height", ev.Height).
 			Str("first_hash", firstHashStr).
 			Str("alternate_hash", altHashStr).
