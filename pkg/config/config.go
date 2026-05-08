@@ -343,38 +343,6 @@ func (d *DAConfig) IsFiberEnabled() bool {
 	return d.Fiber.Enabled
 }
 
-// ApplyFiberDefaults flips the DA client to Fiber-friendly defaults
-// when the Fiber profile is enabled — adaptive batching, a 1 s
-// DA.BlockTime so inclusion-tracking keeps pace with Fibre's
-// settlement, and a bounded pending-cache window so a Fibre stall
-// can't grow memory unbounded. Caller-provided non-zero values for
-// the tunables (BatchSizeThreshold, BatchMinItems) are preserved.
-//
-// Intended to be invoked once at runner startup, after parsing the
-// usual config but before constructing the DA client.
-func (c *Config) ApplyFiberDefaults() {
-	if !c.DA.IsFiberEnabled() {
-		return
-	}
-
-	c.DA.BatchingStrategy = "adaptive"
-	if c.DA.BatchSizeThreshold <= 0 || c.DA.BatchSizeThreshold > 1 {
-		c.DA.BatchSizeThreshold = 0.5
-	}
-	c.DA.BatchMaxDelay = DurationWrapper{Duration: 8 * time.Second}
-	if c.DA.BatchMinItems == 0 {
-		c.DA.BatchMinItems = 1
-	}
-
-	c.DA.BlockTime = DurationWrapper{Duration: 1 * time.Second}
-	// Tighter pending cap (was 50). At 50, a Fibre upload stall lets the
-	// submitter accumulate 50 × ~32 MiB blob copies + their per-validator
-	// retry buffers; under load that exceeded c6in.8xlarge's 64 GiB and
-	// OOM-killed evnode at 63.8 GiB. 10 keeps the in-flight footprint
-	// bounded while still letting healthy uploads pipeline.
-	c.Node.MaxPendingHeadersAndData = 10
-}
-
 // GetNamespace returns the namespace for header submissions.
 func (d *DAConfig) GetNamespace() string {
 	return d.Namespace

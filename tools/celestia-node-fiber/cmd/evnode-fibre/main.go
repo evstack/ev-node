@@ -299,9 +299,11 @@ func run(cli cliFlags) error {
 	cfg.DA.Fiber.KeyringPath = cli.keyringPath
 	cfg.DA.Fiber.KeyName = cli.keyName
 	cfg.DA.RequestTimeout = config.DurationWrapper{Duration: 60 * time.Second}
-	// Fiber-tuned profile: BatchingStrategy=adaptive, BatchMaxDelay=1.5s,
-	// DA.BlockTime=1s, MaxPendingHeadersAndData=0, plus 120 MiB blob cap.
-	cfg.ApplyFiberDefaults()
+	// cfg.DA.BatchMaxDelay = config.DurationWrapper{Duration: 8 * time.Second}
+	cfg.DA.BatchMinItems = 1
+	cfg.DA.BatchingStrategy = "size"
+	cfg.DA.BatchSizeThreshold = 0.95
+	cfg.Node.MaxPendingHeadersAndData = 10_000
 	// 100 MiB — bounded by Fibre's hard ~128 MiB per-upload cap (we
 	// hit `data size exceeds maximum 134217723` at 128 MiB - 5 B).
 	// Set the per-block data cap below that so each block_data item
