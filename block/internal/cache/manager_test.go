@@ -563,11 +563,11 @@ func TestManager_PendingSignedHeader_NilHeaderIgnored(t *testing.T) {
 	_, _, ok := m.GetPendingSignedHeader(5)
 	require.False(t, ok)
 
-	real := signedHeaderForHeight(5, 0x01)
-	m.SetPendingSignedHeader(real, "p2p")
+	hdr := signedHeaderForHeight(5, 0x01)
+	m.SetPendingSignedHeader(hdr, "p2p")
 	got, _, ok := m.GetPendingSignedHeader(5)
 	require.True(t, ok)
-	require.Equal(t, real.Hash().String(), got.Hash().String())
+	require.Equal(t, hdr.Hash().String(), got.Hash().String())
 }
 
 func TestManager_GetPendingSignedHeader_Miss(t *testing.T) {

@@ -542,8 +542,8 @@ func TestDARetriever_DoubleSignEvidenceHasMatchingProposers(t *testing.T) {
 
 	captured := env.captured()
 	require.Len(t, captured, 1)
-	require.Equal(t, env.gen.ProposerAddress, []byte(captured[0].FirstHeader.ProposerAddress))
-	require.Equal(t, env.gen.ProposerAddress, []byte(captured[0].AlternateHeader.ProposerAddress))
+	require.Equal(t, env.gen.ProposerAddress, captured[0].FirstHeader.ProposerAddress)
+	require.Equal(t, env.gen.ProposerAddress, captured[0].AlternateHeader.ProposerAddress)
 }
 
 func TestSyncer_EvictsPendingHeaderOnPersist(t *testing.T) {

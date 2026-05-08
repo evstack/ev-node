@@ -98,7 +98,7 @@ func (h *P2PHandler) ProcessHeight(ctx context.Context, height uint64, heightInC
 
 	// ValidateBasic is the precondition for treating an alternate as evidence.
 	if h.detectDoubleSign != nil {
-		if err := p2pHeader.SignedHeader.ValidateBasic(); err != nil {
+		if err := p2pHeader.ValidateBasic(); err != nil {
 			h.logger.Debug().Uint64("height", height).Err(err).Msg("invalid signed header from P2P")
 			return err
 		}
