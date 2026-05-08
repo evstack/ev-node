@@ -1048,19 +1048,26 @@ pub struct InitChainResponse {
 /// Empty for now, may include filtering criteria in the future
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GetTxsRequest {}
+/// TxBatch stores ordered transactions in one contiguous bytes buffer.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct TxBatch {
+    /// Concatenated transaction bytes.
+    #[prost(bytes = "vec", tag = "1")]
+    pub data: ::prost::alloc::vec::Vec<u8>,
+    /// Byte length for each transaction in order.
+    #[prost(uint32, repeated, tag = "2")]
+    pub tx_sizes: ::prost::alloc::vec::Vec<u32>,
+}
 /// GetTxsResponse contains the available transactions
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GetTxsResponse {
-    /// Slice of valid transactions from mempool
-    #[prost(bytes = "vec", repeated, tag = "1")]
-    pub txs: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
+    /// Valid transactions from mempool in contiguous batch form.
+    #[prost(message, optional, tag = "2")]
+    pub tx_batch: ::core::option::Option<TxBatch>,
 }
 /// ExecuteTxsRequest contains transactions and block context for execution
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ExecuteTxsRequest {
-    /// Ordered list of transactions to execute
-    #[prost(bytes = "vec", repeated, tag = "1")]
-    pub txs: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
     /// Height of block being created (must be > 0)
     #[prost(uint64, tag = "2")]
     pub block_height: u64,
@@ -1070,6 +1077,9 @@ pub struct ExecuteTxsRequest {
     /// Previous block's state root hash
     #[prost(bytes = "vec", tag = "4")]
     pub prev_state_root: ::prost::alloc::vec::Vec<u8>,
+    /// Ordered transactions to execute in contiguous batch form.
+    #[prost(message, optional, tag = "5")]
+    pub tx_batch: ::core::option::Option<TxBatch>,
 }
 /// ExecuteTxsResponse contains the result of transaction execution
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -1115,9 +1125,6 @@ pub struct GetExecutionInfoResponse {
 /// FilterTxsRequest contains transactions to validate and filter
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct FilterTxsRequest {
-    /// All transactions (force-included + mempool)
-    #[prost(bytes = "vec", repeated, tag = "1")]
-    pub txs: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
     /// Maximum cumulative size allowed (0 means no size limit)
     #[prost(uint64, tag = "2")]
     pub max_bytes: u64,
@@ -1127,6 +1134,9 @@ pub struct FilterTxsRequest {
     /// Whether force-included transactions are present
     #[prost(bool, tag = "4")]
     pub has_force_included_transaction: bool,
+    /// All transactions (force-included + mempool) in contiguous batch form.
+    #[prost(message, optional, tag = "5")]
+    pub tx_batch: ::core::option::Option<TxBatch>,
 }
 /// FilterTxsResponse contains the filter status for each transaction
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
