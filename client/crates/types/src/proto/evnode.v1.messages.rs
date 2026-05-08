@@ -278,6 +278,151 @@ pub struct BlockData {
     #[prost(bytes = "vec", repeated, tag = "3")]
     pub blobs: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
 }
+/// InitChainRequest contains the genesis parameters for chain initialization
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct InitChainRequest {
+    /// Timestamp marking chain start time in UTC
+    #[prost(message, optional, tag = "1")]
+    pub genesis_time: ::core::option::Option<::prost_types::Timestamp>,
+    /// First block height (must be > 0)
+    #[prost(uint64, tag = "2")]
+    pub initial_height: u64,
+    /// Unique identifier string for the blockchain
+    #[prost(string, tag = "3")]
+    pub chain_id: ::prost::alloc::string::String,
+}
+/// InitChainResponse contains the initial state and configuration
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct InitChainResponse {
+    /// Hash representing initial state
+    #[prost(bytes = "vec", tag = "1")]
+    pub state_root: ::prost::alloc::vec::Vec<u8>,
+}
+/// GetTxsRequest is the request for fetching transactions
+///
+/// Empty for now, may include filtering criteria in the future
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetTxsRequest {}
+/// GetTxsResponse contains the available transactions
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetTxsResponse {
+    /// Slice of valid transactions from mempool
+    #[prost(bytes = "vec", repeated, tag = "1")]
+    pub txs: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
+}
+/// ExecuteTxsRequest contains transactions and block context for execution
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ExecuteTxsRequest {
+    /// Ordered list of transactions to execute
+    #[prost(bytes = "vec", repeated, tag = "1")]
+    pub txs: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
+    /// Height of block being created (must be > 0)
+    #[prost(uint64, tag = "2")]
+    pub block_height: u64,
+    /// Block creation time in UTC
+    #[prost(message, optional, tag = "3")]
+    pub timestamp: ::core::option::Option<::prost_types::Timestamp>,
+    /// Previous block's state root hash
+    #[prost(bytes = "vec", tag = "4")]
+    pub prev_state_root: ::prost::alloc::vec::Vec<u8>,
+}
+/// ExecuteTxsResponse contains the result of transaction execution
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ExecuteTxsResponse {
+    /// New state root after executing transactions
+    #[prost(bytes = "vec", tag = "1")]
+    pub updated_state_root: ::prost::alloc::vec::Vec<u8>,
+    /// Maximum allowed transaction size (may change with protocol updates)
+    #[prost(uint64, tag = "2")]
+    pub max_bytes: u64,
+    /// Proposer address that should sign the next block.
+    /// Empty means the current proposer remains active.
+    #[prost(bytes = "vec", tag = "3")]
+    pub next_proposer_address: ::prost::alloc::vec::Vec<u8>,
+}
+/// SetFinalRequest marks a block as finalized
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SetFinalRequest {
+    /// Height of block to finalize
+    #[prost(uint64, tag = "1")]
+    pub block_height: u64,
+}
+/// SetFinalResponse indicates whether finalization was successful
+///
+/// Empty response, errors are returned via gRPC status
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SetFinalResponse {}
+/// GetExecutionInfoRequest requests execution layer parameters
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetExecutionInfoRequest {}
+/// GetExecutionInfoResponse contains execution layer parameters
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetExecutionInfoResponse {
+    /// Maximum gas allowed for transactions in a block
+    /// For non-gas-based execution layers, this should be 0
+    #[prost(uint64, tag = "1")]
+    pub max_gas: u64,
+    /// Proposer address that should sign the next block from the execution
+    /// layer's current view. Empty means unchanged or unavailable.
+    #[prost(bytes = "vec", tag = "2")]
+    pub next_proposer_address: ::prost::alloc::vec::Vec<u8>,
+}
+/// FilterTxsRequest contains transactions to validate and filter
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct FilterTxsRequest {
+    /// All transactions (force-included + mempool)
+    #[prost(bytes = "vec", repeated, tag = "1")]
+    pub txs: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
+    /// Maximum cumulative size allowed (0 means no size limit)
+    #[prost(uint64, tag = "2")]
+    pub max_bytes: u64,
+    /// Maximum cumulative gas allowed (0 means no gas limit)
+    #[prost(uint64, tag = "3")]
+    pub max_gas: u64,
+    /// Whether force-included transactions are present
+    #[prost(bool, tag = "4")]
+    pub has_force_included_transaction: bool,
+}
+/// FilterTxsResponse contains the filter status for each transaction
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct FilterTxsResponse {
+    /// Filter status for each transaction (same length as txs in request)
+    #[prost(enumeration = "FilterStatus", repeated, tag = "1")]
+    pub statuses: ::prost::alloc::vec::Vec<i32>,
+}
+/// FilterStatus represents the result of filtering a transaction
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum FilterStatus {
+    /// Transaction will make it to the next batch
+    FilterOk = 0,
+    /// Transaction will be filtered out because invalid (too big, malformed, etc.)
+    FilterRemove = 1,
+    /// Transaction is valid but postponed for later processing due to size/gas constraint
+    FilterPostpone = 2,
+}
+impl FilterStatus {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::FilterOk => "FILTER_OK",
+            Self::FilterRemove => "FILTER_REMOVE",
+            Self::FilterPostpone => "FILTER_POSTPONE",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "FILTER_OK" => Some(Self::FilterOk),
+            "FILTER_REMOVE" => Some(Self::FilterRemove),
+            "FILTER_POSTPONE" => Some(Self::FilterPostpone),
+            _ => None,
+        }
+    }
+}
 /// Block contains all the components of a complete block
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Block {
