@@ -24,8 +24,7 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-// ErrInvalidId is returned when the chain id is invalid
-var ErrInvalidId = errors.New("invalid chain id")
+var ErrInvalidId = seqcommon.ErrInvalidID
 
 // Catch-up state machine states
 const (

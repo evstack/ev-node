@@ -10,7 +10,7 @@ import (
 	"golang.org/x/net/http2/h2c"
 
 	"github.com/evstack/ev-node/core/execution"
-	"github.com/evstack/ev-node/types/pb/evnode/v1/v1connect"
+	"github.com/evstack/ev-node/execution/grpc/types/pb/evnode/v1/v1connect"
 )
 
 // NewExecutorServiceHandler creates a new HTTP handler for the ExecutorService.
@@ -25,6 +25,7 @@ import (
 // - http.Handler: The configured HTTP handler
 func NewExecutorServiceHandler(executor execution.Executor, opts ...connect.HandlerOption) http.Handler {
 	server := NewServer(executor)
+	opts = append([]connect.HandlerOption{connect.WithInterceptors(inboundPropagationInterceptor())}, opts...)
 
 	mux := http.NewServeMux()
 

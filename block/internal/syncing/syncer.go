@@ -750,6 +750,9 @@ func (s *Syncer) trySyncNextBlockWithState(ctx context.Context, event *common.DA
 		s.cache.RemoveHeaderDAIncluded(headerHash)
 		s.cache.RemoveDataDAIncluded(data.DACommitment().String())
 
+		if errors.Is(err, types.ErrUnexpectedProposer) {
+			return errors.Join(errInvalidBlock, err)
+		}
 		if !errors.Is(err, errInvalidState) && !errors.Is(err, errInvalidBlock) {
 			return errors.Join(errInvalidBlock, err)
 		}

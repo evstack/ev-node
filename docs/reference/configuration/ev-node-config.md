@@ -730,7 +730,7 @@ _Example:_ `--evnode.rpc.enable_da_visualization`
 _Default:_ `false`
 _Constant:_ `FlagRPCEnableDAVisualization`
 
-See the [DA Visualizer Guide](../guides/da/visualizer.md) for detailed information on using this feature.
+See the [DA Visualizer Guide](../../guides/da/visualizer.md) for detailed information on using this feature.
 
 ### Health Endpoints
 
@@ -797,7 +797,7 @@ _Constant:_ `FlagPrometheus`
 **Description:**
 The network address (host:port) where the Prometheus metrics server will listen for scraping requests.
 
-See [Metrics](../guides/metrics.md) for more details on what metrics are exposed.
+See [Metrics](../../guides/metrics.md) for more details on what metrics are exposed.
 
 **YAML:**
 

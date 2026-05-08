@@ -54,6 +54,12 @@ type Store interface {
 	NewBatch(ctx context.Context) (Batch, error)
 }
 
+// MetadataKV is a key-value pair for batched metadata operations.
+type MetadataKV struct {
+	Key   string
+	Value []byte
+}
+
 type Metadata interface {
 	// SetMetadata saves arbitrary value in the store.
 	//
@@ -62,6 +68,10 @@ type Metadata interface {
 
 	// DeleteMetadata removes a metadata key from the store.
 	DeleteMetadata(ctx context.Context, key string) error
+
+	// BatchMetadata writes and deletes metadata keys in a single Badger
+	// WriteBatch transaction, reducing contention on the write pipeline.
+	BatchMetadata(ctx context.Context, puts []MetadataKV, deletes []string) error
 }
 
 type Reader interface {

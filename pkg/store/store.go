@@ -190,6 +190,30 @@ func (s *DefaultStore) SetMetadata(ctx context.Context, key string, value []byte
 	return nil
 }
 
+func (s *DefaultStore) BatchMetadata(ctx context.Context, puts []MetadataKV, deletes []string) error {
+	if len(puts) == 0 && len(deletes) == 0 {
+		return nil
+	}
+	batch, err := s.db.Batch(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create metadata batch: %w", err)
+	}
+	for _, kv := range puts {
+		if err := batch.Put(ctx, ds.NewKey(GetMetaKey(kv.Key)), kv.Value); err != nil {
+			return fmt.Errorf("failed to batch-put metadata key '%s': %w", kv.Key, err)
+		}
+	}
+	for _, key := range deletes {
+		if err := batch.Delete(ctx, ds.NewKey(GetMetaKey(key))); err != nil {
+			return fmt.Errorf("failed to batch-delete metadata key '%s': %w", key, err)
+		}
+	}
+	if err := batch.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit metadata batch: %w", err)
+	}
+	return nil
+}
+
 // GetMetadata returns values stored for given key with SetMetadata.
 func (s *DefaultStore) GetMetadata(ctx context.Context, key string) ([]byte, error) {
 	data, err := s.db.Get(ctx, ds.NewKey(GetMetaKey(key)))

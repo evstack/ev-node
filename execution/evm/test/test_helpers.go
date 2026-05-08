@@ -5,6 +5,7 @@ package test
 import (
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	mathrand "math/rand"
 	"net/http"
@@ -79,49 +80,113 @@ func SetupTestRethNode(t testing.TB, client types.TastoraDockerClient, networkID
 // waitForRethContainer waits for the Reth container to be ready by polling the provided endpoints with JWT authentication.
 func waitForRethContainer(t testing.TB, jwtSecret, ethURL, engineURL string) error {
 	t.Helper()
-	client := &http.Client{Timeout: 100 * time.Millisecond}
+
+	secret, err := decodeSecret(jwtSecret)
+	if err != nil {
+		return err
+	}
+	authToken, err := getAuthToken(secret)
+	if err != nil {
+		return err
+	}
+
+	client := &http.Client{Timeout: 500 * time.Millisecond}
 	timer := time.NewTimer(30 * time.Second)
 	defer timer.Stop()
+	var lastErr error
 	for {
 		select {
 		case <-timer.C:
+			if lastErr != nil {
+				return fmt.Errorf("timeout waiting for reth container to be ready: %w", lastErr)
+			}
 			return fmt.Errorf("timeout waiting for reth container to be ready")
 		default:
-			rpcReq := strings.NewReader(`{"jsonrpc":"2.0","method":"net_version","params":[],"id":1}`)
-			resp, err := client.Post(ethURL, "application/json", rpcReq)
+			genesisHash, err := getGenesisHash(client, ethURL)
 			if err == nil {
-				if err := resp.Body.Close(); err != nil {
-					return fmt.Errorf("failed to close response body: %w", err)
-				}
-				if resp.StatusCode == http.StatusOK {
-					req, err := http.NewRequest("POST", engineURL, strings.NewReader(`{"jsonrpc":"2.0","method":"engine_getClientVersionV1","params":[],"id":1}`))
-					if err != nil {
-						return err
-					}
-					req.Header.Set("Content-Type", "application/json")
-					secret, err := decodeSecret(jwtSecret)
-					if err != nil {
-						return err
-					}
-					authToken, err := getAuthToken(secret)
-					if err != nil {
-						return err
-					}
-					req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", authToken))
-					resp, err := client.Do(req)
-					if err == nil {
-						if err := resp.Body.Close(); err != nil {
-							return fmt.Errorf("failed to close response body: %w", err)
-						}
-						if resp.StatusCode == http.StatusOK {
-							return nil
-						}
-					}
-				}
+				err = waitForEngineForkchoice(client, engineURL, authToken, genesisHash)
 			}
+			if err == nil {
+				return nil
+			}
+			lastErr = err
 			time.Sleep(100 * time.Millisecond)
 		}
 	}
+}
+
+type jsonRPCError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+func getGenesisHash(client *http.Client, ethURL string) (string, error) {
+	rpcReq := strings.NewReader(`{"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["0x0",false],"id":1}`)
+	resp, err := client.Post(ethURL, "application/json", rpcReq)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("eth endpoint returned status %d", resp.StatusCode)
+	}
+
+	var rpcResp struct {
+		Result struct {
+			Hash string `json:"hash"`
+		} `json:"result"`
+		Error *jsonRPCError `json:"error,omitempty"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&rpcResp); err != nil {
+		return "", fmt.Errorf("decode genesis block response: %w", err)
+	}
+	if rpcResp.Error != nil {
+		return "", fmt.Errorf("eth_getBlockByNumber failed: %s", rpcResp.Error.Message)
+	}
+	if rpcResp.Result.Hash == "" {
+		return "", fmt.Errorf("eth_getBlockByNumber returned empty genesis hash")
+	}
+	return rpcResp.Result.Hash, nil
+}
+
+func waitForEngineForkchoice(client *http.Client, engineURL, authToken, genesisHash string) error {
+	body := fmt.Sprintf(`{"jsonrpc":"2.0","method":"engine_forkchoiceUpdatedV3","params":[{"headBlockHash":%q,"safeBlockHash":%q,"finalizedBlockHash":%q},null],"id":1}`, genesisHash, genesisHash, genesisHash)
+	req, err := http.NewRequest("POST", engineURL, strings.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", authToken))
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("engine endpoint returned status %d", resp.StatusCode)
+	}
+
+	var rpcResp struct {
+		Result struct {
+			PayloadStatus struct {
+				Status string `json:"status"`
+			} `json:"payloadStatus"`
+		} `json:"result"`
+		Error *jsonRPCError `json:"error,omitempty"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&rpcResp); err != nil {
+		return fmt.Errorf("decode engine forkchoice response: %w", err)
+	}
+	if rpcResp.Error != nil {
+		return fmt.Errorf("engine_forkchoiceUpdatedV3 failed: %s", rpcResp.Error.Message)
+	}
+	if rpcResp.Result.PayloadStatus.Status != "VALID" {
+		return fmt.Errorf("engine forkchoice status %s", rpcResp.Result.PayloadStatus.Status)
+	}
+	return nil
 }
 
 // decodeSecret decodes a hex-encoded JWT secret string into a byte slice.

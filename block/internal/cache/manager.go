@@ -26,7 +26,8 @@ const (
 	DataDAIncludedPrefix = "cache/data-da-included/"
 
 	// DefaultTxCacheRetention is the default time to keep transaction hashes in cache.
-	DefaultTxCacheRetention = 24 * time.Hour
+	// Keeping a too high value can lead to OOM during heavy transaction load.
+	DefaultTxCacheRetention = 30 * time.Minute
 )
 
 // CacheManager provides thread-safe cache operations for tracking seen blocks

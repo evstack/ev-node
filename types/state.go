@@ -2,6 +2,7 @@ package types
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -15,6 +16,10 @@ var InitStateVersion = Version{
 	Block: 11, // Block version is set to 11, to be compatible with CometBFT blocks for IBC.
 	App:   0,
 }
+
+// ErrUnexpectedProposer is returned when a block was signed by a proposer
+// different from the proposer expected by the current state.
+var ErrUnexpectedProposer = errors.New("unexpected proposer")
 
 // State contains information about current state of the blockchain.
 type State struct {
@@ -77,7 +82,7 @@ func (s State) AssertValidForNextState(header *SignedHeader, data *Data) error {
 		return fmt.Errorf("header-data validation failed: %w", err)
 	}
 	if len(s.NextProposerAddress) > 0 && !bytes.Equal(header.ProposerAddress, s.NextProposerAddress) {
-		return fmt.Errorf("unexpected proposer - got: %x, want: %x", header.ProposerAddress, s.NextProposerAddress)
+		return fmt.Errorf("%w - got: %x, want: %x", ErrUnexpectedProposer, header.ProposerAddress, s.NextProposerAddress)
 	}
 	return nil
 }

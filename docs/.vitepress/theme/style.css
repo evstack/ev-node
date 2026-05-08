@@ -153,12 +153,13 @@
 
 :root {
     --vp-code-block-bg: #000000;
-    --vp-code-block-color: #ffffff;
+    --vp-code-block-color: #dbd7ca;
     --vp-code-block-divider-color: rgba(255, 255, 255, 0.1);
 
     /* Inline code */
     --vp-code-color: #000000;
     --vp-code-bg: rgba(0, 0, 0, 0.05);
+
 }
 
 /* Inline code styling */
@@ -179,7 +180,7 @@ div[class*="language-"] pre {
 }
 
 div[class*="language-"] code {
-    color: #ffffff;
+    color: #dbd7ca;  /* vitesse-black default text */
 }
 
 /**

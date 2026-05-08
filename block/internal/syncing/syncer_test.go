@@ -880,6 +880,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 	eventCh <- datypes.SubscriptionEvent{Height: myFutureDAHeight}
 	syncerInst1.startSyncWorkers(ctx)
 	syncerInst1.wg.Wait()
+	follower1.Stop()
 	requireEmptyChan(t, errorCh)
 
 	t.Log("sync workers on instance1 completed")

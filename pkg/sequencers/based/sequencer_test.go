@@ -18,7 +18,6 @@ import (
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
-	"github.com/evstack/ev-node/pkg/sequencers/common"
 	"github.com/evstack/ev-node/test/mocks"
 )
 
@@ -62,7 +61,7 @@ type testData struct {
 	cancel       context.CancelFunc
 }
 
-func createTestSequencer(t *testing.T, mockRetriever *common.MockForcedInclusionRetriever, gen genesis.Genesis) (*BasedSequencer, testData) {
+func createTestSequencer(t *testing.T, mockRetriever *MockForcedInclusionRetriever, gen genesis.Genesis) (*BasedSequencer, testData) {
 	t.Helper()
 
 	// Create in-memory datastore
@@ -95,7 +94,7 @@ func createTestSequencer(t *testing.T, mockRetriever *common.MockForcedInclusion
 }
 
 func TestBasedSequencer_SubmitBatchTxs(t *testing.T) {
-	mockRetriever := common.NewMockForcedInclusionRetriever(t)
+	mockRetriever := NewMockForcedInclusionRetriever(t)
 	gen := genesis.Genesis{
 		ChainID:                "test-chain",
 		DAEpochForcedInclusion: 10,
@@ -122,7 +121,7 @@ func TestBasedSequencer_SubmitBatchTxs(t *testing.T) {
 func TestBasedSequencer_GetNextBatch_WithForcedTxs(t *testing.T) {
 	testBlobs := [][]byte{[]byte("tx1"), []byte("tx2")}
 
-	mockRetriever := common.NewMockForcedInclusionRetriever(t)
+	mockRetriever := NewMockForcedInclusionRetriever(t)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
 		Txs:           testBlobs,
 		StartDaHeight: 100,
@@ -158,7 +157,7 @@ func TestBasedSequencer_GetNextBatch_WithForcedTxs(t *testing.T) {
 }
 
 func TestBasedSequencer_GetNextBatch_EmptyDA(t *testing.T) {
-	mockRetriever := common.NewMockForcedInclusionRetriever(t)
+	mockRetriever := NewMockForcedInclusionRetriever(t)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
 		Txs:           [][]byte{},
 		StartDaHeight: 100,
@@ -189,7 +188,7 @@ func TestBasedSequencer_GetNextBatch_EmptyDA(t *testing.T) {
 }
 
 func TestBasedSequencer_GetNextBatch_NotConfigured(t *testing.T) {
-	mockRetriever := common.NewMockForcedInclusionRetriever(t)
+	mockRetriever := NewMockForcedInclusionRetriever(t)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(nil, block.ErrForceInclusionNotConfigured)
 
 	gen := genesis.Genesis{
@@ -219,7 +218,7 @@ func TestBasedSequencer_GetNextBatch_WithMaxBytes(t *testing.T) {
 	tx3 := make([]byte, 200)
 	testBlobs := [][]byte{tx1, tx2, tx3}
 
-	mockRetriever := common.NewMockForcedInclusionRetriever(t)
+	mockRetriever := NewMockForcedInclusionRetriever(t)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
 		Txs:           testBlobs,
 		StartDaHeight: 100,
@@ -274,7 +273,7 @@ func TestBasedSequencer_GetNextBatch_MultipleDABlocks(t *testing.T) {
 	testBlobs1 := [][]byte{[]byte("tx1"), []byte("tx2")}
 	testBlobs2 := [][]byte{[]byte("tx3"), []byte("tx4")}
 
-	mockRetriever := common.NewMockForcedInclusionRetriever(t)
+	mockRetriever := NewMockForcedInclusionRetriever(t)
 	// First DA block
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
 		Txs:           testBlobs1,
@@ -327,7 +326,7 @@ func TestBasedSequencer_GetNextBatch_ForcedInclusionExceedsMaxBytes(t *testing.T
 	largeTx := make([]byte, 2000)
 	testBlobs := [][]byte{largeTx}
 
-	mockRetriever := common.NewMockForcedInclusionRetriever(t)
+	mockRetriever := NewMockForcedInclusionRetriever(t)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
 		Txs:           testBlobs,
 		StartDaHeight: 100,
@@ -358,7 +357,7 @@ func TestBasedSequencer_GetNextBatch_ForcedInclusionExceedsMaxBytes(t *testing.T
 }
 
 func TestBasedSequencer_VerifyBatch(t *testing.T) {
-	mockRetriever := common.NewMockForcedInclusionRetriever(t)
+	mockRetriever := NewMockForcedInclusionRetriever(t)
 	gen := genesis.Genesis{
 		ChainID:                "test-chain",
 		DAEpochForcedInclusion: 10,
@@ -379,7 +378,7 @@ func TestBasedSequencer_VerifyBatch(t *testing.T) {
 }
 
 func TestBasedSequencer_SetDAHeight(t *testing.T) {
-	mockRetriever := common.NewMockForcedInclusionRetriever(t)
+	mockRetriever := NewMockForcedInclusionRetriever(t)
 	gen := genesis.Genesis{
 		ChainID:                "test-chain",
 		DAStartHeight:          100,
@@ -397,7 +396,7 @@ func TestBasedSequencer_SetDAHeight(t *testing.T) {
 }
 
 func TestBasedSequencer_GetNextBatch_ErrorHandling(t *testing.T) {
-	mockRetriever := common.NewMockForcedInclusionRetriever(t)
+	mockRetriever := NewMockForcedInclusionRetriever(t)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(nil, block.ErrForceInclusionNotConfigured)
 
 	gen := genesis.Genesis{
@@ -421,7 +420,7 @@ func TestBasedSequencer_GetNextBatch_ErrorHandling(t *testing.T) {
 }
 
 func TestBasedSequencer_GetNextBatch_HeightFromFuture(t *testing.T) {
-	mockRetriever := common.NewMockForcedInclusionRetriever(t)
+	mockRetriever := NewMockForcedInclusionRetriever(t)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(nil, datypes.ErrHeightFromFuture)
 
 	gen := genesis.Genesis{
@@ -450,7 +449,7 @@ func TestBasedSequencer_GetNextBatch_HeightFromFuture(t *testing.T) {
 func TestBasedSequencer_CheckpointPersistence(t *testing.T) {
 	testBlobs := [][]byte{[]byte("tx1"), []byte("tx2")}
 
-	mockRetriever := common.NewMockForcedInclusionRetriever(t)
+	mockRetriever := NewMockForcedInclusionRetriever(t)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
 		Txs:           testBlobs,
 		StartDaHeight: 100,
@@ -525,7 +524,7 @@ func TestBasedSequencer_CrashRecoveryMidEpoch(t *testing.T) {
 
 	testBlobs := [][]byte{[]byte("tx0"), []byte("tx1"), []byte("tx2"), []byte("tx3"), []byte("tx4")}
 
-	mockRetriever := common.NewMockForcedInclusionRetriever(t)
+	mockRetriever := NewMockForcedInclusionRetriever(t)
 	// The epoch will be fetched twice: once before crash, once after restart
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
 		Txs:           testBlobs,
@@ -650,7 +649,7 @@ func TestBasedSequencer_CrashRecoveryMidEpoch(t *testing.T) {
 }
 
 func TestBasedSequencer_GetNextBatch_EmptyDABatch_IncreasesDAHeight(t *testing.T) {
-	mockRetriever := common.NewMockForcedInclusionRetriever(t)
+	mockRetriever := NewMockForcedInclusionRetriever(t)
 
 	// First DA block returns empty transactions
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
@@ -715,7 +714,7 @@ func TestBasedSequencer_GetNextBatch_TimestampAdjustment(t *testing.T) {
 	testBlobs := [][]byte{[]byte("tx1"), []byte("tx2"), []byte("tx3")}
 	daEndTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
 
-	mockRetriever := common.NewMockForcedInclusionRetriever(t)
+	mockRetriever := NewMockForcedInclusionRetriever(t)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
 		Txs:           testBlobs,
 		StartDaHeight: 100,
@@ -759,7 +758,7 @@ func TestBasedSequencer_GetNextBatch_TimestampAdjustment_PartialBatch(t *testing
 	testBlobs := [][]byte{tx1, tx2, tx3}
 	daEndTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
 
-	mockRetriever := common.NewMockForcedInclusionRetriever(t)
+	mockRetriever := NewMockForcedInclusionRetriever(t)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
 		Txs:           testBlobs,
 		StartDaHeight: 100,
@@ -817,7 +816,7 @@ func TestBasedSequencer_GetNextBatch_TimestampAdjustment_EmptyBatch(t *testing.T
 	// The checkpoint must still advance past the empty epoch.
 	daEndTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
 
-	mockRetriever := common.NewMockForcedInclusionRetriever(t)
+	mockRetriever := NewMockForcedInclusionRetriever(t)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
 		Txs:           [][]byte{},
 		StartDaHeight: 100,
@@ -869,7 +868,7 @@ func TestBasedSequencer_GetNextBatch_GasFilteringPreservesUnprocessedTxs(t *test
 
 	testBlobs := [][]byte{tx0, tx1, tx2, tx3, tx4}
 
-	mockRetriever := common.NewMockForcedInclusionRetriever(t)
+	mockRetriever := NewMockForcedInclusionRetriever(t)
 	// Only expect one call to retrieve - all txs come from one DA epoch
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
 		Txs:           testBlobs,
@@ -988,7 +987,7 @@ func TestBasedSequencer_GetNextBatch_GasFilteringPreservesUnprocessedTxs(t *test
 	assert.GreaterOrEqual(t, totalTxsProcessed, 3, "should process at least 3 valid transactions from the cache")
 }
 
-func replaceWithMockRetriever(seq *BasedSequencer, mockRetriever *common.MockForcedInclusionRetriever) {
+func replaceWithMockRetriever(seq *BasedSequencer, mockRetriever *MockForcedInclusionRetriever) {
 	if seq.fiRetriever != nil {
 		seq.fiRetriever.Stop()
 	}
