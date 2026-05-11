@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1778505185902,
+  "lastUpdate": 1778505188853,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -1634,6 +1634,102 @@ window.BENCHMARK_DATA = {
             "value": 54,
             "unit": "allocs/op",
             "extra": "26484 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "acdbdac1756399cbb1757c21b4789de6d937787c",
+          "message": "build(deps): Bump the all-go group across 3 directories with 9 updates (#3309)\n\n* build(deps): Bump the all-go group across 3 directories with 9 updates\n\nBumps the all-go group with 6 updates in the / directory:\n\n| Package | From | To |\n| --- | --- | --- |\n| [cloud.google.com/go/kms](https://github.com/googleapis/google-cloud-go) | `1.29.0` | `1.30.0` |\n| [github.com/aws/aws-sdk-go-v2](https://github.com/aws/aws-sdk-go-v2) | `1.41.6` | `1.41.7` |\n| [github.com/aws/aws-sdk-go-v2/config](https://github.com/aws/aws-sdk-go-v2) | `1.32.16` | `1.32.17` |\n| [github.com/aws/aws-sdk-go-v2/service/kms](https://github.com/aws/aws-sdk-go-v2) | `1.51.0` | `1.51.1` |\n| [google.golang.org/api](https://github.com/googleapis/google-api-go-client) | `0.276.0` | `0.277.0` |\n| [google.golang.org/grpc](https://github.com/grpc/grpc-go) | `1.80.0` | `1.81.0` |\n\nBumps the all-go group with 1 update in the /test/docker-e2e directory: [github.com/moby/moby/client](https://github.com/moby/moby).\nBumps the all-go group with 2 updates in the /test/e2e directory: [github.com/moby/moby/client](https://github.com/moby/moby) and [go.uber.org/zap](https://github.com/uber-go/zap).\n\n\nUpdates `cloud.google.com/go/kms` from 1.29.0 to 1.30.0\n- [Release notes](https://github.com/googleapis/google-cloud-go/releases)\n- [Changelog](https://github.com/googleapis/google-cloud-go/blob/main/documentai/CHANGES.md)\n- [Commits](https://github.com/googleapis/google-cloud-go/compare/kms/v1.29.0...dlp/v1.30.0)\n\nUpdates `github.com/aws/aws-sdk-go-v2` from 1.41.6 to 1.41.7\n- [Release notes](https://github.com/aws/aws-sdk-go-v2/releases)\n- [Commits](https://github.com/aws/aws-sdk-go-v2/compare/v1.41.6...v1.41.7)\n\nUpdates `github.com/aws/aws-sdk-go-v2/config` from 1.32.16 to 1.32.17\n- [Release notes](https://github.com/aws/aws-sdk-go-v2/releases)\n- [Commits](https://github.com/aws/aws-sdk-go-v2/compare/config/v1.32.16...config/v1.32.17)\n\nUpdates `github.com/aws/aws-sdk-go-v2/service/kms` from 1.51.0 to 1.51.1\n- [Release notes](https://github.com/aws/aws-sdk-go-v2/releases)\n- [Commits](https://github.com/aws/aws-sdk-go-v2/compare/service/s3/v1.51.0...service/s3/v1.51.1)\n\nUpdates `google.golang.org/api` from 0.276.0 to 0.277.0\n- [Release notes](https://github.com/googleapis/google-api-go-client/releases)\n- [Changelog](https://github.com/googleapis/google-api-go-client/blob/main/CHANGES.md)\n- [Commits](https://github.com/googleapis/google-api-go-client/compare/v0.276.0...v0.277.0)\n\nUpdates `google.golang.org/grpc` from 1.80.0 to 1.81.0\n- [Release notes](https://github.com/grpc/grpc-go/releases)\n- [Commits](https://github.com/grpc/grpc-go/compare/v1.80.0...v1.81.0)\n\nUpdates `github.com/moby/moby/client` from 0.4.0 to 0.4.1\n- [Release notes](https://github.com/moby/moby/releases)\n- [Changelog](https://github.com/moby/moby/blob/v0.4.1/CHANGELOG.md)\n- [Commits](https://github.com/moby/moby/compare/v0.4.0...v0.4.1)\n\nUpdates `github.com/moby/moby/client` from 0.4.0 to 0.4.1\n- [Release notes](https://github.com/moby/moby/releases)\n- [Changelog](https://github.com/moby/moby/blob/v0.4.1/CHANGELOG.md)\n- [Commits](https://github.com/moby/moby/compare/v0.4.0...v0.4.1)\n\nUpdates `github.com/moby/moby/api` from 1.54.1 to 1.54.2\n- [Release notes](https://github.com/moby/moby/releases)\n- [Commits](https://github.com/moby/moby/compare/api/v1.54.1...api/v1.54.2)\n\nUpdates `go.uber.org/zap` from 1.27.1 to 1.28.0\n- [Release notes](https://github.com/uber-go/zap/releases)\n- [Changelog](https://github.com/uber-go/zap/blob/master/CHANGELOG.md)\n- [Commits](https://github.com/uber-go/zap/compare/v1.27.1...v1.28.0)\n\n---\nupdated-dependencies:\n- dependency-name: cloud.google.com/go/kms\n  dependency-version: 1.30.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: github.com/aws/aws-sdk-go-v2\n  dependency-version: 1.41.7\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/aws/aws-sdk-go-v2/config\n  dependency-version: 1.32.17\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/aws/aws-sdk-go-v2/service/kms\n  dependency-version: 1.51.1\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: google.golang.org/api\n  dependency-version: 0.277.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: google.golang.org/grpc\n  dependency-version: 1.81.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: github.com/moby/moby/client\n  dependency-version: 0.4.1\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/moby/moby/client\n  dependency-version: 0.4.1\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/moby/moby/api\n  dependency-version: 1.54.2\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: go.uber.org/zap\n  dependency-version: 1.28.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\n\n* chore: run just deps after Dependabot update\n\n---------\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\nCo-authored-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>\nCo-authored-by: julienrbrt <julien@rbrt.fr>",
+          "timestamp": "2026-05-11T12:53:31Z",
+          "tree_id": "f35ca3b99108df7b4f003a833bc6f23d5d6836ca",
+          "url": "https://github.com/evstack/ev-node/commit/acdbdac1756399cbb1757c21b4789de6d937787c"
+        },
+        "date": 1778505187895,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 39801,
+            "unit": "ns/op\t    4808 B/op\t      50 allocs/op",
+            "extra": "30628 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 39801,
+            "unit": "ns/op",
+            "extra": "30628 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 4808,
+            "unit": "B/op",
+            "extra": "30628 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 50,
+            "unit": "allocs/op",
+            "extra": "30628 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 40310,
+            "unit": "ns/op\t    5018 B/op\t      54 allocs/op",
+            "extra": "29972 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 40310,
+            "unit": "ns/op",
+            "extra": "29972 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 5018,
+            "unit": "B/op",
+            "extra": "29972 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 54,
+            "unit": "allocs/op",
+            "extra": "29972 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 46216,
+            "unit": "ns/op\t   10312 B/op\t      54 allocs/op",
+            "extra": "26092 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 46216,
+            "unit": "ns/op",
+            "extra": "26092 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 10312,
+            "unit": "B/op",
+            "extra": "26092 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 54,
+            "unit": "allocs/op",
+            "extra": "26092 times\n4 procs"
           }
         ]
       }
