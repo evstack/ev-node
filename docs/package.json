@@ -10,7 +10,7 @@
     "preview": "vitepress preview"
   },
   "devDependencies": {
-    "mermaid": "^11.13.0",
+    "mermaid": "^11.15.0",
     "terser": "^5.46.1",
     "vitepress": "^1.6.4",
     "vitepress-plugin-mermaid": "^2.0.17"
