@@ -97,13 +97,11 @@ func TestDAFollower_HandleEvent(t *testing.T) {
 
 func TestDAFollower_HandleCatchup(t *testing.T) {
 	type spec struct {
-		daHeight               uint64
-		initialPriorityHeights []uint64
-		pipeErr                error
-		setupMock              func(m *MockDARetriever)
-		wantErrIs              error
-		wantPipedHeights       []uint64
-		wantRemainingPriority  []uint64
+		daHeight         uint64
+		pipeErr          error
+		setupMock        func(m *MockDARetriever)
+		wantErrIs        error
+		wantPipedHeights []uint64
 	}
 
 	newFollower := func(t *testing.T, s spec, m *MockDARetriever) (*daFollower, func() []common.DAHeightEvent) {
@@ -116,10 +114,9 @@ func TestDAFollower_HandleCatchup(t *testing.T) {
 		}
 
 		follower := &daFollower{
-			retriever:       m,
-			eventSink:       common.EventSinkFunc(pipeEvent),
-			logger:          zerolog.Nop(),
-			priorityHeights: append([]uint64(nil), s.initialPriorityHeights...),
+			retriever: m,
+			eventSink: common.EventSinkFunc(pipeEvent),
+			logger:    zerolog.Nop(),
 		}
 		return follower, func() []common.DAHeightEvent { return pipedEvents }
 	}
@@ -146,27 +143,6 @@ func TestDAFollower_HandleCatchup(t *testing.T) {
 			setupMock: func(m *MockDARetriever) {
 				m.On("RetrieveFromDA", mock.Anything, uint64(100)).
 					Return(nil, datypes.ErrHeightFromFuture).Once()
-			},
-		},
-		"prio_first": {
-			daHeight:               100,
-			initialPriorityHeights: []uint64{105},
-			wantPipedHeights:       []uint64{105, 100},
-			setupMock: func(m *MockDARetriever) {
-				m.On("RetrieveFromDA", mock.Anything, uint64(105)).
-					Return([]common.DAHeightEvent{{DaHeight: 105}}, nil).Once()
-				m.On("RetrieveFromDA", mock.Anything, uint64(100)).
-					Return([]common.DAHeightEvent{{DaHeight: 100}}, nil).Once()
-			},
-		},
-		"skip_stale_prio_already_included": {
-			daHeight:               100,
-			initialPriorityHeights: []uint64{99},
-			wantPipedHeights:       []uint64{100},
-			setupMock: func(m *MockDARetriever) {
-				// stale priority hint (< daHeight) is discarded; only sequential height is fetched
-				m.On("RetrieveFromDA", mock.Anything, uint64(100)).
-					Return([]common.DAHeightEvent{{DaHeight: 100}}, nil).Once()
 			},
 		},
 	}
@@ -197,57 +173,6 @@ func TestDAFollower_HandleCatchup(t *testing.T) {
 				wantHeights = []uint64{}
 			}
 			assert.Equal(t, wantHeights, gotHeights)
-
-			if s.wantRemainingPriority != nil {
-				assert.Equal(t, s.wantRemainingPriority, follower.priorityHeights)
-			} else {
-				assert.Empty(t, follower.priorityHeights)
-			}
 		})
 	}
-}
-
-func TestDAFollower_QueuePriorityHeight(t *testing.T) {
-	specs := map[string]struct {
-		initial []uint64
-		queue   []uint64
-		want    []uint64
-	}{
-		"sorts_and_deduplicates": {
-			initial: []uint64{5, 10},
-			queue:   []uint64{7, 10, 3},
-			want:    []uint64{3, 5, 7, 10},
-		},
-		"bounded_drops_largest_when_smaller_arrives": {
-			initial: makeRange(1, maxPriorityHeights),
-			queue:   []uint64{maxPriorityHeights + 1, 0},
-			want:    append([]uint64{0}, makeRange(1, maxPriorityHeights-1)...),
-		},
-	}
-
-	for name, spec := range specs {
-		t.Run(name, func(t *testing.T) {
-			follower := &daFollower{
-				logger:          zerolog.Nop(),
-				priorityHeights: append([]uint64(nil), spec.initial...),
-			}
-
-			for _, daHeight := range spec.queue {
-				follower.QueuePriorityHeight(daHeight)
-			}
-
-			assert.Equal(t, spec.want, follower.priorityHeights)
-		})
-	}
-}
-
-func makeRange(start, end uint64) []uint64 {
-	if end < start {
-		return nil
-	}
-	out := make([]uint64, 0, end-start+1)
-	for v := start; v <= end; v++ {
-		out = append(out, v)
-	}
-	return out
 }

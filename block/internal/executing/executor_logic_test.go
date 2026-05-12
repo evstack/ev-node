@@ -2,7 +2,6 @@ package executing
 
 import (
 	"context"
-	crand "crypto/rand"
 	"errors"
 	"sync"
 	"testing"
@@ -12,6 +11,7 @@ import (
 	"github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p/core/crypto"
+	crand "crypto/rand"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -270,13 +270,8 @@ func setupTestExecutor(t *testing.T, pendingLimit uint64) executorTestFixture {
 	mockExec := testmocks.NewMockExecutor(t)
 	mockSeq := testmocks.NewMockSequencer(t)
 
-	hb := common.NewMockBroadcaster[*types.P2PSignedHeader](t)
-	hb.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
-	db := common.NewMockBroadcaster[*types.P2PData](t)
-	db.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
-
 	exec, err := NewExecutor(
-		memStore, mockExec, mockSeq, signerWrapper, cacheManager, metrics, cfg, gen, hb, db,
+		memStore, mockExec, mockSeq, signerWrapper, cacheManager, metrics, cfg, gen,
 		zerolog.Nop(), common.DefaultBlockOptions(), make(chan error, 1), nil,
 	)
 	require.NoError(t, err)

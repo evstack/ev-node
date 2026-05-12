@@ -19,7 +19,6 @@ import (
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/store"
 	testmocks "github.com/evstack/ev-node/test/mocks"
-	"github.com/evstack/ev-node/types"
 )
 
 func TestLazyMode_ProduceBlockLogic(t *testing.T) {
@@ -47,10 +46,6 @@ func TestLazyMode_ProduceBlockLogic(t *testing.T) {
 
 	mockExec := testmocks.NewMockExecutor(t)
 	mockSeq := testmocks.NewMockSequencer(t)
-	hb := common.NewMockBroadcaster[*types.P2PSignedHeader](t)
-	hb.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
-	db := common.NewMockBroadcaster[*types.P2PData](t)
-	db.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	exec, err := NewExecutor(
 		memStore,
@@ -61,8 +56,6 @@ func TestLazyMode_ProduceBlockLogic(t *testing.T) {
 		metrics,
 		cfg,
 		gen,
-		hb,
-		db,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -163,10 +156,6 @@ func TestRegularMode_ProduceBlockLogic(t *testing.T) {
 
 	mockExec := testmocks.NewMockExecutor(t)
 	mockSeq := testmocks.NewMockSequencer(t)
-	hb := common.NewMockBroadcaster[*types.P2PSignedHeader](t)
-	hb.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
-	db := common.NewMockBroadcaster[*types.P2PData](t)
-	db.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	exec, err := NewExecutor(
 		memStore,
@@ -177,8 +166,6 @@ func TestRegularMode_ProduceBlockLogic(t *testing.T) {
 		metrics,
 		cfg,
 		gen,
-		hb,
-		db,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/celestiaorg/go-header"
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block/internal/cache"
@@ -22,12 +21,9 @@ import (
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
-	"github.com/evstack/ev-node/pkg/sync"
 	"github.com/evstack/ev-node/pkg/telemetry"
-	"github.com/evstack/ev-node/types"
 )
 
-// Components represents the block-related components
 type Components struct {
 	Executor  *executing.Executor
 	Pruner    *pruner.Pruner
@@ -36,16 +32,12 @@ type Components struct {
 	Submitter *submitting.Submitter
 	Cache     cache.Manager
 
-	// Error channel for critical failures that should stop the node
 	errorCh chan error
 }
 
-// Start starts all components and monitors for critical errors.
-// It is blocking and returns when the context is cancelled or an error occurs
 func (bc *Components) Start(ctx context.Context) error {
 	ctxWithCancel, cancel := context.WithCancel(ctx)
 
-	// error monitoring goroutine
 	criticalErrCh := make(chan error, 1)
 	go func() {
 		select {
@@ -83,10 +75,8 @@ func (bc *Components) Start(ctx context.Context) error {
 		}
 	}
 
-	// wait for context cancellation (either from parent or critical error)
 	<-ctxWithCancel.Done()
 
-	// if we got here due to a critical error, return that error
 	select {
 	case err := <-criticalErrCh:
 		return fmt.Errorf("node stopped due to critical execution client failure: %w", err)
@@ -95,7 +85,6 @@ func (bc *Components) Start(ctx context.Context) error {
 	}
 }
 
-// Stop stops all components
 func (bc *Components) Stop() error {
 	var errs error
 	if bc.Executor != nil {
@@ -132,19 +121,12 @@ func (bc *Components) Stop() error {
 	return errs
 }
 
-// NewSyncComponents creates components for a non-aggregator full node that can only sync blocks.
-// Non-aggregator full nodes can sync from P2P and DA but cannot produce blocks or submit to DA.
-// They have more sync capabilities than light nodes but no block production. No signer required.
 func NewSyncComponents(
 	config config.Config,
 	genesis genesis.Genesis,
 	store store.Store,
 	exec coreexecutor.Executor,
 	daClient da.Client,
-	headerStore header.Store[*types.P2PSignedHeader],
-	dataStore header.Store[*types.P2PData],
-	headerDAHintAppender submitting.DAHintAppender,
-	dataDAHintAppender submitting.DAHintAppender,
 	logger zerolog.Logger,
 	metrics *Metrics,
 	blockOpts BlockOptions,
@@ -155,7 +137,6 @@ func NewSyncComponents(
 		return nil, fmt.Errorf("failed to create cache manager: %w", err)
 	}
 
-	// error channel for critical failures
 	errorCh := make(chan error, 1)
 
 	syncer := syncing.NewSyncer(
@@ -166,8 +147,6 @@ func NewSyncComponents(
 		metrics,
 		config,
 		genesis,
-		headerStore,
-		dataStore,
 		logger,
 		blockOpts,
 		errorCh,
@@ -182,10 +161,9 @@ func NewSyncComponents(
 	if p, ok := exec.(coreexecutor.ExecPruner); ok {
 		execPruner = p
 	}
-	pruner := pruner.New(logger, store, execPruner, config.Pruning, config.Node.BlockTime.Duration, config.DA.Address)
+	prunerObj := pruner.New(logger, store, execPruner, config.Pruning, config.Node.BlockTime.Duration, config.DA.Address)
 
-	// Create submitter for sync nodes (no signer, only DA inclusion processing)
-	var daSubmitter submitting.DASubmitterAPI = submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger, headerDAHintAppender, dataDAHintAppender)
+	var daSubmitter submitting.DASubmitterAPI = submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger)
 	if config.Instrumentation.IsTracingEnabled() {
 		daSubmitter = submitting.WithTracingDASubmitter(daSubmitter)
 	}
@@ -197,8 +175,8 @@ func NewSyncComponents(
 		config,
 		genesis,
 		daSubmitter,
-		nil, // No sequencer for sync nodes
-		nil, // No signer for sync nodes
+		nil,
+		nil,
 		logger,
 		errorCh,
 	)
@@ -207,14 +185,11 @@ func NewSyncComponents(
 		Syncer:    syncer,
 		Submitter: submitter,
 		Cache:     cacheManager,
-		Pruner:    pruner,
+		Pruner:    prunerObj,
 		errorCh:   errorCh,
 	}, nil
 }
 
-// newAggregatorComponents creates components for an aggregator full node that can produce and sync blocks.
-// Aggregator nodes have full capabilities - they can produce blocks, sync from P2P and DA,
-// and submit headers/data to DA. Requires a signer for block production and DA submission.
 func newAggregatorComponents(
 	config config.Config,
 	genesis genesis.Genesis,
@@ -223,8 +198,6 @@ func newAggregatorComponents(
 	sequencer coresequencer.Sequencer,
 	daClient da.Client,
 	signer signer.Signer,
-	headerSyncService *sync.HeaderSyncService,
-	dataSyncService *sync.DataSyncService,
 	logger zerolog.Logger,
 	metrics *Metrics,
 	blockOpts BlockOptions,
@@ -235,10 +208,8 @@ func newAggregatorComponents(
 		return nil, fmt.Errorf("failed to create cache manager: %w", err)
 	}
 
-	// error channel for critical failures
 	errorCh := make(chan error, 1)
 
-	// wrap sequencer with tracing if enabled
 	if config.Instrumentation.IsTracingEnabled() {
 		sequencer = telemetry.WithTracingSequencer(sequencer)
 	}
@@ -252,8 +223,6 @@ func newAggregatorComponents(
 		metrics,
 		config,
 		genesis,
-		headerSyncService,
-		dataSyncService,
 		logger,
 		blockOpts,
 		errorCh,
@@ -271,7 +240,7 @@ func newAggregatorComponents(
 	if p, ok := exec.(coreexecutor.ExecPruner); ok {
 		execPruner = p
 	}
-	pruner := pruner.New(logger, store, execPruner, config.Pruning, config.Node.BlockTime.Duration, config.DA.Address)
+	prunerObj := pruner.New(logger, store, execPruner, config.Pruning, config.Node.BlockTime.Duration, config.DA.Address)
 
 	reaper, err := reaping.NewReaper(
 		exec,
@@ -286,17 +255,17 @@ func newAggregatorComponents(
 		return nil, fmt.Errorf("failed to create reaper: %w", err)
 	}
 
-	if config.Node.BasedSequencer { // no submissions needed for bases sequencer
+	if config.Node.BasedSequencer {
 		return &Components{
 			Executor: executor,
-			Pruner:   pruner,
+			Pruner:   prunerObj,
 			Reaper:   reaper,
 			Cache:    cacheManager,
 			errorCh:  errorCh,
 		}, nil
 	}
 
-	var daSubmitter submitting.DASubmitterAPI = submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger, headerSyncService, dataSyncService)
+	var daSubmitter submitting.DASubmitterAPI = submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger)
 	if config.Instrumentation.IsTracingEnabled() {
 		daSubmitter = submitting.WithTracingDASubmitter(daSubmitter)
 	}
@@ -309,14 +278,14 @@ func newAggregatorComponents(
 		genesis,
 		daSubmitter,
 		sequencer,
-		signer, // Signer for aggregator nodes to submit to DA
+		signer,
 		logger,
 		errorCh,
 	)
 
 	return &Components{
 		Executor:  executor,
-		Pruner:    pruner,
+		Pruner:    prunerObj,
 		Reaper:    reaper,
 		Submitter: submitter,
 		Cache:     cacheManager,
@@ -324,13 +293,6 @@ func newAggregatorComponents(
 	}, nil
 }
 
-// NewAggregatorWithCatchupComponents creates aggregator components that include a Syncer
-// for DA/P2P catchup before block production begins.
-//
-// The caller should:
-//  1. Start the Syncer and wait for DA head + P2P catchup
-//  2. Stop the Syncer and set Components.Syncer = nil
-//  3. Call Components.Start() — which will start the Executor and other components
 func NewAggregatorWithCatchupComponents(
 	config config.Config,
 	genesis genesis.Genesis,
@@ -339,8 +301,6 @@ func NewAggregatorWithCatchupComponents(
 	sequencer coresequencer.Sequencer,
 	daClient da.Client,
 	signer signer.Signer,
-	headerSyncService *sync.HeaderSyncService,
-	dataSyncService *sync.DataSyncService,
 	logger zerolog.Logger,
 	metrics *Metrics,
 	blockOpts BlockOptions,
@@ -348,13 +308,12 @@ func NewAggregatorWithCatchupComponents(
 ) (*Components, error) {
 	bc, err := newAggregatorComponents(
 		config, genesis, store, exec, sequencer, daClient, signer,
-		headerSyncService, dataSyncService, logger, metrics, blockOpts, raftNode,
+		logger, metrics, blockOpts, raftNode,
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	// Create a catchup syncer that shares the same cache manager
 	catchupErrCh := make(chan error, 1)
 	catchupSyncer := syncing.NewSyncer(
 		store,
@@ -364,8 +323,6 @@ func NewAggregatorWithCatchupComponents(
 		metrics,
 		config,
 		genesis,
-		headerSyncService.Store(),
-		dataSyncService.Store(),
 		logger,
 		blockOpts,
 		catchupErrCh,

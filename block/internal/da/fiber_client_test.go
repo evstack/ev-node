@@ -10,6 +10,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
+	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da/fiber"
 	"github.com/evstack/ev-node/block/internal/da/fibremock"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
@@ -126,7 +127,7 @@ func TestFiberClient_Submit_BlobTooLarge(t *testing.T) {
 	_, cl := makeTestFiberClient(t)
 
 	ns := datypes.NamespaceFromString("test-ns").Bytes()
-	largeBlob := make([]byte, 6*1024*1024)
+	largeBlob := make([]byte, common.DefaultMaxBlobSize+1)
 	res := cl.Submit(context.Background(), [][]byte{largeBlob}, 0, ns, nil)
 
 	require.Equal(t, datypes.StatusTooBig, res.Code)

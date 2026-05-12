@@ -49,10 +49,6 @@ type Executor struct {
 	cache   cache.Manager
 	metrics *common.Metrics
 
-	// Broadcasting
-	headerBroadcaster common.HeaderP2PBroadcaster
-	dataBroadcaster   common.DataP2PBroadcaster
-
 	// Configuration
 	config  config.Config
 	genesis genesis.Genesis
@@ -108,8 +104,6 @@ func NewExecutor(
 	metrics *common.Metrics,
 	config config.Config,
 	genesis genesis.Genesis,
-	headerBroadcaster common.HeaderP2PBroadcaster,
-	dataBroadcaster common.DataP2PBroadcaster,
 	logger zerolog.Logger,
 	options common.BlockOptions,
 	errorCh chan<- error,
@@ -143,8 +137,6 @@ func NewExecutor(
 		metrics:           metrics,
 		config:            config,
 		genesis:           genesis,
-		headerBroadcaster: headerBroadcaster,
-		dataBroadcaster:   dataBroadcaster,
 		options:           options,
 		lastState:         &atomic.Pointer[types.State]{},
 		raftNode:          raftNode,
@@ -626,24 +618,6 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 		dataHash:   data.Hash(),
 		signature:  signature,
 	})
-
-	// No broadcast to P2P when fiber is enabled.
-	if !e.config.DA.IsFiberEnabled() {
-		// Broadcast header and data to P2P network sequentially.
-		// IMPORTANT: Header MUST be broadcast before data — the P2P layer validates
-		// incoming data against the current and previous header, so out-of-order
-		// delivery would cause validation failures on peers.
-		if err := e.headerBroadcaster.WriteToStoreAndBroadcast(ctx, &types.P2PSignedHeader{
-			SignedHeader: header,
-		}); err != nil {
-			e.logger.Error().Err(err).Msg("failed to broadcast header")
-		}
-		if err := e.dataBroadcaster.WriteToStoreAndBroadcast(ctx, &types.P2PData{
-			Data: data,
-		}); err != nil {
-			e.logger.Error().Err(err).Msg("failed to broadcast data")
-		}
-	}
 
 	e.recordBlockMetrics(newState, data)
 
