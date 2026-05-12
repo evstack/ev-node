@@ -3,6 +3,7 @@ package submitting
 import (
 	"testing"
 
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
 	"github.com/evstack/ev-node/block/internal/common"
@@ -10,7 +11,6 @@ import (
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/rpc/server"
 	"github.com/evstack/ev-node/test/mocks"
-	"github.com/rs/zerolog"
 )
 
 func TestNewDASubmitterSetsVisualizerWhenEnabled(t *testing.T) {

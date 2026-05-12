@@ -23,6 +23,7 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
+// newTestDARetriever creates a DA retriever for testing with the given DA implementation
 func newTestDARetriever(t *testing.T, mockClient *mocks.MockClient, cfg config.Config, gen genesis.Genesis) *daRetriever {
 	t.Helper()
 	if cfg.DA.Namespace == "" {
@@ -38,6 +39,7 @@ func newTestDARetriever(t *testing.T, mockClient *mocks.MockClient, cfg config.C
 	if mockClient == nil {
 		mockClient = mocks.NewMockClient(t)
 	}
+	// default namespace helpers
 	mockClient.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
 	mockClient.On("GetDataNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
 	mockClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()

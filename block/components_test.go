@@ -2,6 +2,7 @@ package block
 
 import (
 	"context"
+	crand "crypto/rand"
 	"errors"
 	"testing"
 	"testing/synctest"
@@ -10,7 +11,6 @@ import (
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p/core/crypto"
-	crand "crypto/rand"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -25,28 +25,36 @@ import (
 	testmocks "github.com/evstack/ev-node/test/mocks"
 )
 
+// Test the error channel mechanism works as intended
 func TestBlockComponents_ExecutionClientFailure_StopsNode(t *testing.T) {
+	// Create a mock component that simulates execution client failure
 	errorCh := make(chan error, 1)
 	criticalError := errors.New("execution client connection lost")
 
+	// Create BlockComponents with error channel
 	bc := &Components{
 		errorCh: errorCh,
 	}
 
+	// Simulate an execution client failure by sending error to channel
 	go func() {
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond) // Small delay to ensure Start() is running
 		errorCh <- criticalError
 	}()
 
+	// Start should block until error is received, then return the error
 	ctx := context.Background()
 	err := bc.Start(ctx)
 
+	// Verify the error is properly wrapped and returned
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "critical execution client failure")
 	assert.Contains(t, err.Error(), "execution client connection lost")
 }
 
+// Simple lifecycle test without creating full components
 func TestBlockComponents_StartStop_Lifecycle(t *testing.T) {
+	// Test that Start and Stop work without hanging
 	bc := &Components{
 		errorCh: make(chan error, 1),
 	}
@@ -54,6 +62,7 @@ func TestBlockComponents_StartStop_Lifecycle(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
+	// Start should complete when context is cancelled
 	err := bc.Start(ctx)
 	assert.Contains(t, err.Error(), "context")
 }
@@ -96,7 +105,7 @@ func TestNewSyncComponents_Creation(t *testing.T) {
 	assert.NotNil(t, components.Cache)
 	assert.NotNil(t, components.Pruner)
 	assert.NotNil(t, components.errorCh)
-	assert.Nil(t, components.Executor)
+	assert.Nil(t, components.Executor) // Sync nodes don't have executors
 }
 
 func TestNewAggregatorComponents_Creation(t *testing.T) {
@@ -105,11 +114,13 @@ func TestNewAggregatorComponents_Creation(t *testing.T) {
 
 	cfg := config.DefaultConfig()
 
+	// Create a test signer first
 	priv, _, err := crypto.GenerateEd25519Key(crand.Reader)
 	require.NoError(t, err)
 	mockSigner, err := noop.NewNoopSigner(priv)
 	require.NoError(t, err)
 
+	// Get the signer's address to use as proposer
 	signerAddr, err := mockSigner.GetAddress()
 	require.NoError(t, err)
 
@@ -149,17 +160,20 @@ func TestNewAggregatorComponents_Creation(t *testing.T) {
 	assert.NotNil(t, components.Cache)
 	assert.NotNil(t, components.Pruner)
 	assert.NotNil(t, components.errorCh)
-	assert.Nil(t, components.Syncer)
+	assert.Nil(t, components.Syncer) // Aggregator nodes currently don't create syncers in this constructor
 }
 
+// This test verifies that when the executor's execution client calls fail,
+// the error is properly propagated through the error channel and stops the node
 func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ds := sync.MutexWrap(datastore.NewMapDatastore())
 		memStore := store.New(ds)
 
 		cfg := config.DefaultConfig()
-		cfg.Node.BlockTime.Duration = 50 * time.Millisecond
+		cfg.Node.BlockTime.Duration = 50 * time.Millisecond // Fast for testing
 
+		// Create test signer
 		priv, _, err := crypto.GenerateEd25519Key(crand.Reader)
 		require.NoError(t, err)
 		testSigner, err := noop.NewNoopSigner(priv)
@@ -170,10 +184,11 @@ func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
 		gen := genesis.Genesis{
 			ChainID:         "test-chain",
 			InitialHeight:   1,
-			StartTime:       time.Now().Add(-time.Second),
+			StartTime:       time.Now().Add(-time.Second), // Start in past to trigger immediate execution
 			ProposerAddress: addr,
 		}
 
+		// Create mock executor that will fail on ExecuteTxs
 		mockExec := testmocks.NewMockExecutor(t)
 		mockSeq := testmocks.NewMockSequencer(t)
 		daClient := testmocks.NewMockClient(t)
@@ -182,24 +197,30 @@ func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
 		daClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 		daClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
 
+		// Mock InitChain to succeed initially
 		mockExec.On("InitChain", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return([]byte("state-root"), nil).Once()
 
+		// Mock SetDAHeight to be called during initialization
 		mockSeq.On("SetDAHeight", uint64(0)).Return().Once()
 
+		// Mock GetNextBatch to return empty batch
 		mockSeq.On("GetNextBatch", mock.Anything, mock.Anything).
 			Return(&coresequencer.GetNextBatchResponse{
 				Batch:     &coresequencer.Batch{Transactions: nil},
 				Timestamp: time.Now(),
 			}, nil).Maybe()
 
+		// Mock GetTxs for reaper (return empty to avoid interfering with test)
 		mockExec.On("GetTxs", mock.Anything).
 			Return([][]byte{}, nil).Maybe()
 
+		// Mock ExecuteTxs to fail with a critical error
 		criticalError := errors.New("execution client RPC connection failed")
 		mockExec.On("ExecuteTxs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, criticalError).Maybe()
 
+		// Create aggregator node
 		components, err := newAggregatorComponents(
 			cfg,
 			gen,
@@ -215,17 +236,22 @@ func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
 		)
 		require.NoError(t, err)
 
+		// Start should return with error when execution client fails.
+		// With synctest the fake clock advances the retry delays instantly.
 		ctx, cancel := context.WithTimeout(t.Context(), 35*time.Second)
 		defer cancel()
 
+		// Run Start in a goroutine to handle the blocking call
 		startErrCh := make(chan error, 1)
 		go func() {
 			startErrCh <- components.Start(ctx)
 		}()
 
+		// Wait for either the error or timeout
 		synctest.Wait()
 		select {
 		case err = <-startErrCh:
+			// We expect an error containing the critical execution client failure
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "critical execution client failure")
 			assert.Contains(t, err.Error(), "execution client RPC connection failed")
@@ -233,6 +259,7 @@ func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
 			t.Fatal("timeout waiting for critical error to propagate")
 		}
 
+		// Clean up
 		stopErr := components.Stop()
 		assert.NoError(t, stopErr)
 	})

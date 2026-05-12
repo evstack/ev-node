@@ -79,10 +79,10 @@ type Syncer struct {
 
 	// Forced inclusion tracking
 	forcedInclusionMu    sync.RWMutex
-	seenBlockTxs         map[string]struct{}   // SHA-256 hex of every tx seen in a DA-sourced block
-	seenBlockTxsByHeight map[uint64][]string   // DA height → hashes at that height (for pruning)
-	daBlockBytes         map[uint64]uint64     // DA height → total tx bytes (for congestion tracking)
-	lastCheckedEpochEnd  uint64                // highest epochEnd fully verified so far
+	seenBlockTxs         map[string]struct{} // SHA-256 hex of every tx seen in a DA-sourced block
+	seenBlockTxsByHeight map[uint64][]string // DA height → hashes at that height (for pruning)
+	daBlockBytes         map[uint64]uint64   // DA height → total tx bytes (for congestion tracking)
+	lastCheckedEpochEnd  uint64              // highest epochEnd fully verified so far
 
 	// Lifecycle
 	ctx    context.Context
@@ -241,7 +241,7 @@ func (s *Syncer) Stop(ctx context.Context) error {
 		defer drainCancel()
 
 		drained := 0
-		drainLoop:
+	drainLoop:
 		for {
 			select {
 			case event, ok := <-s.heightInCh:

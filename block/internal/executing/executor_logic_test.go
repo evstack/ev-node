@@ -2,6 +2,7 @@ package executing
 
 import (
 	"context"
+	crand "crypto/rand"
 	"errors"
 	"sync"
 	"testing"
@@ -11,7 +12,6 @@ import (
 	"github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p/core/crypto"
-	crand "crypto/rand"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"

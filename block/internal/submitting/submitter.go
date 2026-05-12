@@ -55,7 +55,7 @@ type Submitter struct {
 	submissionMtx sync.Mutex
 
 	// Batching strategy state
-	lastSubmit        atomic.Int64 // stores Unix nanoseconds
+	lastSubmit       atomic.Int64 // stores Unix nanoseconds
 	batchingStrategy BatchingStrategy
 
 	// Channels for coordination
@@ -187,18 +187,18 @@ func (s *Submitter) daSubmissionLoop() {
 				lastSubmitNanos := s.lastSubmit.Load()
 				timeSinceLastSubmit := time.Since(time.Unix(0, lastSubmitNanos))
 
-			// For strategy decision, we need to estimate the size
-			// We'll fetch headers to check, but only submit if strategy approves
-			if s.submissionMtx.TryLock() {
-				s.wg.Add(1)
-				go func() {
-					defer func() {
-						s.submissionMtx.Unlock()
-						s.wg.Done()
-					}()
+				// For strategy decision, we need to estimate the size
+				// We'll fetch headers to check, but only submit if strategy approves
+				if s.submissionMtx.TryLock() {
+					s.wg.Add(1)
+					go func() {
+						defer func() {
+							s.submissionMtx.Unlock()
+							s.wg.Done()
+						}()
 
-					// Get headers with marshalled bytes from cache
-					headers, marshalledHeaders, err := s.cache.GetPendingHeaders(s.ctx)
+						// Get headers with marshalled bytes from cache
+						headers, marshalledHeaders, err := s.cache.GetPendingHeaders(s.ctx)
 						if err != nil {
 							if len(headers) > 0 {
 								s.cache.ResetInFlightHeaderRange(headers[0].Height(), headers[len(headers)-1].Height())

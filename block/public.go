@@ -115,7 +115,7 @@ var (
 	// ErrForceInclusionNotConfigured is returned when force inclusion is not configured.
 	ErrForceInclusionNotConfigured = da.ErrForceInclusionNotConfigured
 	// ErrNoBatch is returned when a sequencer does not have a batch to return.
-	ErrNoBatch                     = common.ErrNoBatch
+	ErrNoBatch = common.ErrNoBatch
 )
 
 // ForcedInclusionEvent represents forced inclusion transactions retrieved from DA

@@ -2,6 +2,7 @@ package syncing
 
 import (
 	"context"
+	crand "crypto/rand"
 	"crypto/sha512"
 	"errors"
 	"sync"
@@ -13,7 +14,6 @@ import (
 	"github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p/core/crypto"
-	crand "crypto/rand"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -33,6 +33,7 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
+// stubRaftNode is a minimal RaftNode stub that records SetApplyCallback calls.
 type stubRaftNode struct {
 	mu        sync.Mutex
 	callbacks []chan<- raft.RaftApplyMsg
@@ -56,6 +57,7 @@ func (s *stubRaftNode) recordedCallbacks() []chan<- raft.RaftApplyMsg {
 	return out
 }
 
+// helper to create a signer, pubkey and address for tests
 func buildSyncTestSigner(tb testing.TB) (addr []byte, pub crypto.PubKey, signer signerpkg.Signer) {
 	tb.Helper()
 	priv, _, err := crypto.GenerateEd25519Key(crand.Reader)
@@ -69,6 +71,7 @@ func buildSyncTestSigner(tb testing.TB) (addr []byte, pub crypto.PubKey, signer 
 	return a, p, n
 }
 
+// makeSignedHeaderBytes builds a valid SignedHeader and returns its binary encoding and the object
 func makeSignedHeaderBytes(
 	tb testing.TB,
 	chainID string,
@@ -130,6 +133,7 @@ func makeData(chainID string, height uint64, txs int) *types.Data {
 	return d
 }
 
+// makeSignedDataBytes builds SignedData containing the provided Data and returns its binary encoding
 func makeSignedDataBytes(t *testing.T, chainID string, height uint64, proposer []byte, pub crypto.PubKey, signer signerpkg.Signer, txs int) ([]byte, *types.SignedData) {
 	t.Helper()
 	d := &types.Data{Metadata: &types.Metadata{ChainID: chainID, Height: height, Time: uint64(time.Now().UnixNano())}}
@@ -228,6 +232,7 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 	)
 
 	require.NoError(t, s.initializeState())
+	// set a context for internal loops that expect it
 	s.ctx = t.Context()
 	// Create signed header & data for height 1
 	lastState := s.getLastState()
@@ -904,14 +909,19 @@ func TestSyncer_executeTxsWithRetry(t *testing.T) {
 }
 
 func TestSyncer_InitializeState_CallsReplayer(t *testing.T) {
+	// This test verifies that initializeState() invokes Replayer.
+	// The detailed replay logic is tested in block/internal/common/replay_test.go
+
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
+	// Create testmocks
 	mockStore := testmocks.NewMockStore(t)
 	mockExec := testmocks.NewMockHeightAwareExecutor(t)
 
+	// Setup genesis
 	gen := genesis.Genesis{
 		ChainID:       "test-chain",
 		InitialHeight: 1,
@@ -919,6 +929,7 @@ func TestSyncer_InitializeState_CallsReplayer(t *testing.T) {
 		DAStartHeight: 0,
 	}
 
+	// Setup state in store
 	storeHeight := uint64(10)
 	mockStore.EXPECT().GetState(mock.Anything).Return(
 		types.State{
@@ -932,6 +943,7 @@ func TestSyncer_InitializeState_CallsReplayer(t *testing.T) {
 		nil,
 	)
 
+	// Mock Batch operations
 	mockBatch := testmocks.NewMockBatch(t)
 	mockBatch.Test(t)
 	mockStore.EXPECT().NewBatch(mock.Anything).Return(mockBatch, nil)
@@ -939,6 +951,7 @@ func TestSyncer_InitializeState_CallsReplayer(t *testing.T) {
 	mockBatch.On("UpdateState", mock.Anything).Return(nil)
 	mockBatch.On("Commit").Return(nil)
 
+	// Setup execution layer to be in sync
 	mockExec.On("GetLatestHeight", mock.Anything).Return(storeHeight, nil)
 
 	syncer := &Syncer{
@@ -952,13 +965,16 @@ func TestSyncer_InitializeState_CallsReplayer(t *testing.T) {
 		cache:             cm,
 	}
 
+	// Initialize state - this should call Replayer
 	err = syncer.initializeState()
 	require.NoError(t, err)
 
+	// Verify state was initialized correctly
 	state := syncer.getLastState()
 	assert.Equal(t, storeHeight, state.LastBlockHeight)
 	assert.Equal(t, gen.ChainID, state.ChainID)
 
+	// Verify that GetLatestHeight was called (proves Replayer was invoked)
 	mockExec.AssertCalled(t, "GetLatestHeight", mock.Anything)
 }
 

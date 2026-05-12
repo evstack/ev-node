@@ -129,20 +129,20 @@ func NewExecutor(
 	}
 
 	e := &Executor{
-		store:             store,
-		exec:              exec,
-		sequencer:         sequencer,
-		signer:            signer,
-		cache:             cache,
-		metrics:           metrics,
-		config:            config,
-		genesis:           genesis,
-		options:           options,
-		lastState:         &atomic.Pointer[types.State]{},
-		raftNode:          raftNode,
-		txNotifyCh:        make(chan struct{}, 1),
-		errorCh:           errorCh,
-		logger:            logger.With().Str("component", "executor").Logger(),
+		store:      store,
+		exec:       exec,
+		sequencer:  sequencer,
+		signer:     signer,
+		cache:      cache,
+		metrics:    metrics,
+		config:     config,
+		genesis:    genesis,
+		options:    options,
+		lastState:  &atomic.Pointer[types.State]{},
+		raftNode:   raftNode,
+		txNotifyCh: make(chan struct{}, 1),
+		errorCh:    errorCh,
+		logger:     logger.With().Str("component", "executor").Logger(),
 	}
 	e.blockProducer = e
 	return e, nil
