@@ -24,12 +24,17 @@ import (
 )
 
 const (
+	// DefaultEnvelopeCacheSize is the default size for caching signed DA envelopes.
 	DefaultEnvelopeCacheSize = 10_000
-	signingWorkerPoolSize    = 0
+
+	// signingWorkerPoolSize determines how many parallel signing goroutines to use.
+	// 0 means use runtime.GOMAXPROCS(0)
+	signingWorkerPoolSize = 0
 )
 
 const initialBackoff = 100 * time.Millisecond
 
+// retryPolicy defines clamped bounds for retries and backoff.
 type retryPolicy struct {
 	MaxAttempts  int
 	MinBackoff   time.Duration
@@ -46,6 +51,7 @@ func defaultRetryPolicy(maxAttempts int, maxDuration time.Duration) retryPolicy 
 	}
 }
 
+// retryState holds the current retry attempt and backoff.
 type retryState struct {
 	Attempt int
 	Backoff time.Duration
@@ -80,6 +86,7 @@ func (rs *retryState) Next(reason retryReason, pol retryPolicy) {
 	rs.Attempt++
 }
 
+// clamp constrains a duration between min and max bounds
 func clamp(v, minTime, maxTime time.Duration) time.Duration {
 	if minTime > maxTime {
 		minTime, maxTime = maxTime, minTime
@@ -93,22 +100,28 @@ func clamp(v, minTime, maxTime time.Duration) time.Duration {
 	return v
 }
 
+// DASubmitter handles DA submission operations
 type DASubmitter struct {
-	client          da.Client
-	config          config.Config
-	genesis         genesis.Genesis
-	options         common.BlockOptions
-	logger          zerolog.Logger
-	metrics         *common.Metrics
+	client  da.Client
+	config  config.Config
+	genesis genesis.Genesis
+	options common.BlockOptions
+	logger  zerolog.Logger
+	metrics *common.Metrics
+
+	// address selector for multi-account support
 	addressSelector pkgda.AddressSelector
 
+	// lastSubmittedHeight tracks the last successfully submitted height for lazy cache invalidation
 	lastSubmittedHeight atomic.Uint64
 
+	// signingWorkers is the number of parallel workers for signing
 	signingWorkers int
 
 	wg sync.WaitGroup
 }
 
+// NewDASubmitter creates a new DA submitter
 func NewDASubmitter(
 	client da.Client,
 	config config.Config,
@@ -124,10 +137,12 @@ func NewDASubmitter(
 		server.SetDAVisualizationServer(server.NewDAVisualizationServer(client, visualizerLogger, config.Node.Aggregator))
 	}
 
+	// Use NoOp metrics if nil to avoid nil checks throughout the code
 	if metrics == nil {
 		metrics = common.NopMetrics()
 	}
 
+	// Create address selector based on configuration
 	var addressSelector pkgda.AddressSelector
 	if len(config.DA.SigningAddresses) > 0 {
 		addressSelector = pkgda.NewRoundRobinSelector(config.DA.SigningAddresses)
@@ -138,6 +153,7 @@ func NewDASubmitter(
 		addressSelector = pkgda.NewNoOpSelector()
 	}
 
+	// Determine number of signing workers
 	workers := signingWorkerPoolSize
 	if workers <= 0 || workers > runtime.GOMAXPROCS(0) {
 		workers = runtime.GOMAXPROCS(0)
@@ -259,7 +275,9 @@ func (s *DASubmitter) submitWithRetry(
 
 	rs := retryState{}
 
+	// Start the retry loop
 	for rs.Attempt < pol.MaxAttempts {
+		// Record resend metric for retry attempts (not the first attempt)
 		if rs.Attempt > 0 {
 			s.metrics.DASubmitterResends.Add(1)
 		}
@@ -271,6 +289,7 @@ func (s *DASubmitter) submitWithRetry(
 			return
 		}
 
+		// Select signing address and merge with options
 		signingAddress := s.addressSelector.Next()
 		mergedOptions, err := mergeSubmitOptions(options, signingAddress)
 		if err != nil {
@@ -281,10 +300,12 @@ func (s *DASubmitter) submitWithRetry(
 			return
 		}
 
+		// Perform submission
 		start := time.Now()
 		res := s.client.Submit(ctx, marshaled, -1, namespace, mergedOptions)
 		s.logger.Debug().Int("attempts", rs.Attempt).Dur("elapsed", time.Since(start)).Uint64("code", uint64(res.Code)).Msg("got Submit response")
 
+		// Record submission result for observability
 		if vis := server.GetDAVisualizationServer(); vis != nil {
 			vis.RecordSubmission(&res, 0, uint64(len(marshaled)), namespace)
 		}
@@ -308,11 +329,14 @@ func (s *DASubmitter) submitWithRetry(
 			if submitted == len(marshaled) {
 				return
 			}
+			// partial success: advance window
 			marshaled = marshaled[submitted:]
 			rs.Next(reasonSuccess, pol)
 
 		case datypes.StatusTooBig:
+			// Record failure metric
 			s.recordFailure(common.DASubmitterFailureReasonTooBig)
+			// Iteratively halve until it fits or single-item too big
 			if len(marshaled) == 1 {
 				s.logger.Error().
 					Str("itemType", itemType).
@@ -331,16 +355,19 @@ func (s *DASubmitter) submitWithRetry(
 			rs.Next(reasonTooBig, pol)
 
 		case datypes.StatusNotIncludedInBlock:
+			// Record failure metric
 			s.recordFailure(common.DASubmitterFailureReasonNotIncludedInBlock)
 			s.logger.Info().Dur("backoff", pol.MaxBackoff).Msg("retrying due to mempool state")
 			rs.Next(reasonMempool, pol)
 
 		case datypes.StatusAlreadyInMempool:
+			// Record failure metric
 			s.recordFailure(common.DASubmitterFailureReasonAlreadyInMempool)
 			s.logger.Info().Dur("backoff", pol.MaxBackoff).Msg("retrying due to mempool state")
 			rs.Next(reasonMempool, pol)
 
 		case datypes.StatusContextCanceled:
+			// Record failure metric
 			s.recordFailure(common.DASubmitterFailureReasonContextCanceled)
 			s.logger.Info().Msg("DA layer submission canceled due to context cancellation")
 			if onError != nil {
@@ -349,12 +376,14 @@ func (s *DASubmitter) submitWithRetry(
 			return
 
 		default:
+			// Record failure metric
 			s.recordFailure(common.DASubmitterFailureReasonUnknown)
 			s.logger.Error().Str("error", res.Message).Int("attempt", rs.Attempt+1).Msg("DA layer submission failed")
 			rs.Next(reasonFailure, pol)
 		}
 	}
 
+	// Final failure after max attempts
 	s.recordFailure(common.DASubmitterFailureReasonTimeout)
 	s.logger.Error().Str("itemType", itemType).Int("attempts", rs.Attempt).Msg("failed to submit all items to DA layer after max attempts")
 	if onError != nil {
@@ -362,6 +391,8 @@ func (s *DASubmitter) submitWithRetry(
 	}
 }
 
+// limitBatchBySizeBytes returns a prefix of marshaled blobs whose total size does not exceed maxBytes.
+// If the first blob exceeds maxBytes, it returns (nil, true) to indicate an unrecoverable oversized item.
 func limitBatchBySizeBytes(marshaled [][]byte, maxBytes uint64) ([][]byte, bool) {
 	total := uint64(0)
 	count := 0
@@ -385,6 +416,7 @@ func limitBatchBySizeBytes(marshaled [][]byte, maxBytes uint64) ([][]byte, bool)
 	return marshaled[:count], false
 }
 
+// recordFailure records a DA submission failure in metrics
 func (s *DASubmitter) recordFailure(reason common.DASubmitterFailureReason) {
 	counter, ok := s.metrics.DASubmitterFailures[reason]
 	if !ok {
@@ -398,6 +430,10 @@ func (s *DASubmitter) recordFailure(reason common.DASubmitterFailureReason) {
 	}
 }
 
+// mergeSubmitOptions merges the base submit options with a signing address.
+// If the base options are valid JSON, the signing address is added to the JSON object.
+// Otherwise, a new JSON object is created with just the signing address.
+// Returns the base options unchanged if no signing address is provided.
 func mergeSubmitOptions(baseOptions []byte, signingAddress string) ([]byte, error) {
 	if signingAddress == "" {
 		return baseOptions, nil
@@ -405,18 +441,24 @@ func mergeSubmitOptions(baseOptions []byte, signingAddress string) ([]byte, erro
 
 	var optionsMap map[string]any
 
+	// If base options are provided, try to parse them as JSON
 	if len(baseOptions) > 0 {
+		// Try to unmarshal existing options, ignoring errors for non-JSON input
 		if err := json.Unmarshal(baseOptions, &optionsMap); err != nil {
+			// Not valid JSON - start with empty map
 			optionsMap = make(map[string]any)
 		}
 	}
 
+	// Ensure map is initialized even if unmarshal returned nil
 	if optionsMap == nil {
 		optionsMap = make(map[string]any)
 	}
 
+	// Add or override the signing address
 	optionsMap["signer_address"] = signingAddress
 
+	// Marshal back to JSON
 	mergedOptions, err := json.Marshal(optionsMap)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal submit options: %w", err)

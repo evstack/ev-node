@@ -13,11 +13,16 @@ import (
 	"github.com/evstack/ev-node/pkg/genesis"
 )
 
+// DARetriever defines the interface for retrieving events from the DA layer
 type DARetriever interface {
+	// RetrieveFromDA retrieves blocks from the specified DA height and returns height events
 	RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error)
+	// ProcessBlobs parses raw blob bytes at a given DA height into height events.
+	// Used by the DAFollower to process subscription blobs inline without re-fetching.
 	ProcessBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent
 }
 
+// daRetriever handles DA retrieval operations for syncing
 type daRetriever struct {
 	client  da.Client
 	cache   cache.CacheManager
@@ -25,6 +30,7 @@ type daRetriever struct {
 	logger  zerolog.Logger
 }
 
+// NewDARetriever creates a new DA retriever
 func NewDARetriever(
 	client da.Client,
 	cache cache.CacheManager,
@@ -39,6 +45,7 @@ func NewDARetriever(
 	}
 }
 
+// RetrieveFromDA retrieves blocks from the specified DA height and returns height events
 func (r *daRetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error) {
 	r.logger.Debug().Uint64("da_height", daHeight).Msg("retrieving from DA")
 	blobsResp, err := r.fetchBlobs(ctx, daHeight)
@@ -46,6 +53,7 @@ func (r *daRetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]co
 		return nil, err
 	}
 
+	// Check for context cancellation upfront
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -54,6 +62,7 @@ func (r *daRetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]co
 	return r.processBlobs(blobsResp.Data, daHeight), nil
 }
 
+// fetchBlobs retrieves blobs from the DA layer at the specified height
 func (r *daRetriever) fetchBlobs(ctx context.Context, daHeight uint64) (datypes.ResultRetrieve, error) {
 	res := r.client.RetrieveBlobs(ctx, daHeight, r.client.GetHeaderNamespace())
 
@@ -72,10 +81,13 @@ func (r *daRetriever) fetchBlobs(ctx context.Context, daHeight uint64) (datypes.
 	}
 }
 
+// ProcessBlobs processes raw blob bytes to extract headers and data and returns height events.
+// This is the public interface used by the DAFollower for inline subscription processing.
 func (r *daRetriever) ProcessBlobs(_ context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent {
 	return r.processBlobs(blobs, daHeight)
 }
 
+// processBlobs processes retrieved blobs to extract headers and data and returns height events
 func (r *daRetriever) processBlobs(blobs [][]byte, daHeight uint64) []common.DAHeightEvent {
 	var events []common.DAHeightEvent
 
@@ -117,6 +129,7 @@ func (r *daRetriever) processBlobs(blobs [][]byte, daHeight uint64) []common.DAH
 			r.logger.Debug().Uint64("height", header.Height()).Msg("DA envelope signature verified")
 		}
 
+		// Update cache with DA inclusion information
 		headerHash := header.MemoizeHash().String()
 		r.cache.SetHeaderDAIncluded(headerHash, daHeight, header.Height())
 
@@ -157,6 +170,7 @@ func (r *daRetriever) processBlobs(blobs [][]byte, daHeight uint64) []common.DAH
 	return events
 }
 
+// assertExpectedProposer validates the proposer address
 func (r *daRetriever) assertExpectedProposer(proposerAddr []byte) error {
 	return assertExpectedProposer(r.genesis, proposerAddr)
 }

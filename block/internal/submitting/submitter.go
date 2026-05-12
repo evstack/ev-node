@@ -23,41 +23,54 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
+// DASubmitterAPI defines minimal methods needed by Submitter for DA submissions.
 type DASubmitterAPI interface {
 	SubmitBlocks(ctx context.Context, headers []*types.SignedHeader, data []*types.Data, cache cache.Manager, signer signer.Signer, onSubmitError func(error)) error
 	Close()
 }
 
+// Submitter handles DA submission and inclusion processing for both sync and aggregator nodes
 type Submitter struct {
+	// Core components
 	store     store.Store
 	exec      coreexecutor.Executor
 	sequencer coresequencer.Sequencer
 	config    config.Config
 	genesis   genesis.Genesis
 
+	// Shared components
 	cache   cache.Manager
 	metrics *common.Metrics
 
+	// DA submitter
 	daSubmitter DASubmitterAPI
 
+	// Optional signer (only for aggregator nodes)
 	signer signer.Signer
 
+	// DA state
 	daIncludedHeight *atomic.Uint64
 
+	// Submission mutex to prevent concurrent submissions
 	submissionMtx sync.Mutex
 
-	lastSubmit        atomic.Int64
+	// Batching strategy state
+	lastSubmit        atomic.Int64 // stores Unix nanoseconds
 	batchingStrategy BatchingStrategy
 
-	errorCh chan<- error
+	// Channels for coordination
+	errorCh chan<- error // Channel to report critical execution client failures
 
+	// Logging
 	logger zerolog.Logger
 
+	// Lifecycle
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 }
 
+// NewSubmitter creates a new DA submitter component
 func NewSubmitter(
 	store store.Store,
 	exec coreexecutor.Executor,
@@ -66,8 +79,8 @@ func NewSubmitter(
 	config config.Config,
 	genesis genesis.Genesis,
 	daSubmitter DASubmitterAPI,
-	sequencer coresequencer.Sequencer,
-	signer signer.Signer,
+	sequencer coresequencer.Sequencer, // Can be nil for sync nodes
+	signer signer.Signer, // Can be nil for sync nodes
 	logger zerolog.Logger,
 	errorCh chan<- error,
 ) *Submitter {
@@ -101,33 +114,38 @@ func NewSubmitter(
 	return submitter
 }
 
+// Start begins the submitting component
 func (s *Submitter) Start(ctx context.Context) (err error) {
 	if s.cancel != nil {
 		return errors.New("submitter already started")
 	}
 
 	s.ctx, s.cancel = context.WithCancel(ctx)
-	defer func() {
+	defer func() { // if error during init cancel context
 		if err != nil {
 			s.cancel()
 			s.ctx, s.cancel = nil, nil
 		}
 	}()
 
+	// Initialize DA included height
 	if err = s.initializeDAIncludedHeight(ctx); err != nil {
 		return err
 	}
 
+	// Start DA submission loop if signer is available (aggregator nodes only)
 	if s.signer != nil {
 		s.logger.Info().Msg("starting DA submission loop")
 		s.wg.Go(s.daSubmissionLoop)
 	}
 
+	// Start DA inclusion processing loop (both sync and aggregator nodes)
 	s.wg.Go(s.processDAInclusionLoop)
 
 	return nil
 }
 
+// Stop shuts down the submitting component
 func (s *Submitter) Stop() error {
 	if s.cancel != nil {
 		s.cancel()
@@ -148,10 +166,12 @@ func (s *Submitter) Stop() error {
 	return nil
 }
 
+// daSubmissionLoop handles submission of blocks to DA layer (aggregator nodes only)
 func (s *Submitter) daSubmissionLoop() {
 	s.logger.Info().Msg("starting DA submission loop")
 	defer s.logger.Info().Msg("DA submission loop stopped")
 
+	// Use a shorter ticker interval to check batching strategy more frequently
 	checkInterval := max(s.config.DA.BlockTime.Duration/4, 100*time.Millisecond)
 
 	ticker := time.NewTicker(checkInterval)
@@ -167,15 +187,18 @@ func (s *Submitter) daSubmissionLoop() {
 				lastSubmitNanos := s.lastSubmit.Load()
 				timeSinceLastSubmit := time.Since(time.Unix(0, lastSubmitNanos))
 
-				if s.submissionMtx.TryLock() {
-					s.wg.Add(1)
-					go func() {
-						defer func() {
-							s.submissionMtx.Unlock()
-							s.wg.Done()
-						}()
+			// For strategy decision, we need to estimate the size
+			// We'll fetch headers to check, but only submit if strategy approves
+			if s.submissionMtx.TryLock() {
+				s.wg.Add(1)
+				go func() {
+					defer func() {
+						s.submissionMtx.Unlock()
+						s.wg.Done()
+					}()
 
-						headers, marshalledHeaders, err := s.cache.GetPendingHeaders(s.ctx)
+					// Get headers with marshalled bytes from cache
+					headers, marshalledHeaders, err := s.cache.GetPendingHeaders(s.ctx)
 						if err != nil {
 							if len(headers) > 0 {
 								s.cache.ResetInFlightHeaderRange(headers[0].Height(), headers[len(headers)-1].Height())
@@ -187,6 +210,7 @@ func (s *Submitter) daSubmissionLoop() {
 							return
 						}
 
+						// Calculate total size
 						totalSize := uint64(0)
 						for _, marshalled := range marshalledHeaders {
 							totalSize += uint64(len(marshalled))
@@ -242,11 +266,13 @@ func (s *Submitter) daSubmissionLoop() {
 				}
 			}
 
+			// Update metrics with current pending counts
 			s.metrics.DASubmitterPendingBlobs.Set(float64(pendingHeaders))
 		}
 	}
 }
 
+// processDAInclusionLoop handles DA inclusion processing (both sync and aggregator nodes)
 func (s *Submitter) processDAInclusionLoop() {
 	s.logger.Info().Msg("starting DA inclusion processing loop")
 	defer s.logger.Info().Msg("DA inclusion processing loop stopped")
@@ -265,42 +291,52 @@ func (s *Submitter) processDAInclusionLoop() {
 			for {
 				nextHeight := currentDAIncluded + 1
 
+				// Get block data first
 				_, data, err := s.store.GetBlockData(s.ctx, nextHeight)
 				if err != nil {
 					break
 				}
 
+				// Check if this height is DA included
 				if included, err := s.IsHeightDAIncluded(nextHeight, data); err != nil || !included {
 					break
 				}
 
 				s.logger.Debug().Uint64("height", nextHeight).Msg("advancing DA included height")
 
+				// Set node height to DA height mapping using already retrieved data
 				if err := s.setNodeHeightToDAHeight(s.ctx, nextHeight, data, currentDAIncluded == 0); err != nil {
 					s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("failed to set node height to DA height mapping")
 					break
 				}
 
+				// Set final height in executor
 				if err := s.setFinalWithRetry(nextHeight); err != nil {
 					s.sendCriticalError(fmt.Errorf("failed to set final height: %w", err))
 					s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("CRITICAL: Failed to set final height after retries - halting DA inclusion processing")
 					return
 				}
 
+				// Persist DA included height before advancing in-memory state
 				if err := putUint64Metadata(s.ctx, s.store, store.DAIncludedHeightKey, nextHeight); err != nil {
 					s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("failed to persist DA included height")
 					break
 				}
 
+				// Update DA included height
 				s.SetDAIncludedHeight(nextHeight)
 				currentDAIncluded = nextHeight
 
+				// Delete height cache for that height
+				// This can only be performed after the height has been persisted to store
 				s.cache.DeleteHeight(nextHeight)
 			}
 		}
 	}
 }
 
+// setFinalWithRetry sets the final height in executor with retry logic.
+// NOTE: the function retries the execution client call regardless of the error. Some execution client errors are irrecoverable, and will eventually halt the node, as expected.
 func (s *Submitter) setFinalWithRetry(nextHeight uint64) error {
 	for attempt := 1; attempt <= common.MaxRetriesBeforeHalt; attempt++ {
 		if err := s.exec.SetFinal(s.ctx, nextHeight); err != nil {
@@ -328,14 +364,17 @@ func (s *Submitter) setFinalWithRetry(nextHeight uint64) error {
 	return nil
 }
 
+// GetDAIncludedHeight returns the DA included height
 func (s *Submitter) GetDAIncludedHeight() uint64 {
 	return s.daIncludedHeight.Load()
 }
 
+// SetDAIncludedHeight updates the DA included height
 func (s *Submitter) SetDAIncludedHeight(height uint64) {
 	s.daIncludedHeight.Store(height)
 }
 
+// initializeDAIncludedHeight loads the DA included height from store
 func (s *Submitter) initializeDAIncludedHeight(ctx context.Context) error {
 	if height, err := s.store.GetMetadata(ctx, store.DAIncludedHeightKey); err == nil && len(height) == 8 {
 		s.SetDAIncludedHeight(binary.LittleEndian.Uint64(height))
@@ -343,12 +382,14 @@ func (s *Submitter) initializeDAIncludedHeight(ctx context.Context) error {
 	return nil
 }
 
+// putUint64Metadata encodes val as 8-byte little-endian and writes it to the store.
 func putUint64Metadata(ctx context.Context, st store.Store, key string, val uint64) error {
 	bz := make([]byte, 8)
 	binary.LittleEndian.PutUint64(bz, val)
 	return st.SetMetadata(ctx, key, bz)
 }
 
+// sendCriticalError sends a critical error to the error channel without blocking
 func (s *Submitter) sendCriticalError(err error) {
 	if s.cancel != nil {
 		s.cancel()
@@ -357,10 +398,13 @@ func (s *Submitter) sendCriticalError(err error) {
 		select {
 		case s.errorCh <- err:
 		default:
+			// Channel full, error already reported
 		}
 	}
 }
 
+// setNodeHeightToDAHeight persists the DA heights for a block's header and data.
+// For empty-tx blocks, both use the header DA height since no data blob is posted.
 func (s *Submitter) setNodeHeightToDAHeight(ctx context.Context, height uint64, data *types.Data, genesisInclusion bool) error {
 	daHeightForHeader, ok := s.cache.GetHeaderDAIncludedByHeight(height)
 	if !ok {
@@ -372,6 +416,7 @@ func (s *Submitter) setNodeHeightToDAHeight(ctx context.Context, height uint64, 
 	}
 
 	genesisDAIncludedHeight := daHeightForHeader
+	// For empty transactions, use the same DA height as the header
 	dataDAHeight := daHeightForHeader
 	dataHash := data.DACommitment()
 	if !bytes.Equal(dataHash, common.DataHashForEmptyTxs) {
@@ -380,6 +425,7 @@ func (s *Submitter) setNodeHeightToDAHeight(ctx context.Context, height uint64, 
 			return fmt.Errorf("data for height %d not found in cache", height)
 		}
 		dataDAHeight = daHeightForData
+		// if data posted before header, use data da included height for genesis da height
 		genesisDAIncludedHeight = min(daHeightForData, genesisDAIncludedHeight)
 	}
 	if err := putUint64Metadata(ctx, s.store, store.GetHeightToDAHeightDataKey(height), dataDAHeight); err != nil {
@@ -400,7 +446,9 @@ func (s *Submitter) setNodeHeightToDAHeight(ctx context.Context, height uint64, 
 	return nil
 }
 
+// IsHeightDAIncluded reports whether the block at height has been DA-included.
 func (s *Submitter) IsHeightDAIncluded(height uint64, data *types.Data) (bool, error) {
+	// Already finalized — cache entries were cleared, but we know it's included.
 	if height <= s.GetDAIncludedHeight() {
 		return true, nil
 	}

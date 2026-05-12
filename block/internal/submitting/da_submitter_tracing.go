@@ -15,11 +15,13 @@ import (
 
 var _ DASubmitterAPI = (*tracedDASubmitter)(nil)
 
+// tracedDASubmitter wraps a DASubmitterAPI with OpenTelemetry tracing.
 type tracedDASubmitter struct {
 	inner  DASubmitterAPI
 	tracer trace.Tracer
 }
 
+// WithTracingDASubmitter wraps a DASubmitterAPI with OpenTelemetry tracing.
 func WithTracingDASubmitter(inner DASubmitterAPI) DASubmitterAPI {
 	return &tracedDASubmitter{
 		inner:  inner,

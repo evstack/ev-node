@@ -11,40 +11,58 @@ import (
 	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 )
 
+// BlockOptions defines the options for creating block components
 type BlockOptions = common.BlockOptions
 
+// DefaultBlockOptions returns the default block options
 func DefaultBlockOptions() BlockOptions {
 	return common.DefaultBlockOptions()
 }
 
+// SetMaxBlobSize overrides the per-blob byte cap used by the executor
+// and DA submitter when sizing batches and validating individual blobs.
+// Intended for one-shot startup wiring (e.g. to lift Celestia's 5 MiB
+// default to Fibre's 120 MiB headroom).
 func SetMaxBlobSize(n uint64) {
 	common.DefaultMaxBlobSize = n
 }
 
+// Expose Metrics for constructor
 type Metrics = common.Metrics
 
+// PrometheusMetrics creates a new PrometheusMetrics instance with the given namespace and labelsAndValues.
 func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 	return common.PrometheusMetrics(namespace, labelsAndValues...)
 }
 
+// NopMetrics creates a new NopMetrics instance.
 func NopMetrics() *Metrics {
 	return common.NopMetrics()
 }
 
+// DAClient is the interface representing the DA client for public use.
 type DAClient = da.Client
 
+// DAVerifier is the interface for DA proof verification operations.
 type DAVerifier = da.Verifier
 
+// FullDAClient combines DAClient and DAVerifier interfaces.
+// This is the complete interface implemented by the concrete DA client.
 type FullDAClient = da.FullClient
 
+// FiberClient is the interface for Fiber DA backends. Implementations
+// handle upload, download and listen operations against a Fiber network.
 type FiberClient = da.FiberClient
 
+// Fiber types exposed for external adapters (e.g. tools/local-fiber).
 type (
 	FiberBlobID       = da.BlobID
 	FiberUploadResult = da.UploadResult
 	FiberBlobEvent    = da.BlobEvent
 )
 
+// NewDAClient creates a new DA client backed by the blob JSON-RPC API.
+// The returned client implements both DAClient and DAVerifier interfaces.
 func NewDAClient(
 	blobRPC *blobrpc.Client,
 	config config.Config,
@@ -64,6 +82,9 @@ func NewDAClient(
 	return base
 }
 
+// NewFiberDAClient creates a new DA client backed by the Fiber protocol.
+// The fiberClient parameter must implement the da.FiberClient interface.
+// The returned client implements both DAClient and DAVerifier interfaces.
 func NewFiberDAClient(
 	fiberClient da.FiberClient,
 	config config.Config,
@@ -89,19 +110,27 @@ func NewFiberDAClient(
 	return base
 }
 
+// Exported errors used by the sequencers
 var (
+	// ErrForceInclusionNotConfigured is returned when force inclusion is not configured.
 	ErrForceInclusionNotConfigured = da.ErrForceInclusionNotConfigured
+	// ErrNoBatch is returned when a sequencer does not have a batch to return.
 	ErrNoBatch                     = common.ErrNoBatch
 )
 
+// ForcedInclusionEvent represents forced inclusion transactions retrieved from DA
 type ForcedInclusionEvent = da.ForcedInclusionEvent
 
+// ForcedInclusionRetriever defines the interface for retrieving forced inclusion transactions from DA
 type ForcedInclusionRetriever interface {
 	RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error)
 	Stop()
 	Start(ctx context.Context)
 }
 
+// NewForcedInclusionRetriever creates a new forced inclusion retriever.
+// It internally creates and manages an AsyncBlockRetriever for background prefetching.
+// Tracing is automatically enabled when configured.
 func NewForcedInclusionRetriever(
 	client DAClient,
 	cfg config.Config,
@@ -118,4 +147,5 @@ func NewForcedInclusionRetriever(
 	)
 }
 
+// Expose Raft types for consensus integration
 type RaftNode = common.RaftNode
