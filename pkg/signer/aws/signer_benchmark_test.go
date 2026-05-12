@@ -15,7 +15,7 @@ import (
 // BenchmarkKmsSignerSign test kms round trip
 // export EVNODE_E2E_GCP_KMS_KEY_NAME=projects/<project-id>/locations/<region>/keyRings/<keyring-name>/cryptoKeys/<key-name>/cryptoKeyVersions/1
 // export EVNODE_E2E_GCP_KMS_CREDENTIALS_FILE=...
-// go test  -v -bench=BenchmarkKmsSignerSign -benchtime=3s -count=10 -run='^$' ./pkg/signer/gcp
+// go test -v -bench=BenchmarkKmsSignerSign -benchtime=3s -count=10 -run='^$' ./pkg/signer/gcp
 func BenchmarkKmsSignerSign(b *testing.B) {
 	keyID := os.Getenv("EVNODE_E2E_AWS_KMS_KEY_ID")
 	if keyID == "" {
