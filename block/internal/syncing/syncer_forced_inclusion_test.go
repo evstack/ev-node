@@ -20,7 +20,6 @@ import (
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/store"
 	testmocks "github.com/evstack/ev-node/test/mocks"
-	extmocks "github.com/evstack/ev-node/test/mocks/external"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -81,13 +80,8 @@ func newForcedInclusionSyncer(t *testing.T, daStart, epochSize uint64) (*Syncer,
 	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), cfg.DA.BlockTime.Duration, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
 	t.Cleanup(fiRetriever.Stop)
 
-	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
-	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
-	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
-	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
 	s := NewSyncer(
 		st, mockExec, client, cm, common.NopMetrics(), cfg, gen,
-		mockHeaderStore, mockDataStore,
 		zerolog.Nop(), common.DefaultBlockOptions(), make(chan error, 1), nil,
 	)
 	s.daRetriever = daRetriever
@@ -159,13 +153,8 @@ func TestVerifyForcedInclusionTxs_NamespaceNotConfigured(t *testing.T) {
 	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), cfg.DA.BlockTime.Duration, false, gen.DAStartHeight, gen.DAEpochForcedInclusion)
 	t.Cleanup(fiRetriever.Stop)
 
-	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
-	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
-	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
-	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
 	s := NewSyncer(
 		st, mockExec, client, cm, common.NopMetrics(), cfg, gen,
-		mockHeaderStore, mockDataStore,
 		zerolog.Nop(), common.DefaultBlockOptions(), make(chan error, 1), nil,
 	)
 	if s.fiRetriever != nil {

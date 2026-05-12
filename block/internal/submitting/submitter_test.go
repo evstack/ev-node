@@ -175,7 +175,7 @@ func TestSubmitter_setSequencerHeightToDAHeight(t *testing.T) {
 	daClient.On("GetDataNamespace").Return([]byte(cfg.DA.DataNamespace)).Maybe()
 	daClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 	daClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
-	daSub := NewDASubmitter(daClient, cfg, genesis.Genesis{}, common.BlockOptions{}, metrics, zerolog.Nop(), nil, nil)
+	daSub := NewDASubmitter(daClient, cfg, genesis.Genesis{}, common.BlockOptions{}, metrics, zerolog.Nop())
 	s := NewSubmitter(mockStore, nil, cm, metrics, cfg, genesis.Genesis{}, daSub, nil, nil, zerolog.Nop(), nil)
 	s.ctx = ctx
 
@@ -258,7 +258,7 @@ func TestSubmitter_processDAInclusionLoop_advances(t *testing.T) {
 	daClient.On("GetDataNamespace").Return([]byte(cfg.DA.DataNamespace)).Maybe()
 	daClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 	daClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
-	daSub := NewDASubmitter(daClient, cfg, genesis.Genesis{}, common.BlockOptions{}, metrics, zerolog.Nop(), nil, nil)
+	daSub := NewDASubmitter(daClient, cfg, genesis.Genesis{}, common.BlockOptions{}, metrics, zerolog.Nop())
 	s := NewSubmitter(st, exec, cm, metrics, cfg, genesis.Genesis{}, daSub, nil, nil, zerolog.Nop(), nil)
 
 	// prepare two consecutive blocks in store with DA included in cache
@@ -350,8 +350,7 @@ func TestSubmitter_daSubmissionLoop(t *testing.T) {
 
 	// Prepare fake DA submitter capturing calls
 	fakeDA := &fakeDASubmitter{
-		chHdr:  make(chan struct{}, 1),
-		chData: make(chan struct{}, 1),
+		chBlocks: make(chan struct{}, 1),
 	}
 
 	// Provide a non-nil executor; it won't be used because DA inclusion won't advance
@@ -376,8 +375,7 @@ func TestSubmitter_daSubmissionLoop(t *testing.T) {
 
 	// Set last submit times far in past so strategy allows submission
 	pastTime := time.Now().Add(-time.Hour).UnixNano()
-	s.lastHeaderSubmit.Store(pastTime)
-	s.lastDataSubmit.Store(pastTime)
+	s.lastSubmit.Store(pastTime)
 
 	// Make there be pending headers and data by setting store height > last submitted
 	h1, d1 := newHeaderAndData("test-chain", 1, true)
@@ -398,16 +396,7 @@ func TestSubmitter_daSubmissionLoop(t *testing.T) {
 	// Both should be invoked eventually
 	require.Eventually(t, func() bool {
 		select {
-		case <-fakeDA.chHdr:
-			return true
-		default:
-			return false
-		}
-	}, time.Second, 10*time.Millisecond)
-
-	require.Eventually(t, func() bool {
-		select {
-		case <-fakeDA.chData:
+		case <-fakeDA.chBlocks:
 			return true
 		default:
 			return false
@@ -417,21 +406,12 @@ func TestSubmitter_daSubmissionLoop(t *testing.T) {
 
 // fakeDASubmitter is a lightweight test double for the DASubmitter used by the loop.
 type fakeDASubmitter struct {
-	chHdr  chan struct{}
-	chData chan struct{}
+	chBlocks chan struct{}
 }
 
-func (f *fakeDASubmitter) SubmitHeaders(ctx context.Context, _ []*types.SignedHeader, _ [][]byte, _ cache.Manager, _ signer.Signer, _ func(error)) error {
+func (f *fakeDASubmitter) SubmitBlocks(ctx context.Context, _ []*types.SignedHeader, _ []*types.Data, _ cache.Manager, _ signer.Signer, _ func(error)) error {
 	select {
-	case f.chHdr <- struct{}{}:
-	default:
-	}
-	return nil
-}
-
-func (f *fakeDASubmitter) SubmitData(ctx context.Context, _ []*types.SignedData, _ [][]byte, _ cache.Manager, _ signer.Signer, _ genesis.Genesis, _ func(error)) error {
-	select {
-	case f.chData <- struct{}{}:
+	case f.chBlocks <- struct{}{}:
 	default:
 	}
 	return nil
@@ -466,7 +446,7 @@ func TestSubmitter_CacheClearedOnHeightInclusion(t *testing.T) {
 	daClient.On("GetDataNamespace").Return([]byte(cfg.DA.DataNamespace)).Maybe()
 	daClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 	daClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
-	daSub := NewDASubmitter(daClient, cfg, genesis.Genesis{}, common.BlockOptions{}, metrics, zerolog.Nop(), nil, nil)
+	daSub := NewDASubmitter(daClient, cfg, genesis.Genesis{}, common.BlockOptions{}, metrics, zerolog.Nop())
 	s := NewSubmitter(st, exec, cm, metrics, cfg, genesis.Genesis{}, daSub, nil, nil, zerolog.Nop(), nil)
 
 	// Create test blocks

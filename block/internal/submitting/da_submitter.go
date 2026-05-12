@@ -1,7 +1,6 @@
 package submitting
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,7 +9,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block/internal/cache"
@@ -27,12 +25,11 @@ import (
 
 const (
 	// DefaultEnvelopeCacheSize is the default size for caching signed DA envelopes.
-	// This avoids re-signing headers on retry scenarios.
 	DefaultEnvelopeCacheSize = 10_000
 
 	// signingWorkerPoolSize determines how many parallel signing goroutines to use.
-	// Ed25519 signing is CPU-bound, so we use GOMAXPROCS workers.
-	signingWorkerPoolSize = 0 // 0 means use runtime.GOMAXPROCS(0)
+	// 0 means use runtime.GOMAXPROCS(0)
+	signingWorkerPoolSize = 0
 )
 
 const initialBackoff = 100 * time.Millisecond
@@ -103,29 +100,19 @@ func clamp(v, minTime, maxTime time.Duration) time.Duration {
 	return v
 }
 
-type DAHintAppender interface {
-	AppendDAHint(ctx context.Context, daHeight uint64, heights ...uint64) error
-}
-
 // DASubmitter handles DA submission operations
 type DASubmitter struct {
-	client               da.Client
-	config               config.Config
-	genesis              genesis.Genesis
-	options              common.BlockOptions
-	logger               zerolog.Logger
-	metrics              *common.Metrics
-	headerDAHintAppender DAHintAppender
-	dataDAHintAppender   DAHintAppender
+	client  da.Client
+	config  config.Config
+	genesis genesis.Genesis
+	options common.BlockOptions
+	logger  zerolog.Logger
+	metrics *common.Metrics
 
 	// address selector for multi-account support
 	addressSelector pkgda.AddressSelector
 
-	// envelopeCache caches fully signed DA envelopes by height to avoid re-signing on retries
-	envelopeCache *lru.Cache[uint64, []byte]
-
-	// lastSubmittedHeight tracks the last successfully submitted height for lazy cache invalidation.
-	// This avoids O(N) iteration over the cache on every submission.
+	// lastSubmittedHeight tracks the last successfully submitted height for lazy cache invalidation
 	lastSubmittedHeight atomic.Uint64
 
 	// signingWorkers is the number of parallel workers for signing
@@ -142,8 +129,6 @@ func NewDASubmitter(
 	options common.BlockOptions,
 	metrics *common.Metrics,
 	logger zerolog.Logger,
-	headerDAHintAppender DAHintAppender,
-	dataDAHintAppender DAHintAppender,
 ) *DASubmitter {
 	daSubmitterLogger := logger.With().Str("component", "da_submitter").Logger()
 
@@ -168,12 +153,6 @@ func NewDASubmitter(
 		addressSelector = pkgda.NewNoOpSelector()
 	}
 
-	// Create envelope cache for avoiding re-signing on retries
-	envelopeCache, err := lru.New[uint64, []byte](DefaultEnvelopeCacheSize)
-	if err != nil {
-		daSubmitterLogger.Warn().Err(err).Msg("failed to create envelope cache, continuing without caching")
-	}
-
 	// Determine number of signing workers
 	workers := signingWorkerPoolSize
 	if workers <= 0 || workers > runtime.GOMAXPROCS(0) {
@@ -181,17 +160,14 @@ func NewDASubmitter(
 	}
 
 	return &DASubmitter{
-		client:               client,
-		config:               config,
-		genesis:              genesis,
-		options:              options,
-		metrics:              metrics,
-		logger:               daSubmitterLogger,
-		addressSelector:      addressSelector,
-		envelopeCache:        envelopeCache,
-		signingWorkers:       workers,
-		headerDAHintAppender: headerDAHintAppender,
-		dataDAHintAppender:   dataDAHintAppender,
+		client:          client,
+		config:          config,
+		genesis:         genesis,
+		options:         options,
+		metrics:         metrics,
+		logger:          daSubmitterLogger,
+		addressSelector: addressSelector,
+		signingWorkers:  workers,
 	}
 }
 
@@ -199,8 +175,7 @@ func (s *DASubmitter) Close() {
 	s.wg.Wait()
 }
 
-// SubmitHeaders submits pending headers to DA layer
-func (s *DASubmitter) SubmitHeaders(ctx context.Context, headers []*types.SignedHeader, marshalledHeaders [][]byte, cache cache.Manager, signer signer.Signer, onSubmitError func(error)) error {
+func (s *DASubmitter) SubmitBlocks(ctx context.Context, headers []*types.SignedHeader, dataList []*types.Data, cacheMgr cache.Manager, signer signer.Signer, onSubmitError func(error)) error {
 	if len(headers) == 0 {
 		return nil
 	}
@@ -209,107 +184,62 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, headers []*types.Signed
 		return fmt.Errorf("signer is nil")
 	}
 
-	if len(marshalledHeaders) != len(headers) {
-		return fmt.Errorf("marshalledHeaders length (%d) does not match headers length (%d)", len(marshalledHeaders), len(headers))
+	if len(dataList) != len(headers) {
+		return fmt.Errorf("dataList length (%d) does not match headers length (%d)", len(dataList), len(headers))
 	}
 
-	s.logger.Info().Int("count", len(headers)).Msg("submitting headers to DA")
+	s.logger.Info().Int("count", len(headers)).Msg("submitting combined blocks to DA")
 
-	// Create DA envelopes with parallel signing and caching
-	envelopes, err := s.createDAEnvelopes(ctx, headers, marshalledHeaders, signer)
-	if err != nil {
-		return err
+	blobs := make([][]byte, 0, len(headers))
+	submittedHeaders := make([]*types.SignedHeader, 0, len(headers))
+	submittedData := make([]*types.Data, 0, len(headers))
+
+	for i, header := range headers {
+		data := dataList[i]
+
+		headerBz, err := header.MarshalBinary()
+		if err != nil {
+			return fmt.Errorf("failed to marshal header at height %d: %w", header.Height(), err)
+		}
+
+		envelopeSig, err := signer.Sign(ctx, headerBz)
+		if err != nil {
+			return fmt.Errorf("failed to sign envelope for header %d: %w", header.Height(), err)
+		}
+
+		blob, err := common.MarshalBlockBlob(header, data, envelopeSig)
+		if err != nil {
+			return fmt.Errorf("failed to create combined blob for height %d: %w", header.Height(), err)
+		}
+
+		blobs = append(blobs, blob)
+		submittedHeaders = append(submittedHeaders, header)
+		submittedData = append(submittedData, data)
 	}
 
-	postSubmit := s.makeHeaderPostSubmit(ctx, cache)
 	namespace := s.client.GetHeaderNamespace()
 	submittedOffset := 0
 
 	s.wg.Go(func() {
-		s.submitWithRetry(ctx, envelopes, namespace, func(submittedCount int, daHeight uint64) {
+		s.submitWithRetry(ctx, blobs, namespace, func(submittedCount int, daHeight uint64) {
 			if submittedCount > 0 {
 				end := submittedOffset + submittedCount
-				postSubmit(headers[submittedOffset:end], &datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, SubmittedCount: uint64(submittedCount), Height: daHeight}})
+				for _, hdr := range submittedHeaders[submittedOffset:end] {
+					cacheMgr.SetHeaderDAIncluded(hdr.Hash().String(), daHeight, hdr.Height())
+					cacheMgr.SetLastSubmittedHeaderHeight(ctx, hdr.Height())
+				}
+				for _, d := range submittedData[submittedOffset:end] {
+					if len(d.Txs) > 0 {
+						cacheMgr.SetDataDAIncluded(d.DACommitment().String(), daHeight, d.Height())
+					}
+				}
+				cacheMgr.SetLastSubmittedDataHeight(ctx, submittedHeaders[end-1].Height())
 				submittedOffset = end
 			}
-		}, onSubmitError, "header")
+		}, onSubmitError, "block")
 	})
 
 	return nil
-}
-
-func (s *DASubmitter) makeHeaderPostSubmit(ctx context.Context, cache cache.Manager) func([]*types.SignedHeader, *datypes.ResultSubmit) {
-	return func(submitted []*types.SignedHeader, res *datypes.ResultSubmit) {
-		heights := make([]uint64, len(submitted))
-		for i, header := range submitted {
-			cache.SetHeaderDAIncluded(header.Hash().String(), res.Height, header.Height())
-			heights[i] = header.Height()
-		}
-		if err := s.headerDAHintAppender.AppendDAHint(ctx, res.Height, heights...); err != nil {
-			s.logger.Error().Err(err).Msg("failed to append da height hint in header p2p store")
-		}
-		if l := len(submitted); l > 0 {
-			lastHeight := submitted[l-1].Height()
-			cache.SetLastSubmittedHeaderHeight(ctx, lastHeight)
-			s.lastSubmittedHeight.Store(lastHeight)
-		}
-	}
-}
-
-// SubmitData submits pending data to DA layer
-func (s *DASubmitter) SubmitData(ctx context.Context, unsignedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis, onSubmitError func(error)) error {
-	if len(unsignedDataList) == 0 {
-		return nil
-	}
-
-	if len(marshalledData) != len(unsignedDataList) {
-		return fmt.Errorf("marshalledData length (%d) does not match unsignedDataList length (%d)", len(marshalledData), len(unsignedDataList))
-	}
-
-	// Sign the data (cache returns unsigned SignedData structs)
-	signedDataList, signedDataListBz, err := s.signData(ctx, unsignedDataList, marshalledData, signer, genesis)
-	if err != nil {
-		return fmt.Errorf("failed to sign data: %w", err)
-	}
-
-	if len(signedDataList) == 0 {
-		return nil
-	}
-
-	s.logger.Info().Int("count", len(signedDataList)).Msg("submitting data to DA")
-
-	postSubmit := s.makeDataPostSubmit(ctx, cache)
-	namespace := s.client.GetDataNamespace()
-	submittedOffset := 0
-
-	s.wg.Go(func() {
-		s.submitWithRetry(ctx, signedDataListBz, namespace, func(submittedCount int, daHeight uint64) {
-			if submittedCount > 0 {
-				end := submittedOffset + submittedCount
-				postSubmit(signedDataList[submittedOffset:end], &datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, SubmittedCount: uint64(submittedCount), Height: daHeight}})
-				submittedOffset = end
-			}
-		}, onSubmitError, "data")
-	})
-
-	return nil
-}
-
-func (s *DASubmitter) makeDataPostSubmit(ctx context.Context, cache cache.Manager) func([]*types.SignedData, *datypes.ResultSubmit) {
-	return func(submitted []*types.SignedData, res *datypes.ResultSubmit) {
-		heights := make([]uint64, len(submitted))
-		for i, sd := range submitted {
-			cache.SetDataDAIncluded(sd.Data.DACommitment().String(), res.Height, sd.Height())
-			heights[i] = sd.Height()
-		}
-		if err := s.dataDAHintAppender.AppendDAHint(ctx, res.Height, heights...); err != nil {
-			s.logger.Error().Err(err).Msg("failed to append da height hint in data p2p store")
-		}
-		if l := len(submitted); l > 0 {
-			lastHeight := submitted[l-1].Height()
-			cache.SetLastSubmittedDataHeight(ctx, lastHeight)
-		}
-	}
 }
 
 func (s *DASubmitter) submitWithRetry(
@@ -500,220 +430,6 @@ func (s *DASubmitter) recordFailure(reason common.DASubmitterFailureReason) {
 	}
 }
 
-// createDAEnvelopes creates signed DA envelopes for the given headers.
-// It uses caching to avoid re-signing on retries and parallel signing for new envelopes.
-func (s *DASubmitter) createDAEnvelopes(ctx context.Context, headers []*types.SignedHeader, marshalledHeaders [][]byte, signer signer.Signer) ([][]byte, error) {
-	envelopes := make([][]byte, len(headers))
-
-	// First pass: check cache for already-signed envelopes
-	var needSigning []int // indices that need signing
-	for i, header := range headers {
-		height := header.Height()
-		if cached := s.getCachedEnvelope(height); cached != nil {
-			envelopes[i] = cached
-		} else {
-			needSigning = append(needSigning, i)
-		}
-	}
-
-	// If all envelopes were cached, we're done
-	if len(needSigning) == 0 {
-		s.logger.Debug().Int("cached", len(headers)).Msg("all envelopes retrieved from cache")
-		return envelopes, nil
-	}
-
-	s.logger.Debug().
-		Int("cached", len(headers)-len(needSigning)).
-		Int("to_sign", len(needSigning)).
-		Msg("signing DA envelopes")
-
-	// For small batches, sign sequentially to avoid goroutine overhead
-	if len(needSigning) <= 2 || s.signingWorkers <= 1 {
-		// Send jobs
-		for _, i := range needSigning {
-			envelope, err := s.signAndCacheEnvelope(ctx, headers[i], marshalledHeaders[i], signer)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create envelope for header %d: %w", i, err)
-			}
-			envelopes[i] = envelope
-		}
-		return envelopes, nil
-	}
-
-	// Parallel signing for larger batches
-	return s.signEnvelopesParallel(ctx, headers, marshalledHeaders, envelopes, needSigning, signer)
-}
-
-// signEnvelopesParallel signs envelopes in parallel using a worker pool.
-func (s *DASubmitter) signEnvelopesParallel(
-	ctx context.Context,
-	headers []*types.SignedHeader,
-	marshalledHeaders [][]byte,
-	envelopes [][]byte,
-	needSigning []int,
-	signer signer.Signer,
-) ([][]byte, error) {
-	type signJob struct {
-		index int
-	}
-	type signResult struct {
-		index    int
-		envelope []byte
-		err      error
-	}
-
-	jobs := make(chan signJob, len(needSigning))
-	results := make(chan signResult, len(needSigning))
-
-	// Start workers
-	numWorkers := min(s.signingWorkers, len(needSigning))
-	var wg sync.WaitGroup
-	for range numWorkers {
-		wg.Go(func() {
-			for job := range jobs {
-				envelope, err := s.signAndCacheEnvelope(ctx, headers[job.index], marshalledHeaders[job.index], signer)
-				results <- signResult{index: job.index, envelope: envelope, err: err}
-			}
-		})
-	}
-
-	for _, i := range needSigning {
-		jobs <- signJob{index: i}
-	}
-	close(jobs)
-
-	// Wait for workers to finish and close results
-	go func() {
-		wg.Wait()
-		close(results)
-	}()
-
-	// Collect results
-	var firstErr error
-	for result := range results {
-		if result.err != nil && firstErr == nil {
-			firstErr = fmt.Errorf("failed to create envelope for header %d: %w", result.index, result.err)
-			continue
-		}
-		if result.err == nil {
-			envelopes[result.index] = result.envelope
-		}
-	}
-
-	if firstErr != nil {
-		return nil, firstErr
-	}
-
-	return envelopes, nil
-}
-
-// signAndCacheEnvelope signs a single header and caches the result.
-func (s *DASubmitter) signAndCacheEnvelope(ctx context.Context, header *types.SignedHeader, marshalledHeader []byte, signer signer.Signer) ([]byte, error) {
-	// Sign the pre-marshalled header content
-	envelopeSignature, err := signer.Sign(ctx, marshalledHeader)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign envelope: %w", err)
-	}
-
-	// Create the envelope and marshal it
-	envelope, err := header.MarshalDAEnvelope(envelopeSignature)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal DA envelope: %w", err)
-	}
-
-	// Cache for potential retries
-	s.setCachedEnvelope(header.Height(), envelope)
-
-	return envelope, nil
-}
-
-// getCachedEnvelope retrieves a cached envelope for the given height.
-// Uses lazy invalidation: entries at or below lastSubmittedHeight are considered invalid.
-func (s *DASubmitter) getCachedEnvelope(height uint64) []byte {
-	if s.envelopeCache == nil {
-		return nil
-	}
-	// Lazy invalidation: don't return cached data for already-submitted heights
-	if height <= s.lastSubmittedHeight.Load() {
-		return nil
-	}
-	if envelope, ok := s.envelopeCache.Get(height); ok {
-		return envelope
-	}
-	return nil
-}
-
-// setCachedEnvelope stores an envelope in the cache.
-// Does not cache heights that have already been submitted.
-func (s *DASubmitter) setCachedEnvelope(height uint64, envelope []byte) {
-	if s.envelopeCache == nil {
-		return
-	}
-	// Don't cache already-submitted heights
-	if height <= s.lastSubmittedHeight.Load() {
-		return
-	}
-	s.envelopeCache.Add(height, envelope)
-}
-
-// signData signs unsigned SignedData structs returned from cache
-func (s *DASubmitter) signData(ctx context.Context, unsignedDataList []*types.SignedData, unsignedDataListBz [][]byte, signer signer.Signer, genesis genesis.Genesis) ([]*types.SignedData, [][]byte, error) {
-	if signer == nil {
-		return nil, nil, fmt.Errorf("signer is nil")
-	}
-
-	pubKey, err := signer.GetPublic()
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get public key: %w", err)
-	}
-
-	addr, err := signer.GetAddress()
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get address: %w", err)
-	}
-
-	if len(genesis.ProposerAddress) > 0 && !bytes.Equal(addr, genesis.ProposerAddress) {
-		return nil, nil, fmt.Errorf("signer address mismatch with genesis proposer")
-	}
-
-	signerInfo := types.Signer{
-		PubKey:  pubKey,
-		Address: addr,
-	}
-
-	signedDataList := make([]*types.SignedData, 0, len(unsignedDataList))
-	signedDataListBz := make([][]byte, 0, len(unsignedDataListBz))
-
-	for i, unsignedData := range unsignedDataList {
-		// Skip empty data
-		if len(unsignedData.Txs) == 0 {
-			continue
-		}
-
-		signature, err := signer.Sign(ctx, unsignedDataListBz[i])
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to sign data: %w", err)
-		}
-
-		signedData := &types.SignedData{
-			Data:      unsignedData.Data,
-			Signer:    signerInfo,
-			Signature: signature,
-		}
-
-		signedDataList = append(signedDataList, signedData)
-
-		signedDataBz, err := signedData.MarshalBinary()
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to marshal signed data: %w", err)
-		}
-
-		signedDataListBz = append(signedDataListBz, signedDataBz)
-	}
-
-	return signedDataList, signedDataListBz, nil
-}
-
 // mergeSubmitOptions merges the base submit options with a signing address.
 // If the base options are valid JSON, the signing address is added to the JSON object.
 // Otherwise, a new JSON object is created with just the signing address.
@@ -740,7 +456,6 @@ func mergeSubmitOptions(baseOptions []byte, signingAddress string) ([]byte, erro
 	}
 
 	// Add or override the signing address
-	// Note: Uses "signer_address" to match Celestia's TxConfig JSON schema
 	optionsMap["signer_address"] = signingAddress
 
 	// Marshal back to JSON

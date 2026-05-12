@@ -23,20 +23,10 @@ import (
 	"github.com/evstack/ev-node/pkg/signer/noop"
 	"github.com/evstack/ev-node/pkg/store"
 	testmocks "github.com/evstack/ev-node/test/mocks"
-	extmocks "github.com/evstack/ev-node/test/mocks/external"
-	"github.com/evstack/ev-node/types"
 )
 
-// noopDAHintAppender is a no-op implementation of DAHintAppender for testing
-type noopDAHintAppender struct{}
-
-func (n noopDAHintAppender) AppendDAHint(ctx context.Context, daHeight uint64, heights ...uint64) error {
-	return nil
-}
-
+// Test the error channel mechanism works as intended
 func TestBlockComponents_ExecutionClientFailure_StopsNode(t *testing.T) {
-	// Test the error channel mechanism works as intended
-
 	// Create a mock component that simulates execution client failure
 	errorCh := make(chan error, 1)
 	criticalError := errors.New("execution client connection lost")
@@ -62,13 +52,13 @@ func TestBlockComponents_ExecutionClientFailure_StopsNode(t *testing.T) {
 	assert.Contains(t, err.Error(), "execution client connection lost")
 }
 
+// Simple lifecycle test without creating full components
 func TestBlockComponents_StartStop_Lifecycle(t *testing.T) {
-	// Simple lifecycle test without creating full components
+	// Test that Start and Stop work without hanging
 	bc := &Components{
 		errorCh: make(chan error, 1),
 	}
 
-	// Test that Start and Stop work without hanging
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
@@ -96,26 +86,12 @@ func TestNewSyncComponents_Creation(t *testing.T) {
 	daClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 	daClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
 
-	// Create mock P2P stores
-	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
-	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
-
-	// Create noop DAHintAppenders for testing
-	headerHintAppender := noopDAHintAppender{}
-	dataHintAppender := noopDAHintAppender{}
-
-	// Just test that the constructor doesn't panic - don't start the components
-	// to avoid P2P store dependencies
 	components, err := NewSyncComponents(
 		cfg,
 		gen,
 		memStore,
 		mockExec,
 		daClient,
-		mockHeaderStore,
-		mockDataStore,
-		headerHintAppender,
-		dataHintAppender,
 		zerolog.Nop(),
 		NopMetrics(),
 		DefaultBlockOptions(),
@@ -171,12 +147,10 @@ func TestNewAggregatorComponents_Creation(t *testing.T) {
 		mockSeq,
 		daClient,
 		mockSigner,
-		nil, // header broadcaster
-		nil, // data broadcaster
 		zerolog.Nop(),
 		NopMetrics(),
 		DefaultBlockOptions(),
-		nil, // raftNode
+		nil,
 	)
 
 	require.NoError(t, err)
@@ -189,9 +163,9 @@ func TestNewAggregatorComponents_Creation(t *testing.T) {
 	assert.Nil(t, components.Syncer) // Aggregator nodes currently don't create syncers in this constructor
 }
 
+// This test verifies that when the executor's execution client calls fail,
+// the error is properly propagated through the error channel and stops the node
 func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
-	// This test verifies that when the executor's execution client calls fail,
-	// the error is properly propagated through the error channel and stops the node
 	synctest.Test(t, func(t *testing.T) {
 		ds := sync.MutexWrap(datastore.NewMapDatastore())
 		memStore := store.New(ds)
@@ -255,12 +229,10 @@ func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
 			mockSeq,
 			daClient,
 			testSigner,
-			nil, // header broadcaster
-			nil, // data broadcaster
 			zerolog.Nop(),
 			NopMetrics(),
 			DefaultBlockOptions(),
-			nil, // raftNode
+			nil,
 		)
 		require.NoError(t, err)
 

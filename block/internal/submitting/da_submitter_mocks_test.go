@@ -33,7 +33,7 @@ func newTestBatchSubmitter(t *testing.T, mockClient *mocks.MockClient, override 
 	mockClient.On("GetDataNamespace").Return([]byte(cfg.DA.DataNamespace)).Maybe()
 	mockClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 	mockClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
-	return NewDASubmitter(mockClient, cfg, genesis.Genesis{}, common.BlockOptions{}, common.NopMetrics(), zerolog.Nop(), nil, nil)
+	return NewDASubmitter(mockClient, cfg, genesis.Genesis{}, common.BlockOptions{}, common.NopMetrics(), zerolog.Nop())
 }
 
 func TestSubmitWithRetry_MempoolRetry_Succeeds(t *testing.T) {
