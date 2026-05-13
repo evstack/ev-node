@@ -28,6 +28,10 @@ type DARetriever interface {
 	ProcessBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent
 }
 
+type pendingDataCleaner interface {
+	removePendingData(height uint64)
+}
+
 // daRetriever handles DA retrieval operations for syncing
 type daRetriever struct {
 	client  da.Client
@@ -213,7 +217,6 @@ func (r *daRetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 			}
 		} else {
 			delete(r.pendingHeaders, height)
-			delete(r.pendingData, height)
 		}
 
 		// Create height event
@@ -243,6 +246,13 @@ func (r *daRetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 	}
 
 	return events
+}
+
+func (r *daRetriever) removePendingData(height uint64) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	delete(r.pendingData, height)
 }
 
 // tryDecodeHeader attempts to decode a blob as a header

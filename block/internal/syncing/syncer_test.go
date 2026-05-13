@@ -425,15 +425,18 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 	lastState := s.getLastState()
 	data := makeData(gen.ChainID, 1, 0)
 	_, hdr := makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, lastState.AppHash, data, nil)
+	daRetriever := &daRetriever{pendingData: map[uint64]*types.Data{1: data}}
+	s.daRetriever = daRetriever
 
 	// Expect ExecuteTxs call for height 1
 	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.Anything, lastState.AppHash).
 		Return([]byte("app1"), nil).Once()
 
-	evt := common.DAHeightEvent{Header: hdr, Data: data, DaHeight: 1}
+	evt := common.DAHeightEvent{Header: hdr, Data: data, Source: common.SourceDA, DaHeight: 1}
 	s.processHeightEvent(t.Context(), &evt)
 
 	requireEmptyChan(t, errChan)
+	require.NotContains(t, daRetriever.pendingData, uint64(1), "accepted DA data should be removed from the retriever pending data")
 	h, err := st.Height(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, uint64(1), h)

@@ -827,6 +827,12 @@ func (s *Syncer) trySyncNextBlockWithState(ctx context.Context, event *common.DA
 		s.p2pHandler.SetProcessedHeight(newState.LastBlockHeight)
 	}
 
+	if event.Source == common.SourceDA {
+		if cleaner, ok := s.daRetriever.(pendingDataCleaner); ok {
+			cleaner.removePendingData(nextHeight)
+		}
+	}
+
 	return nil
 }
 
