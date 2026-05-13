@@ -30,11 +30,10 @@ type DAFollower interface {
 
 // daFollower is the concrete implementation of DAFollower.
 type daFollower struct {
-	subscriber    *da.Subscriber
-	retriever     DARetriever
-	eventSink     common.EventSink
-	logger        zerolog.Logger
-	startDAHeight uint64
+	subscriber *da.Subscriber
+	retriever  DARetriever
+	eventSink  common.EventSink
+	logger     zerolog.Logger
 
 	// Priority queue for P2P hint heights (absorbed from DARetriever refactoring #2).
 	priorityMu      sync.Mutex
@@ -69,7 +68,6 @@ func NewDAFollower(cfg DAFollowerConfig) DAFollower {
 		retriever:       cfg.Retriever,
 		eventSink:       cfg.EventSink,
 		logger:          cfg.Logger.With().Str("component", "da_follower").Logger(),
-		startDAHeight:   cfg.StartDAHeight,
 		priorityHeights: make([]uint64, 0),
 	}
 

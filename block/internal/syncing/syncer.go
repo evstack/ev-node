@@ -93,6 +93,10 @@ type Syncer struct {
 	// filled.
 	walkbackActive atomic.Bool
 
+	// walkbackCooldownUntil prevents tight oscillation during sustained P2P
+	// stall by throttling walkback steps.
+	walkbackCooldownUntil atomic.Int64 // unix nanoseconds
+
 	// Forced inclusion tracking
 	forcedInclusionMu    sync.RWMutex
 	seenBlockTxs         map[string]struct{} // SHA-256 hex of every tx seen in a DA-sourced block
@@ -543,6 +547,10 @@ func (s *Syncer) walkbackCheck(daHeight uint64, events []common.DAHeightEvent) u
 		return 0
 	}
 
+	if until := s.walkbackCooldownUntil.Load(); until > 0 && time.Now().UnixNano() < until {
+		return 0
+	}
+
 	nodeHeight, err := s.store.Height(s.ctx)
 	if err != nil {
 		return 0
@@ -565,6 +573,8 @@ func (s *Syncer) walkbackCheck(daHeight uint64, events []common.DAHeightEvent) u
 
 	if needsWalkback {
 		s.walkbackActive.Store(true)
+		const walkbackCooldown = 2 * time.Second
+		s.walkbackCooldownUntil.Store(time.Now().Add(walkbackCooldown).UnixNano())
 		s.logger.Info().
 			Uint64("da_height", daHeight).
 			Uint64("node_height", nodeHeight).
