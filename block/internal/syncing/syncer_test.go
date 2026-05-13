@@ -214,6 +214,144 @@ func TestSyncer_ValidateBlock_UsesStateNextProposer(t *testing.T) {
 	require.Contains(t, err.Error(), "unexpected proposer")
 }
 
+func TestSyncer_TrySyncNextBlock_ClassifiesExternalValidationFailures(t *testing.T) {
+	expectedAddr, expectedPub, expectedSigner := buildSyncTestSigner(t)
+	wrongAddr, wrongPub, wrongSigner := buildSyncTestSigner(t)
+
+	now := time.Now()
+	baseState := types.State{
+		ChainID:             "tchain",
+		InitialHeight:       1,
+		LastBlockHeight:     1,
+		LastBlockTime:       now,
+		LastHeaderHash:      []byte("last-header-hash"),
+		AppHash:             []byte("app0"),
+		NextProposerAddress: expectedAddr,
+	}
+
+	makeSyncer := func(tb testing.TB) *Syncer {
+		tb.Helper()
+		ds := dssync.MutexWrap(datastore.NewMapDatastore())
+		st := store.New(ds)
+		cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+		require.NoError(tb, err)
+
+		return &Syncer{
+			cache:   cm,
+			logger:  zerolog.Nop(),
+			options: common.DefaultBlockOptions(),
+		}
+	}
+
+	makeEvent := func(tb testing.TB, chainID string, proposer []byte, pub crypto.PubKey, signer signerpkg.Signer, appHash []byte, data *types.Data) common.DAHeightEvent {
+		tb.Helper()
+		_, header := makeSignedHeaderBytes(tb, chainID, 2, proposer, pub, signer, appHash, data, baseState.LastHeaderHash)
+		return common.DAHeightEvent{
+			Header: header,
+			Data:   data,
+			Source: common.SourceDA,
+		}
+	}
+
+	tests := map[string]struct {
+		event       func(testing.TB) common.DAHeightEvent
+		wantState   bool
+		wantInvalid bool
+	}{
+		"wrong proposer with bad app hash is an invalid external block": {
+			event: func(tb testing.TB) common.DAHeightEvent {
+				data := makeData(baseState.ChainID, 2, 1)
+				data.Metadata.Time = uint64(now.Add(time.Second).UnixNano())
+				return makeEvent(tb, baseState.ChainID, wrongAddr, wrongPub, wrongSigner, []byte("forged-app"), data)
+			},
+			wantInvalid: true,
+		},
+		"wrong chain ID is an invalid external block": {
+			event: func(tb testing.TB) common.DAHeightEvent {
+				data := makeData("other-chain", 2, 1)
+				data.Metadata.Time = uint64(now.Add(time.Second).UnixNano())
+				return makeEvent(tb, "other-chain", expectedAddr, expectedPub, expectedSigner, baseState.AppHash, data)
+			},
+			wantInvalid: true,
+		},
+		"data hash mismatch is an invalid external block": {
+			event: func(tb testing.TB) common.DAHeightEvent {
+				headerData := makeData(baseState.ChainID, 2, 1)
+				headerData.Metadata.Time = uint64(now.Add(time.Second).UnixNano())
+				event := makeEvent(tb, baseState.ChainID, expectedAddr, expectedPub, expectedSigner, baseState.AppHash, headerData)
+				event.Data = makeData(baseState.ChainID, 2, 2)
+				event.Data.Metadata.Time = headerData.Metadata.Time
+				return event
+			},
+			wantInvalid: true,
+		},
+		"header data metadata mismatch is an invalid external block": {
+			event: func(tb testing.TB) common.DAHeightEvent {
+				headerData := makeData(baseState.ChainID, 2, 1)
+				headerData.Metadata.Time = uint64(now.Add(time.Second).UnixNano())
+				event := makeEvent(tb, baseState.ChainID, expectedAddr, expectedPub, expectedSigner, baseState.AppHash, headerData)
+				event.Data = &types.Data{
+					Metadata: &types.Metadata{
+						ChainID: baseState.ChainID,
+						Height:  3,
+						Time:    headerData.Metadata.Time,
+					},
+					Txs: headerData.Txs,
+				}
+				return event
+			},
+			wantInvalid: true,
+		},
+		"expected proposer with bad app hash is invalid state": {
+			event: func(tb testing.TB) common.DAHeightEvent {
+				data := makeData(baseState.ChainID, 2, 1)
+				data.Metadata.Time = uint64(now.Add(time.Second).UnixNano())
+				return makeEvent(tb, baseState.ChainID, expectedAddr, expectedPub, expectedSigner, []byte("wrong-app"), data)
+			},
+			wantState: true,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			event := tc.event(t)
+			err := makeSyncer(t).trySyncNextBlockWithState(t.Context(), &event, baseState)
+			require.Error(t, err)
+			assert.Equal(t, tc.wantInvalid, errors.Is(err, errInvalidBlock), "invalid block classification")
+			assert.Equal(t, tc.wantState, errors.Is(err, errInvalidState), "invalid state classification")
+		})
+	}
+}
+
+func TestSyncer_ValidateBlock_RejectsSignerAddressNotDerivedFromPubKey(t *testing.T) {
+	expectedAddr, _, _ := buildSyncTestSigner(t)
+	_, attackerPub, attackerSigner := buildSyncTestSigner(t)
+
+	now := time.Now()
+	state := types.State{
+		ChainID:             "tchain",
+		InitialHeight:       1,
+		LastBlockHeight:     1,
+		LastBlockTime:       now,
+		LastHeaderHash:      []byte("last-header-hash"),
+		AppHash:             []byte("app0"),
+		NextProposerAddress: expectedAddr,
+	}
+
+	data := makeData(state.ChainID, 2, 1)
+	data.Metadata.Time = uint64(now.Add(time.Second).UnixNano())
+	_, header := makeSignedHeaderBytes(t, state.ChainID, 2, expectedAddr, attackerPub, attackerSigner, state.AppHash, data, state.LastHeaderHash)
+
+	s := &Syncer{
+		logger:  zerolog.Nop(),
+		options: common.DefaultBlockOptions(),
+	}
+
+	err := s.ValidateBlock(t.Context(), state, data, header)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "signer address")
+}
+
 func TestSyncer_ApplyBlockPersistsExecutionNextProposer(t *testing.T) {
 	addr, _, _ := buildSyncTestSigner(t)
 	execNext := []byte("execution-next-proposer")

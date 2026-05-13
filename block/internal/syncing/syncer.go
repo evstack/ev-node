@@ -897,10 +897,26 @@ func (s *Syncer) ValidateBlock(_ context.Context, currState types.State, data *t
 		return fmt.Errorf("invalid header: %w", err)
 	}
 
+	if err := currState.AssertExpectedProposer(header); err != nil {
+		return errors.Join(errInvalidBlock, err)
+	}
+
 	if err := currState.AssertValidForNextState(header, data); err != nil {
+		if isExternalBlockValidationError(err) {
+			return errors.Join(errInvalidBlock, err)
+		}
 		return errors.Join(errInvalidState, err)
 	}
 	return nil
+}
+
+func isExternalBlockValidationError(err error) bool {
+	return errors.Is(err, types.ErrUnexpectedProposer) ||
+		errors.Is(err, types.ErrInvalidChainID) ||
+		errors.Is(err, types.ErrInvalidBlockHeight) ||
+		errors.Is(err, types.ErrInvalidBlockTime) ||
+		errors.Is(err, types.ErrHeaderDataMismatch) ||
+		errors.Is(err, types.ErrDataHashMismatch)
 }
 
 var errMaliciousProposer = errors.New("malicious proposer detected")

@@ -102,6 +102,12 @@ var (
 	// ErrProposerAddressMismatch is returned when the proposer address in the signed header does not match the proposer address in the validator set
 	ErrProposerAddressMismatch = errors.New("proposer address in SignedHeader does not match the proposer address in the validator set")
 
+	// ErrSignerPubKeyMissing is returned when the signed header does not include the signer public key.
+	ErrSignerPubKeyMissing = errors.New("signer public key is missing")
+
+	// ErrSignerAddressMismatch is returned when the signer address does not derive from the signer public key.
+	ErrSignerAddressMismatch = errors.New("signer address does not match signer public key")
+
 	// ErrSignatureEmpty is returned when signature is empty
 	ErrSignatureEmpty = errors.New("signature is empty")
 )
@@ -113,6 +119,10 @@ func (sh *SignedHeader) ValidateBasic() error {
 	}
 
 	if err := sh.Signature.ValidateBasic(); err != nil {
+		return err
+	}
+
+	if err := sh.validateSignerIdentity(); err != nil {
 		return err
 	}
 
@@ -195,6 +205,10 @@ func (sh *SignedHeader) ValidateBasicWithData(data *Data) error {
 		return err
 	}
 
+	if err := sh.validateSignerIdentity(); err != nil {
+		return err
+	}
+
 	// Check that the proposer address in the signed header matches the proposer address in the validator set
 	if !bytes.Equal(sh.ProposerAddress, sh.Signer.Address) {
 		return ErrProposerAddressMismatch
@@ -262,4 +276,14 @@ func (sh *SignedHeader) ValidateBasicWithData(data *Data) error {
 	}
 
 	return ErrSignatureVerificationFailed
+}
+
+func (sh *SignedHeader) validateSignerIdentity() error {
+	if sh.Signer.PubKey == nil {
+		return ErrSignerPubKeyMissing
+	}
+	if !bytes.Equal(KeyAddress(sh.Signer.PubKey), sh.Signer.Address) {
+		return ErrSignerAddressMismatch
+	}
+	return nil
 }

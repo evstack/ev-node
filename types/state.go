@@ -21,6 +21,23 @@ var InitStateVersion = Version{
 // different from the proposer expected by the current state.
 var ErrUnexpectedProposer = errors.New("unexpected proposer")
 
+var (
+	// ErrInvalidChainID is returned when a header belongs to a different chain than the current state.
+	ErrInvalidChainID = errors.New("invalid chain ID")
+
+	// ErrInvalidBlockHeight is returned when a header is not the next height after the current state.
+	ErrInvalidBlockHeight = errors.New("invalid block height")
+
+	// ErrInvalidBlockTime is returned when a header time is earlier than the current state's block time.
+	ErrInvalidBlockTime = errors.New("invalid block time")
+
+	// ErrInvalidLastHeaderHash is returned when a header does not link to the current state's last header.
+	ErrInvalidLastHeaderHash = errors.New("invalid last header hash")
+
+	// ErrInvalidLastAppHash is returned when a header does not reference the current state's app hash.
+	ErrInvalidLastAppHash = errors.New("invalid last app hash")
+)
+
 // State contains information about current state of the blockchain.
 type State struct {
 	Version Version
@@ -74,6 +91,10 @@ func (s *State) NextState(header Header, stateRoot []byte, nextProposerAddress .
 // AssertValidForNextState performs common validation of a header and data against the current state.
 // It assumes any context-specific basic header checks and verifier setup have already been performed
 func (s State) AssertValidForNextState(header *SignedHeader, data *Data) error {
+	if err := s.AssertExpectedProposer(header); err != nil {
+		return err
+	}
+
 	if err := s.AssertValidSequence(header); err != nil {
 		return err
 	}
@@ -81,6 +102,11 @@ func (s State) AssertValidForNextState(header *SignedHeader, data *Data) error {
 	if err := Validate(header, data); err != nil {
 		return fmt.Errorf("header-data validation failed: %w", err)
 	}
+	return nil
+}
+
+// AssertExpectedProposer checks that the header was signed by the proposer expected for the next block.
+func (s State) AssertExpectedProposer(header *SignedHeader) error {
 	if len(s.NextProposerAddress) > 0 && !bytes.Equal(header.ProposerAddress, s.NextProposerAddress) {
 		return fmt.Errorf("%w - got: %x, want: %x", ErrUnexpectedProposer, header.ProposerAddress, s.NextProposerAddress)
 	}
@@ -95,7 +121,7 @@ var (
 // AssertValidSequence performs lightweight state-sequence validation for self-produced blocks.
 func (s State) AssertValidSequence(header *SignedHeader) error {
 	if header.ChainID() != s.ChainID {
-		return fmt.Errorf("invalid chain ID - got %s, want %s", header.ChainID(), s.ChainID)
+		return fmt.Errorf("%w - got %s, want %s", ErrInvalidChainID, header.ChainID(), s.ChainID)
 	}
 
 	if len(s.LastHeaderHash) == 0 { // initial state
@@ -103,11 +129,11 @@ func (s State) AssertValidSequence(header *SignedHeader) error {
 	}
 
 	if expdHeight := s.LastBlockHeight + 1; header.Height() != expdHeight {
-		return fmt.Errorf("invalid block height - got: %d, want: %d", header.Height(), expdHeight)
+		return fmt.Errorf("%w - got: %d, want: %d", ErrInvalidBlockHeight, header.Height(), expdHeight)
 	}
 
 	if headerTime := header.Time(); s.LastBlockTime.After(headerTime) {
-		return fmt.Errorf("invalid block time - got: %v, last: %v", headerTime, s.LastBlockTime)
+		return fmt.Errorf("%w - got: %v, last: %v", ErrInvalidBlockTime, headerTime, s.LastBlockTime)
 	}
 
 	// Trick to support the switch from a base sequencer to a normal syncing node.
@@ -115,7 +141,7 @@ func (s State) AssertValidSequence(header *SignedHeader) error {
 	// newly derived header hash when a base sequencer have switched to a syncing node
 	if !bytes.Equal(header.LastHeaderHash, s.LastHeaderHash) {
 		if lastHeaderHashErrCount == 1 {
-			return fmt.Errorf("invalid last header hash - got: %x, want: %x", header.LastHeaderHash, s.LastHeaderHash)
+			return fmt.Errorf("%w - got: %x, want: %x", ErrInvalidLastHeaderHash, header.LastHeaderHash, s.LastHeaderHash)
 		}
 
 		basedSequencerTracking.Do(func() {
@@ -124,7 +150,7 @@ func (s State) AssertValidSequence(header *SignedHeader) error {
 	}
 
 	if !bytes.Equal(header.AppHash, s.AppHash) {
-		return fmt.Errorf("invalid last app hash - got: %x, want: %x", header.AppHash, s.AppHash)
+		return fmt.Errorf("%w - got: %x, want: %x", ErrInvalidLastAppHash, header.AppHash, s.AppHash)
 	}
 
 	return nil
