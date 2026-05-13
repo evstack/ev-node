@@ -97,6 +97,6 @@ packages:
     interfaces:
       ForcedInclusionRetriever:
         config:
-          dir: ./pkg/sequencers/common
-          pkgname: common
+          dir: ./pkg/sequencers/based
+          pkgname: based
           filename: forced_inclusion_retriever_mock.go

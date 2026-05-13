@@ -15,7 +15,7 @@ import (
 // BenchmarkKmsSignerSign test kms round trip
 // export EVNODE_E2E_AWS_KMS_KEY_ID="arn:aws:kms:...."
 // export EVNODE_E2E_AWS_KMS_REGION=eu-west-1
-// go test  -v -bench=BenchmarkKmsSignerSign -benchtime=3s -count=10 -run='^$' ./pkg/signer/aws
+// go test -v -bench=BenchmarkKmsSignerSign -benchtime=3s -count=10 -run='^$' ./pkg/signer/aws
 func BenchmarkKmsSignerSign(b *testing.B) {
 	keyName := os.Getenv("EVNODE_E2E_GCP_KMS_KEY_NAME")
 	if keyName == "" {

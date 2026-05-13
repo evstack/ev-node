@@ -562,7 +562,7 @@ func TestSubmitter_CacheClearedOnHeightInclusion(t *testing.T) {
 //
 // Scenario:
 //  1. Node runs normally: heights 1–3 are DA-included, height 3 is in-flight
-//     (submitted to DA but not yet finalized).  SetHeaderDAIncluded writes both
+//     (submitted to DA but not yet finalized). SetHeaderDAIncluded writes both
 //     the real-hash entry AND the snapshot key.
 //  2. Node restarts: a fresh Manager is constructed on the same store.
 //     RestoreFromStore reads the snapshot and installs placeholder entries

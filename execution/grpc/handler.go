@@ -25,6 +25,7 @@ import (
 // - http.Handler: The configured HTTP handler
 func NewExecutorServiceHandler(executor execution.Executor, opts ...connect.HandlerOption) http.Handler {
 	server := NewServer(executor)
+	opts = append([]connect.HandlerOption{connect.WithInterceptors(inboundPropagationInterceptor())}, opts...)
 
 	mux := http.NewServeMux()
 

@@ -297,7 +297,7 @@ func TestHeightPlaceholderKey(t *testing.T) {
 // TestCache_NoPlaceholderLeakAfterRefire verifies that when the DA retriever
 // re-fires setDAIncluded with the real content hash after a restart, the
 // snapshot placeholder that RestoreFromStore installed is evicted from
-// daIncluded.  Without the eviction in setDAIncluded, every restart cycle
+// daIncluded. Without the eviction in setDAIncluded, every restart cycle
 // would leak one orphaned placeholder key per in-flight block.
 func TestCache_NoPlaceholderLeakAfterRefire(t *testing.T) {
 	st := testMemStore(t)

@@ -98,6 +98,7 @@ func NewClient(url string, opts ...connect.ClientOption) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	opts = append([]connect.ClientOption{connect.WithInterceptors(outboundPropagationInterceptor())}, opts...)
 	return &Client{
 		client: v1connect.NewExecutorServiceClient(
 			httpClient,
