@@ -497,6 +497,7 @@ func (s *Syncer) p2pWorkerLoop(ctx context.Context) {
 		s.setP2PWaitState(targetHeight, cancel)
 
 		err = s.p2pHandler.ProcessHeight(waitCtx, targetHeight, s.heightInCh)
+		wasExternallyCancelled := waitCtx.Err() != nil
 		s.cancelP2PWait(targetHeight)
 
 		if err != nil {
@@ -504,7 +505,7 @@ func (s *Syncer) p2pWorkerLoop(ctx context.Context) {
 				continue
 			}
 
-			if waitCtx.Err() == nil {
+			if !wasExternallyCancelled {
 				s.p2pStalled.Store(true)
 				logger.Warn().Err(err).Uint64("height", targetHeight).Msg("P2P handler failed to process height")
 			}
