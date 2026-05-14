@@ -5,12 +5,14 @@ package benchmark
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	tastoradocker "github.com/celestiaorg/tastora/framework/docker"
 	"github.com/celestiaorg/tastora/framework/docker/evstack/reth"
 	"github.com/celestiaorg/tastora/framework/docker/evstack/spamoor"
+	"github.com/celestiaorg/tastora/framework/docker/victoriatraces"
 	"github.com/celestiaorg/tastora/framework/testutil/maps"
 	tastoratypes "github.com/celestiaorg/tastora/framework/types"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -74,8 +76,11 @@ func (s *SpamoorSuite) setupLocalEnv(cfg benchConfig) *env {
 	sut := e2e.NewSystemUnderTest(t)
 
 	// victoriatraces
-	vtCfg := victoriaTracesConfig{Logger: zaptest.NewLogger(t), DockerClient: s.dockerCli, DockerNetworkID: s.networkID}
-	vt, err := newVictoriaTracesNode(ctx, vtCfg, t.Name(), 0)
+	vt, err := victoriatraces.New(ctx, victoriatraces.Config{
+		Logger:          zaptest.NewLogger(t),
+		DockerClient:    s.dockerCli,
+		DockerNetworkID: s.networkID,
+	}, t.Name(), 0)
 	s.Require().NoError(err, "failed to create victoriatraces node")
 	t.Cleanup(func() { _ = vt.Remove(t.Context()) })
 	s.Require().NoError(vt.Start(ctx), "failed to start victoriatraces node")
@@ -107,7 +112,9 @@ func (s *SpamoorSuite) setupLocalEnv(cfg benchConfig) *env {
 
 	// sequencer with tracing
 	sequencerHome := filepath.Join(t.TempDir(), "sequencer")
-	otlpHTTP := vt.External.IngestHTTPEndpoint()
+	// sequencer runs locally (not in Docker), so replace 0.0.0.0 with 127.0.0.1
+	// since macOS cannot connect to 0.0.0.0 as a destination address.
+	otlpHTTP := strings.Replace(vt.External.IngestHTTPEndpoint(), "0.0.0.0", "127.0.0.1", 1)
 	e2e.SetupSequencerNode(t, sut, sequencerHome, evmEnv.SequencerJWT, evmEnv.GenesisHash, evmEnv.Endpoints,
 		"--evnode.instrumentation.tracing=true",
 		"--evnode.instrumentation.tracing_endpoint", otlpHTTP,
@@ -128,7 +135,7 @@ func (s *SpamoorSuite) setupLocalEnv(cfg benchConfig) *env {
 	s.Require().NoError(err, "failed to get reth network info")
 	internalRPC := "http://" + ni.Internal.RPCAddress()
 
-	spBuilder := newSpamoorNodeBuilder(t.Name()).
+	spBuilder := spamoor.NewNodeBuilder(t.Name()).
 		WithDockerClient(evmEnv.RethNode.DockerClient).
 		WithDockerNetworkID(evmEnv.RethNode.NetworkID).
 		WithLogger(evmEnv.RethNode.Logger).
@@ -148,7 +155,7 @@ func (s *SpamoorSuite) setupLocalEnv(cfg benchConfig) *env {
 
 	return &env{
 		traces: &victoriaTraceProvider{
-			queryURL:  vt.External.QueryURL(),
+			queryURL:  strings.TrimRight(strings.Replace(vt.External.QueryURL(), "0.0.0.0", "127.0.0.1", 1), "/"),
 			t:         t,
 			startTime: time.Now(),
 		},
@@ -178,7 +185,7 @@ func (s *SpamoorSuite) setupExternalEnv(cfg benchConfig, rpcURL string) *env {
 
 	// spamoor — connects to the external RPC via host networking so it can
 	// resolve the same hostnames as the host machine.
-	spBuilder := newSpamoorNodeBuilder(t.Name()).
+	spBuilder := spamoor.NewNodeBuilder(t.Name()).
 		WithDockerClient(s.dockerCli).
 		WithDockerNetworkID(s.networkID).
 		WithLogger(zaptest.NewLogger(t)).
@@ -204,7 +211,7 @@ func (s *SpamoorSuite) setupExternalEnv(cfg benchConfig, rpcURL string) *env {
 
 	return &env{
 		traces: &victoriaTraceProvider{
-			queryURL:  traceURL,
+			queryURL:  strings.TrimRight(traceURL, "/"),
 			t:         t,
 			startTime: time.Now(),
 		},
