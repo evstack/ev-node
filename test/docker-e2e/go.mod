@@ -1,10 +1,10 @@
 module github.com/evstack/ev-node/test/docker-e2e
 
-go 1.25.7
+go 1.25.8
 
 require (
 	cosmossdk.io/math v1.5.3
-	github.com/celestiaorg/tastora v0.19.0
+	github.com/celestiaorg/tastora v0.20.0
 	github.com/ethereum/go-ethereum v1.17.2
 	github.com/evstack/ev-node/execution/evm v1.0.1
 	github.com/libp2p/go-libp2p v0.48.0
@@ -186,7 +186,7 @@ require (
 	github.com/improbable-eng/grpc-web v0.15.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jmhodges/levigo v1.0.0 // indirect
-	github.com/klauspost/compress v1.18.0 // indirect
+	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/lib/pq v1.10.9 // indirect

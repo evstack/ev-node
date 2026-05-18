@@ -5,7 +5,7 @@ go 1.25.8
 require (
 	cosmossdk.io/math v1.5.3
 	github.com/celestiaorg/go-square/v3 v3.0.2
-	github.com/celestiaorg/tastora v0.19.0
+	github.com/celestiaorg/tastora v0.20.0
 	github.com/cosmos/cosmos-sdk v0.53.6
 	github.com/cosmos/ibc-go/v8 v8.8.0
 	github.com/ethereum/go-ethereum v1.17.2
@@ -350,5 +350,3 @@ require (
 	pgregory.net/rapid v1.2.0 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
-
-replace github.com/celestiaorg/tastora => /Users/chatton/checkouts/celestiaorg/tastora
