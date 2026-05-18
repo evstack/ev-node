@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1779098853434,
+  "lastUpdate": 1779098857217,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -338,6 +338,102 @@ window.BENCHMARK_DATA = {
             "value": 54,
             "unit": "allocs/op",
             "extra": "27326 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "github.qpeyb@simplelogin.fr",
+            "name": "Cian Hatton",
+            "username": "chatton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "890438743e3f5c74e4563fbd229759d8e449bdc9",
+          "message": "chore: using v0.20.0 tag of tastora and removing temporary duplication (#3326)\n\n* refactor: use tastora spamoor and victoriatraces implementations\n\nReplace local spamoor_node.go and victoriatraces_node.go with tastora's\nspamoor.NewNodeBuilder and victoriatraces.New. Fixes macOS compatibility\nby replacing 0.0.0.0 with 127.0.0.1 for external endpoints and using\nUTC timestamps in trace query URLs to avoid broken timezone offsets.\n\n* build(deps): bump tastora to v0.20.0 and remove local replace\n\nRemove the local filesystem replace directive for tastora in\ntest/e2e/go.mod now that v0.20.0 is published.\n\n* build: bump go directive to 1.25.8\n\nRequired by tastora v0.20.0. Aligns root and execution/evm\nwith the other modules already at 1.25.8.",
+          "timestamp": "2026-05-18T12:03:09+02:00",
+          "tree_id": "0820ca693f7423abc20da38da593de2ba6cb9557",
+          "url": "https://github.com/evstack/ev-node/commit/890438743e3f5c74e4563fbd229759d8e449bdc9"
+        },
+        "date": 1779098856300,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 39482,
+            "unit": "ns/op\t    4802 B/op\t      50 allocs/op",
+            "extra": "30817 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 39482,
+            "unit": "ns/op",
+            "extra": "30817 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 4802,
+            "unit": "B/op",
+            "extra": "30817 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 50,
+            "unit": "allocs/op",
+            "extra": "30817 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 40255,
+            "unit": "ns/op\t    5007 B/op\t      54 allocs/op",
+            "extra": "30358 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 40255,
+            "unit": "ns/op",
+            "extra": "30358 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 5007,
+            "unit": "B/op",
+            "extra": "30358 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 54,
+            "unit": "allocs/op",
+            "extra": "30358 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 46400,
+            "unit": "ns/op\t   10305 B/op\t      54 allocs/op",
+            "extra": "26276 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 46400,
+            "unit": "ns/op",
+            "extra": "26276 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 10305,
+            "unit": "B/op",
+            "extra": "26276 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 54,
+            "unit": "allocs/op",
+            "extra": "26276 times\n4 procs"
           }
         ]
       }
