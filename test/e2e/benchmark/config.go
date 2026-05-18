@@ -74,7 +74,7 @@ func envOrDefault(key, fallback string) string {
 }
 
 // envInt returns the integer value of the given env var, or fallback if unset
-// or unparseable. Invalid values silently fall back to the default.
+// or unparsable. Invalid values silently fall back to the default.
 func envInt(key string, fallback int) int {
 	v := os.Getenv(key)
 	if v == "" {
@@ -88,7 +88,7 @@ func envInt(key string, fallback int) int {
 }
 
 // envDuration returns the duration value of the given env var (e.g. "5m", "30s"),
-// or fallback if unset or unparseable.
+// or fallback if unset or unparsable.
 func envDuration(key string, fallback time.Duration) time.Duration {
 	v := os.Getenv(key)
 	if v == "" {

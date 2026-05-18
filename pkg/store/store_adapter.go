@@ -434,7 +434,7 @@ func (a *StoreAdapter[H]) Tail(ctx context.Context) (H, error) {
 		}
 	}
 
-	// shoud never happen
+	// should never happen
 	return zero, header.ErrEmptyStore
 }
 
