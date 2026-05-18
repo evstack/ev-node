@@ -164,7 +164,6 @@ func (s *blobServer) Subscribe(ctx context.Context, namespace libshare.Namespace
 	return out, nil
 }
 
-// startBlobServer starts an HTTP JSON-RPC server on addr serving the blob namespace.
 // headerServer exposes a minimal Celestia-like header RPC surface backed by LocalDA.
 type headerServer struct {
 	da     *LocalDA

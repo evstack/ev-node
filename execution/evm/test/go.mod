@@ -1,9 +1,9 @@
 module github.com/evstack/ev-node/execution/evm/test
 
-go 1.25.7
+go 1.25.8
 
 require (
-	github.com/celestiaorg/tastora v0.19.0
+	github.com/celestiaorg/tastora v0.20.0
 	github.com/ethereum/go-ethereum v1.17.2
 	github.com/evstack/ev-node/execution/evm v0.0.0-00010101000000-000000000000
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -116,7 +116,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/ipfs/go-cid v0.6.0 // indirect
 	github.com/jmhodges/levigo v1.0.0 // indirect
-	github.com/klauspost/compress v1.18.0 // indirect
+	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
