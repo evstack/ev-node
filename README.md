@@ -22,7 +22,7 @@ Evolve supports multiple sync modes:
 
 The easiest way to understand how to use Evolve is by exploring our example implementation, TestApp.
 
-Requires Go version >= 1.22.
+Requires Go version >= 1.25.
 
 TestApp is a CLI tool that demonstrates how to run different kinds of nodes using the Evolve framework.
 It serves as a reference implementation and helps you understand how to build your own Evolve-based blockchain.
