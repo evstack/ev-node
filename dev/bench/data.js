@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1779087544776,
+  "lastUpdate": 1779098853434,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -94,6 +94,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 176240,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "github.qpeyb@simplelogin.fr",
+            "name": "Cian Hatton",
+            "username": "chatton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "890438743e3f5c74e4563fbd229759d8e449bdc9",
+          "message": "chore: using v0.20.0 tag of tastora and removing temporary duplication (#3326)\n\n* refactor: use tastora spamoor and victoriatraces implementations\n\nReplace local spamoor_node.go and victoriatraces_node.go with tastora's\nspamoor.NewNodeBuilder and victoriatraces.New. Fixes macOS compatibility\nby replacing 0.0.0.0 with 127.0.0.1 for external endpoints and using\nUTC timestamps in trace query URLs to avoid broken timezone offsets.\n\n* build(deps): bump tastora to v0.20.0 and remove local replace\n\nRemove the local filesystem replace directive for tastora in\ntest/e2e/go.mod now that v0.20.0 is published.\n\n* build: bump go directive to 1.25.8\n\nRequired by tastora v0.20.0. Aligns root and execution/evm\nwith the other modules already at 1.25.8.",
+          "timestamp": "2026-05-18T12:03:09+02:00",
+          "tree_id": "0820ca693f7423abc20da38da593de2ba6cb9557",
+          "url": "https://github.com/evstack/ev-node/commit/890438743e3f5c74e4563fbd229759d8e449bdc9"
+        },
+        "date": 1779098848878,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 904754234,
+            "unit": "ns/op\t31828520 B/op\t  175940 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 904754234,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 31828520,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 175940,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
