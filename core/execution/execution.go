@@ -97,7 +97,7 @@ type Executor interface {
 	//
 	// The function marks transaction with a filter status. The sequencer knows how to proceed with it:
 	// - Transactions passing all filters constraints and that can be included (FilterOK)
-	// - Invalid/unparseable force-included transactions (gibberish) (FilterRemove)
+	// - Invalid/unparsable force-included transactions (gibberish) (FilterRemove)
 	// - Any transactions that would exceed the cumulative gas limit (FilterPostpone)
 	//
 	// For non-gas-based execution layers (maxGas=0) should not filter by gas.
@@ -107,7 +107,7 @@ type Executor interface {
 	// - txs: All transactions (force-included + mempool)
 	// - maxBytes: Maximum cumulative size allowed (0 means no size limit)
 	// - maxGas: Maximum cumulative gas allowed (0 means no gas limit)
-	// - hasForceIncludedTransaction: Boolean wether force included txs are present
+	// - hasForceIncludedTransaction: Boolean whether force included txs are present
 	//
 	// Returns:
 	// - result: The filter status of all txs. The len(txs) == len(result).

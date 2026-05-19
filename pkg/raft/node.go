@@ -153,7 +153,7 @@ func (n *Node) Start(_ context.Context) error {
 		return nil
 	}
 
-	n.logger.Info().Msg("Boostrap raft cluster")
+	n.logger.Info().Msg("Bootstrap raft cluster")
 	thisNode := raft.Server{ID: raft.ServerID(n.config.NodeID), Address: raft.ServerAddress(n.config.RaftAddr)}
 	cfg := raft.Configuration{
 		Servers: []raft.Server{

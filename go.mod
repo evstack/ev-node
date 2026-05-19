@@ -1,6 +1,6 @@
 module github.com/evstack/ev-node
 
-go 1.25.7
+go 1.25.8
 
 retract v0.12.0 // Published by accident
 
