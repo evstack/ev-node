@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1779277653874,
+  "lastUpdate": 1779277655946,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -482,6 +482,102 @@ window.BENCHMARK_DATA = {
             "value": 54,
             "unit": "allocs/op",
             "extra": "26276 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "53c5669779cf534047380a73c91ef90c97fee142",
+          "message": "build(deps): Bump the all-go group across 6 directories with 7 updates (#3327)\n\n* build(deps): Bump the all-go group across 6 directories with 7 updates\n\nBumps the all-go group with 6 updates in the / directory:\n\n| Package | From | To |\n| --- | --- | --- |\n| [cloud.google.com/go/kms](https://github.com/googleapis/google-cloud-go) | `1.30.0` | `1.31.0` |\n| [github.com/libp2p/go-libp2p-kad-dht](https://github.com/libp2p/go-libp2p-kad-dht) | `0.39.1` | `0.39.2` |\n| [golang.org/x/crypto](https://github.com/golang/crypto) | `0.50.0` | `0.51.0` |\n| [golang.org/x/net](https://github.com/golang/net) | `0.53.0` | `0.54.0` |\n| [google.golang.org/api](https://github.com/googleapis/google-api-go-client) | `0.277.0` | `0.279.0` |\n| [google.golang.org/grpc](https://github.com/grpc/grpc-go) | `1.81.0` | `1.81.1` |\n\nBumps the all-go group with 1 update in the /apps/evm directory: [github.com/ethereum/go-ethereum](https://github.com/ethereum/go-ethereum).\nBumps the all-go group with 1 update in the /execution/evm directory: [github.com/ethereum/go-ethereum](https://github.com/ethereum/go-ethereum).\nBumps the all-go group with 1 update in the /execution/grpc directory: [golang.org/x/net](https://github.com/golang/net).\nBumps the all-go group with 1 update in the /test/docker-e2e directory: [github.com/ethereum/go-ethereum](https://github.com/ethereum/go-ethereum).\nBumps the all-go group with 1 update in the /test/e2e directory: [github.com/ethereum/go-ethereum](https://github.com/ethereum/go-ethereum).\n\n\nUpdates `cloud.google.com/go/kms` from 1.30.0 to 1.31.0\n- [Release notes](https://github.com/googleapis/google-cloud-go/releases)\n- [Changelog](https://github.com/googleapis/google-cloud-go/blob/main/documentai/CHANGES.md)\n- [Commits](https://github.com/googleapis/google-cloud-go/compare/kms/v1.30.0...dlp/v1.31.0)\n\nUpdates `github.com/libp2p/go-libp2p-kad-dht` from 0.39.1 to 0.39.2\n- [Release notes](https://github.com/libp2p/go-libp2p-kad-dht/releases)\n- [Commits](https://github.com/libp2p/go-libp2p-kad-dht/compare/v0.39.1...v0.39.2)\n\nUpdates `golang.org/x/crypto` from 0.50.0 to 0.51.0\n- [Commits](https://github.com/golang/crypto/compare/v0.50.0...v0.51.0)\n\nUpdates `golang.org/x/net` from 0.53.0 to 0.54.0\n- [Commits](https://github.com/golang/net/compare/v0.53.0...v0.54.0)\n\nUpdates `google.golang.org/api` from 0.277.0 to 0.279.0\n- [Release notes](https://github.com/googleapis/google-api-go-client/releases)\n- [Changelog](https://github.com/googleapis/google-api-go-client/blob/main/CHANGES.md)\n- [Commits](https://github.com/googleapis/google-api-go-client/compare/v0.277.0...v0.279.0)\n\nUpdates `google.golang.org/grpc` from 1.81.0 to 1.81.1\n- [Release notes](https://github.com/grpc/grpc-go/releases)\n- [Commits](https://github.com/grpc/grpc-go/compare/v1.81.0...v1.81.1)\n\nUpdates `golang.org/x/net` from 0.53.0 to 0.54.0\n- [Commits](https://github.com/golang/net/compare/v0.53.0...v0.54.0)\n\nUpdates `github.com/ethereum/go-ethereum` from 1.17.2 to 1.17.3\n- [Release notes](https://github.com/ethereum/go-ethereum/releases)\n- [Commits](https://github.com/ethereum/go-ethereum/compare/v1.17.2...v1.17.3)\n\nUpdates `github.com/ethereum/go-ethereum` from 1.17.2 to 1.17.3\n- [Release notes](https://github.com/ethereum/go-ethereum/releases)\n- [Commits](https://github.com/ethereum/go-ethereum/compare/v1.17.2...v1.17.3)\n\nUpdates `github.com/ethereum/go-ethereum` from 1.17.2 to 1.17.3\n- [Release notes](https://github.com/ethereum/go-ethereum/releases)\n- [Commits](https://github.com/ethereum/go-ethereum/compare/v1.17.2...v1.17.3)\n\nUpdates `github.com/ethereum/go-ethereum` from 1.17.2 to 1.17.3\n- [Release notes](https://github.com/ethereum/go-ethereum/releases)\n- [Commits](https://github.com/ethereum/go-ethereum/compare/v1.17.2...v1.17.3)\n\nUpdates `github.com/ethereum/go-ethereum` from 1.17.2 to 1.17.3\n- [Release notes](https://github.com/ethereum/go-ethereum/releases)\n- [Commits](https://github.com/ethereum/go-ethereum/compare/v1.17.2...v1.17.3)\n\nUpdates `github.com/ethereum/go-ethereum` from 1.17.2 to 1.17.3\n- [Release notes](https://github.com/ethereum/go-ethereum/releases)\n- [Commits](https://github.com/ethereum/go-ethereum/compare/v1.17.2...v1.17.3)\n\nUpdates `github.com/ethereum/go-ethereum` from 1.17.2 to 1.17.3\n- [Release notes](https://github.com/ethereum/go-ethereum/releases)\n- [Commits](https://github.com/ethereum/go-ethereum/compare/v1.17.2...v1.17.3)\n\nUpdates `github.com/ethereum/go-ethereum` from 1.17.2 to 1.17.3\n- [Release notes](https://github.com/ethereum/go-ethereum/releases)\n- [Commits](https://github.com/ethereum/go-ethereum/compare/v1.17.2...v1.17.3)\n\nUpdates `golang.org/x/net` from 0.53.0 to 0.54.0\n- [Commits](https://github.com/golang/net/compare/v0.53.0...v0.54.0)\n\nUpdates `golang.org/x/net` from 0.53.0 to 0.54.0\n- [Commits](https://github.com/golang/net/compare/v0.53.0...v0.54.0)\n\nUpdates `github.com/ethereum/go-ethereum` from 1.17.2 to 1.17.3\n- [Release notes](https://github.com/ethereum/go-ethereum/releases)\n- [Commits](https://github.com/ethereum/go-ethereum/compare/v1.17.2...v1.17.3)\n\nUpdates `github.com/ethereum/go-ethereum` from 1.17.2 to 1.17.3\n- [Release notes](https://github.com/ethereum/go-ethereum/releases)\n- [Commits](https://github.com/ethereum/go-ethereum/compare/v1.17.2...v1.17.3)\n\nUpdates `github.com/ethereum/go-ethereum` from 1.17.2 to 1.17.3\n- [Release notes](https://github.com/ethereum/go-ethereum/releases)\n- [Commits](https://github.com/ethereum/go-ethereum/compare/v1.17.2...v1.17.3)\n\nUpdates `github.com/ethereum/go-ethereum` from 1.17.2 to 1.17.3\n- [Release notes](https://github.com/ethereum/go-ethereum/releases)\n- [Commits](https://github.com/ethereum/go-ethereum/compare/v1.17.2...v1.17.3)\n\nUpdates `github.com/ethereum/go-ethereum` from 1.17.2 to 1.17.3\n- [Release notes](https://github.com/ethereum/go-ethereum/releases)\n- [Commits](https://github.com/ethereum/go-ethereum/compare/v1.17.2...v1.17.3)\n\nUpdates `github.com/ethereum/go-ethereum` from 1.17.2 to 1.17.3\n- [Release notes](https://github.com/ethereum/go-ethereum/releases)\n- [Commits](https://github.com/ethereum/go-ethereum/compare/v1.17.2...v1.17.3)\n\nUpdates `github.com/ethereum/go-ethereum` from 1.17.2 to 1.17.3\n- [Release notes](https://github.com/ethereum/go-ethereum/releases)\n- [Commits](https://github.com/ethereum/go-ethereum/compare/v1.17.2...v1.17.3)\n\nUpdates `github.com/ethereum/go-ethereum` from 1.17.2 to 1.17.3\n- [Release notes](https://github.com/ethereum/go-ethereum/releases)\n- [Commits](https://github.com/ethereum/go-ethereum/compare/v1.17.2...v1.17.3)\n\n---\nupdated-dependencies:\n- dependency-name: cloud.google.com/go/kms\n  dependency-version: 1.31.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: github.com/libp2p/go-libp2p-kad-dht\n  dependency-version: 0.39.2\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: golang.org/x/crypto\n  dependency-version: 0.51.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: golang.org/x/net\n  dependency-version: 0.54.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: google.golang.org/api\n  dependency-version: 0.279.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: google.golang.org/grpc\n  dependency-version: 1.81.1\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: golang.org/x/net\n  dependency-version: 0.54.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: github.com/ethereum/go-ethereum\n  dependency-version: 1.17.3\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/ethereum/go-ethereum\n  dependency-version: 1.17.3\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/ethereum/go-ethereum\n  dependency-version: 1.17.3\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/ethereum/go-ethereum\n  dependency-version: 1.17.3\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/ethereum/go-ethereum\n  dependency-version: 1.17.3\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/ethereum/go-ethereum\n  dependency-version: 1.17.3\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/ethereum/go-ethereum\n  dependency-version: 1.17.3\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/ethereum/go-ethereum\n  dependency-version: 1.17.3\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: golang.org/x/net\n  dependency-version: 0.54.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: golang.org/x/net\n  dependency-version: 0.54.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: github.com/ethereum/go-ethereum\n  dependency-version: 1.17.3\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/ethereum/go-ethereum\n  dependency-version: 1.17.3\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/ethereum/go-ethereum\n  dependency-version: 1.17.3\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/ethereum/go-ethereum\n  dependency-version: 1.17.3\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/ethereum/go-ethereum\n  dependency-version: 1.17.3\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/ethereum/go-ethereum\n  dependency-version: 1.17.3\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/ethereum/go-ethereum\n  dependency-version: 1.17.3\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/ethereum/go-ethereum\n  dependency-version: 1.17.3\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\n\n* chore: run just deps after Dependabot update\n\n* trigger ci\n\n---------\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\nCo-authored-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>\nCo-authored-by: Julien Robert <julien@rbrt.fr>",
+          "timestamp": "2026-05-20T13:43:54+02:00",
+          "tree_id": "b3733932d50ef16abfb06d38efbcc97250a36337",
+          "url": "https://github.com/evstack/ev-node/commit/53c5669779cf534047380a73c91ef90c97fee142"
+        },
+        "date": 1779277655444,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 39845,
+            "unit": "ns/op\t    4803 B/op\t      50 allocs/op",
+            "extra": "30795 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 39845,
+            "unit": "ns/op",
+            "extra": "30795 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 4803,
+            "unit": "B/op",
+            "extra": "30795 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 50,
+            "unit": "allocs/op",
+            "extra": "30795 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 40337,
+            "unit": "ns/op\t    5018 B/op\t      54 allocs/op",
+            "extra": "29964 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 40337,
+            "unit": "ns/op",
+            "extra": "29964 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 5018,
+            "unit": "B/op",
+            "extra": "29964 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 54,
+            "unit": "allocs/op",
+            "extra": "29964 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 47364,
+            "unit": "ns/op\t   10320 B/op\t      54 allocs/op",
+            "extra": "25874 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 47364,
+            "unit": "ns/op",
+            "extra": "25874 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 10320,
+            "unit": "B/op",
+            "extra": "25874 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 54,
+            "unit": "allocs/op",
+            "extra": "25874 times\n4 procs"
           }
         ]
       }
