@@ -1,12 +1,11 @@
 module github.com/evstack/ev-node/test/e2e
 
-go 1.25.7
+go 1.25.8
 
 require (
 	cosmossdk.io/math v1.5.3
 	github.com/celestiaorg/go-square/v3 v3.0.2
-	github.com/celestiaorg/tastora v0.19.0
-	github.com/containerd/errdefs v1.0.0
+	github.com/celestiaorg/tastora v0.20.0
 	github.com/cosmos/cosmos-sdk v0.53.6
 	github.com/cosmos/ibc-go/v8 v8.8.0
 	github.com/ethereum/go-ethereum v1.17.2
@@ -14,8 +13,6 @@ require (
 	github.com/evstack/ev-node/execution/evm v0.0.0-20250602130019-2a732cf903a5
 	github.com/evstack/ev-node/execution/evm/test v0.0.0-00010101000000-000000000000
 	github.com/libp2p/go-libp2p v0.48.0
-	github.com/moby/moby/api v1.54.2
-	github.com/moby/moby/client v0.4.1
 	github.com/prometheus/client_model v0.6.2
 	github.com/rs/zerolog v1.35.1
 	github.com/stretchr/testify v1.11.1
@@ -104,6 +101,7 @@ require (
 	github.com/cometbft/cometbft v0.38.21 // indirect
 	github.com/cometbft/cometbft-db v1.0.4 // indirect
 	github.com/consensys/gnark-crypto v0.18.2 // indirect
+	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/cosmos/btcutil v1.0.5 // indirect
 	github.com/cosmos/cosmos-db v1.1.3 // indirect
@@ -173,6 +171,7 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway v1.16.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0 // indirect
 	github.com/gsterjov/go-libsecret v0.0.0-20161001094733-a6f4afe4910c // indirect
+	github.com/hashicorp/aws-sdk-go-base/v2 v2.0.0-beta.72 // indirect
 	github.com/hashicorp/go-hclog v1.6.3 // indirect
 	github.com/hashicorp/go-immutable-radix v1.3.1 // indirect
 	github.com/hashicorp/go-metrics v0.5.4 // indirect
@@ -200,7 +199,7 @@ require (
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
 	github.com/jbenet/go-temp-err-catcher v0.1.0 // indirect
 	github.com/jmhodges/levigo v1.0.0 // indirect
-	github.com/klauspost/compress v1.18.0 // indirect
+	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/koron/go-ssdp v0.0.6 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
@@ -230,6 +229,8 @@ require (
 	github.com/minio/sha256-simd v1.0.1 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
+	github.com/moby/moby/api v1.54.2 // indirect
+	github.com/moby/moby/client v0.4.1 // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/mtibben/percent v0.2.1 // indirect
 	github.com/multiformats/go-base32 v0.1.0 // indirect

@@ -69,7 +69,7 @@ func (v *victoriaTraceProvider) uiURL(serviceName string, end time.Time) string 
 	rangeInput := end.Sub(v.startTime).Round(time.Second).String()
 	endInput := end.UTC().Format("2006-01-02T15:04:05")
 	return fmt.Sprintf("%s/select/vmui/?#/?g0.expr=%s&g0.range_input=%s&g0.end_input=%s",
-		strings.TrimRight(v.queryURL, "/"),
+		v.queryURL,
 		neturl.QueryEscape(query),
 		rangeInput,
 		endInput)
@@ -162,12 +162,11 @@ func (v *victoriaTraceProvider) collectRichSpans(ctx context.Context, serviceNam
 func (v *victoriaTraceProvider) fetchLogStream(ctx context.Context, serviceName string) (*bufio.Scanner, io.Closer, error) {
 	end := time.Now()
 	query := fmt.Sprintf(`_stream:{resource_attr:service.name="%s"}`, serviceName)
-	baseURL := strings.TrimRight(v.queryURL, "/")
 	url := fmt.Sprintf("%s/select/logsql/query?query=%s&start=%s&end=%s",
-		baseURL,
+		v.queryURL,
 		neturl.QueryEscape(query),
-		v.startTime.Format(time.RFC3339Nano),
-		end.Format(time.RFC3339Nano))
+		v.startTime.UTC().Format(time.RFC3339Nano),
+		end.UTC().Format(time.RFC3339Nano))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -263,38 +262,15 @@ func (v *victoriaTraceProvider) fetchAllSpans(ctx context.Context, serviceName s
 }
 
 // fetchResourceAttrs queries a single span and extracts OTEL resource attributes
-// from it. Uses limit=1 to avoid streaming the full span set on long-lived
-// instances. Returns nil if no spans are available.
+// from it. Returns nil if no spans are available.
 func (v *victoriaTraceProvider) fetchResourceAttrs(ctx context.Context, serviceName string) *resourceAttrs {
-	end := time.Now()
-	query := fmt.Sprintf(`_stream:{resource_attr:service.name="%s"}`, serviceName)
-	baseURL := strings.TrimRight(v.queryURL, "/")
-	url := fmt.Sprintf("%s/select/logsql/query?query=%s&start=%s&end=%s&limit=1",
-		baseURL,
-		neturl.QueryEscape(query),
-		v.startTime.Format(time.RFC3339Nano),
-		end.Format(time.RFC3339Nano))
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		v.t.Logf("warning: failed to create resource attrs request: %v", err)
-		return nil
-	}
-
-	resp, err := http.DefaultClient.Do(req)
+	scanner, body, err := v.fetchLogStream(ctx, serviceName)
 	if err != nil {
 		v.t.Logf("warning: failed to fetch resource attrs: %v", err)
 		return nil
 	}
-	defer resp.Body.Close()
+	defer body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		v.t.Logf("warning: unexpected status %d fetching resource attrs", resp.StatusCode)
-		return nil
-	}
-
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		if len(line) == 0 {
@@ -357,14 +333,26 @@ type resourceAttrs struct {
 
 // extractResourceAttrs pulls all known OTEL resource attributes from a raw LogsQL JSON line.
 func extractResourceAttrs(line []byte) resourceAttrs {
+	var raw map[string]string
+	if err := json.Unmarshal(line, &raw); err != nil {
+		return resourceAttrs{}
+	}
+	find := func(attr string) string {
+		for k, v := range raw {
+			if strings.Contains(k, attr) {
+				return v
+			}
+		}
+		return ""
+	}
 	return resourceAttrs{
-		HostName:    extractResourceAttr(line, "host.name"),
-		HostCPU:     extractResourceAttr(line, "host.cpu"),
-		HostMemory:  extractResourceAttr(line, "host.memory"),
-		HostType:    extractResourceAttr(line, "host.type"),
-		OSName:      extractResourceAttr(line, "os.name"),
-		OSVersion:   extractResourceAttr(line, "os.version"),
-		ServiceType: extractResourceAttr(line, "service.type"),
+		HostName:    find("host.name"),
+		HostCPU:     find("host.cpu"),
+		HostMemory:  find("host.memory"),
+		HostType:    find("host.type"),
+		OSName:      find("os.name"),
+		OSVersion:   find("os.version"),
+		ServiceType: find("service.type"),
 	}
 }
 
