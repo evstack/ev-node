@@ -20,7 +20,6 @@ import (
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/store"
 	testmocks "github.com/evstack/ev-node/test/mocks"
-	extmocks "github.com/evstack/ev-node/test/mocks/external"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -32,18 +31,15 @@ func BenchmarkSyncerIO(b *testing.B) {
 		shuffledTx bool
 		daDelay    time.Duration
 		execDelay  time.Duration
-		p2pEnabled bool
-		p2pDelay   time.Duration
 	}{
-		"slow producer": {heights: 100, daDelay: 200 * time.Microsecond, execDelay: 0, p2pDelay: 0, p2pEnabled: false},
-		"slow consumer": {heights: 100, daDelay: 0, execDelay: 200 * time.Microsecond, p2pDelay: 0, p2pEnabled: false},
+		"slow producer": {heights: 100, daDelay: 200 * time.Microsecond, execDelay: 0},
+		"slow consumer": {heights: 100, daDelay: 0, execDelay: 200 * time.Microsecond},
 	}
 	for name, spec := range cases {
 		b.Run(name, func(b *testing.B) {
 			for b.Loop() {
-				fixt := newBenchFixture(b, spec.heights, spec.shuffledTx, spec.daDelay, spec.execDelay, true)
+				fixt := newBenchFixture(b, spec.heights, spec.shuffledTx, spec.daDelay, spec.execDelay)
 
-				// run both loops
 				ctx := b.Context()
 				go fixt.s.processLoop(ctx)
 
@@ -61,7 +57,7 @@ func BenchmarkSyncerIO(b *testing.B) {
 				follower.Start(ctx)
 				eventCh <- datypes.SubscriptionEvent{Height: spec.heights + daHeightOffset}
 
-				fixt.s.startSyncWorkers(ctx)
+				fixt.s.wg.Go(func() { fixt.s.pendingWorkerLoop(ctx) })
 
 				require.Eventually(b, func() bool {
 					processedHeight, _ := fixt.s.store.Height(ctx)
@@ -93,7 +89,7 @@ type benchFixture struct {
 	cancel context.CancelFunc
 }
 
-func newBenchFixture(b *testing.B, totalHeights uint64, shuffledTx bool, daDelay, execDelay time.Duration, includeP2P bool) *benchFixture {
+func newBenchFixture(b *testing.B, totalHeights uint64, shuffledTx bool, daDelay, execDelay time.Duration) *benchFixture {
 	b.Helper()
 	ctx, cancel := context.WithCancel(b.Context())
 
@@ -105,7 +101,6 @@ func newBenchFixture(b *testing.B, totalHeights uint64, shuffledTx bool, daDelay
 
 	addr, pub, signer := buildSyncTestSigner(b)
 	cfg := config.DefaultConfig()
-	// keep P2P ticker dormant unless we manually inject P2P events
 	cfg.Node.BlockTime = config.DurationWrapper{Duration: 1}
 	gen := genesis.Genesis{ChainID: "bchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr, DAStartHeight: daHeightOffset}
 
@@ -123,13 +118,11 @@ func newBenchFixture(b *testing.B, totalHeights uint64, shuffledTx bool, daDelay
 	s := NewSyncer(
 		st,
 		mockExec,
-		nil, // DA injected via mock retriever below
+		nil,
 		cm,
 		common.NopMetrics(),
 		cfg,
 		gen,
-		nil, // headerStore not used; we inject P2P directly to channel when needed
-		nil, // dataStore not used
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -171,12 +164,5 @@ func newBenchFixture(b *testing.B, totalHeights uint64, shuffledTx bool, daDelay
 
 	// Attach mocks
 	s.daRetriever = daR
-	mockP2P := newMockp2pHandler(b) // not used directly in this benchmark path
-	mockP2P.On("SetProcessedHeight", mock.Anything).Return().Maybe()
-	s.p2pHandler = mockP2P
-	headerP2PStore := extmocks.NewMockStore[*types.P2PSignedHeader](b)
-	s.headerStore = headerP2PStore
-	dataP2PStore := extmocks.NewMockStore[*types.P2PData](b)
-	s.dataStore = dataP2PStore
 	return &benchFixture{s: s, st: st, cm: cm, cancel: cancel}
 }

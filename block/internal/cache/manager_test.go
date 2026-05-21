@@ -221,6 +221,12 @@ func TestPendingHeadersAndData_Flow(t *testing.T) {
 	// update last submitted heights and re-check
 	cm.SetLastSubmittedHeaderHeight(ctx, 1)
 	cm.SetLastSubmittedDataHeight(ctx, 2)
+	cm.ResetInFlightHeaderRange(1, 3)
+	cm.ResetInFlightDataRange(2, 3)
+
+	// numPending views (before getPending claims items)
+	assert.Equal(t, uint64(2), cm.NumPendingHeaders())
+	assert.Equal(t, uint64(1), cm.NumPendingData())
 
 	headers, _, err = cm.GetPendingHeaders(ctx)
 	require.NoError(t, err)
@@ -231,10 +237,6 @@ func TestPendingHeadersAndData_Flow(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, signedData, 1)
 	assert.Equal(t, uint64(3), signedData[0].Height())
-
-	// numPending views
-	assert.Equal(t, uint64(2), cm.NumPendingHeaders())
-	assert.Equal(t, uint64(1), cm.NumPendingData())
 }
 
 func TestManager_TxOperations(t *testing.T) {

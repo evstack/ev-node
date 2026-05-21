@@ -49,10 +49,6 @@ type Executor struct {
 	cache   cache.Manager
 	metrics *common.Metrics
 
-	// Broadcasting
-	headerBroadcaster common.HeaderP2PBroadcaster
-	dataBroadcaster   common.DataP2PBroadcaster
-
 	// Configuration
 	config  config.Config
 	genesis genesis.Genesis
@@ -108,8 +104,6 @@ func NewExecutor(
 	metrics *common.Metrics,
 	config config.Config,
 	genesis genesis.Genesis,
-	headerBroadcaster common.HeaderP2PBroadcaster,
-	dataBroadcaster common.DataP2PBroadcaster,
 	logger zerolog.Logger,
 	options common.BlockOptions,
 	errorCh chan<- error,
@@ -135,22 +129,20 @@ func NewExecutor(
 	}
 
 	e := &Executor{
-		store:             store,
-		exec:              exec,
-		sequencer:         sequencer,
-		signer:            signer,
-		cache:             cache,
-		metrics:           metrics,
-		config:            config,
-		genesis:           genesis,
-		headerBroadcaster: headerBroadcaster,
-		dataBroadcaster:   dataBroadcaster,
-		options:           options,
-		lastState:         &atomic.Pointer[types.State]{},
-		raftNode:          raftNode,
-		txNotifyCh:        make(chan struct{}, 1),
-		errorCh:           errorCh,
-		logger:            logger.With().Str("component", "executor").Logger(),
+		store:      store,
+		exec:       exec,
+		sequencer:  sequencer,
+		signer:     signer,
+		cache:      cache,
+		metrics:    metrics,
+		config:     config,
+		genesis:    genesis,
+		options:    options,
+		lastState:  &atomic.Pointer[types.State]{},
+		raftNode:   raftNode,
+		txNotifyCh: make(chan struct{}, 1),
+		errorCh:    errorCh,
+		logger:     logger.With().Str("component", "executor").Logger(),
 	}
 	e.blockProducer = e
 	return e, nil
@@ -484,8 +476,8 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 		shouldCheck := e.config.Node.MaxPendingHeadersAndData <= pendingCheckInterval ||
 			e.pendingCheckCounter%pendingCheckInterval == 0
 		if shouldCheck {
-			pendingHeaders := e.cache.NumPendingHeaders()
-			pendingData := e.cache.NumPendingData()
+			pendingHeaders := e.cache.NumPendingHeadersTotal()
+			pendingData := e.cache.NumPendingDataTotal()
 			if pendingHeaders >= e.config.Node.MaxPendingHeadersAndData ||
 				pendingData >= e.config.Node.MaxPendingHeadersAndData {
 				e.logger.Warn().
@@ -627,21 +619,6 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 		signature:  signature,
 	})
 
-	// Broadcast header and data to P2P network sequentially.
-	// IMPORTANT: Header MUST be broadcast before data — the P2P layer validates
-	// incoming data against the current and previous header, so out-of-order
-	// delivery would cause validation failures on peers.
-	if err := e.headerBroadcaster.WriteToStoreAndBroadcast(ctx, &types.P2PSignedHeader{
-		SignedHeader: header,
-	}); err != nil {
-		e.logger.Error().Err(err).Msg("failed to broadcast header")
-	}
-	if err := e.dataBroadcaster.WriteToStoreAndBroadcast(ctx, &types.P2PData{
-		Data: data,
-	}); err != nil {
-		e.logger.Error().Err(err).Msg("failed to broadcast data")
-	}
-
 	e.recordBlockMetrics(newState, data)
 
 	e.logger.Info().
@@ -660,11 +637,35 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 	return nil
 }
 
+// blockMarshalOverhead reserves a fraction of MaxBlobSize for the proto
+// framing + Metadata overhead added when types.Data is marshaled into a
+// DA blob. Empirically the per-tx proto length-prefix runs ~3 bytes,
+// which is roughly 1.5% at 200 B txs and stays in that range across
+// realistic tx sizes; 2% gives margin for fixed Metadata fields without
+// leaving meaningful capacity unused. Reserving here (vs. inside
+// FilterTxs) keeps the executor’s view of MaxBytes equal to the raw-tx
+// budget and prevents a fully packed batch from blowing past the
+// submitter’s MaxBlobSize check.
+//
+// TODO(throughput-cleanup): this is the workaround half of a deeper
+// issue — common.DefaultMaxBlobSize is used as both the raw-tx
+// budget AND the marshaled-blob ceiling. The right fix is to derive
+// a MaxBlockTxBytes() value once (= MaxBlobSize - overhead) and have
+// RetrieveBatch / FilterTxs / da_submitter.limitBatchBySize all
+// reference the appropriate value rather than each enforcing the
+// same number with their own ad-hoc adjustments. See
+// common/consts.go for the umbrella TODO.
+const blockMarshalOverheadPct = 2
+
 // RetrieveBatch gets the next batch of transactions from the sequencer.
 func (e *Executor) RetrieveBatch(ctx context.Context) (*BatchData, error) {
+	maxTxBytes := common.DefaultMaxBlobSize
+	if reserve := maxTxBytes * blockMarshalOverheadPct / 100; reserve < maxTxBytes {
+		maxTxBytes -= reserve
+	}
 	req := coresequencer.GetNextBatchRequest{
 		Id:            []byte(e.genesis.ChainID),
-		MaxBytes:      common.DefaultMaxBlobSize,
+		MaxBytes:      maxTxBytes,
 		LastBatchData: [][]byte{}, // Can be populated if needed for sequencer context
 	}
 

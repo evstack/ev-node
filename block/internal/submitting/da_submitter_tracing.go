@@ -9,7 +9,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/evstack/ev-node/block/internal/cache"
-	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/types"
 )
@@ -30,68 +29,47 @@ func WithTracingDASubmitter(inner DASubmitterAPI) DASubmitterAPI {
 	}
 }
 
-func (t *tracedDASubmitter) SubmitHeaders(ctx context.Context, headers []*types.SignedHeader, marshalledHeaders [][]byte, cache cache.Manager, signer signer.Signer) error {
-	ctx, span := t.tracer.Start(ctx, "DASubmitter.SubmitHeaders",
+func (t *tracedDASubmitter) SubmitBlocks(ctx context.Context, headers []*types.SignedHeader, data []*types.Data, cacheMgr cache.Manager, signer signer.Signer, onSubmitError func(error)) error {
+	ctx, span := t.tracer.Start(ctx, "DASubmitter.SubmitBlocks",
 		trace.WithAttributes(
-			attribute.Int("header.count", len(headers)),
+			attribute.Int("block.count", len(headers)),
 		),
 	)
-	defer span.End()
 
-	// calculate total size
-	var totalBytes int
-	for _, h := range marshalledHeaders {
-		totalBytes += len(h)
-	}
-	span.SetAttributes(attribute.Int("header.total_bytes", totalBytes))
-
-	// add height range if headers present
 	if len(headers) > 0 {
 		span.SetAttributes(
-			attribute.Int64("header.start_height", int64(headers[0].Height())),
-			attribute.Int64("header.end_height", int64(headers[len(headers)-1].Height())),
+			attribute.Int64("block.start_height", int64(headers[0].Height())),
+			attribute.Int64("block.end_height", int64(headers[len(headers)-1].Height())),
 		)
 	}
 
-	err := t.inner.SubmitHeaders(ctx, headers, marshalledHeaders, cache, signer)
+	var wrappedOnError func(error)
+	if onSubmitError != nil {
+		wrappedOnError = func(err error) {
+			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, err.Error())
+			}
+			span.End()
+			onSubmitError(err)
+		}
+	}
+
+	err := t.inner.SubmitBlocks(ctx, headers, data, cacheMgr, signer, wrappedOnError)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
+		span.End()
 		return err
+	}
+
+	if onSubmitError == nil {
+		span.End()
 	}
 
 	return nil
 }
 
-func (t *tracedDASubmitter) SubmitData(ctx context.Context, signedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis) error {
-	ctx, span := t.tracer.Start(ctx, "DASubmitter.SubmitData",
-		trace.WithAttributes(
-			attribute.Int("data.count", len(signedDataList)),
-		),
-	)
-	defer span.End()
-
-	// calculate total size
-	var totalBytes int
-	for _, d := range marshalledData {
-		totalBytes += len(d)
-	}
-	span.SetAttributes(attribute.Int("data.total_bytes", totalBytes))
-
-	// add height range if data present
-	if len(signedDataList) > 0 {
-		span.SetAttributes(
-			attribute.Int64("data.start_height", int64(signedDataList[0].Height())),
-			attribute.Int64("data.end_height", int64(signedDataList[len(signedDataList)-1].Height())),
-		)
-	}
-
-	err := t.inner.SubmitData(ctx, signedDataList, marshalledData, cache, signer, genesis)
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return err
-	}
-
-	return nil
+func (t *tracedDASubmitter) Close() {
+	t.inner.Close()
 }

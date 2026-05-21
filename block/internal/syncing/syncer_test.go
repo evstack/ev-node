@@ -5,7 +5,6 @@ import (
 	crand "crypto/rand"
 	"crypto/sha512"
 	"errors"
-	"math"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -22,7 +21,6 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
-	"github.com/evstack/ev-node/block/internal/da"
 	"github.com/evstack/ev-node/core/execution"
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
@@ -32,7 +30,6 @@ import (
 	"github.com/evstack/ev-node/pkg/signer/noop"
 	"github.com/evstack/ev-node/pkg/store"
 	testmocks "github.com/evstack/ev-node/test/mocks"
-	extmocks "github.com/evstack/ev-node/test/mocks/external"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -113,7 +110,7 @@ func makeSignedHeaderBytes(
 	return bin, hdr
 }
 
-func setupMockDAClient(tb testing.TB) (da.Client, chan datypes.SubscriptionEvent) {
+func setupMockDAClient(tb testing.TB) (*testmocks.MockClient, chan datypes.SubscriptionEvent) {
 	mockClient := testmocks.NewMockClient(tb)
 	eventCh := make(chan datypes.SubscriptionEvent, 1)
 	mockClient.EXPECT().Subscribe(mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(eventCh), nil).Maybe()
@@ -136,6 +133,26 @@ func makeData(chainID string, height uint64, txs int) *types.Data {
 	return d
 }
 
+// makeSignedDataBytes builds SignedData containing the provided Data and returns its binary encoding
+func makeSignedDataBytes(t *testing.T, chainID string, height uint64, proposer []byte, pub crypto.PubKey, signer signerpkg.Signer, txs int) ([]byte, *types.SignedData) {
+	t.Helper()
+	d := &types.Data{Metadata: &types.Metadata{ChainID: chainID, Height: height, Time: uint64(time.Now().UnixNano())}}
+	if txs > 0 {
+		d.Txs = make(types.Txs, txs)
+		for i := range txs {
+			d.Txs[i] = types.Tx([]byte{byte(height), byte(i)})
+		}
+	}
+
+	payload, _ := d.MarshalBinary()
+	sig, err := signer.Sign(t.Context(), payload)
+	require.NoError(t, err)
+	sd := &types.SignedData{Data: *d, Signature: sig, Signer: types.Signer{PubKey: pub, Address: proposer}}
+	bin, err := sd.MarshalBinary()
+	require.NoError(t, err)
+	return bin, sd
+}
+
 func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
@@ -150,11 +167,6 @@ func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), nil).Once()
 
-	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
-	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
-	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
-	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
-
 	s := NewSyncer(
 		st,
 		mockExec,
@@ -163,8 +175,6 @@ func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		mockHeaderStore,
-		mockDataStore,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -206,11 +216,6 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), nil).Once()
 
-	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
-	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
-	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
-	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
-
 	errChan := make(chan error, 1)
 	s := NewSyncer(
 		st,
@@ -220,8 +225,6 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		mockHeaderStore,
-		mockDataStore,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		errChan,
@@ -266,11 +269,6 @@ func TestSequentialBlockSync(t *testing.T) {
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), nil).Once()
 
-	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
-	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
-	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
-	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
-
 	errChan := make(chan error, 1)
 	s := NewSyncer(
 		st,
@@ -280,8 +278,6 @@ func TestSequentialBlockSync(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		mockHeaderStore,
-		mockDataStore,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		errChan,
@@ -348,8 +344,6 @@ func TestSyncer_RecoverFromRaft_BootstrapsStateWhenUninitialized(t *testing.T) {
 	}
 
 	mockExec := testmocks.NewMockExecutor(t)
-	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
-	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
 	s := NewSyncer(
 		st,
 		mockExec,
@@ -358,8 +352,6 @@ func TestSyncer_RecoverFromRaft_BootstrapsStateWhenUninitialized(t *testing.T) {
 		common.NopMetrics(),
 		config.DefaultConfig(),
 		gen,
-		mockHeaderStore,
-		mockDataStore,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -407,8 +399,6 @@ func TestSyncer_RecoverFromRaft_KeepsStrictValidationAfterStateExists(t *testing
 	}
 
 	mockExec := testmocks.NewMockExecutor(t)
-	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
-	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
 	s := NewSyncer(
 		st,
 		mockExec,
@@ -417,8 +407,6 @@ func TestSyncer_RecoverFromRaft_KeepsStrictValidationAfterStateExists(t *testing
 		common.NopMetrics(),
 		config.DefaultConfig(),
 		gen,
-		mockHeaderStore,
-		mockDataStore,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -467,8 +455,6 @@ func TestSyncer_RecoverFromRaft_LocalAheadOfStaleSnapshot(t *testing.T) {
 	}
 
 	mockExec := testmocks.NewMockExecutor(t)
-	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
-	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
 	s := NewSyncer(
 		st,
 		mockExec,
@@ -477,8 +463,6 @@ func TestSyncer_RecoverFromRaft_LocalAheadOfStaleSnapshot(t *testing.T) {
 		common.NopMetrics(),
 		config.DefaultConfig(),
 		gen,
-		mockHeaderStore,
-		mockDataStore,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -503,9 +487,6 @@ func TestSyncer_RecoverFromRaft_LocalAheadOfStaleSnapshot(t *testing.T) {
 	}))
 	require.NoError(t, batch.Commit())
 
-	// Simulate EVM at height 1, raft snapshot stale at height 0 — but there is no
-	// block 0 to check, so use height 1 EVM vs stale snapshot at height 0.
-	// More realistic: EVM at height 2, raft snapshot at height 1.
 	// Build a second block and advance the store state to height 2.
 	data2 := makeData(gen.ChainID, 2, 0)
 	headerBz2, hdr2 := makeSignedHeaderBytes(t, gen.ChainID, 2, addr, pub, signer, []byte("app2"), data2, hdr1.Hash())
@@ -588,8 +569,6 @@ func TestSyncer_Stop_CallsRaftRetrieverStop(t *testing.T) {
 		common.NopMetrics(),
 		config.DefaultConfig(),
 		genesis.Genesis{},
-		nil,
-		nil,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -672,18 +651,6 @@ func TestSyncLoopPersistState(t *testing.T) {
 
 	dummyExec := execution.NewDummyExecutor()
 
-	// Create mock stores for P2P
-	mockHeaderStore := extmocks.NewMockStore[*types.SignedHeader](t)
-	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
-
-	mockDataStore := extmocks.NewMockStore[*types.Data](t)
-	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
-
-	mockP2PHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
-	mockP2PHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
-	mockP2PDataStore := extmocks.NewMockStore[*types.P2PData](t)
-	mockP2PDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
-
 	errorCh := make(chan error, 1)
 	syncerInst1 := NewSyncer(
 		st,
@@ -693,8 +660,6 @@ func TestSyncLoopPersistState(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		mockP2PHeaderStore,
-		mockP2PDataStore,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		errorCh,
@@ -704,11 +669,9 @@ func TestSyncLoopPersistState(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 	syncerInst1.ctx = ctx
-	daRtrMock, p2pHndlMock := NewMockDARetriever(t), newMockp2pHandler(t)
-	p2pHndlMock.On("ProcessHeight", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
-	p2pHndlMock.On("SetProcessedHeight", mock.Anything).Return().Maybe()
+	daRtrMock := NewMockDARetriever(t)
 
-	syncerInst1.daRetriever, syncerInst1.p2pHandler = daRtrMock, p2pHndlMock
+	syncerInst1.daRetriever = daRtrMock
 	syncerInst1.daFollower = NewDAFollower(DAFollowerConfig{
 		Retriever:     daRtrMock,
 		Logger:        zerolog.Nop(),
@@ -770,7 +733,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 	}).(*daFollower)
 	require.NoError(t, follower1.Start(ctx))
 	eventCh <- datypes.SubscriptionEvent{Height: myFutureDAHeight}
-	syncerInst1.startSyncWorkers(ctx)
+	syncerInst1.wg.Go(func() { syncerInst1.pendingWorkerLoop(ctx) })
 	syncerInst1.wg.Wait()
 	requireEmptyChan(t, errorCh)
 
@@ -783,7 +746,6 @@ func TestSyncLoopPersistState(t *testing.T) {
 
 	// then
 	daRtrMock.AssertExpectations(t)
-	p2pHndlMock.AssertExpectations(t)
 	require.Len(t, syncerInst1.heightInCh, 0)
 
 	// and all processed - verify no events remain at heights we tested
@@ -805,8 +767,6 @@ func TestSyncLoopPersistState(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		mockP2PHeaderStore,
-		mockP2PDataStore,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -817,11 +777,9 @@ func TestSyncLoopPersistState(t *testing.T) {
 	ctx, cancel = context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 	syncerInst2.ctx = ctx
-	daRtrMock, p2pHndlMock = NewMockDARetriever(t), newMockp2pHandler(t)
-	p2pHndlMock.On("ProcessHeight", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
-	p2pHndlMock.On("SetProcessedHeight", mock.Anything).Return().Maybe()
+	daRtrMock = NewMockDARetriever(t)
 
-	syncerInst2.daRetriever, syncerInst2.p2pHandler = daRtrMock, p2pHndlMock
+	syncerInst2.daRetriever = daRtrMock
 	syncerInst2.daFollower = NewDAFollower(DAFollowerConfig{
 		Retriever:     daRtrMock,
 		Logger:        zerolog.Nop(),
@@ -854,7 +812,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 	}).(*daFollower)
 	follower2.Start(ctx)
 	eventCh2 <- datypes.SubscriptionEvent{Height: syncerInst2.daRetrieverHeight.Load() + 1}
-	syncerInst2.startSyncWorkers(ctx)
+	syncerInst2.wg.Go(func() { syncerInst2.pendingWorkerLoop(ctx) })
 	syncerInst2.wg.Wait()
 
 	t.Log("sync workers exited")
@@ -1029,407 +987,6 @@ func requireEmptyChan(t *testing.T, errorCh chan error) {
 	}
 }
 
-func TestProcessHeightEvent_TriggersAsyncDARetrieval(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
-	require.NoError(t, err)
-
-	addr, _, _ := buildSyncTestSigner(t)
-	cfg := config.DefaultConfig()
-	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
-
-	mockExec := testmocks.NewMockExecutor(t)
-	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), nil).Once()
-
-	// Use a mock DA client that reports a latest height above the hint
-	mockDAClient := testmocks.NewMockClient(t)
-	mockDAClient.EXPECT().GetLatestDAHeight(mock.Anything).Return(uint64(200), nil).Maybe()
-
-	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
-	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
-	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
-	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
-
-	s := NewSyncer(
-		st,
-		mockExec,
-		mockDAClient,
-		cm,
-		common.NopMetrics(),
-		cfg,
-		gen,
-		mockHeaderStore,
-		mockDataStore,
-		zerolog.Nop(),
-		common.DefaultBlockOptions(),
-		make(chan error, 1),
-		nil,
-	)
-	require.NoError(t, s.initializeState())
-	s.ctx = context.Background()
-
-	// Create a real daRetriever to test priority queue
-	s.daRetriever = NewDARetriever(nil, cm, gen, zerolog.Nop())
-	s.daFollower = NewDAFollower(DAFollowerConfig{
-		Retriever:     s.daRetriever,
-		Logger:        zerolog.Nop(),
-		EventSink:     common.EventSinkFunc(func(_ context.Context, _ common.DAHeightEvent) error { return nil }),
-		Namespace:     []byte("ns"),
-		StartDAHeight: 0,
-	})
-
-	// Create event with DA height hint
-	evt := common.DAHeightEvent{
-		Header:        &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: "c", Height: 2}}},
-		Data:          &types.Data{Metadata: &types.Metadata{ChainID: "c", Height: 2}},
-		Source:        common.SourceP2P,
-		DaHeightHints: [2]uint64{100, 100},
-	}
-
-	// Set the store height to 1 so the event can be processed as "next".
-	batch, err := st.NewBatch(context.Background())
-	require.NoError(t, err)
-	require.NoError(t, batch.SetHeight(1))
-	require.NoError(t, batch.Commit())
-
-	s.processHeightEvent(t.Context(), &evt)
-
-	// Verify that the priority height was queued in the daRetriever
-	priorityHeight := s.daFollower.(*daFollower).popPriorityHeight()
-	assert.Equal(t, uint64(100), priorityHeight)
-}
-
-func TestProcessHeightEvent_RejectsUnreasonableDAHint(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
-	require.NoError(t, err)
-
-	addr, _, _ := buildSyncTestSigner(t)
-	cfg := config.DefaultConfig()
-	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
-
-	mockExec := testmocks.NewMockExecutor(t)
-	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), nil).Once()
-
-	// Mock DA client reports latest DA height of 100
-	mockDAClient := testmocks.NewMockClient(t)
-	mockDAClient.EXPECT().GetLatestDAHeight(mock.Anything).Return(uint64(100), nil).Maybe()
-
-	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
-	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
-	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
-	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
-
-	s := NewSyncer(
-		st,
-		mockExec,
-		mockDAClient,
-		cm,
-		common.NopMetrics(),
-		cfg,
-		gen,
-		mockHeaderStore,
-		mockDataStore,
-		zerolog.Nop(),
-		common.DefaultBlockOptions(),
-		make(chan error, 1),
-		nil,
-	)
-	require.NoError(t, s.initializeState())
-	s.ctx = context.Background()
-	s.daRetriever = NewDARetriever(nil, cm, gen, zerolog.Nop())
-	s.daFollower = NewDAFollower(DAFollowerConfig{
-		Retriever:     s.daRetriever,
-		Logger:        zerolog.Nop(),
-		EventSink:     common.EventSinkFunc(func(_ context.Context, _ common.DAHeightEvent) error { return nil }),
-		Namespace:     []byte("ns"),
-		StartDAHeight: 0,
-	})
-
-	// Set store height to 1 so event at height 2 is "next"
-	batch, err := st.NewBatch(context.Background())
-	require.NoError(t, err)
-	require.NoError(t, batch.SetHeight(1))
-	require.NoError(t, batch.Commit())
-
-	// Send a malicious P2P hint with math.MaxUint64
-	evt := common.DAHeightEvent{
-		Header:        &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: "c", Height: 2}}},
-		Data:          &types.Data{Metadata: &types.Metadata{ChainID: "c", Height: 2}},
-		Source:        common.SourceP2P,
-		DaHeightHints: [2]uint64{math.MaxUint64, math.MaxUint64},
-	}
-
-	s.processHeightEvent(t.Context(), &evt)
-
-	// Verify that NO priority height was queued — the hint was rejected
-	priorityHeight := s.daFollower.(*daFollower).popPriorityHeight()
-	assert.Equal(t, uint64(0), priorityHeight, "unreasonable DA hint should be rejected")
-}
-
-func TestProcessHeightEvent_AcceptsValidDAHint(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
-	require.NoError(t, err)
-
-	addr, _, _ := buildSyncTestSigner(t)
-	cfg := config.DefaultConfig()
-	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
-
-	mockExec := testmocks.NewMockExecutor(t)
-	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), nil).Once()
-
-	// Mock DA client reports latest DA height of 100
-	mockDAClient := testmocks.NewMockClient(t)
-	mockDAClient.EXPECT().GetLatestDAHeight(mock.Anything).Return(uint64(100), nil).Maybe()
-
-	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
-	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
-	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
-	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
-
-	s := NewSyncer(
-		st,
-		mockExec,
-		mockDAClient,
-		cm,
-		common.NopMetrics(),
-		cfg,
-		gen,
-		mockHeaderStore,
-		mockDataStore,
-		zerolog.Nop(),
-		common.DefaultBlockOptions(),
-		make(chan error, 1),
-		nil,
-	)
-	require.NoError(t, s.initializeState())
-	s.ctx = context.Background()
-	s.daRetriever = NewDARetriever(nil, cm, gen, zerolog.Nop())
-	s.daFollower = NewDAFollower(DAFollowerConfig{
-		Retriever:     s.daRetriever,
-		Logger:        zerolog.Nop(),
-		EventSink:     common.EventSinkFunc(func(_ context.Context, _ common.DAHeightEvent) error { return nil }),
-		Namespace:     []byte("ns"),
-		StartDAHeight: 0,
-	})
-
-	// Set store height to 1 so event at height 2 is "next"
-	batch, err := st.NewBatch(context.Background())
-	require.NoError(t, err)
-	require.NoError(t, batch.SetHeight(1))
-	require.NoError(t, batch.Commit())
-
-	// Send a valid P2P hint at height 50, which is below the latest DA height of 100
-	evt := common.DAHeightEvent{
-		Header:        &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: "c", Height: 2}}},
-		Data:          &types.Data{Metadata: &types.Metadata{ChainID: "c", Height: 2}},
-		Source:        common.SourceP2P,
-		DaHeightHints: [2]uint64{50, 50},
-	}
-
-	s.processHeightEvent(t.Context(), &evt)
-
-	// Verify that the priority height was queued — the hint is valid
-	priorityHeight := s.daFollower.(*daFollower).popPriorityHeight()
-	assert.Equal(t, uint64(50), priorityHeight, "valid DA hint should be queued")
-}
-
-// TestProcessHeightEvent_SkipsDAHintWhenAlreadyDAIncluded verifies that when the
-// DA-inclusion cache already has an entry for the block height carried by a P2P
-// event, the DA height hint is NOT queued for priority retrieval.
-func TestProcessHeightEvent_SkipsDAHintWhenAlreadyDAIncluded(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
-	require.NoError(t, err)
-
-	addr, _, _ := buildSyncTestSigner(t)
-	cfg := config.DefaultConfig()
-	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
-
-	mockExec := testmocks.NewMockExecutor(t)
-	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), nil).Once()
-
-	mockDAClient := testmocks.NewMockClient(t)
-
-	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
-	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
-	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
-	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
-
-	s := NewSyncer(
-		st,
-		mockExec,
-		mockDAClient,
-		cm,
-		common.NopMetrics(),
-		cfg,
-		gen,
-		mockHeaderStore,
-		mockDataStore,
-		zerolog.Nop(),
-		common.DefaultBlockOptions(),
-		make(chan error, 1),
-		nil,
-	)
-	require.NoError(t, s.initializeState())
-	s.ctx = context.Background()
-	s.daRetriever = NewDARetriever(nil, cm, gen, zerolog.Nop())
-	s.daFollower = NewDAFollower(DAFollowerConfig{
-		Retriever:     s.daRetriever,
-		Logger:        zerolog.Nop(),
-		EventSink:     common.EventSinkFunc(func(_ context.Context, _ common.DAHeightEvent) error { return nil }),
-		Namespace:     []byte("ns"),
-		StartDAHeight: 0,
-	})
-
-	// Set the store height to 1 so the event at height 2 is "next".
-	batch, err := st.NewBatch(context.Background())
-	require.NoError(t, err)
-	require.NoError(t, batch.SetHeight(1))
-	require.NoError(t, batch.Commit())
-
-	// Simulate already DA-included header and data at height 2.
-	cm.SetHeaderDAIncluded("somehash-hdr2", 42, 2)
-	cm.SetDataDAIncluded("somehash-data2", 42, 2)
-
-	// Both hints point to DA height 100. They should be skipped due to cache hits.
-	evt := common.DAHeightEvent{
-		Header:        &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: gen.ChainID, Height: 2}}},
-		Data:          &types.Data{Metadata: &types.Metadata{ChainID: gen.ChainID, Height: 2}},
-		Source:        common.SourceP2P,
-		DaHeightHints: [2]uint64{100, 100},
-	}
-	s.processHeightEvent(t.Context(), &evt)
-
-	priorityHeight := s.daFollower.(*daFollower).popPriorityHeight()
-	assert.Equal(t, uint64(0), priorityHeight,
-		"DA hint must not be queued when header and data are already DA-included in cache")
-
-	// Partial case: only header is DA-included at height 3, data is not.
-	cm2, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
-	require.NoError(t, err)
-	s.cache = cm2
-	cm2.SetHeaderDAIncluded("somehash-hdr3", 55, 3)
-
-	batch, err = st.NewBatch(context.Background())
-	require.NoError(t, err)
-	require.NoError(t, batch.SetHeight(2))
-	require.NoError(t, batch.Commit())
-
-	evt3 := common.DAHeightEvent{
-		Header:        &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: gen.ChainID, Height: 3}}},
-		Data:          &types.Data{Metadata: &types.Metadata{ChainID: gen.ChainID, Height: 3}, Txs: types.Txs{types.Tx("tx2")}},
-		Source:        common.SourceP2P,
-		DaHeightHints: [2]uint64{150, 151},
-	}
-	s.processHeightEvent(t.Context(), &evt3)
-
-	priorityHeight = s.daFollower.(*daFollower).popPriorityHeight()
-	assert.Equal(t, uint64(151), priorityHeight,
-		"data hint must be queued when only the header is already DA-included")
-	assert.Equal(t, uint64(0), s.daFollower.(*daFollower).popPriorityHeight(),
-		"no further hints should be queued")
-}
-
-func TestProcessHeightEvent_SkipsDAHintWhenBelowRetrieverCursor(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
-	require.NoError(t, err)
-
-	addr, _, _ := buildSyncTestSigner(t)
-	cfg := config.DefaultConfig()
-	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
-
-	mockExec := testmocks.NewMockExecutor(t)
-	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), nil).Once()
-
-	// Mock DA client reports latest DA height of 100
-	mockDAClient := testmocks.NewMockClient(t)
-	mockDAClient.EXPECT().GetLatestDAHeight(mock.Anything).Return(uint64(100), nil).Maybe()
-
-	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
-	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
-	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
-	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
-
-	s := NewSyncer(
-		st,
-		mockExec,
-		mockDAClient,
-		cm,
-		common.NopMetrics(),
-		cfg,
-		gen,
-		mockHeaderStore,
-		mockDataStore,
-		zerolog.Nop(),
-		common.DefaultBlockOptions(),
-		make(chan error, 1),
-		nil,
-	)
-	require.NoError(t, s.initializeState())
-	s.ctx = context.Background()
-
-	// Create a real daRetriever to test priority queue
-	s.daRetriever = NewDARetriever(nil, cm, gen, zerolog.Nop())
-	s.daFollower = NewDAFollower(DAFollowerConfig{
-		Retriever:     s.daRetriever,
-		Logger:        zerolog.Nop(),
-		EventSink:     common.EventSinkFunc(func(_ context.Context, _ common.DAHeightEvent) error { return nil }),
-		Namespace:     []byte("ns"),
-		StartDAHeight: 0,
-	})
-
-	// Set DA retriever height to 150 - simulating we've already fetched past height 100
-	s.daRetrieverHeight.Store(150)
-
-	// Set the store height to 1 so the event can be processed
-	batch, err := st.NewBatch(context.Background())
-	require.NoError(t, err)
-	require.NoError(t, batch.SetHeight(1))
-	require.NoError(t, batch.Commit())
-
-	// Create event with DA height hint that is BELOW the current daRetrieverHeight
-	evt := common.DAHeightEvent{
-		Header:        &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: "c", Height: 2}}},
-		Data:          &types.Data{Metadata: &types.Metadata{ChainID: "c", Height: 2}},
-		Source:        common.SourceP2P,
-		DaHeightHints: [2]uint64{100, 100}, // Both hints are below 150
-	}
-
-	s.processHeightEvent(t.Context(), &evt)
-
-	// Verify that no priority height was queued since we've already fetched past it
-	priorityHeight := s.daFollower.(*daFollower).popPriorityHeight()
-	assert.Equal(t, uint64(0), priorityHeight, "should not queue DA hint that is below current daRetrieverHeight")
-
-	// Now test with a hint that is ABOVE the current daRetrieverHeight
-	evt2 := common.DAHeightEvent{
-		Header:        &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: "c", Height: 3}}},
-		Data:          &types.Data{Metadata: &types.Metadata{ChainID: "c", Height: 3}},
-		Source:        common.SourceP2P,
-		DaHeightHints: [2]uint64{200, 200}, // Both hints are above 150
-	}
-
-	// Set the store height to 2 so the event can be processed
-	batch, err = st.NewBatch(context.Background())
-	require.NoError(t, err)
-	require.NoError(t, batch.SetHeight(2))
-	require.NoError(t, batch.Commit())
-
-	s.processHeightEvent(t.Context(), &evt2)
-
-	// Verify that the priority height WAS queued since it's above daRetrieverHeight
-	priorityHeight = s.daFollower.(*daFollower).popPriorityHeight()
-	assert.Equal(t, uint64(200), priorityHeight, "should queue DA hint that is above current daRetrieverHeight")
-}
-
 // TestProcessHeightEvent_ExecutionFailure_DoesNotReschedule verifies that when
 // ExecuteTxs fails after all retries (execution client unavailable), the event
 // is NOT re-queued as pending.
@@ -1453,11 +1010,6 @@ func TestProcessHeightEvent_ExecutionFailure_DoesNotReschedule(t *testing.T) {
 		mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.Anything, mock.Anything).
 			Return([]byte(nil), errors.New("connection refused")).Times(common.MaxRetriesBeforeHalt)
 
-		mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
-		mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
-		mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
-		mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
-
 		errChan := make(chan error, 1)
 		s := NewSyncer(
 			st,
@@ -1467,8 +1019,6 @@ func TestProcessHeightEvent_ExecutionFailure_DoesNotReschedule(t *testing.T) {
 			common.NopMetrics(),
 			cfg,
 			gen,
-			mockHeaderStore,
-			mockDataStore,
 			zerolog.Nop(),
 			common.DefaultBlockOptions(),
 			errChan,
@@ -1520,11 +1070,6 @@ func TestSyncer_Stop_SkipsDrainOnCriticalError(t *testing.T) {
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), nil).Once()
 
-	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
-	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
-	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
-	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
-
 	errChan := make(chan error, 1)
 	s := NewSyncer(
 		st,
@@ -1534,8 +1079,6 @@ func TestSyncer_Stop_SkipsDrainOnCriticalError(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		mockHeaderStore,
-		mockDataStore,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		errChan,
@@ -1600,11 +1143,6 @@ func TestSyncer_Stop_DrainWorksWithoutCriticalError(t *testing.T) {
 		mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.Anything, mock.Anything).
 			Return([]byte("app1"), nil).Once()
 
-		mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
-		mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
-		mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
-		mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
-
 		errChan := make(chan error, 1)
 		s := NewSyncer(
 			st,
@@ -1614,8 +1152,6 @@ func TestSyncer_Stop_DrainWorksWithoutCriticalError(t *testing.T) {
 			common.NopMetrics(),
 			cfg,
 			gen,
-			mockHeaderStore,
-			mockDataStore,
 			zerolog.Nop(),
 			common.DefaultBlockOptions(),
 			errChan,

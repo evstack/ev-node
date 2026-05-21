@@ -1,126 +1,34 @@
 package submitting
 
 import (
-	"context"
-	crand "crypto/rand"
 	"testing"
-	"time"
 
-	"github.com/ipfs/go-datastore"
-	"github.com/ipfs/go-datastore/sync"
-	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/pkg/config"
-	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
-	"github.com/evstack/ev-node/pkg/signer/noop"
-	"github.com/evstack/ev-node/pkg/store"
+	"github.com/evstack/ev-node/pkg/rpc/server"
 	"github.com/evstack/ev-node/test/mocks"
-	"github.com/evstack/ev-node/types"
 )
 
-func TestDASubmitter_SubmitHeadersAndData_MarksInclusionAndUpdatesLastSubmitted(t *testing.T) {
-	ds := sync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
-	require.NoError(t, err)
-
-	// signer and proposer
-	priv, _, err := crypto.GenerateEd25519Key(crand.Reader)
-	require.NoError(t, err)
-	n, err := noop.NewNoopSigner(priv)
-	require.NoError(t, err)
-	addr, err := n.GetAddress()
-	require.NoError(t, err)
-	pub, err := n.GetPublic()
-	require.NoError(t, err)
+func TestNewDASubmitterSetsVisualizerWhenEnabled(t *testing.T) {
+	t.Helper()
 
 	cfg := config.DefaultConfig()
-	cfg.DA.Namespace = "ns-header"
-	cfg.DA.DataNamespace = "ns-data"
+	cfg.RPC.EnableDAVisualization = true
+	cfg.Node.Aggregator = true
 
-	gen := genesis.Genesis{ChainID: "chain1", InitialHeight: 1, StartTime: time.Now(), ProposerAddress: addr}
+	daClient := mocks.NewMockClient(t)
+	NewDASubmitter(
+		daClient,
+		cfg,
+		genesis.Genesis{},
+		common.DefaultBlockOptions(),
+		common.NopMetrics(),
+		zerolog.Nop(),
+	)
 
-	// seed store with two heights
-	stateRoot := []byte{1, 2, 3}
-	// height 1
-	hdr1 := &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: gen.ChainID, Height: 1, Time: uint64(time.Now().UnixNano())}, AppHash: stateRoot, ProposerAddress: addr}, Signer: types.Signer{PubKey: pub, Address: addr}}
-	bz1, err := types.DefaultAggregatorNodeSignatureBytesProvider(&hdr1.Header)
-	require.NoError(t, err)
-	sig1, err := n.Sign(t.Context(), bz1)
-	require.NoError(t, err)
-	hdr1.Signature = sig1
-	data1 := &types.Data{Metadata: &types.Metadata{ChainID: gen.ChainID, Height: 1, Time: uint64(time.Now().UnixNano())}, Txs: types.Txs{types.Tx("a")}}
-	// height 2
-	hdr2 := &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: gen.ChainID, Height: 2, Time: uint64(time.Now().Add(time.Second).UnixNano())}, AppHash: stateRoot, ProposerAddress: addr}, Signer: types.Signer{PubKey: pub, Address: addr}}
-	bz2, err := types.DefaultAggregatorNodeSignatureBytesProvider(&hdr2.Header)
-	require.NoError(t, err)
-	sig2, err := n.Sign(t.Context(), bz2)
-	require.NoError(t, err)
-	hdr2.Signature = sig2
-	data2 := &types.Data{Metadata: &types.Metadata{ChainID: gen.ChainID, Height: 2, Time: uint64(time.Now().Add(time.Second).UnixNano())}, Txs: types.Txs{types.Tx("b")}}
-
-	// persist to store
-	sig1t := types.Signature(sig1)
-	sig2t := types.Signature(sig2)
-
-	// Save block 1
-	batch1, err := st.NewBatch(context.Background())
-	require.NoError(t, err)
-	require.NoError(t, batch1.SaveBlockData(hdr1, data1, &sig1t))
-	require.NoError(t, batch1.SetHeight(1))
-	require.NoError(t, batch1.Commit())
-
-	// Save block 2
-	batch2, err := st.NewBatch(context.Background())
-	require.NoError(t, err)
-	require.NoError(t, batch2.SaveBlockData(hdr2, data2, &sig2t))
-	require.NoError(t, batch2.SetHeight(2))
-	require.NoError(t, batch2.Commit())
-
-	// Mock DA client
-	client := mocks.NewMockClient(t)
-	headerNs := datypes.NamespaceFromString(cfg.DA.Namespace).Bytes()
-	dataNs := datypes.NamespaceFromString(cfg.DA.DataNamespace).Bytes()
-	client.On("GetHeaderNamespace").Return(headerNs).Maybe()
-	client.On("GetDataNamespace").Return(dataNs).Maybe()
-	client.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
-	client.On("HasForcedInclusionNamespace").Return(false).Maybe()
-	client.On("Submit", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(func(_ context.Context, blobs [][]byte, _ float64, _ []byte, _ []byte) datypes.ResultSubmit {
-			return datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, SubmittedCount: uint64(len(blobs)), Height: 1}}
-		}).Twice()
-	daSubmitter := NewDASubmitter(client, cfg, gen, common.DefaultBlockOptions(), common.NopMetrics(), zerolog.Nop(), noopDAHintAppender{}, noopDAHintAppender{})
-
-	// Submit headers and data - cache returns both items and marshalled bytes
-	headers, marshalledHeaders, err := cm.GetPendingHeaders(context.Background())
-	require.NoError(t, err)
-	require.NoError(t, daSubmitter.SubmitHeaders(context.Background(), headers, marshalledHeaders, cm, n))
-
-	dataList, marshalledData, err := cm.GetPendingData(context.Background())
-	require.NoError(t, err)
-	require.NoError(t, daSubmitter.SubmitData(context.Background(), dataList, marshalledData, cm, n, gen))
-
-	// After submission, inclusion markers should be set
-	_, ok := cm.GetHeaderDAIncludedByHeight(1)
-	assert.True(t, ok)
-	_, ok = cm.GetHeaderDAIncludedByHeight(2)
-	assert.True(t, ok)
-	_, ok = cm.GetDataDAIncludedByHeight(1)
-	assert.True(t, ok)
-	_, ok = cm.GetDataDAIncludedByHeight(2)
-	assert.True(t, ok)
-
-}
-
-type noopDAHintAppender struct{}
-
-func (n noopDAHintAppender) AppendDAHint(ctx context.Context, daHeight uint64, heights ...uint64) error {
-	return nil
+	require.NotNil(t, server.GetDAVisualizationServer())
 }

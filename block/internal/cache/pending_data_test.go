@@ -47,6 +47,7 @@ func TestPendingData_BasicFlow(t *testing.T) {
 
 	// set last submitted and verify persistence
 	pendingData.SetLastSubmittedDataHeight(ctx, 1)
+	pendingData.ResetInFlightDataRange(1, 3)
 	metadataRaw, err := store.GetMetadata(ctx, LastSubmittedDataHeightKey)
 	require.NoError(t, err)
 	require.Len(t, metadataRaw, 8)

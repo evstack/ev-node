@@ -8,10 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/celestiaorg/go-header"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
-	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
@@ -24,7 +22,6 @@ import (
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/signer/noop"
 	"github.com/evstack/ev-node/pkg/store"
-	"github.com/evstack/ev-node/types"
 )
 
 func BenchmarkProduceBlock(b *testing.B) {
@@ -87,13 +84,11 @@ func newBenchExecutorWithStubs(b *testing.B, txs [][]byte) *Executor {
 
 	stubExec := &stubExecClient{stateRoot: []byte("init_root")}
 	stubSeq := &stubSequencer{txs: txs}
-	hb := &stubBroadcaster[*types.P2PSignedHeader]{}
-	db := &stubBroadcaster[*types.P2PData]{}
 
 	exec, err := NewExecutor(
 		memStore, stubExec, stubSeq, signerWrapper,
 		cacheManager, common.NopMetrics(), cfg, gen,
-		hb, db, zerolog.Nop(), common.DefaultBlockOptions(),
+		zerolog.Nop(), common.DefaultBlockOptions(),
 		make(chan error, 1), nil,
 	)
 	require.NoError(b, err)
@@ -159,12 +154,3 @@ func (s *stubExecClient) GetExecutionInfo(context.Context) (coreexec.ExecutionIn
 func (s *stubExecClient) FilterTxs(context.Context, [][]byte, uint64, uint64, bool) ([]coreexec.FilterStatus, error) {
 	return nil, nil
 }
-
-// stubBroadcaster implements common.Broadcaster[H] with no-ops.
-type stubBroadcaster[H header.Header[H]] struct{}
-
-func (s *stubBroadcaster[H]) WriteToStoreAndBroadcast(context.Context, H, ...pubsub.PubOpt) error {
-	return nil
-}
-func (s *stubBroadcaster[H]) Store() header.Store[H] { return nil }
-func (s *stubBroadcaster[H]) Height() uint64         { return 0 }

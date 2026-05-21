@@ -84,6 +84,13 @@ func DefaultConfig() Config {
 			BatchSizeThreshold:       0.8,
 			BatchMaxDelay:            DurationWrapper{0}, // 0 means use DA BlockTime
 			BatchMinItems:            1,
+			Fiber: FiberDAConfig{
+				Enabled:          false,
+				ConsensusAddress: "127.0.0.1:9090",
+				ConsensusChainID: "mocha-4",
+				BridgeAddress:    "ws://127.0.0.1:1234",
+				KeyName:          "default-fibre",
+			},
 		},
 		Instrumentation: DefaultInstrumentationConfig(),
 		Log: LogConfig{

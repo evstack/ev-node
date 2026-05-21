@@ -81,8 +81,17 @@ func (pd *PendingData) NumPendingData() uint64 {
 	return pd.base.numPending()
 }
 
+func (pd *PendingData) NumPendingDataTotal() uint64 {
+	pd.advancePastEmptyData(context.Background())
+	return pd.base.numPendingTotal()
+}
+
 func (pd *PendingData) SetLastSubmittedDataHeight(ctx context.Context, newLastSubmittedDataHeight uint64) {
 	pd.base.setLastSubmittedHeight(ctx, newLastSubmittedDataHeight)
+}
+
+func (pd *PendingData) ResetInFlightDataRange(start, end uint64) {
+	pd.base.resetInFlightRange(start, end)
 }
 
 // advancePastEmptyData advances lastSubmittedDataHeight past any consecutive empty data blocks.

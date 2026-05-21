@@ -48,10 +48,6 @@ func TestExecutor_RestartUsesPendingHeader(t *testing.T) {
 	// Create first executor instance
 	mockExec1 := testmocks.NewMockExecutor(t)
 	mockSeq1 := testmocks.NewMockSequencer(t)
-	hb1 := common.NewMockBroadcaster[*types.P2PSignedHeader](t)
-	hb1.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
-	db1 := common.NewMockBroadcaster[*types.P2PData](t)
-	db1.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	exec1, err := NewExecutor(
 		memStore,
@@ -62,8 +58,6 @@ func TestExecutor_RestartUsesPendingHeader(t *testing.T) {
 		metrics,
 		cfg,
 		gen,
-		hb1,
-		db1,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -167,10 +161,6 @@ func TestExecutor_RestartUsesPendingHeader(t *testing.T) {
 	// Create second executor instance (restart scenario)
 	mockExec2 := testmocks.NewMockExecutor(t)
 	mockSeq2 := testmocks.NewMockSequencer(t)
-	hb2 := common.NewMockBroadcaster[*types.P2PSignedHeader](t)
-	hb2.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
-	db2 := common.NewMockBroadcaster[*types.P2PData](t)
-	db2.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	exec2, err := NewExecutor(
 		memStore, // same store
@@ -181,8 +171,6 @@ func TestExecutor_RestartUsesPendingHeader(t *testing.T) {
 		metrics,
 		cfg,
 		gen,
-		hb2,
-		db2,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -232,9 +220,6 @@ func TestExecutor_RestartUsesPendingHeader(t *testing.T) {
 	// Verify that the header data hash matches the pending block
 	assert.Equal(t, pendingData.DACommitment(), finalHeader.DataHash)
 
-	// Verify broadcasters were called with the pending block data
-	// The testify mock framework tracks calls automatically
-
 	// Verify the executor state was updated correctly
 	finalState := exec2.getLastState()
 	assert.Equal(t, uint64(2), finalState.LastBlockHeight)
@@ -271,10 +256,6 @@ func TestExecutor_RestartNoPendingHeader(t *testing.T) {
 	// Create first executor and produce one block
 	mockExec1 := testmocks.NewMockExecutor(t)
 	mockSeq1 := testmocks.NewMockSequencer(t)
-	hb1 := common.NewMockBroadcaster[*types.P2PSignedHeader](t)
-	hb1.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
-	db1 := common.NewMockBroadcaster[*types.P2PData](t)
-	db1.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	exec1, err := NewExecutor(
 		memStore,
@@ -285,8 +266,6 @@ func TestExecutor_RestartNoPendingHeader(t *testing.T) {
 		metrics,
 		cfg,
 		gen,
-		hb1,
-		db1,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -332,10 +311,6 @@ func TestExecutor_RestartNoPendingHeader(t *testing.T) {
 	// Create second executor (restart)
 	mockExec2 := testmocks.NewMockExecutor(t)
 	mockSeq2 := testmocks.NewMockSequencer(t)
-	hb2 := common.NewMockBroadcaster[*types.P2PSignedHeader](t)
-	hb2.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
-	db2 := common.NewMockBroadcaster[*types.P2PData](t)
-	db2.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	exec2, err := NewExecutor(
 		memStore,
@@ -346,8 +321,6 @@ func TestExecutor_RestartNoPendingHeader(t *testing.T) {
 		metrics,
 		cfg,
 		gen,
-		hb2,
-		db2,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),

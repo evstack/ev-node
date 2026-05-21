@@ -16,6 +16,7 @@ import (
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/genesis"
+	seqcommon "github.com/evstack/ev-node/pkg/sequencers/common"
 )
 
 const (
@@ -24,7 +25,7 @@ const (
 
 	// CleanupInterval is how often the reaper sweeps expired hashes
 	// out of the seen-tx cache.
-	CleanupInterval = max(cache.DefaultTxCacheRetention/10, 15*time.Second)
+	CleanupInterval = max(cache.DefaultTxCacheRetention/10, 5*time.Second)
 )
 
 // Reaper is responsible for periodically retrieving transactions from the executor,
@@ -193,6 +194,17 @@ func (r *Reaper) drainMempool(cleanupCh <-chan time.Time) (bool, error) {
 			Id:    []byte(r.chainID),
 			Batch: &coresequencer.Batch{Transactions: newTxs},
 		})
+		if errors.Is(err, seqcommon.ErrQueueFull) {
+			// Sequencer queue is full — backpressure signal. Mark the
+			// batch as "seen" so we don't waste cycles re-hashing the
+			// same dropped txs every reaper tick, and surface the drop
+			// as a warning rather than tearing down the daemon. The
+			// loadgen sees lower acceptance via /tx flow control once
+			// the executor's own mempool fills up.
+			r.cache.SetTxsSeen(newHashes)
+			r.logger.Warn().Int("dropped", len(newTxs)).Msg("sequencer queue full, dropping txs (backpressure)")
+			break
+		}
 		if err != nil {
 			return totalSubmitted > 0, fmt.Errorf("failed to submit txs to sequencer: %w", err)
 		}

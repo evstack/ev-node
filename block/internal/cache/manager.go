@@ -27,7 +27,7 @@ const (
 
 	// DefaultTxCacheRetention is the default time to keep transaction hashes in cache.
 	// Keeping a too high value can lead to OOM during heavy transaction load.
-	DefaultTxCacheRetention = 30 * time.Minute
+	DefaultTxCacheRetention = 30 * time.Second
 )
 
 // CacheManager provides thread-safe cache operations for tracking seen blocks
@@ -77,10 +77,14 @@ type PendingManager interface {
 	GetPendingData(ctx context.Context) ([]*types.SignedData, [][]byte, error)
 	SetLastSubmittedHeaderHeight(ctx context.Context, height uint64)
 	GetLastSubmittedHeaderHeight() uint64
+	ResetInFlightHeaderRange(start, end uint64)
 	SetLastSubmittedDataHeight(ctx context.Context, height uint64)
 	GetLastSubmittedDataHeight() uint64
+	ResetInFlightDataRange(start, end uint64)
 	NumPendingHeaders() uint64
 	NumPendingData() uint64
+	NumPendingHeadersTotal() uint64
+	NumPendingDataTotal() uint64
 }
 
 // Manager combines CacheManager and PendingManager.
@@ -311,6 +315,10 @@ func (m *implementation) SetLastSubmittedHeaderHeight(ctx context.Context, heigh
 	m.pendingHeaders.SetLastSubmittedHeaderHeight(ctx, height)
 }
 
+func (m *implementation) ResetInFlightHeaderRange(start, end uint64) {
+	m.pendingHeaders.ResetInFlightHeaderRange(start, end)
+}
+
 func (m *implementation) GetLastSubmittedDataHeight() uint64 {
 	return m.pendingData.GetLastSubmittedDataHeight()
 }
@@ -319,12 +327,24 @@ func (m *implementation) SetLastSubmittedDataHeight(ctx context.Context, height 
 	m.pendingData.SetLastSubmittedDataHeight(ctx, height)
 }
 
+func (m *implementation) ResetInFlightDataRange(start, end uint64) {
+	m.pendingData.ResetInFlightDataRange(start, end)
+}
+
 func (m *implementation) NumPendingHeaders() uint64 {
 	return m.pendingHeaders.NumPendingHeaders()
 }
 
 func (m *implementation) NumPendingData() uint64 {
 	return m.pendingData.NumPendingData()
+}
+
+func (m *implementation) NumPendingHeadersTotal() uint64 {
+	return m.pendingHeaders.NumPendingHeadersTotal()
+}
+
+func (m *implementation) NumPendingDataTotal() uint64 {
+	return m.pendingData.NumPendingDataTotal()
 }
 
 // SetPendingEvent sets the event at the specified height.

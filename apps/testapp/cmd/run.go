@@ -97,7 +97,12 @@ var RunCmd = &cobra.Command{
 			return err
 		}
 
-		return cmd.StartNode(logger, command, executor, sequencer, nodeKey, datastore, nodeConfig, genesis, node.NodeOptions{})
+		// nil fiberClient: testapp doesn't yet wire Fibre DA. To enable
+		// fiber support here, build a *cnfiber.Adapter from
+		// nodeConfig.DA.Fiber and pass it as the last argument. The
+		// adapter wiring lives in tools/celestia-node-fiber; see the
+		// fiber-bench tool's run.go for a working caller.
+		return cmd.StartNode(logger, command, executor, sequencer, nodeKey, datastore, nodeConfig, genesis, node.NodeOptions{}, nil)
 	},
 }
 

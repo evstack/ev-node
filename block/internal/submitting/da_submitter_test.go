@@ -1,30 +1,21 @@
 package submitting
 
 import (
-	"context"
-	crand "crypto/rand"
 	"testing"
 	"time"
 
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
-	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/pkg/config"
-	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
-	"github.com/evstack/ev-node/pkg/rpc/server"
-	"github.com/evstack/ev-node/pkg/signer"
-	"github.com/evstack/ev-node/pkg/signer/noop"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/test/mocks"
-	"github.com/evstack/ev-node/types"
 )
 
 const (
@@ -35,27 +26,17 @@ const (
 func setupDASubmitterTest(t *testing.T) (*DASubmitter, store.Store, cache.Manager, *mocks.MockClient, genesis.Genesis) {
 	t.Helper()
 
-	// Create store and cache
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
-	// Create config
 	cfg := config.DefaultConfig()
 	cfg.DA.Namespace = testHeaderNamespace
 	cfg.DA.DataNamespace = testDataNamespace
 
-	// Mock DA client
 	mockDA := mocks.NewMockClient(t)
-	headerNamespace := datypes.NamespaceFromString(cfg.DA.Namespace).Bytes()
-	dataNamespace := datypes.NamespaceFromString(cfg.DA.DataNamespace).Bytes()
-	mockDA.On("GetHeaderNamespace").Return(headerNamespace).Maybe()
-	mockDA.On("GetDataNamespace").Return(dataNamespace).Maybe()
-	mockDA.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
-	mockDA.On("HasForcedInclusionNamespace").Return(false).Maybe()
 
-	// Create genesis
 	gen := genesis.Genesis{
 		ChainID:         "test-chain",
 		InitialHeight:   1,
@@ -63,7 +44,6 @@ func setupDASubmitterTest(t *testing.T) (*DASubmitter, store.Store, cache.Manage
 		ProposerAddress: []byte("test-proposer"),
 	}
 
-	// Create DA submitter
 	daSubmitter := NewDASubmitter(
 		mockDA,
 		cfg,
@@ -71,24 +51,9 @@ func setupDASubmitterTest(t *testing.T) (*DASubmitter, store.Store, cache.Manage
 		common.DefaultBlockOptions(),
 		common.NopMetrics(),
 		zerolog.Nop(),
-		noopDAHintAppender{},
-		noopDAHintAppender{},
 	)
 
 	return daSubmitter, st, cm, mockDA, gen
-}
-
-func createTestSigner(t *testing.T) ([]byte, crypto.PubKey, signer.Signer) {
-	t.Helper()
-	priv, _, err := crypto.GenerateEd25519Key(crand.Reader)
-	require.NoError(t, err)
-	signer, err := noop.NewNoopSigner(priv)
-	require.NoError(t, err)
-	addr, err := signer.GetAddress()
-	require.NoError(t, err)
-	pub, err := signer.GetPublic()
-	require.NoError(t, err)
-	return addr, pub, signer
 }
 
 func TestDASubmitter_NewDASubmitter(t *testing.T) {
@@ -98,451 +63,4 @@ func TestDASubmitter_NewDASubmitter(t *testing.T) {
 	assert.NotNil(t, submitter.client)
 	assert.NotNil(t, submitter.config)
 	assert.NotNil(t, submitter.genesis)
-}
-
-func TestNewDASubmitterSetsVisualizerWhenEnabled(t *testing.T) {
-	t.Helper()
-	defer server.SetDAVisualizationServer(nil)
-
-	cfg := config.DefaultConfig()
-	cfg.RPC.EnableDAVisualization = true
-	cfg.Node.Aggregator = true
-
-	daClient := mocks.NewMockClient(t)
-	daClient.On("GetHeaderNamespace").Return(datypes.NamespaceFromString(cfg.DA.Namespace).Bytes()).Maybe()
-	daClient.On("GetDataNamespace").Return(datypes.NamespaceFromString(cfg.DA.DataNamespace).Bytes()).Maybe()
-	daClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
-	daClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
-	NewDASubmitter(
-		daClient,
-		cfg,
-		genesis.Genesis{},
-		common.DefaultBlockOptions(),
-		common.NopMetrics(),
-		zerolog.Nop(),
-		noopDAHintAppender{},
-		noopDAHintAppender{},
-	)
-
-	require.NotNil(t, server.GetDAVisualizationServer())
-}
-
-func TestDASubmitter_SubmitHeaders_Success(t *testing.T) {
-	submitter, st, cm, mockDA, gen := setupDASubmitterTest(t)
-	ctx := context.Background()
-	headerNamespace := datypes.NamespaceFromString(testHeaderNamespace).Bytes()
-
-	mockDA.On(
-		"Submit",
-		mock.Anything,
-		mock.AnythingOfType("[][]uint8"),
-		mock.AnythingOfType("float64"),
-		headerNamespace,
-		mock.Anything,
-	).Return(func(_ context.Context, blobs [][]byte, _ float64, _ []byte, _ []byte) datypes.ResultSubmit {
-		return datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, SubmittedCount: uint64(len(blobs)), Height: 1}}
-	}).Once()
-
-	// Create test signer
-	addr, pub, signer := createTestSigner(t)
-
-	// Create test headers
-	header1 := &types.SignedHeader{
-		Header: types.Header{
-			BaseHeader: types.BaseHeader{
-				ChainID: gen.ChainID,
-				Height:  1,
-				Time:    uint64(time.Now().UnixNano()),
-			},
-			ProposerAddress: addr,
-		},
-		Signer: types.Signer{PubKey: pub, Address: addr},
-	}
-
-	header2 := &types.SignedHeader{
-		Header: types.Header{
-			BaseHeader: types.BaseHeader{
-				ChainID: gen.ChainID,
-				Height:  2,
-				Time:    uint64(time.Now().UnixNano()),
-			},
-			ProposerAddress: addr,
-		},
-		Signer: types.Signer{PubKey: pub, Address: addr},
-	}
-
-	// Sign headers
-	for _, header := range []*types.SignedHeader{header1, header2} {
-		bz, err := types.DefaultAggregatorNodeSignatureBytesProvider(&header.Header)
-		require.NoError(t, err)
-		sig, err := signer.Sign(t.Context(), bz)
-		require.NoError(t, err)
-		header.Signature = sig
-	}
-
-	// Create empty data for the headers
-	data1 := &types.Data{
-		Metadata: &types.Metadata{
-			ChainID: gen.ChainID,
-			Height:  1,
-			Time:    uint64(time.Now().UnixNano()),
-		},
-	}
-
-	data2 := &types.Data{
-		Metadata: &types.Metadata{
-			ChainID: gen.ChainID,
-			Height:  2,
-			Time:    uint64(time.Now().UnixNano()),
-		},
-	}
-
-	// Save to store to make them pending
-	sig1 := header1.Signature
-	sig2 := header2.Signature
-
-	// Save block 1
-	batch1, err := st.NewBatch(ctx)
-	require.NoError(t, err)
-	require.NoError(t, batch1.SaveBlockData(header1, data1, &sig1))
-	require.NoError(t, batch1.SetHeight(1))
-	require.NoError(t, batch1.Commit())
-
-	// Save block 2
-	batch2, err := st.NewBatch(ctx)
-	require.NoError(t, err)
-	require.NoError(t, batch2.SaveBlockData(header2, data2, &sig2))
-	require.NoError(t, batch2.SetHeight(2))
-	require.NoError(t, batch2.Commit())
-
-	// Get headers from cache and submit
-	headers, marshalledHeaders, err := cm.GetPendingHeaders(ctx)
-	require.NoError(t, err)
-	err = submitter.SubmitHeaders(ctx, headers, marshalledHeaders, cm, signer)
-	require.NoError(t, err)
-
-	// Verify headers are marked as DA included
-	_, ok1 := cm.GetHeaderDAIncludedByHeight(1)
-	assert.True(t, ok1)
-	_, ok2 := cm.GetHeaderDAIncludedByHeight(2)
-	assert.True(t, ok2)
-}
-
-func TestDASubmitter_SubmitHeaders_NoPendingHeaders(t *testing.T) {
-	submitter, _, cm, mockDA, _ := setupDASubmitterTest(t)
-	ctx := context.Background()
-
-	// Create test signer
-	_, _, signer := createTestSigner(t)
-
-	// Get headers from cache (should be empty) and submit
-	headers, marshalledHeaders, err := cm.GetPendingHeaders(ctx)
-	require.NoError(t, err)
-	err = submitter.SubmitHeaders(ctx, headers, marshalledHeaders, cm, signer)
-	require.NoError(t, err) // Should succeed with no action
-	mockDA.AssertNotCalled(t, "Submit", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
-}
-
-func TestDASubmitter_SubmitData_Success(t *testing.T) {
-	submitter, st, cm, mockDA, gen := setupDASubmitterTest(t)
-	ctx := context.Background()
-	dataNamespace := datypes.NamespaceFromString(testDataNamespace).Bytes()
-
-	mockDA.On(
-		"Submit",
-		mock.Anything,
-		mock.AnythingOfType("[][]uint8"),
-		mock.AnythingOfType("float64"),
-		dataNamespace,
-		mock.Anything,
-	).Return(func(_ context.Context, blobs [][]byte, _ float64, _ []byte, _ []byte) datypes.ResultSubmit {
-		return datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, SubmittedCount: uint64(len(blobs)), Height: 2}}
-	}).Once()
-
-	// Create test signer
-	addr, pub, signer := createTestSigner(t)
-	gen.ProposerAddress = addr
-
-	// Update submitter genesis to use correct proposer
-	submitter.genesis.ProposerAddress = addr
-
-	// Create test data with transactions
-	data1 := &types.Data{
-		Metadata: &types.Metadata{
-			ChainID: gen.ChainID,
-			Height:  1,
-			Time:    uint64(time.Now().UnixNano()),
-		},
-		Txs: types.Txs{types.Tx("tx1"), types.Tx("tx2")},
-	}
-
-	data2 := &types.Data{
-		Metadata: &types.Metadata{
-			ChainID: gen.ChainID,
-			Height:  2,
-			Time:    uint64(time.Now().UnixNano()),
-		},
-		Txs: types.Txs{types.Tx("tx3")},
-	}
-
-	// Create headers for the data
-	header1 := &types.SignedHeader{
-		Header: types.Header{
-			BaseHeader: types.BaseHeader{
-				ChainID: gen.ChainID,
-				Height:  1,
-				Time:    uint64(time.Now().UnixNano()),
-			},
-			ProposerAddress: addr,
-			DataHash:        data1.DACommitment(),
-		},
-		Signer: types.Signer{PubKey: pub, Address: addr},
-	}
-
-	header2 := &types.SignedHeader{
-		Header: types.Header{
-			BaseHeader: types.BaseHeader{
-				ChainID: gen.ChainID,
-				Height:  2,
-				Time:    uint64(time.Now().UnixNano()),
-			},
-			ProposerAddress: addr,
-			DataHash:        data2.DACommitment(),
-		},
-		Signer: types.Signer{PubKey: pub, Address: addr},
-	}
-
-	// Save to store to make them pending
-	sig1 := types.Signature([]byte("sig1"))
-	sig2 := types.Signature([]byte("sig2"))
-
-	// Save block 1
-	batch1, err := st.NewBatch(ctx)
-	require.NoError(t, err)
-	require.NoError(t, batch1.SaveBlockData(header1, data1, &sig1))
-	require.NoError(t, batch1.SetHeight(1))
-	require.NoError(t, batch1.Commit())
-
-	// Save block 2
-	batch2, err := st.NewBatch(ctx)
-	require.NoError(t, err)
-	require.NoError(t, batch2.SaveBlockData(header2, data2, &sig2))
-	require.NoError(t, batch2.SetHeight(2))
-	require.NoError(t, batch2.Commit())
-
-	// Get data from cache and submit
-	signedDataList, marshalledData, err := cm.GetPendingData(ctx)
-	require.NoError(t, err)
-	err = submitter.SubmitData(ctx, signedDataList, marshalledData, cm, signer, gen)
-	require.NoError(t, err)
-
-	// Verify data is marked as DA included
-	_, ok := cm.GetDataDAIncludedByHeight(1)
-	assert.True(t, ok)
-	_, ok = cm.GetDataDAIncludedByHeight(2)
-	assert.True(t, ok)
-}
-
-func TestDASubmitter_SubmitData_SkipsEmptyData(t *testing.T) {
-	submitter, st, cm, mockDA, gen := setupDASubmitterTest(t)
-	ctx := context.Background()
-
-	// Create test signer
-	addr, pub, signer := createTestSigner(t)
-	gen.ProposerAddress = addr
-
-	// Create empty data
-	emptyData := &types.Data{
-		Metadata: &types.Metadata{
-			ChainID: gen.ChainID,
-			Height:  1,
-			Time:    uint64(time.Now().UnixNano()),
-		},
-		Txs: types.Txs{}, // Empty
-	}
-
-	// Create header for the empty data
-	header := &types.SignedHeader{
-		Header: types.Header{
-			BaseHeader: types.BaseHeader{
-				ChainID: gen.ChainID,
-				Height:  1,
-				Time:    uint64(time.Now().UnixNano()),
-			},
-			ProposerAddress: addr,
-			DataHash:        common.DataHashForEmptyTxs,
-		},
-		Signer: types.Signer{PubKey: pub, Address: addr},
-	}
-
-	// Save to store
-	sig := types.Signature([]byte("sig"))
-	batch, err := st.NewBatch(ctx)
-	require.NoError(t, err)
-	require.NoError(t, batch.SaveBlockData(header, emptyData, &sig))
-	require.NoError(t, batch.SetHeight(1))
-	require.NoError(t, batch.Commit())
-
-	// Get data from cache and submit - should succeed but skip empty data
-	// Get data from cache and submit
-	signedDataList, marshalledData, err := cm.GetPendingData(ctx)
-	require.NoError(t, err)
-	err = submitter.SubmitData(ctx, signedDataList, marshalledData, cm, signer, gen)
-	require.NoError(t, err)
-	mockDA.AssertNotCalled(t, "Submit", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
-
-	// Empty data should not be marked as DA included (it's implicitly included)
-	_, ok := cm.GetDataDAIncludedByHash(emptyData.DACommitment().String())
-	assert.False(t, ok)
-}
-
-func TestDASubmitter_SubmitData_NoPendingData(t *testing.T) {
-	submitter, _, cm, mockDA, gen := setupDASubmitterTest(t)
-	ctx := context.Background()
-
-	// Create test signer
-	_, _, signer := createTestSigner(t)
-
-	// Get data from cache (should be empty) and submit
-	dataList, marshalledData, err := cm.GetPendingData(ctx)
-	require.NoError(t, err)
-	err = submitter.SubmitData(ctx, dataList, marshalledData, cm, signer, gen)
-	require.NoError(t, err) // Should succeed with no action
-	mockDA.AssertNotCalled(t, "Submit", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
-}
-
-func TestDASubmitter_SubmitData_NilSigner(t *testing.T) {
-	submitter, st, cm, mockDA, gen := setupDASubmitterTest(t)
-	ctx := context.Background()
-
-	// Create test data with transactions
-	data := &types.Data{
-		Metadata: &types.Metadata{
-			ChainID: gen.ChainID,
-			Height:  1,
-			Time:    uint64(time.Now().UnixNano()),
-		},
-		Txs: types.Txs{types.Tx("tx1")},
-	}
-
-	header := &types.SignedHeader{
-		Header: types.Header{
-			BaseHeader: types.BaseHeader{
-				ChainID: gen.ChainID,
-				Height:  1,
-				Time:    uint64(time.Now().UnixNano()),
-			},
-			DataHash: data.DACommitment(),
-		},
-	}
-
-	// Save to store
-	sig := types.Signature([]byte("sig"))
-	batch, err := st.NewBatch(ctx)
-	require.NoError(t, err)
-	require.NoError(t, batch.SaveBlockData(header, data, &sig))
-	require.NoError(t, batch.SetHeight(1))
-	require.NoError(t, batch.Commit())
-
-	// Get data from cache and submit with nil signer - should fail
-	signedDataList, marshalledData, err := cm.GetPendingData(ctx)
-	require.NoError(t, err)
-	err = submitter.SubmitData(ctx, signedDataList, marshalledData, cm, nil, gen)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "signer is nil")
-	mockDA.AssertNotCalled(t, "Submit", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
-}
-
-func TestDASubmitter_SignData(t *testing.T) {
-	submitter, _, _, _, gen := setupDASubmitterTest(t)
-
-	// Create test signer
-	addr, _, signer := createTestSigner(t)
-	gen.ProposerAddress = addr
-
-	// Create test data
-	signedData1 := &types.SignedData{
-		Data: types.Data{
-			Metadata: &types.Metadata{
-				ChainID: gen.ChainID,
-				Height:  1,
-				Time:    uint64(time.Now().UnixNano()),
-			},
-			Txs: types.Txs{types.Tx("tx1")},
-		},
-	}
-
-	signedData2 := &types.SignedData{
-		Data: types.Data{
-			Metadata: &types.Metadata{
-				ChainID: gen.ChainID,
-				Height:  2,
-				Time:    uint64(time.Now().UnixNano()),
-			},
-			Txs: types.Txs{}, // Empty - should be skipped
-		},
-	}
-
-	signedData3 := &types.SignedData{
-		Data: types.Data{
-			Metadata: &types.Metadata{
-				ChainID: gen.ChainID,
-				Height:  3,
-				Time:    uint64(time.Now().UnixNano()),
-			},
-			Txs: types.Txs{types.Tx("tx3")},
-		},
-	}
-
-	dataList := []*types.SignedData{signedData1, signedData2, signedData3}
-	dataListBz := make([][]byte, 0, len(dataList))
-	for _, d := range dataList {
-		dataBz, err := d.MarshalBinary()
-		require.NoError(t, err)
-		dataListBz = append(dataListBz, dataBz)
-	}
-
-	// Create signed data
-	resultData, resultDataBz, err := submitter.signData(t.Context(), dataList, dataListBz, signer, gen)
-	require.NoError(t, err)
-
-	// Should have 2 items (empty data skipped)
-	assert.Len(t, resultData, 2)
-	assert.Len(t, resultDataBz, 2)
-
-	// Verify signatures are set
-	for _, signedData := range resultData {
-		assert.NotEmpty(t, signedData.Signature)
-		assert.NotNil(t, signedData.Signer.PubKey)
-		assert.Equal(t, gen.ProposerAddress, signedData.Signer.Address)
-	}
-}
-
-func TestDASubmitter_SignData_NilSigner(t *testing.T) {
-	submitter, _, _, _, gen := setupDASubmitterTest(t)
-
-	// Create test data
-	signedData := &types.SignedData{
-		Data: types.Data{
-			Metadata: &types.Metadata{
-				ChainID: gen.ChainID,
-				Height:  1,
-			},
-			Txs: types.Txs{types.Tx("tx1")},
-		},
-	}
-
-	dataList := []*types.SignedData{signedData}
-
-	dataListBz := make([][]byte, 0, len(dataList))
-	for _, d := range dataList {
-		dataBz, err := d.MarshalBinary()
-		require.NoError(t, err)
-		dataListBz = append(dataListBz, dataBz)
-	}
-
-	// Create signed data with nil signer - should fail
-	_, _, err := submitter.signData(t.Context(), dataList, dataListBz, nil, gen)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "signer is nil")
 }

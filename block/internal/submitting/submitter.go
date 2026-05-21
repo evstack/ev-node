@@ -25,8 +25,8 @@ import (
 
 // DASubmitterAPI defines minimal methods needed by Submitter for DA submissions.
 type DASubmitterAPI interface {
-	SubmitHeaders(ctx context.Context, headers []*types.SignedHeader, marshalledHeaders [][]byte, cache cache.Manager, signer signer.Signer) error
-	SubmitData(ctx context.Context, signedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis) error
+	SubmitBlocks(ctx context.Context, headers []*types.SignedHeader, data []*types.Data, cache cache.Manager, signer signer.Signer, onSubmitError func(error)) error
+	Close()
 }
 
 // Submitter handles DA submission and inclusion processing for both sync and aggregator nodes
@@ -51,13 +51,11 @@ type Submitter struct {
 	// DA state
 	daIncludedHeight *atomic.Uint64
 
-	// Submission state to prevent concurrent submissions
-	headerSubmissionMtx sync.Mutex
-	dataSubmissionMtx   sync.Mutex
+	// Submission mutex to prevent concurrent submissions
+	submissionMtx sync.Mutex
 
 	// Batching strategy state
-	lastHeaderSubmit atomic.Int64 // stores Unix nanoseconds
-	lastDataSubmit   atomic.Int64 // stores Unix nanoseconds
+	lastSubmit       atomic.Int64 // stores Unix nanoseconds
 	batchingStrategy BatchingStrategy
 
 	// Channels for coordination
@@ -111,8 +109,7 @@ func NewSubmitter(
 	}
 
 	now := time.Now().UnixNano()
-	submitter.lastHeaderSubmit.Store(now)
-	submitter.lastDataSubmit.Store(now)
+	submitter.lastSubmit.Store(now)
 
 	return submitter
 }
@@ -153,23 +150,23 @@ func (s *Submitter) Stop() error {
 	if s.cancel != nil {
 		s.cancel()
 	}
-	// Wait for goroutines to finish with a timeout to prevent hanging
 	done := make(chan struct{})
 	go func() {
 		s.wg.Wait()
+		s.daSubmitter.Close()
 		close(done)
 	}()
 	select {
 	case <-done:
-		// All goroutines finished cleanly
 	case <-time.After(5 * time.Second):
 		s.logger.Warn().Msg("submitter shutdown timed out waiting for goroutines, proceeding anyway")
+		s.daSubmitter.Close()
 	}
 	s.logger.Info().Msg("submitter stopped")
 	return nil
 }
 
-// daSubmissionLoop handles submission of headers and data to DA layer (aggregator nodes only)
+// daSubmissionLoop handles submission of blocks to DA layer (aggregator nodes only)
 func (s *Submitter) daSubmissionLoop() {
 	s.logger.Info().Msg("starting DA submission loop")
 	defer s.logger.Info().Msg("DA submission loop stopped")
@@ -185,32 +182,35 @@ func (s *Submitter) daSubmissionLoop() {
 		case <-s.ctx.Done():
 			return
 		case <-ticker.C:
-			// Check if we should submit headers based on batching strategy
-			headersNb := s.cache.NumPendingHeaders()
-			if headersNb > 0 {
-				lastSubmitNanos := s.lastHeaderSubmit.Load()
+			pendingHeaders := s.cache.NumPendingHeaders()
+			if pendingHeaders > 0 {
+				lastSubmitNanos := s.lastSubmit.Load()
 				timeSinceLastSubmit := time.Since(time.Unix(0, lastSubmitNanos))
 
 				// For strategy decision, we need to estimate the size
 				// We'll fetch headers to check, but only submit if strategy approves
-				if s.headerSubmissionMtx.TryLock() {
-					s.logger.Debug().Time("t", time.Now()).Uint64("headers", headersNb).Msg("Header submission in progress")
+				if s.submissionMtx.TryLock() {
 					s.wg.Add(1)
 					go func() {
 						defer func() {
-							s.headerSubmissionMtx.Unlock()
-							s.logger.Debug().Time("t", time.Now()).Uint64("headers", headersNb).Msg("Header submission completed")
+							s.submissionMtx.Unlock()
 							s.wg.Done()
 						}()
 
 						// Get headers with marshalled bytes from cache
 						headers, marshalledHeaders, err := s.cache.GetPendingHeaders(s.ctx)
 						if err != nil {
-							s.logger.Error().Err(err).Msg("failed to get pending headers for batching decision")
+							if len(headers) > 0 {
+								s.cache.ResetInFlightHeaderRange(headers[0].Height(), headers[len(headers)-1].Height())
+							}
+							s.logger.Error().Err(err).Msg("failed to get pending headers")
+							return
+						}
+						if len(headers) == 0 {
 							return
 						}
 
-						// Calculate total size (excluding signature)
+						// Calculate total size
 						totalSize := uint64(0)
 						for _, marshalled := range marshalledHeaders {
 							totalSize += uint64(len(marshalled))
@@ -223,93 +223,51 @@ func (s *Submitter) daSubmissionLoop() {
 							timeSinceLastSubmit,
 						)
 
-						if shouldSubmit {
-							s.logger.Debug().
-								Time("t", time.Now()).
-								Uint64("headers", headersNb).
-								Uint64("total_size_kb", totalSize/1024).
-								Dur("time_since_last", timeSinceLastSubmit).
-								Msg("batching strategy triggered header submission")
-
-							if err := s.daSubmitter.SubmitHeaders(s.ctx, headers, marshalledHeaders, s.cache, s.signer); err != nil {
-								// Check for unrecoverable errors that indicate a critical issue
-								if errors.Is(err, common.ErrOversizedItem) {
-									s.logger.Error().Err(err).
-										Msg("CRITICAL: Header exceeds DA blob size limit - halting to prevent live lock")
-									s.sendCriticalError(fmt.Errorf("unrecoverable DA submission error: %w", err))
-									return
-								}
-								s.logger.Error().Err(err).Msg("failed to submit headers")
-							} else {
-								s.lastHeaderSubmit.Store(time.Now().UnixNano())
+						if !shouldSubmit {
+							if len(headers) > 0 {
+								s.cache.ResetInFlightHeaderRange(headers[0].Height(), headers[len(headers)-1].Height())
 							}
-						}
-					}()
-				}
-			}
-
-			// Check if we should submit data based on batching strategy
-			dataNb := s.cache.NumPendingData()
-			if dataNb > 0 {
-				lastSubmitNanos := s.lastDataSubmit.Load()
-				timeSinceLastSubmit := time.Since(time.Unix(0, lastSubmitNanos))
-				if s.dataSubmissionMtx.TryLock() {
-					s.logger.Debug().Time("t", time.Now()).Uint64("data", dataNb).Msg("Data submission in progress")
-					s.wg.Add(1)
-					go func() {
-						defer func() {
-							s.dataSubmissionMtx.Unlock()
-							s.logger.Debug().Time("t", time.Now()).Uint64("data", dataNb).Msg("Data submission completed")
-							s.wg.Done()
-						}()
-
-						// Get data with marshalled bytes from cache
-						signedDataList, marshalledData, err := s.cache.GetPendingData(s.ctx)
-						if err != nil {
-							s.logger.Error().Err(err).Msg("failed to get pending data for batching decision")
 							return
 						}
 
-						// Calculate total size (excluding signature)
-						totalSize := uint64(0)
-						for _, marshalled := range marshalledData {
-							totalSize += uint64(len(marshalled))
+						dataList := make([]*types.Data, len(headers))
+						for i, hdr := range headers {
+							_, data, fetchErr := s.store.GetBlockData(s.ctx, hdr.Height())
+							if fetchErr != nil {
+								s.cache.ResetInFlightHeaderRange(headers[0].Height(), headers[len(headers)-1].Height())
+								s.logger.Error().Err(fetchErr).Msg("failed to get block data for pending header")
+								return
+							}
+							dataList[i] = data
 						}
 
-						shouldSubmit := s.batchingStrategy.ShouldSubmit(
-							uint64(len(signedDataList)),
-							totalSize,
-							common.DefaultMaxBlobSize,
-							timeSinceLastSubmit,
-						)
-
-						if shouldSubmit {
-							s.logger.Debug().
-								Time("t", time.Now()).
-								Uint64("data", dataNb).
-								Uint64("total_size_kb", totalSize/1024).
-								Dur("time_since_last", timeSinceLastSubmit).
-								Msg("batching strategy triggered data submission")
-
-							if err := s.daSubmitter.SubmitData(s.ctx, signedDataList, marshalledData, s.cache, s.signer, s.genesis); err != nil {
-								// Check for unrecoverable errors that indicate a critical issue
-								if errors.Is(err, common.ErrOversizedItem) {
-									s.logger.Error().Err(err).
-										Msg("CRITICAL: Data exceeds DA blob size limit - halting to prevent live lock")
-									s.sendCriticalError(fmt.Errorf("unrecoverable DA submission error: %w", err))
-									return
-								}
-								s.logger.Error().Err(err).Msg("failed to submit data")
-							} else {
-								s.lastDataSubmit.Store(time.Now().UnixNano())
+						s.lastSubmit.Store(time.Now().UnixNano())
+						onError := func(err error) {
+							if errors.Is(err, common.ErrOversizedItem) {
+								s.logger.Error().Err(err).
+									Msg("CRITICAL: Block exceeds DA blob size limit - halting to prevent live lock")
+								s.sendCriticalError(fmt.Errorf("unrecoverable DA submission error: %w", err))
+								return
 							}
+							if len(headers) > 0 {
+								s.cache.ResetInFlightHeaderRange(headers[0].Height(), headers[len(headers)-1].Height())
+							}
+							if err != nil {
+								s.logger.Error().Err(err).Msg("failed to submit blocks")
+							}
+						}
+						if err := s.daSubmitter.SubmitBlocks(s.ctx, headers, dataList, s.cache, s.signer, onError); err != nil {
+							if len(headers) > 0 {
+								s.cache.ResetInFlightHeaderRange(headers[0].Height(), headers[len(headers)-1].Height())
+							}
+							s.logger.Error().Err(err).Msg("failed to enqueue block submission")
 						}
 					}()
 				}
 			}
 
 			// Update metrics with current pending counts
-			s.metrics.DASubmitterPendingBlobs.Set(float64(headersNb + dataNb))
+			s.metrics.DASubmitterPendingBlobs.Set(float64(pendingHeaders))
 		}
 	}
 }
@@ -433,6 +391,9 @@ func putUint64Metadata(ctx context.Context, st store.Store, key string, val uint
 
 // sendCriticalError sends a critical error to the error channel without blocking
 func (s *Submitter) sendCriticalError(err error) {
+	if s.cancel != nil {
+		s.cancel()
+	}
 	if s.errorCh != nil {
 		select {
 		case s.errorCh <- err:
@@ -445,8 +406,6 @@ func (s *Submitter) sendCriticalError(err error) {
 // setNodeHeightToDAHeight persists the DA heights for a block's header and data.
 // For empty-tx blocks, both use the header DA height since no data blob is posted.
 func (s *Submitter) setNodeHeightToDAHeight(ctx context.Context, height uint64, data *types.Data, genesisInclusion bool) error {
-	dataHash := data.DACommitment()
-
 	daHeightForHeader, ok := s.cache.GetHeaderDAIncludedByHeight(height)
 	if !ok {
 		return fmt.Errorf("header for height %d not found in cache", height)
@@ -457,8 +416,9 @@ func (s *Submitter) setNodeHeightToDAHeight(ctx context.Context, height uint64, 
 	}
 
 	genesisDAIncludedHeight := daHeightForHeader
-	// For empty transactions, use the same DA height as the header.
+	// For empty transactions, use the same DA height as the header
 	dataDAHeight := daHeightForHeader
+	dataHash := data.DACommitment()
 	if !bytes.Equal(dataHash, common.DataHashForEmptyTxs) {
 		daHeightForData, ok := s.cache.GetDataDAIncludedByHeight(height)
 		if !ok {
@@ -502,11 +462,10 @@ func (s *Submitter) IsHeightDAIncluded(height uint64, data *types.Data) (bool, e
 		return false, nil
 	}
 
-	dataCommitment := data.DACommitment()
-
 	_, headerIncluded := s.cache.GetHeaderDAIncludedByHeight(height)
 	_, dataIncluded := s.cache.GetDataDAIncludedByHeight(height)
 
+	dataCommitment := data.DACommitment()
 	dataIncluded = bytes.Equal(dataCommitment, common.DataHashForEmptyTxs) || dataIncluded
 
 	return headerIncluded && dataIncluded, nil
