@@ -32,7 +32,7 @@ blob-decoder 8080
 
 The server will start and display:
 
-```
+```text
 ╔═══════════════════════════════════╗
 ║        Evolve Blob Decoder        ║
 ║           by ev.xyz               ║

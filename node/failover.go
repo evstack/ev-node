@@ -156,6 +156,9 @@ func setupFailoverState(
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  120 * time.Second,
 	}
+	if err := rpcserver.ConfigureHTTPServer(rpcServer); err != nil {
+		return nil, fmt.Errorf("error configuring RPC server: %w", err)
+	}
 	bc, err := buildComponentsFn(headerSyncService, dataSyncService)
 	if err != nil {
 		return nil, fmt.Errorf("build follower components: %w", err)

@@ -430,6 +430,7 @@ The `grep -m1` exits as soon as the node logs `entering follower state` or `ente
 ### Cluster does not elect a leader
 
 Check that:
+
 - At least 3 out of 5 nodes are running and can reach each other on port 5001.
 - The `peers` list on every node is identical and all addresses are correct.
 - No firewall rule is blocking TCP on port 5001.
@@ -450,6 +451,7 @@ Stop the node, wipe both `raft_dir` and the node's block data directory, then re
 Symptoms: frequent `election won` and `entering follower state` lines in the logs, block production pausing briefly every few seconds.
 
 Causes:
+
 - `heartbeat_timeout` is too short for your network RTT — increase it.
 - Network congestion or packet loss between nodes.
 - Node CPU is saturated and cannot process heartbeats in time.

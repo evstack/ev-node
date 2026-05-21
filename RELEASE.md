@@ -348,25 +348,25 @@ go get github.com/evstack/ev-node/core@v0.3.0
 
 ### GitHub Releases
 
-**"Invalid tag format" error**
+#### "Invalid tag format" error
 
 - Ensure tag follows semantic versioning: `v1.2.3`
 - Check for typos or incorrect format
 - Valid examples: `v1.2.3`, `v1.2.3-rc.4`, `v1.2.3-beta.1`
 
-**"Version not found in CHANGELOG.md"**
+#### "Version not found in CHANGELOG.md"
 
 - Verify CHANGELOG.md contains a section for the version
 - Check version format matches exactly (e.g., `v1.2.3` vs `1.2.3`)
 - Ensure CHANGELOG.md is committed and pushed
 
-**"Claude API error"**
+#### "Claude API error"
 
 - Verify `CLAUDE_CODE_OAUTH_TOKEN` secret is configured
 - Check repository permissions for GitHub Actions
 - Review workflow logs for specific error messages
 
-**Empty or incomplete release notes**
+#### Empty or incomplete release notes
 
 - Ensure CHANGELOG.md has detailed entries for the version
 - Check that changelog sections (Added, Changed, Fixed, etc.) are properly formatted
@@ -374,30 +374,30 @@ go get github.com/evstack/ev-node/core@v0.3.0
 
 ### Docker Releases
 
-**"App directory does not exist"**
+#### "App directory does not exist"
 
 - Ensure tag matches app path: `apps/evm/` → `apps/evm/v0.2.0`
 - Check spelling and case sensitivity
 
-**"Dockerfile not found"**
+#### "Dockerfile not found"
 
 - Verify Dockerfile exists at `apps/{app-path}/Dockerfile`
 - Check filename is exactly `Dockerfile`
 
-**"Image not found" in tests**
+#### "Image not found" in tests
 
 - Wait for Docker build workflow to complete
 - Check workflow dependencies in Actions tab
 
 ### Go Module Releases
 
-**Go proxy delay**
+#### Go proxy delay
 
 - Wait 5-30 minutes for propagation
 - Use `go list -m` to verify availability
 - Check <https://proxy.golang.org/>
 
-**Dependency version conflicts**
+#### Dependency version conflicts
 
 - Ensure all dependencies are released before dependent modules
 - Verify go.mod has correct versions

@@ -188,7 +188,7 @@ message ResponseGenerateFraudProof {
 }
 ```
 
-Note that currently the only underlying store supported by Cosmos SDK is the Merkle IAVL+ tree. As part of generating state witnesses, we added preliminary support for Deep Subtrees to this library [here](https://github.com/rollkit/iavl/tree/deepsubtrees_0.19.x). It enables import and export of partial state and adds tracing to IAVL trees. Note that documentation and exploring optimizations of Deep Subtrees is a work in progress.
+Note that currently the only underlying store supported by Cosmos SDK is the Merkle IAVL+ tree. As part of generating state witnesses, we added preliminary support for Deep Subtrees to the [IAVL Deep Subtrees branch](https://github.com/rollkit/iavl/tree/deepsubtrees_0.19.x). It enables import and export of partial state and adds tracing to IAVL trees. Note that documentation and exploring optimizations of Deep Subtrees is a work in progress.
 
 ### Gossiping Fraud Proofs
 

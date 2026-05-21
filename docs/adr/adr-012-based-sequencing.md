@@ -159,7 +159,7 @@ When forced inclusion transactions exceed `MaxBytes`:
 
 **Block 1**:
 
-```
+```text
 Epoch [100-109] contains 3MB of transactions
 Block at DA height 100: 2MB (partial)
 Remaining in queue: 1MB
@@ -167,7 +167,7 @@ Remaining in queue: 1MB
 
 **Block 2**:
 
-```
+```text
 Block at DA height 101: 1MB (remainder) + new regular txs
 Queue cleared
 ```
