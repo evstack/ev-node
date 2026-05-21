@@ -746,13 +746,23 @@ func (s *Syncer) trySyncNextBlockWithState(ctx context.Context, event *common.DA
 	// here only the previous block needs to be applied to proceed to the verification.
 	// The header validation must be done before applying the block to avoid executing gibberish
 	if err := s.ValidateBlock(ctx, currentState, data, header); err != nil {
-		// remove header as da included from cache
-		s.cache.RemoveHeaderDAIncluded(headerHash)
-		s.cache.RemoveDataDAIncluded(data.DACommitment().String())
-
-		if errors.Is(err, types.ErrUnexpectedProposer) {
-			return errors.Join(errInvalidBlock, err)
+		var vErr *BlockValidationError
+		switch {
+		case errors.As(err, &vErr):
+			switch vErr.Fault {
+			case FaultHeader:
+				s.cache.RemoveHeaderDAIncluded(headerHash)
+			case FaultData:
+				s.cache.RemoveDataDAIncluded(data.DACommitment().String())
+			}
+		case errors.Is(err, errInvalidState):
+			// State divergence does not point at a specific side of the pair;
+			// the cached entries stay so an honest counterpart can still pair up.
+		default:
+			s.cache.RemoveHeaderDAIncluded(headerHash)
+			s.cache.RemoveDataDAIncluded(data.DACommitment().String())
 		}
+
 		if !errors.Is(err, errInvalidState) && !errors.Is(err, errInvalidBlock) {
 			return errors.Join(errInvalidBlock, err)
 		}
@@ -891,38 +901,54 @@ func (s *Syncer) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, heade
 	return coreexecutor.ExecuteResult{}, nil
 }
 
-// ValidateBlock validates a synced block
-// NOTE: if the header was gibberish and somehow passed all validation prior but the data was correct
-// or if the data was gibberish and somehow passed all validation prior but the header was correct
-// we are still losing both in the pending event. This should never happen.
+// ValidateBlock validates a synced block. It runs header-only checks first
+// (signature, proposer, sequence) and only then the pair checks between the
+// header and the attached data. Failures are wrapped in BlockValidationError so
+// callers can drop the right side of the pair from caches without discarding a
+// potentially legitimate counterpart.
 func (s *Syncer) ValidateBlock(_ context.Context, currState types.State, data *types.Data, header *types.SignedHeader) error {
 	// Set custom verifier for aggregator node signature
 	header.SetCustomVerifierForSyncNode(s.options.SyncNodeSignatureBytesProvider)
 
 	if err := header.ValidateBasicWithData(data); err != nil { //nolint:contextcheck // validation API does not accept context
-		return fmt.Errorf("invalid header: %w", err)
+		return classifyValidationError(fmt.Errorf("invalid header: %w", err))
 	}
 
 	if err := currState.AssertExpectedProposer(header); err != nil {
-		return errors.Join(errInvalidBlock, err)
+		return errors.Join(errInvalidBlock, &BlockValidationError{Fault: FaultHeader, Err: err})
 	}
 
 	if err := currState.AssertValidForNextState(header, data); err != nil {
-		if isExternalBlockValidationError(err) {
-			return errors.Join(errInvalidBlock, err)
+		if vErr := classifyValidationError(err); vErr != nil {
+			return errors.Join(errInvalidBlock, vErr)
 		}
 		return errors.Join(errInvalidState, err)
 	}
 	return nil
 }
 
-func isExternalBlockValidationError(err error) bool {
-	return errors.Is(err, types.ErrUnexpectedProposer) ||
-		errors.Is(err, types.ErrInvalidChainID) ||
-		errors.Is(err, types.ErrInvalidBlockHeight) ||
-		errors.Is(err, types.ErrInvalidBlockTime) ||
-		errors.Is(err, types.ErrHeaderDataMismatch) ||
-		errors.Is(err, types.ErrDataHashMismatch)
+// classifyValidationError tags a known external validation error with the side
+// at fault. It returns nil for errors that signal state divergence (the caller
+// must then classify them as errInvalidState).
+func classifyValidationError(err error) *BlockValidationError {
+	switch {
+	case errors.Is(err, types.ErrHeaderDataMismatch),
+		errors.Is(err, types.ErrDataHashMismatch):
+		return &BlockValidationError{Fault: FaultData, Err: err}
+	case errors.Is(err, types.ErrUnexpectedProposer),
+		errors.Is(err, types.ErrInvalidChainID),
+		errors.Is(err, types.ErrInvalidBlockHeight),
+		errors.Is(err, types.ErrInvalidBlockTime),
+		errors.Is(err, types.ErrSignerPubKeyMissing),
+		errors.Is(err, types.ErrSignerAddressMismatch),
+		errors.Is(err, types.ErrSignatureEmpty),
+		errors.Is(err, types.ErrSignatureVerificationFailed),
+		errors.Is(err, types.ErrProposerAddressMismatch),
+		errors.Is(err, types.ErrNoProposerAddress):
+		return &BlockValidationError{Fault: FaultHeader, Err: err}
+	default:
+		return nil
+	}
 }
 
 var errMaliciousProposer = errors.New("malicious proposer detected")

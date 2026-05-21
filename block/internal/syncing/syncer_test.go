@@ -352,6 +352,166 @@ func TestSyncer_ValidateBlock_RejectsSignerAddressNotDerivedFromPubKey(t *testin
 	require.Contains(t, err.Error(), "signer address")
 }
 
+func TestSyncer_ValidateBlock_ClassifiesFault(t *testing.T) {
+	expectedAddr, expectedPub, expectedSigner := buildSyncTestSigner(t)
+	wrongAddr, wrongPub, wrongSigner := buildSyncTestSigner(t)
+
+	now := time.Now()
+	baseState := types.State{
+		ChainID:             "tchain",
+		InitialHeight:       1,
+		LastBlockHeight:     1,
+		LastBlockTime:       now,
+		LastHeaderHash:      []byte("last-header-hash"),
+		AppHash:             []byte("app0"),
+		NextProposerAddress: expectedAddr,
+	}
+
+	makeHeader := func(tb testing.TB, chainID string, proposer []byte, pub crypto.PubKey, signer signerpkg.Signer, appHash []byte, data *types.Data) *types.SignedHeader {
+		tb.Helper()
+		_, header := makeSignedHeaderBytes(tb, chainID, 2, proposer, pub, signer, appHash, data, baseState.LastHeaderHash)
+		return header
+	}
+
+	tests := map[string]struct {
+		setup     func(testing.TB) (*types.SignedHeader, *types.Data)
+		wantFault ValidationFault
+	}{
+		"wrong proposer -> header fault": {
+			setup: func(tb testing.TB) (*types.SignedHeader, *types.Data) {
+				data := makeData(baseState.ChainID, 2, 1)
+				data.Metadata.Time = uint64(now.Add(time.Second).UnixNano())
+				return makeHeader(tb, baseState.ChainID, wrongAddr, wrongPub, wrongSigner, baseState.AppHash, data), data
+			},
+			wantFault: FaultHeader,
+		},
+		"wrong chain id -> header fault": {
+			setup: func(tb testing.TB) (*types.SignedHeader, *types.Data) {
+				data := makeData("other-chain", 2, 1)
+				data.Metadata.Time = uint64(now.Add(time.Second).UnixNano())
+				return makeHeader(tb, "other-chain", expectedAddr, expectedPub, expectedSigner, baseState.AppHash, data), data
+			},
+			wantFault: FaultHeader,
+		},
+		"data hash mismatch -> data fault": {
+			setup: func(tb testing.TB) (*types.SignedHeader, *types.Data) {
+				headerData := makeData(baseState.ChainID, 2, 1)
+				headerData.Metadata.Time = uint64(now.Add(time.Second).UnixNano())
+				header := makeHeader(tb, baseState.ChainID, expectedAddr, expectedPub, expectedSigner, baseState.AppHash, headerData)
+				attached := makeData(baseState.ChainID, 2, 2)
+				attached.Metadata.Time = headerData.Metadata.Time
+				return header, attached
+			},
+			wantFault: FaultData,
+		},
+		"header data metadata mismatch -> data fault": {
+			setup: func(tb testing.TB) (*types.SignedHeader, *types.Data) {
+				headerData := makeData(baseState.ChainID, 2, 1)
+				headerData.Metadata.Time = uint64(now.Add(time.Second).UnixNano())
+				header := makeHeader(tb, baseState.ChainID, expectedAddr, expectedPub, expectedSigner, baseState.AppHash, headerData)
+				attached := &types.Data{
+					Metadata: &types.Metadata{
+						ChainID: baseState.ChainID,
+						Height:  3,
+						Time:    headerData.Metadata.Time,
+					},
+					Txs: headerData.Txs,
+				}
+				return header, attached
+			},
+			wantFault: FaultData,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			header, data := tc.setup(t)
+			s := &Syncer{logger: zerolog.Nop(), options: common.DefaultBlockOptions()}
+			err := s.ValidateBlock(t.Context(), baseState, data, header)
+			require.Error(t, err)
+
+			var vErr *BlockValidationError
+			require.ErrorAs(t, err, &vErr, "expected *BlockValidationError")
+			assert.Equal(t, tc.wantFault, vErr.Fault, "fault classification")
+		})
+	}
+}
+
+func TestSyncer_TrySyncNextBlock_SelectiveCacheCleanup(t *testing.T) {
+	expectedAddr, expectedPub, expectedSigner := buildSyncTestSigner(t)
+	wrongAddr, wrongPub, wrongSigner := buildSyncTestSigner(t)
+
+	now := time.Now()
+	baseState := types.State{
+		ChainID:             "tchain",
+		InitialHeight:       1,
+		LastBlockHeight:     1,
+		LastBlockTime:       now,
+		LastHeaderHash:      []byte("last-header-hash"),
+		AppHash:             []byte("app0"),
+		NextProposerAddress: expectedAddr,
+	}
+
+	makeSyncer := func(tb testing.TB) (*Syncer, cache.Manager) {
+		tb.Helper()
+		ds := dssync.MutexWrap(datastore.NewMapDatastore())
+		st := store.New(ds)
+		cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+		require.NoError(tb, err)
+		return &Syncer{cache: cm, logger: zerolog.Nop(), options: common.DefaultBlockOptions()}, cm
+	}
+
+	tests := map[string]struct {
+		event           func(testing.TB) common.DAHeightEvent
+		wantHeaderInCache bool
+		wantDataInCache   bool
+	}{
+		"header fault keeps data in cache": {
+			event: func(tb testing.TB) common.DAHeightEvent {
+				data := makeData(baseState.ChainID, 2, 1)
+				data.Metadata.Time = uint64(now.Add(time.Second).UnixNano())
+				_, header := makeSignedHeaderBytes(tb, baseState.ChainID, 2, wrongAddr, wrongPub, wrongSigner, baseState.AppHash, data, baseState.LastHeaderHash)
+				return common.DAHeightEvent{Header: header, Data: data, Source: common.SourceDA}
+			},
+			wantHeaderInCache: false,
+			wantDataInCache:   true,
+		},
+		"data fault keeps header in cache": {
+			event: func(tb testing.TB) common.DAHeightEvent {
+				headerData := makeData(baseState.ChainID, 2, 1)
+				headerData.Metadata.Time = uint64(now.Add(time.Second).UnixNano())
+				_, header := makeSignedHeaderBytes(tb, baseState.ChainID, 2, expectedAddr, expectedPub, expectedSigner, baseState.AppHash, headerData, baseState.LastHeaderHash)
+				attached := makeData(baseState.ChainID, 2, 2)
+				attached.Metadata.Time = headerData.Metadata.Time
+				return common.DAHeightEvent{Header: header, Data: attached, Source: common.SourceDA}
+			},
+			wantHeaderInCache: true,
+			wantDataInCache:   false,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			s, cm := makeSyncer(t)
+			event := tc.event(t)
+			headerHash := event.Header.Hash().String()
+			dataHash := event.Data.DACommitment().String()
+
+			// Seed the cache so we can observe what gets removed.
+			cm.SetHeaderDAIncluded(headerHash, 1, event.Header.Height())
+			cm.SetDataDAIncluded(dataHash, 1, event.Header.Height())
+
+			err := s.trySyncNextBlockWithState(t.Context(), &event, baseState)
+			require.Error(t, err)
+
+			_, headerStillIncluded := cm.GetHeaderDAIncludedByHash(headerHash)
+			_, dataStillIncluded := cm.GetDataDAIncludedByHash(dataHash)
+			assert.Equal(t, tc.wantHeaderInCache, headerStillIncluded, "header cache presence")
+			assert.Equal(t, tc.wantDataInCache, dataStillIncluded, "data cache presence")
+		})
+	}
+}
+
 func TestSyncer_ApplyBlockPersistsExecutionNextProposer(t *testing.T) {
 	addr, _, _ := buildSyncTestSigner(t)
 	execNext := []byte("execution-next-proposer")
