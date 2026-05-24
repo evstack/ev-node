@@ -162,7 +162,7 @@ All flows below assume usage of the proxy admin contract.
 
 ### Flow 1: Full Setup
 
-**Basefee redirect + feevault + native mint/burn + bridge (Hyperlane)**
+#### Basefee redirect + feevault + native mint/burn + bridge (Hyperlane)
 
 #### Genesis Setup
 
@@ -187,8 +187,8 @@ Embed the proxy contract with an EOA address as admin. The EOA must have at leas
 }
 ```
 
-4. Pick a max contract size (24kb default, 128kb is a safe upgrade)
-5. Pick EIP-1559 config:
+1. Pick a max contract size (24kb default, 128kb is a safe upgrade)
+2. Pick EIP-1559 config:
 
 ```json
 {

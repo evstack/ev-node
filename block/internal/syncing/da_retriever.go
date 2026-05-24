@@ -195,7 +195,7 @@ func (r *daRetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 		}
 	}
 
-	var events []common.DAHeightEvent
+	events := make([]common.DAHeightEvent, 0, len(r.pendingHeaders))
 
 	// Match headers with data and create events
 	for height, header := range r.pendingHeaders {

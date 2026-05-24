@@ -47,7 +47,7 @@ We implement a **forced inclusion mechanism** that allows users to submit transa
 
 ### High-Level Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                         User Actions                             │
 ├─────────────────────────────────────────────────────────────────┤
@@ -385,7 +385,7 @@ func (s *Syncer) verifyForcedInclusionTxs(currentState State, data *Data) error 
 
 **Smoothing Example**:
 
-```
+```text
 Epoch [100-109] contains 3MB of forced inclusion transactions
 
 Block at DA height 100:
@@ -551,18 +551,18 @@ graceBoundary := epochEnd + (effectiveGracePeriod * DAEpochForcedInclusion)
 
 Configuration: `DAEpochForcedInclusion = 50`, Base grace period of 1 epoch (dynamically adjusted)
 
-_Example 1: Normal Inclusion (Within Same Epoch)_
+#### Example 1: Normal Inclusion (Within Same Epoch)
 
-```
+```text
 - Forced tx submitted to DA at height 75 (epoch 51-100)
 - Sequencer fetches at height 101 (next epoch start)
 - Sequencer includes tx in block at DA height 105
 - Result: ✅ Valid - included within same epoch
 ```
 
-_Example 2: Grace Period Usage (Included in Next Epoch)_
+#### Example 2: Grace Period Usage (Included in Next Epoch)
 
-```
+```text
 - Forced tx submitted to DA at height 75 (epoch 51-100)
 - Sequencer fetches at height 101
 - DA temporarily unavailable, sequencer cannot fetch
@@ -571,9 +571,9 @@ _Example 2: Grace Period Usage (Included in Next Epoch)_
 - Result: ✅ Valid - within grace period
 ```
 
-_Example 3: Malicious Sequencer (Past Grace Boundary)_
+#### Example 3: Malicious Sequencer (Past Grace Boundary)
 
-```
+```text
 - Forced tx submitted to DA at height 75 (epoch 51-100)
 - Sequencer fetches at height 101
 - Sequencer deliberately omits tx
@@ -582,9 +582,9 @@ _Example 3: Malicious Sequencer (Past Grace Boundary)_
 - Result: ❌ Block rejected, sequencer flagged as malicious
 ```
 
-_Example 4: Low Chain Activity (Minimum Grace Period)_
+#### Example 4: Low Chain Activity (Minimum Grace Period)
 
-```
+```text
 - Chain is mostly empty (<20% full)
 - Grace period is at minimum (0.5x base period)
 - Forced tx submitted at height 75 (epoch 51-100)
@@ -593,9 +593,9 @@ _Example 4: Low Chain Activity (Minimum Grace Period)_
 - Result: Faster censorship detection when block space is available
 ```
 
-_Example 5: Multiple Pending Transactions_
+#### Example 5: Multiple Pending Transactions
 
-```
+```text
 - Tx A from epoch ending at height 100, grace boundary 150
 - Tx B from epoch ending at height 150, grace boundary 200
 - Current DA height: 155
@@ -604,9 +604,9 @@ _Example 5: Multiple Pending Transactions_
 - Result: Block rejected due to Tx A
 ```
 
-_Example 6: High Chain Activity (Extended Grace Period)_
+#### Example 6: High Chain Activity (Extended Grace Period)
 
-```
+```text
 - Chain is highly congested (>80% full)
 - Grace period is extended (up to 3x base period)
 - Forced tx submitted at height 75 (epoch 51-100)

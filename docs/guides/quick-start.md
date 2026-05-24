@@ -1,4 +1,5 @@
 ---
+title: Quick start guide
 description: Quickly start a chain node using the Testapp CLI.
 ---
 

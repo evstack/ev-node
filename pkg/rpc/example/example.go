@@ -35,6 +35,9 @@ func StartStoreServer(s store.Store, address string, logger zerolog.Logger) {
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  120 * time.Second,
 	}
+	if err := server.ConfigureHTTPServer(rpcServer); err != nil {
+		panic(err)
+	}
 
 	// Start the server in a separate goroutine
 	go func() {
@@ -94,6 +97,9 @@ func ExampleServer(s store.Store) {
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  120 * time.Second,
+	}
+	if err := server.ConfigureHTTPServer(rpcServer); err != nil {
+		panic(err)
 	}
 
 	// Start the server in a separate goroutine

@@ -165,7 +165,7 @@ spamoor \
 
 Transactions submitted to the Force Inclusion API are included in the chain at specific DA heights based on the `da_epoch_forced_inclusion` configuration in `genesis.json`. The API logs will show when the transaction will be force included:
 
-```
+```text
 INF transaction successfully submitted to DA layer da_height=100
 INF transaction will be force included blocks_until_inclusion=8 inclusion_at_height=110
 ```

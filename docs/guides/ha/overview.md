@@ -60,6 +60,7 @@ Raft transport is **plain TCP** with no built-in encryption. Before deploying:
 This is the single most important infrastructure decision for cluster stability. All nodes must have roughly the same RTT to each other. The timing parameters (heartbeat timeout, election timeout) are sized for a single `RTT_MAX` value — if one node has materially higher latency than its peers, it degrades the entire cluster's ability to detect failures and elect leaders reliably.
 
 Specifically:
+
 - **Same region, different AZs** gives uniform 5–30ms RTT and is the validated production topology. Nodes are isolated from AZ-level failures while keeping latency uniform.
 - **Cross-region nodes** introduce higher and asymmetric RTT (100ms+). Even a single high-latency node can destabilize the cluster under network stress.
 
@@ -154,6 +155,7 @@ raft:
 A comma-separated list of the **other** cluster members (exclude the local node), in the format `nodeID@host:port`. The host and port must be the Raft address (`raft_addr`) of each peer as reachable from this node. Do not list the node's own `node_id` in its own `peers` field.
 
 Raft uses this list to:
+
 - Bootstrap the cluster on first start (when no persisted state exists).
 - Know which addresses to dial when sending log entries or heartbeats.
 
@@ -286,6 +288,7 @@ raft:
 The number of committed log entries that must accumulate before Raft automatically takes a snapshot of the FSM state. After a snapshot, log entries older than the snapshot are compacted away.
 
 **Effect on operations:**
+
 - **Lower values** (e.g., `500`): snapshots are taken frequently, keeping the log small. A restarting node receives a recent snapshot and has fewer log entries to replay, but snapshot writes happen more often, adding brief I/O bursts.
 - **Higher values** (e.g., `5000`): less frequent snapshots mean less I/O overhead during normal operation, but a lagging node may have more log entries to replay when catching up.
 
@@ -306,6 +309,7 @@ raft:
 The number of log entries to **retain after a snapshot** is taken. These entries act as a catch-up buffer: a node that missed fewer than `trailing_logs` entries since the last snapshot can replay from the log without needing to transfer the full snapshot.
 
 **Effect on operations:**
+
 - **Lower values** (e.g., `200`): tighter disk usage; a node that misses even a few minutes of operation must receive a full snapshot on rejoin.
 - **Higher values** (e.g., `18000`): a lagging node can catch up via log replay without needing a full snapshot transfer, reducing the cost of brief outages. At 1 block/second (`block_time: "1s"`), `trailing_logs: 18000` covers ~5 hours; at 10 block/second, ~30 minutes.
 

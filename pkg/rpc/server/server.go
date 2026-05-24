@@ -6,15 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"time"
 
 	"connectrpc.com/connect"
 	"connectrpc.com/grpcreflect"
 	goheader "github.com/celestiaorg/go-header"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -424,12 +421,5 @@ func NewServiceHandler(
 		handler = telemetry.ExtractTraceContext(mux)
 	}
 
-	// Use h2c to support HTTP/2 without TLS
-	return h2c.NewHandler(handler, &http2.Server{
-		IdleTimeout:          120 * time.Second,
-		MaxReadFrameSize:     1 << 24,
-		MaxConcurrentStreams: 100,
-		ReadIdleTimeout:      30 * time.Second,
-		PingTimeout:          15 * time.Second,
-	}), nil
+	return handler, nil
 }
