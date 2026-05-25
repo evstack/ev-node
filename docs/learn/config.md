@@ -412,10 +412,12 @@ When pruning is enabled, the pruner runs at the configured interval and removes 
 **Batch Size Examples:**
 
 With default settings (15 minute interval, 1 second blocks):
+
 - Catch-up: ~1,800 blocks per run
 - Normal: ~3,600 blocks per run
 
 With high-throughput chain (15 minute interval, 100ms blocks):
+
 - Catch-up: ~18,000 blocks per run
 - Normal: ~36,000 blocks per run
 
@@ -1356,9 +1358,9 @@ _Constant:_ `FlagRaftPeers`
 
 Raft startup mode is selected automatically from local raft configuration state:
 
-* If the node already has persisted raft configuration in `raft.raft_dir`, it starts in rejoin mode.
-* If no raft configuration exists yet, it bootstraps a cluster from configured peers.
-* `raft.bootstrap` is retained for compatibility but does not control mode selection.
+- If the node already has persisted raft configuration in `raft.raft_dir`, it starts in rejoin mode.
+- If no raft configuration exists yet, it bootstraps a cluster from configured peers.
+- `raft.bootstrap` is retained for compatibility but does not control mode selection.
 
 `--evnode.raft.rejoin` has been removed.
 

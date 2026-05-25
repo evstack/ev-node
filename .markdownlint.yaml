@@ -2,5 +2,17 @@ default: true
 MD010:
   code_blocks: false
 MD013: false
+MD025:
+  front_matter_title: ""
 MD024:
   siblings_only: true
+MD033:
+  allowed_elements:
+    - a
+    - div
+    - OAIntroduction
+    - OAOperation
+    - script
+    - span
+    - style
+    - CelestiaGasEstimator

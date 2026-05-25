@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"golang.org/x/net/http2"
 
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/p2p"
@@ -15,6 +16,36 @@ import (
 
 // BestKnownHeightProvider returns the best-known network height observed by the node
 type BestKnownHeightProvider func() uint64
+
+// RPCServerProtocols returns the HTTP protocols supported by the RPC server.
+func RPCServerProtocols() *http.Protocols {
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
+	return protocols
+}
+
+// ConfigureHTTPServer enables cleartext HTTP/2 on an RPC http.Server.
+func ConfigureHTTPServer(s *http.Server) error {
+	if s.Protocols == nil {
+		s.Protocols = RPCServerProtocols()
+	}
+	if s.HTTP2 == nil {
+		s.HTTP2 = &http.HTTP2Config{
+			MaxReadFrameSize:     1 << 24,
+			MaxConcurrentStreams: 100,
+			SendPingTimeout:      30 * time.Second,
+			PingTimeout:          15 * time.Second,
+		}
+	}
+	return http2.ConfigureServer(s, &http2.Server{
+		IdleTimeout:          120 * time.Second,
+		MaxReadFrameSize:     1 << 24,
+		MaxConcurrentStreams: 100,
+		ReadIdleTimeout:      30 * time.Second,
+		PingTimeout:          15 * time.Second,
+	})
+}
 
 // RegisterCustomHTTPEndpoints registers custom HTTP handlers on the mux.
 func RegisterCustomHTTPEndpoints(mux *http.ServeMux, s store.Store, pm p2p.P2PRPC, cfg config.Config, bestKnownHeightProvider BestKnownHeightProvider, logger zerolog.Logger, raftNode RaftNodeSource) {

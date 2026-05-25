@@ -2,7 +2,7 @@
 
 This tutorial is going to show you how to deploy a Evolve testnet, focusing on the architecture choices and components that make up a complete EVM-based chain deployment.
 
-You can learn more about Evolve EVM architecture [here](../../learn/execution.md).
+You can learn more in the [Evolve EVM architecture guide](../../learn/execution.md).
 
 <!-- markdownlint-disable MD033 -->
 <script setup>

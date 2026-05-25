@@ -523,10 +523,10 @@ func (syncService *SyncService[H]) getPeerIDs() []peer.ID {
 }
 
 func getPeers(seeds string, logger zerolog.Logger) []peer.ID {
-	var peerIDs []peer.ID
 	if seeds == "" {
-		return peerIDs
+		return nil
 	}
+	peerIDs := make([]peer.ID, 0, strings.Count(seeds, ",")+1)
 	sl := strings.SplitSeq(seeds, ",")
 
 	for seed := range sl {

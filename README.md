@@ -2,11 +2,9 @@
 
 Ev-node is the basis of the Evolve Stack. For more in-depth information about Evolve, please visit our [website][docs].
 
-<!-- markdownlint-disable MD013 -->
 [![Go Report Card](https://goreportcard.com/badge/github.com/evstack/ev-node)](https://goreportcard.com/report/github.com/evstack/ev-node)
 [![codecov](https://codecov.io/gh/evstack/ev-node/branch/main/graph/badge.svg?token=CWGA4RLDS9)](https://codecov.io/gh/evstack/ev-node)
 [![GoDoc](https://godoc.org/github.com/evstack/ev-node?status.svg)](https://godoc.org/github.com/evstack/ev-node)
-<!-- markdownlint-enable MD013 -->
 
 > **⚠️ Version Notice**: Do not use tags or releases before v1.*. Pre-v1 releases are not stable and should be considered abandoned.
 
