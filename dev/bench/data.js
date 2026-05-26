@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1779781542100,
+  "lastUpdate": 1779781543980,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -194,6 +194,102 @@ window.BENCHMARK_DATA = {
             "value": 54,
             "unit": "allocs/op",
             "extra": "29430 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "8edee19b6111669c7103460fd8377a5583be66aa",
+          "message": "build(deps): Bump golangci/golangci-lint-action from 9.2.0 to 9.2.1 in the patch-updates group (#3332)\n\nbuild(deps): Bump golangci/golangci-lint-action\n\nBumps the patch-updates group with 1 update: [golangci/golangci-lint-action](https://github.com/golangci/golangci-lint-action).\n\n\nUpdates `golangci/golangci-lint-action` from 9.2.0 to 9.2.1\n- [Release notes](https://github.com/golangci/golangci-lint-action/releases)\n- [Commits](https://github.com/golangci/golangci-lint-action/compare/v9.2.0...v9.2.1)\n\n---\nupdated-dependencies:\n- dependency-name: golangci/golangci-lint-action\n  dependency-version: 9.2.1\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: patch-updates\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-05-26T09:41:47+02:00",
+          "tree_id": "dabfb040f762f5e396b9fa901994dc7752825140",
+          "url": "https://github.com/evstack/ev-node/commit/8edee19b6111669c7103460fd8377a5583be66aa"
+        },
+        "date": 1779781543460,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 39555,
+            "unit": "ns/op\t    4801 B/op\t      50 allocs/op",
+            "extra": "30858 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 39555,
+            "unit": "ns/op",
+            "extra": "30858 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 4801,
+            "unit": "B/op",
+            "extra": "30858 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 50,
+            "unit": "allocs/op",
+            "extra": "30858 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 40091,
+            "unit": "ns/op\t    5006 B/op\t      54 allocs/op",
+            "extra": "30416 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 40091,
+            "unit": "ns/op",
+            "extra": "30416 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 5006,
+            "unit": "B/op",
+            "extra": "30416 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 54,
+            "unit": "allocs/op",
+            "extra": "30416 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 46753,
+            "unit": "ns/op\t   10297 B/op\t      54 allocs/op",
+            "extra": "26508 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 46753,
+            "unit": "ns/op",
+            "extra": "26508 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 10297,
+            "unit": "B/op",
+            "extra": "26508 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 54,
+            "unit": "allocs/op",
+            "extra": "26508 times\n4 procs"
           }
         ]
       }
