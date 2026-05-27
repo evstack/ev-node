@@ -32,6 +32,10 @@ import (
 const proposerControlPrecompileAddress = "0x000000000000000000000000000000000000F101"
 
 func TestEvmFullNodeCanBecomeProposerAfterExecutionRotation(t *testing.T) {
+	if os.Getenv("EV_RETH_PROPOSER_IMAGE_TAG") == "" {
+		t.Skip("set EV_RETH_PROPOSER_IMAGE_TAG to an ev-reth image built with proposer-control support")
+	}
+
 	workDir := t.TempDir()
 	sequencerHome := filepath.Join(workDir, "sequencer")
 	fullNodeHome := filepath.Join(workDir, "fullnode")
