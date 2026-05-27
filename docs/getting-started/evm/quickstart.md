@@ -87,5 +87,7 @@ forge create src/Counter.sol:Counter --rpc-url http://localhost:8545 --private-k
 
 - [Configure ev-reth](/getting-started/evm/setup-ev-reth) — Customize chainspec, features
 - [Deploy Contracts](/getting-started/evm/deploy-contracts) — Foundry and Hardhat setup
+- [Sponsored Batch Transactions](/ev-reth/features/sponsored-transactions) — Sponsor user gas and batch app operations
+- [JavaScript Client](/ev-reth/js-client) — Build type `0x76` transactions from Viem
 - [Connect to Celestia](/guides/da-layers/celestia) — Production DA layer
 - [Run a Full Node](/guides/running-nodes/full-node) — Non-sequencer node setup

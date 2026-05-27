@@ -13,8 +13,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/p2p"
@@ -52,7 +50,9 @@ func setupTestServer(
 	configPath, configHandler := rpc.NewConfigServiceHandler(configServer)
 	mux.Handle(configPath, configHandler)
 
-	testServer := httptest.NewServer(h2c.NewHandler(mux, &http2.Server{}))
+	testServer := httptest.NewUnstartedServer(mux)
+	require.NoError(t, server.ConfigureHTTPServer(testServer.Config))
+	testServer.Start()
 	client := NewClient(testServer.URL)
 
 	return testServer, client

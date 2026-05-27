@@ -345,6 +345,30 @@ function sidebarHome() {
     //   items: [{ text: "Overview", link: "/blog/overview" }],
     // },
     {
+      text: "ev-reth",
+      collapsed: true,
+      items: [
+        { text: "Overview", link: "/ev-reth/overview" },
+        { text: "Configuration", link: "/ev-reth/configuration" },
+        { text: "Engine API", link: "/ev-reth/engine-api" },
+        { text: "JavaScript Client", link: "/ev-reth/js-client" },
+        {
+          text: "Features",
+          collapsed: true,
+          items: [
+            { text: "Base Fee Redirect", link: "/ev-reth/features/base-fee-redirect" },
+            { text: "Deploy Allowlist", link: "/ev-reth/features/deploy-allowlist" },
+            { text: "Contract Size Limits", link: "/ev-reth/features/contract-size-limits" },
+            { text: "Mint Precompile", link: "/ev-reth/features/mint-precompile" },
+            {
+              text: "Sponsored Batch Transactions",
+              link: "/ev-reth/features/sponsored-transactions",
+            },
+          ],
+        },
+      ],
+    },
+    {
       text: "API Documentation",
       collapsed: true,
       items: [

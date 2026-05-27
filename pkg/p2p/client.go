@@ -509,7 +509,7 @@ func (c *Client) GetPeers() ([]peer.AddrInfo, error) {
 		return nil, err
 	}
 
-	var peers []peer.AddrInfo
+	peers := make([]peer.AddrInfo, 0, peerLimit)
 	for p := range peerCh {
 		if p.ID == c.host.ID() {
 			continue

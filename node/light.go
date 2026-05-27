@@ -112,6 +112,9 @@ func (ln *LightNode) Run(parentCtx context.Context) error {
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  120 * time.Second,
 	}
+	if err := rpcserver.ConfigureHTTPServer(ln.rpcServer); err != nil {
+		return fmt.Errorf("error configuring RPC server: %w", err)
+	}
 
 	go func() {
 		ln.Logger.Info().Str("addr", ln.nodeConfig.RPC.Address).Msg("started RPC server")

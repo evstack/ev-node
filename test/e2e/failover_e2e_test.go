@@ -37,7 +37,6 @@ import (
 	coreda "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/rpc/client"
-	rpcclient "github.com/evstack/ev-node/pkg/rpc/client"
 	"github.com/evstack/ev-node/types"
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
@@ -856,7 +855,7 @@ type nodeDetails struct {
 
 	extClientOnce sync.Once
 	xEthClient    atomic.Pointer[ethclient.Client]
-	xRPCClient    atomic.Pointer[rpcclient.Client]
+	xRPCClient    atomic.Pointer[client.Client]
 	running       atomic.Bool
 	p2pAddr       string
 	p2pPeerAddr   string
@@ -870,7 +869,7 @@ func (d *nodeDetails) ethClient(t *testing.T) *ethclient.Client {
 	return d.xEthClient.Load()
 }
 
-func (d *nodeDetails) rpcClient(t *testing.T) *rpcclient.Client {
+func (d *nodeDetails) rpcClient(t *testing.T) *client.Client {
 	t.Helper()
 	d.initExtClients(t)
 	return d.xRPCClient.Load()
@@ -880,11 +879,11 @@ func (d *nodeDetails) rpcClient(t *testing.T) *rpcclient.Client {
 func (d *nodeDetails) initExtClients(t *testing.T) {
 	require.NotNil(t, d)
 	d.extClientOnce.Do(func() {
-		client, err := ethclient.Dial(d.ethAddr)
+		ethClient, err := ethclient.Dial(d.ethAddr)
 		require.NoError(t, err)
-		d.xEthClient.Store(client)
-		t.Cleanup(client.Close)
-		rpcClient := rpcclient.NewClient(d.rpcAddr)
+		d.xEthClient.Store(ethClient)
+		t.Cleanup(ethClient.Close)
+		rpcClient := client.NewClient(d.rpcAddr)
 		require.NotNil(t, rpcClient)
 		d.xRPCClient.Store(rpcClient)
 	})
