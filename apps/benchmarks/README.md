@@ -39,7 +39,7 @@ You can supercharge the test suite by supplying your own matrix file. Each entry
 }
 ```
 
-Mount your custom matrix into the container and point `ev-benchmark` at it:
+Mount your custom matrix into the container and point `benchmarks` binary at it:
 
 ```sh
 docker run \
@@ -51,5 +51,5 @@ docker run \
 ## Build
 
 ```sh
-docker build -f apps/benchmarking/Dockerfile -t benchmarking .
+docker build -f apps/benchmarks/Dockerfile -t benchmarks .
 ```
