@@ -32,6 +32,5 @@ WORKDIR /root
 COPY apps/benchmarks/entrypoint.sh /usr/bin/entrypoint.sh
 COPY apps/benchmarks/crontab /etc/crontab
 COPY apps/benchmarks/matrices/baseline.json /root/baseline.json
-RUN chmod +x /usr/bin/entrypoint.sh
 
-ENTRYPOINT ["/usr/bin/entrypoint.sh"]
+CMD ["supercronic", "/etc/crontab"]
