@@ -1,0 +1,87 @@
+{
+  "entries": [
+    {
+      "test_name": "TestGasBurner",
+      "timeout": "15m",
+      "env": {
+        "BENCH_BLOCK_TIME": "100ms",
+        "BENCH_SLOT_DURATION": "100ms",
+        "BENCH_GAS_LIMIT": "0x1C9C380",
+        "BENCH_SCRAPE_INTERVAL": "25ms",
+        "BENCH_NUM_SPAMMERS": "4",
+        "BENCH_COUNT_PER_SPAMMER": "6000",
+        "BENCH_THROUGHPUT": "60",
+        "BENCH_WARMUP_TXS": "200",
+        "BENCH_GAS_UNITS_TO_BURN": "1000000",
+        "BENCH_MAX_WALLETS": "200",
+        "BENCH_WAIT_TIMEOUT": "10m"
+      }
+    },
+    {
+      "test_name": "TestStatePressure",
+      "timeout": "15m",
+      "env": {
+        "BENCH_BLOCK_TIME": "100ms",
+        "BENCH_SLOT_DURATION": "100ms",
+        "BENCH_GAS_LIMIT": "0x1C9C380",
+        "BENCH_SCRAPE_INTERVAL": "25ms",
+        "BENCH_NUM_SPAMMERS": "3",
+        "BENCH_COUNT_PER_SPAMMER": "4000",
+        "BENCH_THROUGHPUT": "40",
+        "BENCH_WARMUP_TXS": "200",
+        "BENCH_GAS_UNITS_TO_BURN": "1000000",
+        "BENCH_MAX_WALLETS": "150",
+        "BENCH_WAIT_TIMEOUT": "10m"
+      }
+    },
+    {
+      "test_name": "TestMixedWorkload",
+      "timeout": "20m",
+      "env": {
+        "BENCH_BLOCK_TIME": "100ms",
+        "BENCH_SLOT_DURATION": "100ms",
+        "BENCH_GAS_LIMIT": "0x1C9C380",
+        "BENCH_SCRAPE_INTERVAL": "25ms",
+        "BENCH_NUM_SPAMMERS": "4",
+        "BENCH_COUNT_PER_SPAMMER": "5000",
+        "BENCH_THROUGHPUT": "26",
+        "BENCH_WARMUP_TXS": "500",
+        "BENCH_GAS_UNITS_TO_BURN": "1000000",
+        "BENCH_MAX_WALLETS": "150",
+        "BENCH_WAIT_TIMEOUT": "15m"
+      }
+    },
+    {
+      "test_name": "TestDeFiSimulation",
+      "timeout": "20m",
+      "env": {
+        "BENCH_BLOCK_TIME": "100ms",
+        "BENCH_SLOT_DURATION": "100ms",
+        "BENCH_GAS_LIMIT": "0x1C9C380",
+        "BENCH_SCRAPE_INTERVAL": "25ms",
+        "BENCH_NUM_SPAMMERS": "3",
+        "BENCH_COUNT_PER_SPAMMER": "30000",
+        "BENCH_THROUGHPUT": "100",
+        "BENCH_WARMUP_TXS": "800",
+        "BENCH_MAX_WALLETS": "150",
+        "BENCH_WAIT_TIMEOUT": "15m"
+      }
+    },
+    {
+      "test_name": "TestERC20Throughput",
+      "timeout": "15m",
+      "env": {
+        "BENCH_BLOCK_TIME": "100ms",
+        "BENCH_SLOT_DURATION": "100ms",
+        "BENCH_GAS_LIMIT": "0x1C9C380",
+        "BENCH_SCRAPE_INTERVAL": "25ms",
+        "BENCH_NUM_SPAMMERS": "4",
+        "BENCH_COUNT_PER_SPAMMER": "12000",
+        "BENCH_THROUGHPUT": "115",
+        "BENCH_WARMUP_TXS": "300",
+        "BENCH_MAX_WALLETS": "200",
+        "BENCH_WAIT_TIMEOUT": "10m"
+      }
+    }
+  ]
+}
