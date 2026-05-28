@@ -2,36 +2,85 @@ package internal
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand/v2"
+	"net/http"
 	"time"
 
 	"github.com/celestiaorg/tastora/framework/docker/evstack/spamoor"
 	dto "github.com/prometheus/client_model/go"
 )
 
-func ExecuteMatrix(matrixPath, spamoorAddr string) error {
+type matrixOpts struct {
+	totalTxTarget    int
+	allowProbability bool
+	waitForSync      bool
+}
+
+// ExecuteMatrixWithOverrides runs a matrix with BENCH_COUNT_PER_SPAMMER
+// overridden to totalTxTarget / NumSpammers per entry. Skips probability
+// filtering and sync waiting (caller is responsible for sync).
+func ExecuteMatrixWithOverrides(ctx context.Context, matrixPath string, api *spamoor.API, totalTxTarget int) error {
+	return executeMatrix(ctx, matrixPath, api, matrixOpts{
+		totalTxTarget: totalTxTarget,
+	})
+}
+
+// ExecuteMatrix runs all entries in a matrix file as-is, with probability
+// filtering and an initial WaitForSync call. Used by the one-shot `run` command.
+func ExecuteMatrix(ctx context.Context, matrixPath string, api *spamoor.API) error {
+	return executeMatrix(ctx, matrixPath, api, matrixOpts{
+		allowProbability: true,
+		waitForSync:      true,
+	})
+}
+
+func executeMatrix(ctx context.Context, matrixPath string, api *spamoor.API, opts matrixOpts) error {
 	matrix, err := LoadMatrix(matrixPath)
 	if err != nil {
 		return fmt.Errorf("load matrix: %w", err)
 	}
 
-	api := spamoor.NewAPI(spamoorAddr)
-	log.Printf("spamoor API: %s", spamoorAddr)
-	log.Printf("loaded %d matrix entries from %s", len(matrix.Entries), matrixPath)
+	log.Printf("spamoor API: %s", api.BaseURL)
+	if opts.totalTxTarget > 0 {
+		log.Printf("loaded %d matrix entries from %s (totalTxTarget=%d)", len(matrix.Entries), matrixPath, opts.totalTxTarget)
+	} else {
+		log.Printf("loaded %d matrix entries from %s", len(matrix.Entries), matrixPath)
+	}
+
+	if opts.waitForSync {
+		if err := WaitForSync(ctx, api); err != nil {
+			return fmt.Errorf("waiting for spamoor sync: %w", err)
+		}
+	}
 
 	var failures []string
 	for i, entry := range matrix.Entries {
+		if err := ctx.Err(); err != nil {
+			log.Printf("cancelled before entry %d/%d", i+1, len(matrix.Entries))
+			return err
+		}
+
 		log.Printf("--- [%d/%d] %s ---", i+1, len(matrix.Entries), entry.TestName)
 
-		if entry.Probability != nil {
+		if opts.allowProbability && entry.Probability != nil {
 			roll := rand.Float64()
 			if roll >= *entry.Probability {
 				log.Printf("[%s] skipped (probability=%.2f, roll=%.4f)", entry.TestName, *entry.Probability, roll)
 				continue
 			}
 			log.Printf("[%s] triggered (probability=%.2f, roll=%.4f)", entry.TestName, *entry.Probability, roll)
+		}
+
+		if opts.totalTxTarget > 0 {
+			countPerSpammer := opts.totalTxTarget / entry.NumSpammers
+			if countPerSpammer < 1 {
+				countPerSpammer = 1
+			}
+			entry.Env["BENCH_COUNT_PER_SPAMMER"] = fmt.Sprintf("%d", countPerSpammer)
+			entry.CountPerSpammer = countPerSpammer
 		}
 
 		timeout := 15 * time.Minute
@@ -44,8 +93,8 @@ func ExecuteMatrix(matrixPath, spamoorAddr string) error {
 			}
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
-		if err := runEntry(ctx, api, entry); err != nil {
+		entryCtx, cancel := context.WithTimeout(ctx, timeout)
+		if err := runEntry(entryCtx, api, entry); err != nil {
 			log.Printf("FAIL [%s]: %v", entry.TestName, err)
 			failures = append(failures, entry.TestName)
 		}
@@ -59,7 +108,8 @@ func ExecuteMatrix(matrixPath, spamoorAddr string) error {
 	return nil
 }
 
-func RunCheck(spamoorAddr string, timeout time.Duration) error {
+// RunCheck verifies connectivity by sending a single eoatx through spamoor.
+func RunCheck(ctx context.Context, spamoorAddr string, timeout time.Duration) error {
 	api := spamoor.NewAPI(spamoorAddr)
 
 	log.Printf("checking connectivity via %s", spamoorAddr)
@@ -69,18 +119,22 @@ func RunCheck(spamoorAddr string, timeout time.Duration) error {
 	}
 	log.Printf("spamoor reachable")
 
-	if err := deleteAllSpammers(api); err != nil {
+	if err := WaitForSync(ctx, api); err != nil {
+		return fmt.Errorf("waiting for spamoor sync: %w", err)
+	}
+
+	if err := DeleteAllSpammers(api); err != nil {
 		return fmt.Errorf("cleanup: %w", err)
 	}
-	defer func() { _ = deleteAllSpammers(api) }()
+	defer func() { _ = DeleteAllSpammers(api) }()
 
 	cfg := map[string]any{
 		"total_count":     1,
 		"throughput":      1,
 		"max_pending":     10,
 		"max_wallets":     1,
-		"base_fee":        20,
-		"tip_fee":         2,
+		"base_fee":        500,
+		"tip_fee":         50,
 		"refill_amount":   "500000000000000000000",
 		"refill_balance":  "200000000000000000000",
 		"refill_interval": 300,
@@ -92,10 +146,10 @@ func RunCheck(spamoorAddr string, timeout time.Duration) error {
 	}
 	log.Printf("created check spammer (id=%d)", id)
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	checkCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	sent, failed, err := waitForSpamoorDone(ctx, api, 1)
+	sent, failed, err := waitForSpamoorDone(checkCtx, api, 1)
 	if err != nil {
 		return fmt.Errorf("tx not confirmed: %w", err)
 	}
@@ -114,11 +168,11 @@ func runEntry(ctx context.Context, api *spamoor.API, entry Entry) error {
 	log.Printf("[%s] scenario=%s spammers=%d count_per=%d total=%d",
 		entry.TestName, entry.Scenario, entry.NumSpammers, entry.CountPerSpammer, totalCount)
 
-	if err := deleteAllSpammers(api); err != nil {
+	if err := DeleteAllSpammers(api); err != nil {
 		return fmt.Errorf("delete stale spammers: %w", err)
 	}
 	defer func() {
-		if err := deleteAllSpammers(api); err != nil {
+		if err := DeleteAllSpammers(api); err != nil {
 			log.Printf("[%s] warning: cleanup failed: %v", entry.TestName, err)
 		}
 	}()
@@ -162,7 +216,8 @@ func runEntry(ctx context.Context, api *spamoor.API, entry Entry) error {
 	return nil
 }
 
-func deleteAllSpammers(api *spamoor.API) error {
+// DeleteAllSpammers removes all active spammers from the spamoor daemon.
+func DeleteAllSpammers(api *spamoor.API) error {
 	existing, err := api.ListSpammers()
 	if err != nil {
 		return fmt.Errorf("list spammers: %w", err)
@@ -208,6 +263,67 @@ func waitForSpamoorDone(ctx context.Context, api *spamoor.API, targetCount int) 
 			}
 		}
 	}
+}
+
+type spamoorClient struct {
+	BlockHeight uint64 `json:"block_height"`
+	Ready       bool   `json:"ready"`
+}
+
+// WaitForSync polls spamoor until its block processing rate stabilizes,
+// indicating it has caught up to the chain tip. Returns immediately if
+// ctx is cancelled.
+func WaitForSync(ctx context.Context, api *spamoor.API) error {
+	log.Printf("waiting for spamoor to sync to chain tip...")
+
+	const syncThreshold uint64 = 10
+	const pollInterval = 3 * time.Second
+
+	var lastHeight uint64
+
+	for {
+		height, err := getSpamoorHeight(api)
+		if err != nil {
+			log.Printf("warning: %v", err)
+		} else {
+			if lastHeight > 0 && height > 0 {
+				delta := height - lastHeight
+				if delta < syncThreshold {
+					log.Printf("spamoor synced at block %d (delta=%d in %s)", height, delta, pollInterval)
+					return nil
+				}
+				log.Printf("syncing... block %d (+%d in %s)", height, delta, pollInterval)
+			} else {
+				log.Printf("syncing... block %d", height)
+			}
+			lastHeight = height
+		}
+
+		timer := time.NewTimer(pollInterval)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return fmt.Errorf("cancelled waiting for sync: %w", ctx.Err())
+		case <-timer.C:
+		}
+	}
+}
+
+func getSpamoorHeight(api *spamoor.API) (uint64, error) {
+	resp, err := http.Get(fmt.Sprintf("%s/api/clients", api.BaseURL))
+	if err != nil {
+		return 0, fmt.Errorf("get clients: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var clients []spamoorClient
+	if err := json.NewDecoder(resp.Body).Decode(&clients); err != nil {
+		return 0, fmt.Errorf("decode clients: %w", err)
+	}
+	if len(clients) == 0 {
+		return 0, fmt.Errorf("no RPC clients configured")
+	}
+	return clients[0].BlockHeight, nil
 }
 
 func sumCounter(f *dto.MetricFamily) float64 {

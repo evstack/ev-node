@@ -7,6 +7,7 @@ import (
 
 var spamoorFlag string
 
+// NewRootCmd returns the top-level cobra command for ev-benchmarks.
 func NewRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:   "ev-benchmarks",
@@ -15,7 +16,7 @@ func NewRootCmd() *cobra.Command {
 
 	rootCmd.PersistentFlags().StringVar(&spamoorFlag, "spamoor-url", "", "spamoor-daemon API URL (env: BENCH_SPAMOOR_URL)")
 
-	rootCmd.AddCommand(newRunCmd(), newRegularCmd(), newBurstCmd(), newCheckCmd())
+	rootCmd.AddCommand(newRunCmd(), newStartCmd(), newCheckCmd())
 
 	return rootCmd
 }

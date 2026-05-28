@@ -7,6 +7,8 @@ import (
 
 const DefaultSpamoorURL = "http://spamoor-daemon:8080"
 
+// SpamoorURL returns the spamoor-daemon API URL from BENCH_SPAMOOR_URL,
+// falling back to DefaultSpamoorURL.
 func SpamoorURL() string {
 	if v := os.Getenv("BENCH_SPAMOOR_URL"); v != "" {
 		return v
@@ -25,6 +27,8 @@ var envMapping = map[string]string{
 	"BENCH_REBROADCAST":       "rebroadcast",
 }
 
+// BuildScenarioConfig translates BENCH_* env vars from a matrix entry into
+// the spamoor scenario config map expected by the spamoor API.
 func BuildScenarioConfig(env map[string]string) map[string]any {
 	cfg := map[string]any{
 		"refill_amount":   "500000000000000000000",

@@ -31,10 +31,13 @@ var validScenarios = map[string]bool{
 	spamoor.ScenarioTaskRunner:       true,
 }
 
+// Matrix is the top-level structure of a benchmark matrix JSON file.
 type Matrix struct {
 	Entries []Entry `json:"entries"`
 }
 
+// Entry is a single benchmark scenario in a matrix file. NumSpammers and
+// CountPerSpammer are derived from Env during validation.
 type Entry struct {
 	TestName        string            `json:"test_name"`
 	Scenario        string            `json:"scenario"`
@@ -45,6 +48,7 @@ type Entry struct {
 	CountPerSpammer int               `json:"-"`
 }
 
+// LoadMatrix reads and validates a matrix JSON file from disk.
 func LoadMatrix(path string) (*Matrix, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

@@ -1,6 +1,6 @@
 # benchmarks
 
-Standalone load generator for ev-node stress testing. Talks to a [spamoor-daemon](https://github.com/ethpandaops/spamoor) sidecar via HTTP API. Runs on a cron schedule via [supercronic](https://github.com/aptible/supercronic).
+Standalone load generator for ev-node stress testing. Talks to a [spamoor-daemon](https://github.com/ethpandaops/spamoor) sidecar via HTTP API. Runs an in-process scheduler with configurable regular and burst workloads.
 
 ## Architecture
 
@@ -12,18 +12,34 @@ ev-benchmarks (this binary)  -->  spamoor-daemon  -->  ev-reth RPC
 ```
 
 - **spamoor-daemon** needs: a funded private key + ev-reth RPC URL
-- **ev-benchmarks** needs: spamoor-daemon API URL + a matrix JSON file
+- **ev-benchmarks** needs: spamoor-daemon API URL + matrix JSON files
 
 ## Commands
 
 ```
+ev-benchmarks start                      # run continuous scheduler (regular + burst)
 ev-benchmarks check                      # send 1 tx to verify spamoor → ev-reth connectivity
-ev-benchmarks regular                    # sustained ~1M tx/day (baseline matrix)
-ev-benchmarks burst                      # probabilistic 500K tx burst (~15%/invocation)
-ev-benchmarks run <matrix.json>          # custom matrix file
+ev-benchmarks run <matrix.json>          # one-shot: run a custom matrix file
 ```
 
+### start flags
+
+| Flag | Env | Default | Description |
+|------|-----|---------|-------------|
+| `--tx-per-day` | `BENCH_TX_PER_DAY` | `1000000` | sustained txs/day |
+| `--interval` | `BENCH_INTERVAL` | `1h` | regular workload frequency |
+| `--burst-tx-count` | `BENCH_BURST_TX_COUNT` | `500000` | txs per burst |
+| `--burst-per-day` | `BENCH_BURST_PER_DAY` | `2` | bursts per day, randomly spaced |
+| `--regular-matrix` | `BENCH_REGULAR_MATRIX` | `/root/baseline.json` | path to regular matrix JSON |
+| `--burst-matrix` | `BENCH_BURST_MATRIX` | `/root/burst.json` | path to burst matrix JSON |
+
 Global flag: `--spamoor-url` (or `BENCH_SPAMOOR_URL` env, default `http://spamoor-daemon:8080`)
+
+### Scheduling
+
+- **Regular**: fires immediately at startup, then repeats at `--interval`. Per-run tx count = `tx-per-day / (24h / interval)`. Overrides each matrix entry's `BENCH_COUNT_PER_SPAMMER`.
+- **Burst**: at startup + each midnight UTC, generates N random times across the day. Each burst overrides `BENCH_COUNT_PER_SPAMMER` = `burst-tx-count / NumSpammers`.
+- **Serialization**: a mutex prevents concurrent spamoor access. If burst fires during regular (or vice versa), it waits for the lock.
 
 ## Quick Start
 
@@ -43,8 +59,16 @@ docker run -d --name spamoor -p 8080:8080 \
 # build
 cd apps/benchmarks && go build -o ev-benchmarks .
 
-# run
-./ev-benchmarks regular --spamoor-url=http://localhost:8080
+# run with defaults (~1M tx/day, 2 bursts/day)
+./ev-benchmarks start --spamoor-url=http://localhost:8080
+
+# custom config
+./ev-benchmarks start \
+  --spamoor-url=http://localhost:8080 \
+  --tx-per-day=500000 \
+  --interval=30m \
+  --burst-tx-count=100000 \
+  --burst-per-day=4
 ```
 
 ### Docker Compose
@@ -76,15 +100,14 @@ Each entry specifies a spamoor scenario, tx counts, and optional probability:
       "test_name": "EOATransfer",
       "scenario": "eoatx",
       "timeout": "15m",
-      "probability": 1.0,
       "env": {
         "BENCH_NUM_SPAMMERS": "4",
         "BENCH_COUNT_PER_SPAMMER": "10500",
         "BENCH_THROUGHPUT": "200",
         "BENCH_MAX_PENDING": "50000",
         "BENCH_MAX_WALLETS": "200",
-        "BENCH_BASE_FEE": "20",
-        "BENCH_TIP_FEE": "2"
+        "BENCH_BASE_FEE": "500",
+        "BENCH_TIP_FEE": "50"
       }
     }
   ]
@@ -97,11 +120,7 @@ Each entry specifies a spamoor scenario, tx counts, and optional probability:
 | `probability` | 0.0–1.0, chance of running per invocation (omit = always run) |
 | `timeout` | max duration per entry (default `15m`) |
 
-## Schedule
-
-Supercronic runs both matrices `@hourly`:
-- `regular` — 4 × 10,500 = 42K txs/run → ~1M/day
-- `burst` — 10 × 50,000 = 500K txs, 15% chance → ~3-4 bursts/day
+When using `start`, the `BENCH_COUNT_PER_SPAMMER` value in the matrix is overridden by the computed per-run count. The matrix value is still used by the `run` command.
 
 ## Build
 

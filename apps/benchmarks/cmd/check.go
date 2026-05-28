@@ -15,7 +15,7 @@ func newCheckCmd() *cobra.Command {
 		Short: "verify connectivity by sending a single eoatx through spamoor to ev-reth",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return internal.RunCheck(resolveSpamoorURL(), timeout)
+			return internal.RunCheck(cmd.Context(), resolveSpamoorURL(), timeout)
 		},
 	}
 

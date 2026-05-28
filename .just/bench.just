@@ -26,7 +26,7 @@ bench-smoke:
     export BENCH_PRIVATE_KEY BENCH_ETH_RPC_URL
 
     echo "--> Building ev-benchmarks binary"
-    cd apps/benchmarks && go build -o ../../{{ build_dir }}/ev-benchmarks . && cd ../..
+    (cd apps/benchmarks && go build -o {{ build_dir }}/ev-benchmarks .)
 
     echo "--> Starting spamoor-daemon via docker compose"
     docker compose -f apps/benchmarks/docker-compose.yml up -d spamoor-daemon
@@ -59,8 +59,8 @@ bench-smoke:
             "BENCH_THROUGHPUT": "10",
             "BENCH_MAX_PENDING": "100",
             "BENCH_MAX_WALLETS": "10",
-            "BENCH_BASE_FEE": "20",
-            "BENCH_TIP_FEE": "2"
+            "BENCH_BASE_FEE": "500",
+            "BENCH_TIP_FEE": "50"
           }
         }
       ]

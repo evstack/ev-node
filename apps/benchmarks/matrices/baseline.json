@@ -10,8 +10,8 @@
         "BENCH_THROUGHPUT": "200",
         "BENCH_MAX_PENDING": "50000",
         "BENCH_MAX_WALLETS": "200",
-        "BENCH_BASE_FEE": "20",
-        "BENCH_TIP_FEE": "2"
+        "BENCH_BASE_FEE": "500",
+        "BENCH_TIP_FEE": "50"
       }
     }
   ]
