@@ -1,6 +1,6 @@
 # benchmarks
 
-A containerised benchmark runner that executes `ev-benchmark` on an hourly cron schedule via [supercronic](https://github.com/aptible/supercronic).
+A containerised benchmark runner that executes `ev-benchmarks` on an hourly cron schedule via [supercronic](https://github.com/aptible/supercronic).
 
 ## Environment Variables
 
@@ -15,7 +15,7 @@ The following environment variables **must** be provided at runtime:
 ## Schedule
 
 The benchmark runs **once per hour** (`@hourly`). The cron schedule is defined in [`crontab`](./crontab) and executed by supercronic inside the container.
-You can supercharche the `/etc/crontab` to customize the job execution.
+You can supercharge the `/etc/crontab` to customize the job execution.
 
 ## Matrices
 
@@ -39,13 +39,13 @@ You can supercharge the test suite by supplying your own matrix file. Each entry
 }
 ```
 
-Mount your custom matrix into the container and point `benchmarks` binary at it:
+Mount your custom matrix into the container and point `ev-benchmarks` binary at it:
 
 ```sh
 docker run \
   -v /path/to/your/matrix.json:/root/matrix.json \
   -e BENCH_MATRIX_FILE=/root/matrix.json \
-  benchmarks
+  ev-benchmarks
 ```
 
 ## Build
