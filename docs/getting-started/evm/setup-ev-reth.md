@@ -70,6 +70,8 @@ Add these under `config.evolve`:
 | `contractSizeLimit` | Override default 24KB contract size limit |
 | `mintPrecompile` | Enable native token minting precompile |
 
+Sponsored batch transactions do not require chainspec configuration. ev-reth accepts transaction type `0x76` through the normal `eth_sendRawTransaction` path when the node version supports it.
+
 ## Docker Configuration
 
 The default `docker-compose.yml` in ev-reth:
@@ -131,4 +133,6 @@ ev-reth node \
 ## Next Steps
 
 - [ev-reth Features](/ev-reth/features/base-fee-redirect) — Detailed feature documentation
+- [Sponsored Batch Transactions](/ev-reth/features/sponsored-transactions) — Application gas sponsorship and atomic batches
+- [JavaScript Client](/ev-reth/js-client) — Viem helpers for type `0x76` transactions
 - [ev-reth Chainspec Reference](/reference/configuration/ev-reth-chainspec) — Full configuration reference

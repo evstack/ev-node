@@ -8,6 +8,7 @@ ev-reth extends reth with:
 
 - **Engine API integration** — Driven by ev-node for block production
 - **Rollup-specific features** — Base fee redirect, deploy allowlist, custom precompiles
+- **Application gas sponsorship** — Custom transaction type for sponsored batch operations
 - **Configurable chain parameters** — Contract size limits, custom gas settings
 
 ## Architecture
@@ -47,6 +48,7 @@ ev-node drives ev-reth through the Engine API:
 | [Deploy Allowlist](/ev-reth/features/deploy-allowlist) | Restrict who can deploy contracts |
 | [Contract Size Limits](/ev-reth/features/contract-size-limits) | Increase max contract size beyond 24KB |
 | [Mint Precompile](/ev-reth/features/mint-precompile) | Native token minting for bridges |
+| [Sponsored Batch Transactions](/ev-reth/features/sponsored-transactions) | Sponsor user gas and execute multiple calls atomically |
 
 ## When to Use ev-reth
 
@@ -67,3 +69,4 @@ Use ev-reth when you want:
 - [EVM Quickstart](/getting-started/evm/quickstart) — Get started
 - [Configuration](/ev-reth/configuration) — Chainspec and settings
 - [Engine API](/ev-reth/engine-api) — How ev-node communicates with ev-reth
+- [JavaScript Client](/ev-reth/js-client) — Build and sponsor type `0x76` transactions

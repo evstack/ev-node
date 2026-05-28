@@ -34,6 +34,12 @@ By default, base fees are burned. ev-reth can redirect them to a treasury:
 
 See [Base Fee Redirect](/ev-reth/features/base-fee-redirect) for details.
 
+#### Sponsored Transactions
+
+ev-reth also supports type `0x76` transactions where an application sponsor pays gas for the executor. The executor remains the transaction sender and still pays any value transfers inside the batch, while the sponsor pays execution gas and receives gas refunds.
+
+See [Sponsored Batch Transactions](/ev-reth/features/sponsored-transactions) for the transaction model and [JavaScript Client](/ev-reth/js-client) for application integration.
+
 ### Cosmos SDK (ev-abci)
 
 Uses standard Cosmos SDK fee model:
