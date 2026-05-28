@@ -1,2 +1,2 @@
 # crontab
-@hourly benchmarks /root/baseline.json
+@hourly ev-benchmarks /root/baseline.json
