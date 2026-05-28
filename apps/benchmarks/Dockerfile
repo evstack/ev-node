@@ -28,7 +28,7 @@ RUN wget -q "https://github.com/aptible/supercronic/releases/download/v${SUPERCR
 WORKDIR /root
 
 # TODO
-# COPY --from=build-env /src/apps/benchmarks/benchmarks /usr/bin/benchmarks
+# COPY --from=build-env /src/apps/benchmarks/ev-benchmarks /usr/bin/ev-benchmarks
 COPY apps/benchmarks/entrypoint.sh /usr/bin/entrypoint.sh
 COPY apps/benchmarks/crontab /etc/crontab
 COPY apps/benchmarks/matrices/baseline.json /root/baseline.json
