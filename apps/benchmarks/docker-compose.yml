@@ -1,0 +1,28 @@
+name: "ev-benchmarks"
+
+services:
+  spamoor-daemon:
+    image: ethpandaops/spamoor:latest
+    entrypoint: /app/spamoor-daemon
+    command:
+      - --privkey=${BENCH_PRIVATE_KEY:?BENCH_PRIVATE_KEY is required}
+      - --rpchost=${BENCH_ETH_RPC_URL:?BENCH_ETH_RPC_URL is required}
+      - --port=8080
+      - --startup-delay=0
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/metrics"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+
+  benchmarks:
+    build:
+      context: ../..
+      dockerfile: apps/benchmarks/Dockerfile
+    depends_on:
+      spamoor-daemon:
+        condition: service_healthy
+    environment:
+      - BENCH_SPAMOOR_URL=http://spamoor-daemon:8080

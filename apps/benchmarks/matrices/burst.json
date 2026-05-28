@@ -1,0 +1,19 @@
+{
+  "entries": [
+    {
+      "test_name": "EOATransferBurst",
+      "scenario": "eoatx",
+      "timeout": "30m",
+      "probability": 0.15,
+      "env": {
+        "BENCH_NUM_SPAMMERS": "10",
+        "BENCH_COUNT_PER_SPAMMER": "50000",
+        "BENCH_THROUGHPUT": "500",
+        "BENCH_MAX_PENDING": "50000",
+        "BENCH_MAX_WALLETS": "500",
+        "BENCH_BASE_FEE": "20",
+        "BENCH_TIP_FEE": "2"
+      }
+    }
+  ]
+}

@@ -1,15 +1,12 @@
-FROM golang:1.26-alpine AS build-env
+FROM golang:1.25-alpine AS build-env
 
 WORKDIR /src
 
-# TODO
-# COPY go.mod go.sum ./
-# RUN go mod download
+COPY apps/benchmarks/go.mod apps/benchmarks/go.sum ./
+RUN go mod download
 
-# COPY . .
-
-# WORKDIR /src/apps/evm
-# RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -o evm .
+COPY apps/benchmarks/ .
+RUN CGO_ENABLED=0 GOOS=linux go build -o ev-benchmarks .
 
 FROM alpine:3.22.2
 
@@ -27,10 +24,9 @@ RUN wget -q "https://github.com/aptible/supercronic/releases/download/v${SUPERCR
 
 WORKDIR /root
 
-# TODO
-# COPY --from=build-env /src/apps/benchmarks/ev-benchmarks /usr/bin/ev-benchmarks
-COPY apps/benchmarks/entrypoint.sh /usr/bin/entrypoint.sh
+COPY --from=build-env /src/ev-benchmarks /usr/bin/ev-benchmarks
 COPY apps/benchmarks/crontab /etc/crontab
 COPY apps/benchmarks/matrices/baseline.json /root/baseline.json
+COPY apps/benchmarks/matrices/burst.json /root/burst.json
 
 CMD ["supercronic", "/etc/crontab"]

@@ -1,2 +1,4 @@
-# crontab
-@hourly ev-benchmarks /root/baseline.json
+# sustained ~1M tx/day (4 × 10,500 = 42,000 per run × 24 = ~1,008,000/day)
+@hourly ev-benchmarks regular
+# burst 500K tx at random (~15% chance per hour ≈ 3-4 bursts/day)
+@hourly ev-benchmarks burst

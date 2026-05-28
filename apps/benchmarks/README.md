@@ -1,55 +1,118 @@
 # benchmarks
 
-A containerised benchmark runner that executes `ev-benchmarks` on an hourly cron schedule via [supercronic](https://github.com/aptible/supercronic).
+Standalone load generator for ev-node stress testing. Talks to a [spamoor-daemon](https://github.com/ethpandaops/spamoor) sidecar via HTTP API. Runs on a cron schedule via [supercronic](https://github.com/aptible/supercronic).
 
-## Environment Variables
+## Architecture
 
-The following environment variables **must** be provided at runtime:
+```
+ev-benchmarks (this binary)  -->  spamoor-daemon  -->  ev-reth RPC
+        |                              |
+   reads matrix JSON            manages wallets,
+   creates/polls spammers       signs & sends txs
+```
 
-| Variable | Required | Description | Example |
-|---|---|---|---|
-| `BENCH_TRACE_QUERY_URL` | No | Base URL of the OTLP trace query service | `http://<otlp-server>:10428` |
-| `BENCH_PRIVATE_KEY` | Yes | Private key used to sign benchmark transactions | *(secret)* |
-| `BENCH_ETH_RPC_URL` | Yes | Ethereum JSON-RPC endpoint | `http://<load-balancer-host>:8545` |
+- **spamoor-daemon** needs: a funded private key + ev-reth RPC URL
+- **ev-benchmarks** needs: spamoor-daemon API URL + a matrix JSON file
 
-## Schedule
+## Commands
 
-The benchmark runs **once per hour** (`@hourly`). The cron schedule is defined in [`crontab`](./crontab) and executed by supercronic inside the container.
-You can supercharge the `/etc/crontab` to customize the job execution.
+```
+ev-benchmarks check                      # send 1 tx to verify spamoor → ev-reth connectivity
+ev-benchmarks regular                    # sustained ~1M tx/day (baseline matrix)
+ev-benchmarks burst                      # probabilistic 500K tx burst (~15%/invocation)
+ev-benchmarks run <matrix.json>          # custom matrix file
+```
 
-## Matrices
+Global flag: `--spamoor-url` (or `BENCH_SPAMOOR_URL` env, default `http://spamoor-daemon:8080`)
 
-Benchmarks are driven by a JSON matrix file that lists which tests to run and the environment variables for each one. The default matrix is [`matrices/baseline.json`](./matrices/baseline.json) and contains the following tests: `TestGasBurner`, `TestStatePressure`, `TestMixedWorkload`, `TestDeFiSimulation`, and `TestERC20Throughput`.
+## Quick Start
 
-You can supercharge the test suite by supplying your own matrix file. Each entry specifies a `test_name`, an optional `timeout`, and an `env` map of benchmark knobs:
+### 1. Start spamoor-daemon
+
+```sh
+docker run -d --name spamoor -p 8080:8080 \
+  ethpandaops/spamoor:latest /app/spamoor-daemon \
+  --privkey=<funded-private-key> \
+  --rpchost=http://<ev-reth-host>:8545 \
+  --port=8080 --startup-delay=0
+```
+
+### 2. Run benchmarks
+
+```sh
+# build
+cd apps/benchmarks && go build -o ev-benchmarks .
+
+# run
+./ev-benchmarks regular --spamoor-url=http://localhost:8080
+```
+
+### Docker Compose
+
+Spins up both spamoor-daemon and benchmarks together:
+
+```sh
+export BENCH_PRIVATE_KEY=<funded-private-key>
+export BENCH_ETH_RPC_URL=http://<ev-reth-host>:8545
+docker compose -f apps/benchmarks/docker-compose.yml up
+```
+
+### Smoke Test
+
+```sh
+export BENCH_PRIVATE_KEY=<funded-private-key>
+export BENCH_ETH_RPC_URL=http://<ev-reth-host>:8545
+just bench-smoke
+```
+
+## Matrix Format
+
+Each entry specifies a spamoor scenario, tx counts, and optional probability:
 
 ```json
 {
   "entries": [
     {
-      "test_name": "TestGasBurner",
+      "test_name": "EOATransfer",
+      "scenario": "eoatx",
       "timeout": "15m",
+      "probability": 1.0,
       "env": {
-        "BENCH_BLOCK_TIME": "100ms",
-        "BENCH_NUM_SPAMMERS": "8",
-        "BENCH_COUNT_PER_SPAMMER": "10000"
+        "BENCH_NUM_SPAMMERS": "4",
+        "BENCH_COUNT_PER_SPAMMER": "10500",
+        "BENCH_THROUGHPUT": "200",
+        "BENCH_MAX_PENDING": "50000",
+        "BENCH_MAX_WALLETS": "200",
+        "BENCH_BASE_FEE": "20",
+        "BENCH_TIP_FEE": "2"
       }
     }
   ]
 }
 ```
 
-Mount your custom matrix into the container and point `ev-benchmarks` binary at it:
+| Field | Description |
+|---|---|
+| `scenario` | spamoor scenario name (`eoatx`, `gasburnertx`, `erc20tx`, `uniswap-swaps`, etc.) |
+| `probability` | 0.0–1.0, chance of running per invocation (omit = always run) |
+| `timeout` | max duration per entry (default `15m`) |
 
-```sh
-docker run \
-  -v /path/to/your/matrix.json:/root/matrix.json \
-  -e BENCH_MATRIX_FILE=/root/matrix.json \
-  ev-benchmarks
-```
+## Schedule
+
+Supercronic runs both matrices `@hourly`:
+- `regular` — 4 × 10,500 = 42K txs/run → ~1M/day
+- `burst` — 10 × 50,000 = 500K txs, 15% chance → ~3-4 bursts/day
 
 ## Build
 
 ```sh
-docker build -f apps/benchmarks/Dockerfile -t benchmarks .
+# binary
+cd apps/benchmarks && go build -o ev-benchmarks .
+
+# docker image
+docker build -f apps/benchmarks/Dockerfile -t ev-benchmarks:dev .
+
+# via just
+just build-benchmarks
+just docker-build-benchmarks
 ```
