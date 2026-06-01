@@ -19,7 +19,6 @@ jobs:
   docker-tests:
     permissions:
       contents: read
-      packages: read
     name: Docker E2E Tests
     runs-on: ubuntu-latest
     steps:
@@ -31,28 +30,6 @@ jobs:
           cache-dependency-path: "**/go.sum"
       - name: Install just
         uses: extractions/setup-just@v4
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Pre-pull Docker images
-        run: |
-          pull_with_retry() {
-            local image="$1"
-            for attempt in 1 2 3 4 5; do
-              if docker pull "$image"; then
-                return 0
-              fi
-              sleep $((attempt * 10))
-            done
-            docker pull "$image"
-          }
-
-          pull_with_retry ghcr.io/celestiaorg/celestia-app:v5.0.2
-          pull_with_retry ghcr.io/celestiaorg/celestia-node:v0.25.3
-          pull_with_retry ghcr.io/${{ github.repository_owner }}/ev-node-testapp:${{ inputs.image-tag }}
       - name: Run Docker E2E Tests
         run: just test-docker-e2e
         env:
@@ -63,7 +40,6 @@ jobs:
     name: Docker Upgrade E2E Tests
     permissions:
       contents: read
-      packages: read
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
@@ -74,30 +50,6 @@ jobs:
           cache-dependency-path: "**/go.sum"
       - name: Install just
         uses: extractions/setup-just@v4
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Pre-pull Docker images
-        run: |
-          pull_with_retry() {
-            local image="$1"
-            for attempt in 1 2 3 4 5; do
-              if docker pull "$image"; then
-                return 0
-              fi
-              sleep $((attempt * 10))
-            done
-            docker pull "$image"
-          }
-
-          pull_with_retry ghcr.io/celestiaorg/celestia-app:v5.0.2
-          pull_with_retry ghcr.io/celestiaorg/celestia-node:v0.25.3
-          pull_with_retry ghcr.io/evstack/ev-reth:v0.2.2
-          pull_with_retry ghcr.io/evstack/ev-node-evm:main
-          pull_with_retry ghcr.io/${{ github.repository_owner }}/ev-node-evm:${{ inputs.image-tag }}
       - name: Run Docker Upgrade E2E Tests
         run: just test-docker-upgrade-e2e
         env:
@@ -108,7 +60,6 @@ jobs:
     name: Docker Compatibility E2E Tests
     permissions:
       contents: read
-      packages: read
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
@@ -119,30 +70,6 @@ jobs:
           cache-dependency-path: "**/go.sum"
       - name: Install just
         uses: extractions/setup-just@v4
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Pre-pull Docker images
-        run: |
-          pull_with_retry() {
-            local image="$1"
-            for attempt in 1 2 3 4 5; do
-              if docker pull "$image"; then
-                return 0
-              fi
-              sleep $((attempt * 10))
-            done
-            docker pull "$image"
-          }
-
-          pull_with_retry ghcr.io/celestiaorg/celestia-app:v5.0.2
-          pull_with_retry ghcr.io/celestiaorg/celestia-node:v0.25.3
-          pull_with_retry ghcr.io/evstack/ev-reth:v0.2.2
-          pull_with_retry ghcr.io/${{ github.repository_owner }}/ev-node-evm:main
-          pull_with_retry ghcr.io/${{ github.repository_owner }}/ev-node-evm:${{ inputs.image-tag }}
       - name: Run Docker Compat E2E Tests
         run: just test-docker-compat
         env:
