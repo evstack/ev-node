@@ -173,6 +173,44 @@ func TestAggregatorFlagInvariants(t *testing.T) {
 	}
 }
 
+func TestPromotableFlagInvariants(t *testing.T) {
+	flagVariants := [][]string{{
+		"--rollkit.node.promotable=false",
+	}, {
+		"--rollkit.node.promotable=true",
+	}, {
+		"--rollkit.node.promotable",
+	}}
+
+	validValues := []bool{false, true, true}
+
+	for i, flags := range flagVariants {
+		args := append([]string{"start"}, flags...)
+
+		executor, sequencer, keyProvider, nodeKey, ds, stopDAHeightTicker := createTestComponents(context.Background(), t)
+		defer stopDAHeightTicker()
+
+		nodeConfig := rollconf.DefaultConfig()
+		nodeConfig.RootDir = t.TempDir()
+
+		newRunNodeCmd := newRunNodeCmd(t.Context(), executor, sequencer, keyProvider, nodeKey, ds, nodeConfig)
+		_ = newRunNodeCmd.Flags().Set(rollconf.FlagRootDir, "custom/root/dir")
+
+		if err := newRunNodeCmd.ParseFlags(args); err != nil {
+			t.Errorf("Error: %v", err)
+		}
+
+		nodeConfig, err := ParseConfig(newRunNodeCmd)
+		if err != nil {
+			t.Errorf("Error: %v", err)
+		}
+
+		if nodeConfig.Node.Promotable != validValues[i] {
+			t.Errorf("Expected %v, got %v", validValues[i], nodeConfig.Node.Promotable)
+		}
+	}
+}
+
 // TestDefaultAggregatorValue verifies that the default value of Aggregator is true
 // when no flag is specified
 func TestDefaultAggregatorValue(t *testing.T) {
@@ -573,6 +611,15 @@ func TestStartNodeErrors(t *testing.T) {
 			configModifier: func(cfg *rollconf.Config) {
 				cfg.Signer.SignerType = "unknown"
 				cfg.Node.Aggregator = true
+			},
+			expectedError: "unknown signer type",
+		},
+		{
+			name: "PromotableLoadsSigner",
+			configModifier: func(cfg *rollconf.Config) {
+				cfg.Signer.SignerType = "unknown"
+				cfg.Node.Aggregator = false
+				cfg.Node.Promotable = true
 			},
 			expectedError: "unknown signer type",
 		},

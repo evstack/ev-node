@@ -63,6 +63,7 @@ func DefaultConfig() Config {
 		},
 		Node: NodeConfig{
 			Aggregator:               false,
+			Promotable:               false,
 			BlockTime:                defaultBlockTime,
 			LazyMode:                 false,
 			LazyBlockInterval:        DurationWrapper{60 * time.Second},

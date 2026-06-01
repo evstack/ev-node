@@ -34,6 +34,8 @@ const (
 
 	// FlagAggregator is a flag for running node in aggregator mode
 	FlagAggregator = FlagPrefixEvnode + "node.aggregator"
+	// FlagPromotable is a flag for running a full node with aggregator dependencies available for future promotion
+	FlagPromotable = FlagPrefixEvnode + "node.promotable"
 	// FlagBasedSequencer is a flag for enabling based sequencer mode (requires aggregator mode)
 	FlagBasedSequencer = FlagPrefixEvnode + "node.based_sequencer"
 	// FlagLight is a flag for running the node in light mode
@@ -291,6 +293,7 @@ func (d *DAConfig) GetForcedInclusionNamespace() string {
 type NodeConfig struct {
 	// Node mode configuration
 	Aggregator     bool `mapstructure:"aggregator" yaml:"aggregator" comment:"Run node in aggregator mode"`
+	Promotable     bool `mapstructure:"promotable" yaml:"promotable" comment:"Run full node with aggregator dependencies available for future promotion"`
 	BasedSequencer bool `mapstructure:"based_sequencer" yaml:"based_sequencer" comment:"Run node with based sequencer (fetches transactions only from DA forced inclusion namespace). Requires aggregator mode to be enabled."`
 	Light          bool `mapstructure:"light" yaml:"light" comment:"Run node in light mode"`
 
@@ -494,6 +497,18 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("could not create directory %q: %w", fullDir, err)
 	}
 
+	if c.Node.Promotable && c.Node.BasedSequencer {
+		return fmt.Errorf("promotable mode cannot be combined with based sequencer mode")
+	}
+
+	if c.Node.Promotable && c.Node.Light {
+		return fmt.Errorf("promotable mode cannot be combined with light node mode")
+	}
+
+	if c.Node.Promotable && c.Raft.Enable {
+		return fmt.Errorf("promotable mode cannot be combined with Raft consensus")
+	}
+
 	// Validate based sequencer requires aggregator mode
 	if c.Node.BasedSequencer && !c.Node.Aggregator {
 		return fmt.Errorf("based sequencer mode requires aggregator mode to be enabled")
@@ -590,6 +605,7 @@ func AddFlags(cmd *cobra.Command) {
 
 	// Node configuration flags
 	cmd.Flags().Bool(FlagAggregator, def.Node.Aggregator, "run node as an aggregator")
+	cmd.Flags().Bool(FlagPromotable, def.Node.Promotable, "run full node with aggregator dependencies available for future promotion")
 	cmd.Flags().Bool(FlagBasedSequencer, def.Node.BasedSequencer, "run node with based sequencer (requires aggregator mode)")
 	cmd.Flags().Bool(FlagLight, def.Node.Light, "run node in light mode")
 	cmd.Flags().Duration(FlagBlockTime, def.Node.BlockTime.Duration, "block time (for aggregator mode)")
@@ -656,9 +672,11 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().String(FlagSignerKmsGcpCredentialsFile, def.Signer.KMS.GCP.CredentialsFile, "Path to Google credentials JSON for signer.kms.provider=gcp (optional)")
 	cmd.Flags().Duration(FlagSignerKmsGcpTimeout, def.Signer.KMS.GCP.Timeout.Duration, "Timeout for individual GCP KMS Sign requests")
 	cmd.Flags().Int(FlagSignerKmsGcpMaxRetries, def.Signer.KMS.GCP.MaxRetries, "Maximum number of retries for transient GCP KMS failures")
-	cmd.Flags().String(FlagSignerPassphraseFile, "", "path to file containing the signer passphrase (required for file signer and if aggregator is enabled)")
+	cmd.Flags().String(FlagSignerPassphraseFile, "", "path to file containing the signer passphrase (required for file signer when aggregator or promotable mode is enabled)")
 
 	cmd.MarkFlagsMutuallyExclusive(FlagLight, FlagAggregator)
+	cmd.MarkFlagsMutuallyExclusive(FlagBasedSequencer, FlagPromotable)
+	cmd.MarkFlagsMutuallyExclusive(FlagLight, FlagPromotable)
 
 	// Raft configuration flags
 	cmd.Flags().Bool(FlagRaftEnable, def.Raft.Enable, "enable Raft consensus for leader election and state replication")

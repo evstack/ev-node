@@ -55,7 +55,7 @@ func TestEvmFullNodeCanBecomeProposerAfterExecutionRotation(t *testing.T) {
 		),
 	)
 
-	SetupSequencerNode(t, sut, sequencerHome, env.SequencerJWT, env.GenesisHash, env.Endpoints)
+	SetupSequencerNode(t, sut, sequencerHome, env.SequencerJWT, env.GenesisHash, env.Endpoints, "--evnode.node.promotable=true")
 	sequencerAddress := evNodeSignerAddress(t, sequencerHome)
 
 	fullNodePassphraseFile := initNodeWithSigner(t, sut, fullNodeHome)
@@ -69,6 +69,9 @@ func TestEvmFullNodeCanBecomeProposerAfterExecutionRotation(t *testing.T) {
 	sequencerP2PAddress := getNodeP2PAddress(t, sut, sequencerHome, env.Endpoints.RollkitRPCPort)
 	fullNodeJWTSecretFile := createJWTSecretFile(t, fullNodeHome, env.FullNodeJWT)
 	fullNodeProcess := startFullNodeProcess(t, sut, fullNodeHome, fullNodeJWTSecretFile, fullNodePassphraseFile, env.GenesisHash, sequencerP2PAddress, env.Endpoints)
+	t.Cleanup(func() {
+		_ = fullNodeProcess.Signal(syscall.SIGTERM)
+	})
 
 	seqClient, err := ethclient.Dial(env.Endpoints.GetSequencerEthURL())
 	require.NoError(t, err)
@@ -81,43 +84,39 @@ func TestEvmFullNodeCanBecomeProposerAfterExecutionRotation(t *testing.T) {
 	waitForEvNodeNextProposer(t, ctx, env.Endpoints.GetRollkitRPCAddress(), sequencerAddress, 20*time.Second)
 	waitForEvNodeNextProposer(t, ctx, env.Endpoints.GetFullNodeRPCAddress(), sequencerAddress, 20*time.Second)
 
-	nextProposer := common.BytesToHash(fullNodeAddress)
-	tx := setNextProposerTx(t, TestPrivateKey, nextProposer, 0)
+	fullNodeProposer := common.BytesToHash(fullNodeAddress)
+	tx := setNextProposerTx(t, TestPrivateKey, fullNodeProposer, 0)
 	require.NoError(t, seqClient.SendTransaction(ctx, tx))
 	waitForEVMTransaction(t, ctx, seqClient, tx.Hash(), 30*time.Second)
 
 	waitForEvNodeNextProposer(t, ctx, env.Endpoints.GetRollkitRPCAddress(), fullNodeAddress, 30*time.Second)
 	waitForEvNodeNextProposer(t, ctx, env.Endpoints.GetFullNodeRPCAddress(), fullNodeAddress, 30*time.Second)
-	requireRawNextProposer(t, ctx, env.Endpoints.GetSequencerEthURL(), nextProposer)
-	requireRawNextProposer(t, ctx, env.Endpoints.GetFullNodeEthURL(), nextProposer)
+	requireRawNextProposer(t, ctx, env.Endpoints.GetSequencerEthURL(), fullNodeProposer)
+	requireRawNextProposer(t, ctx, env.Endpoints.GetFullNodeEthURL(), fullNodeProposer)
 
-	heightBeforeSwitch := currentEvNodeHeight(t, ctx, env.Endpoints.GetFullNodeRPCAddress())
-
-	require.NoError(t, fullNodeProcess.Signal(syscall.SIGTERM))
-	time.Sleep(time.Second)
-
-	fullNodeProposerProcess := startAggregatorProcess(
-		t,
-		sut,
-		fullNodeHome,
-		fullNodeJWTSecretFile,
-		fullNodePassphraseFile,
-		env.GenesisHash,
-		env.Endpoints.GetFullNodeRPCListen(),
-		env.Endpoints.GetFullNodeP2PAddress(),
-		env.Endpoints.GetFullNodeEngineURL(),
-		env.Endpoints.GetFullNodeEthURL(),
-		env.Endpoints,
-	)
-	t.Cleanup(func() {
-		_ = fullNodeProposerProcess.Signal(syscall.SIGTERM)
-	})
-
-	waitForEvNodeHeightAbove(t, ctx, env.Endpoints.GetFullNodeRPCAddress(), heightBeforeSwitch, 30*time.Second)
-	latestHeight := currentEvNodeHeight(t, ctx, env.Endpoints.GetFullNodeRPCAddress())
-	latestBlock, err := client.NewClient(env.Endpoints.GetFullNodeRPCAddress()).GetBlockByHeight(ctx, latestHeight)
+	fullNodeHeightBeforePromotion := currentEvNodeHeight(t, ctx, env.Endpoints.GetFullNodeRPCAddress())
+	waitForEvNodeHeightAbove(t, ctx, env.Endpoints.GetFullNodeRPCAddress(), fullNodeHeightBeforePromotion, 30*time.Second)
+	fullNodeProducedHeight := currentEvNodeHeight(t, ctx, env.Endpoints.GetFullNodeRPCAddress())
+	fullNodeProducedBlock, err := client.NewClient(env.Endpoints.GetFullNodeRPCAddress()).GetBlockByHeight(ctx, fullNodeProducedHeight)
 	require.NoError(t, err)
-	require.Equal(t, fullNodeAddress, latestBlock.Block.Header.Header.ProposerAddress)
+	require.Equal(t, fullNodeAddress, fullNodeProducedBlock.Block.Header.Header.ProposerAddress)
+
+	sequencerProposer := common.BytesToHash(sequencerAddress)
+	tx = setNextProposerTx(t, TestPrivateKey, sequencerProposer, 1)
+	require.NoError(t, fnClient.SendTransaction(ctx, tx))
+	waitForEVMTransaction(t, ctx, fnClient, tx.Hash(), 30*time.Second)
+
+	waitForEvNodeNextProposer(t, ctx, env.Endpoints.GetRollkitRPCAddress(), sequencerAddress, 30*time.Second)
+	waitForEvNodeNextProposer(t, ctx, env.Endpoints.GetFullNodeRPCAddress(), sequencerAddress, 30*time.Second)
+	requireRawNextProposer(t, ctx, env.Endpoints.GetSequencerEthURL(), sequencerProposer)
+	requireRawNextProposer(t, ctx, env.Endpoints.GetFullNodeEthURL(), sequencerProposer)
+
+	sequencerHeightBeforePromotion := currentEvNodeHeight(t, ctx, env.Endpoints.GetRollkitRPCAddress())
+	waitForEvNodeHeightAbove(t, ctx, env.Endpoints.GetRollkitRPCAddress(), sequencerHeightBeforePromotion, 30*time.Second)
+	sequencerProducedHeight := currentEvNodeHeight(t, ctx, env.Endpoints.GetRollkitRPCAddress())
+	sequencerProducedBlock, err := client.NewClient(env.Endpoints.GetRollkitRPCAddress()).GetBlockByHeight(ctx, sequencerProducedHeight)
+	require.NoError(t, err)
+	require.Equal(t, sequencerAddress, sequencerProducedBlock.Block.Header.Header.ProposerAddress)
 }
 
 func initNodeWithSigner(t *testing.T, sut *SystemUnderTest, home string) string {
@@ -164,6 +163,7 @@ func startFullNodeProcess(
 		"--home", fullNodeHome,
 		"--evm.jwt-secret-file", fullNodeJWTSecretFile,
 		"--evnode.node.aggregator=false",
+		"--evnode.node.promotable=true",
 		"--evnode.signer.passphrase_file", passphraseFile,
 		"--evm.genesis-hash", genesisHash,
 		"--evnode.p2p.peers", sequencerP2PAddress,
@@ -177,44 +177,6 @@ func startFullNodeProcess(
 		"--evnode.p2p.listen_address", endpoints.GetFullNodeP2PAddress(),
 	)
 	sut.AwaitNodeLive(t, endpoints.GetFullNodeRPCAddress(), NodeStartupTimeout)
-	return process
-}
-
-func startAggregatorProcess(
-	t *testing.T,
-	sut *SystemUnderTest,
-	home string,
-	jwtSecretFile string,
-	passphraseFile string,
-	genesisHash string,
-	rpcListen string,
-	p2pListen string,
-	engineURL string,
-	ethURL string,
-	endpoints *TestEndpoints,
-) *os.Process {
-	t.Helper()
-
-	process := sut.ExecCmd(evmSingleBinaryPath,
-		"start",
-		"--evnode.log.level", "debug",
-		"--evnode.log.format", "json",
-		"--home", home,
-		"--evm.jwt-secret-file", jwtSecretFile,
-		"--evm.genesis-hash", genesisHash,
-		"--evnode.node.block_time", DefaultBlockTime,
-		"--evnode.node.aggregator=true",
-		"--evnode.signer.passphrase_file", passphraseFile,
-		"--evm.engine-url", engineURL,
-		"--evm.eth-url", ethURL,
-		"--evnode.da.block_time", DefaultDABlockTime,
-		"--evnode.da.address", endpoints.GetDAAddress(),
-		"--evnode.da.namespace", DefaultDANamespace,
-		"--evnode.da.batching_strategy", "immediate",
-		"--evnode.rpc.address", rpcListen,
-		"--evnode.p2p.listen_address", p2pListen,
-	)
-	sut.AwaitNodeUp(t, "http://"+rpcListen, NodeStartupTimeout)
 	return process
 }
 
