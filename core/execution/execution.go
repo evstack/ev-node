@@ -143,7 +143,7 @@ type ExecutionInfo struct {
 }
 
 // ExecuteResult contains execution output that consensus must persist.
-type ExecuteResult struct {
+type ExecuteResult = struct {
 	// UpdatedStateRoot is the new state root after executing transactions.
 	UpdatedStateRoot []byte
 
