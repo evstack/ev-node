@@ -18,7 +18,7 @@ import '.just/lint.just'
 import '.just/codegen.just'
 import '.just/run.just'
 import '.just/tools.just'
-import '.just/bench.just'
+import '.just/loadgen.just'
 
 # List available recipes when running `just` with no args
 default:

@@ -1,4 +1,4 @@
-# benchmarks
+# loadgen
 
 Standalone load generator for ev-node stress testing. Talks to a [spamoor-daemon](https://github.com/ethpandaops/spamoor) sidecar via HTTP API. Runs an in-process scheduler with configurable regular and burst workloads.
 
@@ -53,7 +53,7 @@ docker run -d --name spamoor -p 8080:8080 \
   --port=8080 --startup-delay=0
 ```
 
-### 2. Run benchmarks
+### 2. Run loadgen
 
 ```sh
 # build
@@ -73,7 +73,7 @@ cd apps/loadgen && go build -o ev-loadgen .
 
 ### Docker Compose
 
-Spins up both spamoor-daemon and benchmarks together:
+Spins up both spamoor-daemon and loadgen together:
 
 ```sh
 export BENCH_PRIVATE_KEY=<funded-private-key>
@@ -124,6 +124,6 @@ cd apps/loadgen && go build -o ev-loadgen .
 docker build -f apps/loadgen/Dockerfile -t ev-loadgen:dev .
 
 # via just
-just build-benchmarks
-just docker-build-benchmarks
+just build-loadgen
+just docker-build-loadgen
 ```
