@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"math/rand/v2"
 	"os"
@@ -11,8 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/celestiaorg/tastora/framework/docker/evstack/spamoor"
-	"github.com/evstack/ev-node/apps/benchmarks/internal"
+	"github.com/evstack/ev-node/apps/loadgen/internal"
 	"github.com/spf13/cobra"
 )
 
@@ -54,11 +54,15 @@ func newStartCmd() *cobra.Command {
 }
 
 func runScheduler(parent context.Context, cfg startConfig) error {
+	if err := validateStartConfig(cfg); err != nil {
+		return err
+	}
+
 	ctx, cancel := signal.NotifyContext(parent, syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
 	spamoorAddr := resolveSpamoorURL()
-	api := spamoor.NewAPI(spamoorAddr)
+	api := internal.NewSpamoorClient(spamoorAddr)
 
 	runsPerDay := float64(24*time.Hour) / float64(cfg.interval)
 	regularTxPerRun := int(float64(cfg.txPerDay) / runsPerDay)
@@ -122,6 +126,22 @@ func runScheduler(parent context.Context, cfg startConfig) error {
 			resetTimer.Reset(burstWindow)
 		}
 	}
+}
+
+func validateStartConfig(cfg startConfig) error {
+	if cfg.interval <= 0 {
+		return fmt.Errorf("interval must be > 0")
+	}
+	if cfg.txPerDay < 0 {
+		return fmt.Errorf("tx-per-day must be >= 0")
+	}
+	if cfg.burstTxCount < 0 {
+		return fmt.Errorf("burst-tx-count must be >= 0")
+	}
+	if cfg.burstPerDay < 0 {
+		return fmt.Errorf("burst-per-day must be >= 0")
+	}
+	return nil
 }
 
 // nextBurstTimer returns a timer for the next burst. If no bursts remain,

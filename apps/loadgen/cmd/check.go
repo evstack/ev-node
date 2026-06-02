@@ -3,7 +3,7 @@ package cmd
 import (
 	"time"
 
-	"github.com/evstack/ev-node/apps/benchmarks/internal"
+	"github.com/evstack/ev-node/apps/loadgen/internal"
 	"github.com/spf13/cobra"
 )
 

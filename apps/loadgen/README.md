@@ -5,21 +5,21 @@ Standalone load generator for ev-node stress testing. Talks to a [spamoor-daemon
 ## Architecture
 
 ```
-ev-benchmarks (this binary)  -->  spamoor-daemon  -->  ev-reth RPC
+ev-loadgen (this binary)  -->  spamoor-daemon  -->  ev-reth RPC
         |                              |
    reads matrix JSON            manages wallets,
    creates/polls spammers       signs & sends txs
 ```
 
 - **spamoor-daemon** needs: a funded private key + ev-reth RPC URL
-- **ev-benchmarks** needs: spamoor-daemon API URL + matrix JSON files
+- **ev-loadgen** needs: spamoor-daemon API URL + matrix JSON files
 
 ## Commands
 
 ```
-ev-benchmarks start                      # run continuous scheduler (regular + burst)
-ev-benchmarks check                      # send 1 tx to verify spamoor → ev-reth connectivity
-ev-benchmarks run <matrix.json>          # one-shot: run a custom matrix file
+ev-loadgen start                         # run continuous scheduler (regular + burst)
+ev-loadgen check                         # send 1 tx to verify spamoor → ev-reth connectivity
+ev-loadgen run <matrix.json>             # one-shot: run a custom matrix file
 ```
 
 ### start flags
@@ -57,13 +57,13 @@ docker run -d --name spamoor -p 8080:8080 \
 
 ```sh
 # build
-cd apps/benchmarks && go build -o ev-benchmarks .
+cd apps/loadgen && go build -o ev-loadgen .
 
 # run with defaults (~1M tx/day, 2 bursts/day)
-./ev-benchmarks start --spamoor-url=http://localhost:8080
+./ev-loadgen start --spamoor-url=http://localhost:8080
 
 # custom config
-./ev-benchmarks start \
+./ev-loadgen start \
   --spamoor-url=http://localhost:8080 \
   --tx-per-day=500000 \
   --interval=30m \
@@ -78,7 +78,7 @@ Spins up both spamoor-daemon and benchmarks together:
 ```sh
 export BENCH_PRIVATE_KEY=<funded-private-key>
 export BENCH_ETH_RPC_URL=http://<ev-reth-host>:8545
-docker compose -f apps/benchmarks/docker-compose.yml up
+docker compose -f apps/loadgen/docker-compose.yml up
 ```
 
 ### Smoke Test
@@ -126,10 +126,10 @@ When using `start`, the `BENCH_COUNT_PER_SPAMMER` value in the matrix is overrid
 
 ```sh
 # binary
-cd apps/benchmarks && go build -o ev-benchmarks .
+cd apps/loadgen && go build -o ev-loadgen .
 
 # docker image
-docker build -f apps/benchmarks/Dockerfile -t ev-benchmarks:dev .
+docker build -f apps/loadgen/Dockerfile -t ev-loadgen:dev .
 
 # via just
 just build-benchmarks

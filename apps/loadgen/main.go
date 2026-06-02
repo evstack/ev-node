@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/evstack/ev-node/apps/benchmarks/cmd"
+	"github.com/evstack/ev-node/apps/loadgen/cmd"
 )
 
 func main() {
@@ -17,5 +17,5 @@ func main() {
 func init() {
 	log.SetFlags(log.Ldate | log.Ltime | log.LUTC)
 	log.SetOutput(os.Stdout)
-	fmt.Fprintln(os.Stderr, "ev-benchmarks starting")
+	fmt.Fprintln(os.Stderr, "ev-loadgen starting")
 }

@@ -1,17 +1,17 @@
-# Build ev-benchmarks binary
+# Build ev-loadgen binary
 [group('bench')]
 build-benchmarks:
-    @echo "--> Building ev-benchmarks"
+    @echo "--> Building ev-loadgen"
     @mkdir -p {{ build_dir }}
-    @cd apps/benchmarks && go build -o {{ build_dir }}/ev-benchmarks .
-    @echo "    Check the binary with: {{ build_dir }}/ev-benchmarks"
+    @cd apps/loadgen && go build -o {{ build_dir }}/ev-loadgen .
+    @echo "    Check the binary with: {{ build_dir }}/ev-loadgen"
 
-# Build ev-benchmarks Docker image
+# Build ev-loadgen Docker image
 [group('bench')]
 docker-build-benchmarks:
-    @echo "--> Building ev-benchmarks Docker image"
-    @docker build -f apps/benchmarks/Dockerfile -t ev-benchmarks:dev .
-    @echo "--> Docker image built: ev-benchmarks:dev"
+    @echo "--> Building ev-loadgen Docker image"
+    @docker build -f apps/loadgen/Dockerfile -t ev-loadgen:dev .
+    @echo "--> Docker image built: ev-loadgen:dev"
 
 # Smoke test: start spamoor + benchmarks, verify txs are submitted, then tear down.
 # Requires BENCH_PRIVATE_KEY and BENCH_ETH_RPC_URL env vars.
@@ -25,12 +25,12 @@ bench-smoke:
 
     export BENCH_PRIVATE_KEY BENCH_ETH_RPC_URL
 
-    echo "--> Building ev-benchmarks binary"
-    (cd apps/benchmarks && go build -o {{ build_dir }}/ev-benchmarks .)
+    echo "--> Building ev-loadgen binary"
+    (cd apps/loadgen && go build -o {{ build_dir }}/ev-loadgen .)
 
     echo "--> Starting spamoor-daemon via docker compose"
-    docker compose -f apps/benchmarks/docker-compose.yml up -d spamoor-daemon
-    trap 'echo "--> Tearing down"; docker compose -f apps/benchmarks/docker-compose.yml down' EXIT
+    docker compose -f apps/loadgen/docker-compose.yml up -d spamoor-daemon
+    trap 'echo "--> Tearing down"; docker compose -f apps/loadgen/docker-compose.yml down' EXIT
 
     echo "--> Waiting for spamoor-daemon to be healthy"
     for i in $(seq 1 30); do
@@ -67,5 +67,5 @@ bench-smoke:
     }
     EOF
 
-    {{ build_dir }}/ev-benchmarks run --spamoor-url=http://localhost:8080 /tmp/bench-smoke.json
+    {{ build_dir }}/ev-loadgen run --spamoor-url=http://localhost:8080 /tmp/bench-smoke.json
     echo "--> Smoke test passed: transactions submitted successfully"

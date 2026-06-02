@@ -1,4 +1,4 @@
-name: "ev-benchmarks"
+name: "ev-loadgen"
 
 services:
   spamoor-daemon:
@@ -15,9 +15,9 @@ services:
   benchmarks:
     build:
       context: ../..
-      dockerfile: apps/benchmarks/Dockerfile
+      dockerfile: apps/loadgen/Dockerfile
     command:
-      - ev-benchmarks
+      - ev-loadgen
       - start
       - --spamoor-url=http://spamoor-daemon:8080
       - --tx-per-day=1000000

@@ -17,6 +17,7 @@ jobs:
       pull-requests: read
     outputs:
       code: ${{ steps.filter.outputs.code }}
+      loadgen: ${{ steps.filter.outputs.loadgen }}
     steps:
       - uses: actions/checkout@v6.0.3
       - uses: dorny/paths-filter@v4
@@ -28,6 +29,12 @@ jobs:
               - '!docs/**'
               - '!**/*.md'
               - '!.github/workflows/docs_*.yml'
+            loadgen:
+              - 'apps/loadgen/**'
+              - '.just/bench.just'
+              - '.just/build.just'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/docker-build-push.yml'
 
   determine-image-tag:
     name: Determine Image Tag
@@ -60,6 +67,40 @@ jobs:
 
           echo "tag=$TAG" >> $GITHUB_OUTPUT
 
+  determine-docker-apps:
+    name: Determine Docker Apps
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      apps: ${{ steps.set-apps.outputs.apps }}
+    steps:
+      - name: Set docker app matrix
+        id: set-apps
+        run: |
+          APPS='[
+            {"name": "ev-node-evm", "dockerfile": "apps/evm/Dockerfile"},
+            {"name": "ev-node-grpc", "dockerfile": "apps/grpc/Dockerfile"},
+            {"name": "ev-node-testapp", "dockerfile": "apps/testapp/Dockerfile"}
+          ]'
+
+          if [ "${{ github.event_name }}" = "push" ] || [ "${{ needs.changes.outputs.loadgen }}" = "true" ]; then
+            APPS='[
+              {"name": "ev-node-evm", "dockerfile": "apps/evm/Dockerfile"},
+              {"name": "ev-node-grpc", "dockerfile": "apps/grpc/Dockerfile"},
+              {"name": "ev-node-loadgen", "dockerfile": "apps/loadgen/Dockerfile"},
+              {"name": "ev-node-testapp", "dockerfile": "apps/testapp/Dockerfile"}
+            ]'
+          fi
+
+          {
+            echo "apps<<EOF"
+            echo "$APPS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
   lint:
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -68,7 +109,7 @@ jobs:
     uses: ./.github/workflows/lint.yml
 
   docker:
-    needs: [determine-image-tag, changes]
+    needs: [determine-image-tag, determine-docker-apps, changes]
     if: needs.changes.outputs.code == 'true'
     uses: ./.github/workflows/docker-build-push.yml
     secrets: inherit
@@ -77,12 +118,7 @@ jobs:
       packages: write
     with:
       image-tag: ${{ needs.determine-image-tag.outputs.tag }}
-      apps: |
-        [
-          {"name": "ev-node-evm", "dockerfile": "apps/evm/Dockerfile"},
-          {"name": "ev-node-grpc", "dockerfile": "apps/grpc/Dockerfile"},
-          {"name": "ev-node-testapp", "dockerfile": "apps/testapp/Dockerfile"}
-        ]
+      apps: ${{ needs.determine-docker-apps.outputs.apps }}
 
   test:
     needs: changes

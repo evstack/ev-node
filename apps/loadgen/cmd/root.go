@@ -1,16 +1,16 @@
 package cmd
 
 import (
-	"github.com/evstack/ev-node/apps/benchmarks/internal"
+	"github.com/evstack/ev-node/apps/loadgen/internal"
 	"github.com/spf13/cobra"
 )
 
 var spamoorFlag string
 
-// NewRootCmd returns the top-level cobra command for ev-benchmarks.
+// NewRootCmd returns the top-level cobra command for ev-loadgen.
 func NewRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{
-		Use:   "ev-benchmarks",
+		Use:   "ev-loadgen",
 		Short: "benchmark runner for ev-node stress testing via spamoor",
 	}
 

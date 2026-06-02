@@ -2,11 +2,9 @@ package internal
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand/v2"
-	"net/http"
 	"time"
 
 	"github.com/celestiaorg/tastora/framework/docker/evstack/spamoor"
@@ -22,7 +20,7 @@ type matrixOpts struct {
 // ExecuteMatrixWithOverrides runs a matrix with BENCH_COUNT_PER_SPAMMER
 // overridden to totalTxTarget / NumSpammers per entry. Skips probability
 // filtering and sync waiting (caller is responsible for sync).
-func ExecuteMatrixWithOverrides(ctx context.Context, matrixPath string, api *spamoor.API, totalTxTarget int) error {
+func ExecuteMatrixWithOverrides(ctx context.Context, matrixPath string, api SpamoorClient, totalTxTarget int) error {
 	return executeMatrix(ctx, matrixPath, api, matrixOpts{
 		totalTxTarget: totalTxTarget,
 	})
@@ -30,20 +28,20 @@ func ExecuteMatrixWithOverrides(ctx context.Context, matrixPath string, api *spa
 
 // ExecuteMatrix runs all entries in a matrix file as-is, with probability
 // filtering and an initial WaitForSync call. Used by the one-shot `run` command.
-func ExecuteMatrix(ctx context.Context, matrixPath string, api *spamoor.API) error {
+func ExecuteMatrix(ctx context.Context, matrixPath string, api SpamoorClient) error {
 	return executeMatrix(ctx, matrixPath, api, matrixOpts{
 		allowProbability: true,
 		waitForSync:      true,
 	})
 }
 
-func executeMatrix(ctx context.Context, matrixPath string, api *spamoor.API, opts matrixOpts) error {
+func executeMatrix(ctx context.Context, matrixPath string, api SpamoorClient, opts matrixOpts) error {
 	matrix, err := LoadMatrix(matrixPath)
 	if err != nil {
 		return fmt.Errorf("load matrix: %w", err)
 	}
 
-	log.Printf("spamoor API: %s", api.BaseURL)
+	log.Printf("spamoor API: %s", api.URL())
 	if opts.totalTxTarget > 0 {
 		log.Printf("loaded %d matrix entries from %s (totalTxTarget=%d)", len(matrix.Entries), matrixPath, opts.totalTxTarget)
 	} else {
@@ -110,8 +108,11 @@ func executeMatrix(ctx context.Context, matrixPath string, api *spamoor.API, opt
 
 // RunCheck verifies connectivity by sending a single eoatx through spamoor.
 func RunCheck(ctx context.Context, spamoorAddr string, timeout time.Duration) error {
-	api := spamoor.NewAPI(spamoorAddr)
+	return runCheck(ctx, NewSpamoorClient(spamoorAddr), timeout)
+}
 
+func runCheck(ctx context.Context, api SpamoorClient, timeout time.Duration) error {
+	spamoorAddr := api.URL()
 	log.Printf("checking connectivity via %s", spamoorAddr)
 
 	if _, err := api.ListSpammers(); err != nil {
@@ -127,6 +128,11 @@ func RunCheck(ctx context.Context, spamoorAddr string, timeout time.Duration) er
 		return fmt.Errorf("cleanup: %w", err)
 	}
 	defer func() { _ = DeleteAllSpammers(api) }()
+
+	baselineSent, baselineFailed, err := getSpamoorCounters(api)
+	if err != nil {
+		return fmt.Errorf("get baseline metrics: %w", err)
+	}
 
 	cfg := map[string]any{
 		"total_count":     1,
@@ -149,7 +155,7 @@ func RunCheck(ctx context.Context, spamoorAddr string, timeout time.Duration) er
 	checkCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	sent, failed, err := waitForSpamoorDone(checkCtx, api, 1)
+	sent, failed, err := waitForSpamoorDone(checkCtx, api, 1, baselineSent, baselineFailed)
 	if err != nil {
 		return fmt.Errorf("tx not confirmed: %w", err)
 	}
@@ -162,7 +168,13 @@ func RunCheck(ctx context.Context, spamoorAddr string, timeout time.Duration) er
 	return nil
 }
 
-func runEntry(ctx context.Context, api *spamoor.API, entry Entry) error {
+type waitForDoneFunc func(context.Context, SpamoorClient, int, float64, float64) (float64, float64, error)
+
+func runEntry(ctx context.Context, api SpamoorClient, entry Entry) error {
+	return runEntryWithWait(ctx, api, entry, waitForSpamoorDone)
+}
+
+func runEntryWithWait(ctx context.Context, api SpamoorClient, entry Entry, wait waitForDoneFunc) error {
 	totalCount := entry.NumSpammers * entry.CountPerSpammer
 
 	log.Printf("[%s] scenario=%s spammers=%d count_per=%d total=%d",
@@ -176,6 +188,11 @@ func runEntry(ctx context.Context, api *spamoor.API, entry Entry) error {
 			log.Printf("[%s] warning: cleanup failed: %v", entry.TestName, err)
 		}
 	}()
+
+	baselineSent, baselineFailed, err := getSpamoorCounters(api)
+	if err != nil {
+		return fmt.Errorf("get baseline metrics: %w", err)
+	}
 
 	scenarioCfg := BuildScenarioConfig(entry.Env)
 
@@ -201,7 +218,7 @@ func runEntry(ctx context.Context, api *spamoor.API, entry Entry) error {
 	}
 
 	start := time.Now()
-	sent, failed, err := waitForSpamoorDone(ctx, api, totalCount)
+	sent, failed, err := wait(ctx, api, totalCount, baselineSent, baselineFailed)
 	elapsed := time.Since(start)
 
 	if err != nil {
@@ -217,7 +234,7 @@ func runEntry(ctx context.Context, api *spamoor.API, entry Entry) error {
 }
 
 // DeleteAllSpammers removes all active spammers from the spamoor daemon.
-func DeleteAllSpammers(api *spamoor.API) error {
+func DeleteAllSpammers(api SpamoorClient) error {
 	existing, err := api.ListSpammers()
 	if err != nil {
 		return fmt.Errorf("list spammers: %w", err)
@@ -230,8 +247,11 @@ func DeleteAllSpammers(api *spamoor.API) error {
 	return nil
 }
 
-func waitForSpamoorDone(ctx context.Context, api *spamoor.API, targetCount int) (sent, failed float64, err error) {
-	const pollInterval = 2 * time.Second
+func waitForSpamoorDone(ctx context.Context, api SpamoorClient, targetCount int, baselineSent, baselineFailed float64) (sent, failed float64, err error) {
+	return waitForSpamoorDoneWithInterval(ctx, api, targetCount, baselineSent, baselineFailed, 2*time.Second)
+}
+
+func waitForSpamoorDoneWithInterval(ctx context.Context, api SpamoorClient, targetCount int, baselineSent, baselineFailed float64, pollInterval time.Duration) (sent, failed float64, err error) {
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
@@ -243,13 +263,20 @@ func waitForSpamoorDone(ctx context.Context, api *spamoor.API, targetCount int) 
 		case <-ctx.Done():
 			return sent, failed, fmt.Errorf("timed out waiting for %d txs (sent %.0f): %w", targetCount, sent, ctx.Err())
 		case <-ticker.C:
-			metrics, mErr := api.GetMetrics()
+			currentSent, currentFailed, mErr := getSpamoorCounters(api)
 			if mErr != nil {
 				log.Printf("warning: failed to get metrics: %v", mErr)
 				continue
 			}
-			sent = sumCounter(metrics["spamoor_transactions_sent_total"])
-			failed = sumCounter(metrics["spamoor_transactions_failed_total"])
+
+			sent = currentSent - baselineSent
+			failed = currentFailed - baselineFailed
+			if sent < 0 {
+				sent = 0
+			}
+			if failed < 0 {
+				failed = 0
+			}
 
 			delta := sent - prevSent
 			rate := delta / pollInterval.Seconds()
@@ -265,19 +292,27 @@ func waitForSpamoorDone(ctx context.Context, api *spamoor.API, targetCount int) 
 	}
 }
 
-type spamoorClient struct {
-	BlockHeight uint64 `json:"block_height"`
-	Ready       bool   `json:"ready"`
+func getSpamoorCounters(api SpamoorClient) (sent, failed float64, err error) {
+	metrics, err := api.GetMetrics()
+	if err != nil {
+		return 0, 0, err
+	}
+	return sumCounter(metrics["spamoor_transactions_sent_total"]),
+		sumCounter(metrics["spamoor_transactions_failed_total"]),
+		nil
 }
 
 // WaitForSync polls spamoor until its block processing rate stabilizes,
 // indicating it has caught up to the chain tip. Returns immediately if
 // ctx is cancelled.
-func WaitForSync(ctx context.Context, api *spamoor.API) error {
+func WaitForSync(ctx context.Context, api SpamoorClient) error {
+	return waitForSync(ctx, api, 3*time.Second)
+}
+
+func waitForSync(ctx context.Context, api SpamoorClient, pollInterval time.Duration) error {
 	log.Printf("waiting for spamoor to sync to chain tip...")
 
 	const syncThreshold uint64 = 10
-	const pollInterval = 3 * time.Second
 
 	var lastHeight uint64
 
@@ -309,21 +344,15 @@ func WaitForSync(ctx context.Context, api *spamoor.API) error {
 	}
 }
 
-func getSpamoorHeight(api *spamoor.API) (uint64, error) {
-	resp, err := http.Get(fmt.Sprintf("%s/api/clients", api.BaseURL))
+func getSpamoorHeight(api SpamoorClient) (uint64, error) {
+	clients, err := api.GetClients()
 	if err != nil {
 		return 0, fmt.Errorf("get clients: %w", err)
-	}
-	defer resp.Body.Close()
-
-	var clients []spamoorClient
-	if err := json.NewDecoder(resp.Body).Decode(&clients); err != nil {
-		return 0, fmt.Errorf("decode clients: %w", err)
 	}
 	if len(clients) == 0 {
 		return 0, fmt.Errorf("no RPC clients configured")
 	}
-	return clients[0].BlockHeight, nil
+	return clients[0].Height, nil
 }
 
 func sumCounter(f *dto.MetricFamily) float64 {
