@@ -114,13 +114,12 @@ message GetExecutionInfoRequest {}
 
 // GetExecutionInfoResponse contains execution layer parameters
 message GetExecutionInfoResponse {
+  reserved 2;
+  reserved "next_proposer_address";
+
   // Maximum gas allowed for transactions in a block
   // For non-gas-based execution layers, this should be 0
   uint64 max_gas = 1;
-
-  // Proposer address that should sign the next block from the execution
-  // layer's current view. Empty means unchanged or unavailable.
-  bytes next_proposer_address = 2;
 }
 
 // FilterStatus represents the result of filtering a transaction

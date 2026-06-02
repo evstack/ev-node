@@ -44,12 +44,11 @@ func (m *proposerEthRPCClient) GetNextProposer(ctx context.Context, number *big.
 	return common.Hash{}, nil
 }
 
-func TestGetExecutionInfoIncludesNextProposer(t *testing.T) {
-	nextProposer := common.HexToHash("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+func TestGetExecutionInfoDoesNotFetchNextProposer(t *testing.T) {
 	ethClient := &proposerEthRPCClient{
 		getNextProposerFn: func(ctx context.Context, number *big.Int) (common.Hash, error) {
-			require.Nil(t, number)
-			return nextProposer, nil
+			t.Fatalf("GetExecutionInfo must not fetch proposer without an explicit height")
+			return common.Hash{}, nil
 		},
 	}
 	client := &EngineClient{ethClient: ethClient}
@@ -58,8 +57,7 @@ func TestGetExecutionInfoIncludesNextProposer(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, uint64(30_000_000), info.MaxGas)
-	require.Equal(t, nextProposer.Bytes(), info.NextProposerAddress)
-	require.Len(t, ethClient.nextProposerBlocks, 1)
+	require.Empty(t, ethClient.nextProposerBlocks)
 }
 
 func TestExecuteTxsReturnsNextProposerWhenChanged(t *testing.T) {

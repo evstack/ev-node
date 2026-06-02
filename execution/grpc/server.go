@@ -161,8 +161,7 @@ func (s *Server) GetExecutionInfo(
 	}
 
 	return connect.NewResponse(&pb.GetExecutionInfoResponse{
-		MaxGas:              info.MaxGas,
-		NextProposerAddress: info.NextProposerAddress,
+		MaxGas: info.MaxGas,
 	}), nil
 }
 

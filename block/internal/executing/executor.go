@@ -239,13 +239,13 @@ func (e *Executor) initializeState() error {
 			LastBlockHeight:     e.genesis.InitialHeight - 1,
 			LastBlockTime:       e.genesis.StartTime,
 			AppHash:             stateRoot,
-			NextProposerAddress: e.initialProposerAddress(e.ctx),
+			NextProposerAddress: e.initialProposerAddress(),
 			// DA start height is usually 0 at InitChain unless it is a re-genesis or a based sequencer.
 			DAHeight: e.genesis.DAStartHeight,
 		}
 	}
 	if len(state.NextProposerAddress) == 0 {
-		state.NextProposerAddress = e.initialProposerAddress(e.ctx)
+		state.NextProposerAddress = e.initialProposerAddress()
 	}
 	if err := e.assertConfiguredSigner(state.NextProposerAddress); err != nil {
 		return err
@@ -378,15 +378,7 @@ func (e *Executor) initializeState() error {
 	return nil
 }
 
-func (e *Executor) initialProposerAddress(ctx context.Context) []byte {
-	if e.exec != nil {
-		info, err := e.exec.GetExecutionInfo(ctx)
-		if err != nil {
-			e.logger.Warn().Err(err).Msg("failed to get execution info for proposer, falling back to genesis proposer")
-		} else if len(info.NextProposerAddress) > 0 {
-			return append([]byte(nil), info.NextProposerAddress...)
-		}
-	}
+func (e *Executor) initialProposerAddress() []byte {
 	return append([]byte(nil), e.genesis.ProposerAddress...)
 }
 

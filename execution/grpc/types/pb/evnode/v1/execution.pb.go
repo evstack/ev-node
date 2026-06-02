@@ -586,12 +586,9 @@ type GetExecutionInfoResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Maximum gas allowed for transactions in a block
 	// For non-gas-based execution layers, this should be 0
-	MaxGas uint64 `protobuf:"varint,1,opt,name=max_gas,json=maxGas,proto3" json:"max_gas,omitempty"`
-	// Proposer address that should sign the next block from the execution
-	// layer's current view. Empty means unchanged or unavailable.
-	NextProposerAddress []byte `protobuf:"bytes,2,opt,name=next_proposer_address,json=nextProposerAddress,proto3" json:"next_proposer_address,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	MaxGas        uint64 `protobuf:"varint,1,opt,name=max_gas,json=maxGas,proto3" json:"max_gas,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetExecutionInfoResponse) Reset() {
@@ -629,13 +626,6 @@ func (x *GetExecutionInfoResponse) GetMaxGas() uint64 {
 		return x.MaxGas
 	}
 	return 0
-}
-
-func (x *GetExecutionInfoResponse) GetNextProposerAddress() []byte {
-	if x != nil {
-		return x.NextProposerAddress
-	}
-	return nil
 }
 
 // FilterTxsRequest contains transactions to validate and filter
@@ -787,10 +777,9 @@ const file_evnode_v1_execution_proto_rawDesc = "" +
 	"\x0fSetFinalRequest\x12!\n" +
 	"\fblock_height\x18\x01 \x01(\x04R\vblockHeight\"\x12\n" +
 	"\x10SetFinalResponse\"\x19\n" +
-	"\x17GetExecutionInfoRequest\"g\n" +
+	"\x17GetExecutionInfoRequest\"P\n" +
 	"\x18GetExecutionInfoResponse\x12\x17\n" +
-	"\amax_gas\x18\x01 \x01(\x04R\x06maxGas\x122\n" +
-	"\x15next_proposer_address\x18\x02 \x01(\fR\x13nextProposerAddress\"\xc7\x01\n" +
+	"\amax_gas\x18\x01 \x01(\x04R\x06maxGasJ\x04\b\x02\x10\x03R\x15next_proposer_address\"\xc7\x01\n" +
 	"\x10FilterTxsRequest\x12\x1b\n" +
 	"\tmax_bytes\x18\x02 \x01(\x04R\bmaxBytes\x12\x17\n" +
 	"\amax_gas\x18\x03 \x01(\x04R\x06maxGas\x12C\n" +

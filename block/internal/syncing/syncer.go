@@ -326,11 +326,11 @@ func (s *Syncer) initializeState() error {
 			LastBlockTime:       s.genesis.StartTime,
 			DAHeight:            s.genesis.DAStartHeight,
 			AppHash:             stateRoot,
-			NextProposerAddress: s.initialProposerAddress(s.ctx),
+			NextProposerAddress: s.initialProposerAddress(),
 		}
 	}
 	if len(state.NextProposerAddress) == 0 {
-		state.NextProposerAddress = s.initialProposerAddress(s.ctx)
+		state.NextProposerAddress = s.initialProposerAddress()
 		if state.LastBlockHeight > s.genesis.InitialHeight-1 {
 			s.logger.Warn().
 				Uint64("height", state.LastBlockHeight).
@@ -407,15 +407,7 @@ func (s *Syncer) initializeState() error {
 	return nil
 }
 
-func (s *Syncer) initialProposerAddress(ctx context.Context) []byte {
-	if s.exec != nil {
-		info, err := s.exec.GetExecutionInfo(ctx)
-		if err != nil {
-			s.logger.Warn().Err(err).Msg("failed to get execution info for proposer, falling back to genesis proposer")
-		} else if len(info.NextProposerAddress) > 0 {
-			return append([]byte(nil), info.NextProposerAddress...)
-		}
-	}
+func (s *Syncer) initialProposerAddress() []byte {
 	return append([]byte(nil), s.genesis.ProposerAddress...)
 }
 

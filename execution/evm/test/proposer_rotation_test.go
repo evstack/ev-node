@@ -67,10 +67,6 @@ func TestEngineExecutionReturnsNextProposerFromEvolveRPC(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	info, err := executionClient.GetExecutionInfo(ctx)
-	requireProposerControlSupported(t, err)
-	require.Equal(t, initialProposer.Bytes(), info.NextProposerAddress)
-
 	genesisStateRoot, err := executionClient.InitChain(ctx, time.Now().UTC().Truncate(time.Second), 1, CHAIN_ID)
 	require.NoError(t, err)
 
@@ -86,10 +82,6 @@ func TestEngineExecutionReturnsNextProposerFromEvolveRPC(t *testing.T) {
 	result, err := executionClient.ExecuteTxs(ctx, payload, 1, time.Now().UTC().Truncate(time.Second).Add(time.Second), genesisStateRoot)
 	require.NoError(t, err)
 	require.Equal(t, nextProposer.Bytes(), result.NextProposerAddress)
-
-	info, err = executionClient.GetExecutionInfo(ctx)
-	require.NoError(t, err)
-	require.Equal(t, nextProposer.Bytes(), info.NextProposerAddress)
 }
 
 func TestTwoEngineNodesObserveRepeatedProposerRotation(t *testing.T) {

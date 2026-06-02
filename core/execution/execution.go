@@ -132,14 +132,6 @@ type ExecutionInfo struct {
 	// MaxGas is the maximum gas allowed for transactions in a block.
 	// For non-gas-based execution layers, this should be 0.
 	MaxGas uint64
-
-	// NextProposerAddress is the execution layer's best-effort view of the
-	// proposer address for the next block. It is advisory and is consulted
-	// only at startup/replay seeding when no prior consensus state is
-	// available; the authoritative source for the next proposer is
-	// ExecuteResult.NextProposerAddress. Empty means unchanged/unavailable,
-	// and callers must fall back to the genesis proposer.
-	NextProposerAddress []byte
 }
 
 // ExecuteResult contains execution output that consensus must persist.

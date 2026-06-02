@@ -874,17 +874,6 @@ func (c *EngineClient) GetExecutionInfo(ctx context.Context) (execution.Executio
 		c.cachedExecutionInfo.Store(&execution.ExecutionInfo{MaxGas: info.MaxGas})
 	}
 
-	nextProposer, err := c.ethClient.GetNextProposer(ctx, nil)
-	if err != nil {
-		if !isRPCMethodNotFound(err) {
-			return execution.ExecutionInfo{}, fmt.Errorf("failed to get next proposer: %w", err)
-		}
-		return info, nil
-	}
-	if nextProposer != (common.Hash{}) {
-		info.NextProposerAddress = nextProposer.Bytes()
-	}
-
 	return info, nil
 }
 

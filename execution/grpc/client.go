@@ -206,8 +206,7 @@ func (c *Client) GetExecutionInfo(ctx context.Context) (execution.ExecutionInfo,
 	}
 
 	return execution.ExecutionInfo{
-		MaxGas:              resp.Msg.MaxGas,
-		NextProposerAddress: resp.Msg.NextProposerAddress,
+		MaxGas: resp.Msg.MaxGas,
 	}, nil
 }
 
