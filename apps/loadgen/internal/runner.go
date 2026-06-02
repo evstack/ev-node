@@ -142,11 +142,6 @@ func runCheck(ctx context.Context, api SpamoorClient, timeout time.Duration) err
 		return fmt.Errorf("waiting for spamoor sync: %w", err)
 	}
 
-	if err := DeleteAllSpammers(api); err != nil {
-		return fmt.Errorf("cleanup: %w", err)
-	}
-	defer func() { _ = DeleteAllSpammers(api) }()
-
 	baselineSent, baselineFailed, err := getSpamoorCounters(api)
 	if err != nil {
 		return fmt.Errorf("get baseline metrics: %w", err)
@@ -169,6 +164,11 @@ func runCheck(ctx context.Context, api SpamoorClient, timeout time.Duration) err
 		return fmt.Errorf("create spammer: %w", err)
 	}
 	log.Printf("created check spammer (id=%d)", id)
+	defer func() {
+		if dErr := api.DeleteSpammer(id); dErr != nil {
+			log.Printf("warning: cleanup check spammer %d failed: %v", id, dErr)
+		}
+	}()
 
 	checkCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -198,15 +198,6 @@ func runEntryWithWait(ctx context.Context, api SpamoorClient, entry Entry, wait 
 	log.Printf("[%s] scenario=%s spammers=%d count_per=%d total=%d",
 		entry.TestName, entry.Scenario, entry.NumSpammers, entry.CountPerSpammer, totalCount)
 
-	if err := DeleteAllSpammers(api); err != nil {
-		return fmt.Errorf("delete stale spammers: %w", err)
-	}
-	defer func() {
-		if err := DeleteAllSpammers(api); err != nil {
-			log.Printf("[%s] warning: cleanup failed: %v", entry.TestName, err)
-		}
-	}()
-
 	baselineSent, baselineFailed, err := getSpamoorCounters(api)
 	if err != nil {
 		return fmt.Errorf("get baseline metrics: %w", err)
@@ -224,6 +215,13 @@ func runEntryWithWait(ctx context.Context, api SpamoorClient, entry Entry, wait 
 		spammerIDs = append(spammerIDs, id)
 		log.Printf("[%s] created spammer %s (id=%d)", entry.TestName, name, id)
 	}
+	defer func() {
+		for _, id := range spammerIDs {
+			if err := api.DeleteSpammer(id); err != nil {
+				log.Printf("[%s] warning: cleanup spammer %d failed: %v", entry.TestName, id, err)
+			}
+		}
+	}()
 
 	for _, id := range spammerIDs {
 		sp, err := api.GetSpammer(id)

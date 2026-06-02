@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
-	"sync"
 	"syscall"
 	"time"
 
@@ -75,10 +74,7 @@ func runScheduler(parent context.Context, cfg startConfig) error {
 		return err
 	}
 
-	var mu sync.Mutex
 	runWorkload := func(label, matrixPath string, txCount int) {
-		mu.Lock()
-		defer mu.Unlock()
 		log.Printf("==> %s workload starting (%d tx)", label, txCount)
 		if err := internal.ExecuteMatrixWithOverridesFromFile(ctx, matrixPath, api, txCount); err != nil {
 			log.Printf("%s workload error: %v", label, err)
@@ -102,12 +98,10 @@ func runScheduler(parent context.Context, cfg startConfig) error {
 		case <-ctx.Done():
 			log.Printf("shutting down...")
 			burstTimer.Stop()
-			mu.Lock()
 			log.Printf("cleaning up spammers")
 			if err := internal.DeleteAllSpammers(api); err != nil {
 				log.Printf("warning: shutdown cleanup failed: %v", err)
 			}
-			mu.Unlock()
 			return nil
 
 		case <-ticker.C:
