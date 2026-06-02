@@ -80,7 +80,7 @@ func runScheduler(parent context.Context, cfg startConfig) error {
 		mu.Lock()
 		defer mu.Unlock()
 		log.Printf("==> %s workload starting (%d tx)", label, txCount)
-		if err := internal.ExecuteMatrixWithOverrides(ctx, matrixPath, api, txCount); err != nil {
+		if err := internal.ExecuteMatrixWithOverridesFromFile(ctx, matrixPath, api, txCount); err != nil {
 			log.Printf("%s workload error: %v", label, err)
 		}
 	}

@@ -11,7 +11,7 @@ func newRunCmd() *cobra.Command {
 		Short: "run benchmarks from a matrix JSON file",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return internal.ExecuteMatrix(cmd.Context(), args[0], internal.NewSpamoorClient(resolveSpamoorURL()))
+			return internal.ExecuteMatrixFromFile(cmd.Context(), args[0], internal.NewSpamoorClient(resolveSpamoorURL()))
 		},
 	}
 }

@@ -81,14 +81,6 @@ export BENCH_ETH_RPC_URL=http://<ev-reth-host>:8545
 docker compose -f apps/loadgen/docker-compose.yml up
 ```
 
-### Smoke Test
-
-```sh
-export BENCH_PRIVATE_KEY=<funded-private-key>
-export BENCH_ETH_RPC_URL=http://<ev-reth-host>:8545
-just bench-smoke
-```
-
 ## Matrix Format
 
 Each entry specifies a spamoor scenario, tx counts, and optional probability:

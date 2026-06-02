@@ -58,15 +58,22 @@ func LoadMatrix(path string) (*Matrix, error) {
 	if err := json.Unmarshal(data, &m); err != nil {
 		return nil, fmt.Errorf("parse matrix JSON: %w", err)
 	}
+	if err := validateMatrix(&m); err != nil {
+		return nil, err
+	}
+	return &m, nil
+}
+
+func validateMatrix(m *Matrix) error {
 	if len(m.Entries) == 0 {
-		return nil, fmt.Errorf("matrix has no entries")
+		return fmt.Errorf("matrix has no entries")
 	}
 	for i := range m.Entries {
 		if err := m.Entries[i].validate(); err != nil {
-			return nil, fmt.Errorf("entry %d (%s): %w", i, m.Entries[i].TestName, err)
+			return fmt.Errorf("entry %d (%s): %w", i, m.Entries[i].TestName, err)
 		}
 	}
-	return &m, nil
+	return nil
 }
 
 func (e *Entry) validate() error {

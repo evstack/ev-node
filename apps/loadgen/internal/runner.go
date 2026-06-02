@@ -20,32 +20,50 @@ type matrixOpts struct {
 // ExecuteMatrixWithOverrides runs a matrix with BENCH_COUNT_PER_SPAMMER
 // overridden to totalTxTarget / NumSpammers per entry. Skips probability
 // filtering and sync waiting (caller is responsible for sync).
-func ExecuteMatrixWithOverrides(ctx context.Context, matrixPath string, api SpamoorClient, totalTxTarget int) error {
-	return executeMatrix(ctx, matrixPath, api, matrixOpts{
+func ExecuteMatrixWithOverrides(ctx context.Context, matrix Matrix, api SpamoorClient, totalTxTarget int) error {
+	return executeMatrix(ctx, matrix, api, matrixOpts{
 		totalTxTarget: totalTxTarget,
 	})
 }
 
 // ExecuteMatrix runs all entries in a matrix file as-is, with probability
 // filtering and an initial WaitForSync call. Used by the one-shot `run` command.
-func ExecuteMatrix(ctx context.Context, matrixPath string, api SpamoorClient) error {
-	return executeMatrix(ctx, matrixPath, api, matrixOpts{
+func ExecuteMatrix(ctx context.Context, matrix Matrix, api SpamoorClient) error {
+	return executeMatrix(ctx, matrix, api, matrixOpts{
 		allowProbability: true,
 		waitForSync:      true,
 	})
 }
 
-func executeMatrix(ctx context.Context, matrixPath string, api SpamoorClient, opts matrixOpts) error {
+// ExecuteMatrixFromFile loads a matrix from disk and executes it.
+func ExecuteMatrixFromFile(ctx context.Context, matrixPath string, api SpamoorClient) error {
 	matrix, err := LoadMatrix(matrixPath)
 	if err != nil {
 		return fmt.Errorf("load matrix: %w", err)
 	}
+	return ExecuteMatrix(ctx, *matrix, api)
+}
+
+// ExecuteMatrixWithOverridesFromFile loads a matrix from disk and executes it
+// with per-run counts overridden.
+func ExecuteMatrixWithOverridesFromFile(ctx context.Context, matrixPath string, api SpamoorClient, totalTxTarget int) error {
+	matrix, err := LoadMatrix(matrixPath)
+	if err != nil {
+		return fmt.Errorf("load matrix: %w", err)
+	}
+	return ExecuteMatrixWithOverrides(ctx, *matrix, api, totalTxTarget)
+}
+
+func executeMatrix(ctx context.Context, matrix Matrix, api SpamoorClient, opts matrixOpts) error {
+	if err := validateMatrix(&matrix); err != nil {
+		return err
+	}
 
 	log.Printf("spamoor API: %s", api.URL())
 	if opts.totalTxTarget > 0 {
-		log.Printf("loaded %d matrix entries from %s (totalTxTarget=%d)", len(matrix.Entries), matrixPath, opts.totalTxTarget)
+		log.Printf("loaded %d matrix entries (totalTxTarget=%d)", len(matrix.Entries), opts.totalTxTarget)
 	} else {
-		log.Printf("loaded %d matrix entries from %s", len(matrix.Entries), matrixPath)
+		log.Printf("loaded %d matrix entries", len(matrix.Entries))
 	}
 
 	if opts.waitForSync {
