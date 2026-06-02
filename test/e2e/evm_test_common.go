@@ -545,18 +545,6 @@ func SetupCommonEVMEnv(t testing.TB, sut *SystemUnderTest, client tastoratypes.T
 	// Reset global nonce for each test to ensure clean state
 	globalNonce = 0
 
-	// Construct dynamic test ports (rollkit + DA)
-	dynEndpoints, err := generateTestEndpoints()
-	require.NoError(t, err, "failed to generate dynamic test endpoints")
-
-	// Start local DA explicitly on the chosen port
-	localDABinary := "local-da"
-	if evmSingleBinaryPath != "evm" {
-		localDABinary = filepath.Join(filepath.Dir(evmSingleBinaryPath), "local-da")
-	}
-	sut.ExecCmd(localDABinary, "-port", dynEndpoints.DAPort, "-block-time", "1s")
-	t.Logf("Started local DA on port %s", dynEndpoints.DAPort)
-
 	require.NotNil(t, client, "docker client is required")
 	require.NotEmpty(t, networkID, "docker networkID is required")
 	rethNode := evmtest.SetupTestRethNode(t, client, networkID, cfg.rethOpts...)
@@ -576,6 +564,19 @@ func SetupCommonEVMEnv(t testing.TB, sut *SystemUnderTest, client tastoratypes.T
 	// get genesis hash by querying the sequencer ETH endpoint
 	genesisHash, err := rethNode.GenesisHash(context.Background())
 	require.NoError(t, err, "failed to get genesis hash")
+
+	// Reserve local ports after Docker has allocated reth host ports so Docker
+	// cannot later claim a port selected for local DA or ev-node listeners.
+	dynEndpoints, err := generateTestEndpoints()
+	require.NoError(t, err, "failed to generate dynamic test endpoints")
+
+	// Start local DA explicitly on the chosen port
+	localDABinary := "local-da"
+	if evmSingleBinaryPath != "evm" {
+		localDABinary = filepath.Join(filepath.Dir(evmSingleBinaryPath), "local-da")
+	}
+	sut.ExecCmd(localDABinary, "-port", dynEndpoints.DAPort, "-block-time", "1s")
+	t.Logf("Started local DA on port %s", dynEndpoints.DAPort)
 
 	// Populate endpoints with both dynamic rollkit ports and dynamic engine ports
 	dynEndpoints.SequencerEthPort = networkInfo.External.Ports.RPC

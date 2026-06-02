@@ -462,7 +462,7 @@ func TestSyncer_TrySyncNextBlock_SelectiveCacheCleanup(t *testing.T) {
 	}
 
 	tests := map[string]struct {
-		event           func(testing.TB) common.DAHeightEvent
+		event             func(testing.TB) common.DAHeightEvent
 		wantHeaderInCache bool
 		wantDataInCache   bool
 	}{

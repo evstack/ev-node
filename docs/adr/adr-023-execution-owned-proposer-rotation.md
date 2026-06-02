@@ -21,14 +21,13 @@ The replacement design moves proposer selection into the execution environment. 
 - `UpdatedStateRoot`: the state root after executing the block.
 - `NextProposerAddress`: the address expected to sign the next block.
 
-`GetExecutionInfo` also exposes `NextProposerAddress` for startup. If execution returns an empty proposer at startup, ev-node falls back to `genesis.proposer_address`.
-
 An empty `NextProposerAddress` from `ExecuteTxs` means the proposer is unchanged. ev-node must not write a redundant header field in that case, preserving compatibility with existing headers and hash chains.
 
 When execution returns a non-empty next proposer:
 
 - `State.NextProposerAddress` is updated and used as the expected signer for `LastBlockHeight + 1`.
 - Full nodes validate the next block signer against the previous state's `NextProposerAddress`.
+- Nodes recover the expected signer after restart from the persisted state. If legacy state has no stored proposer, ev-node falls back to `genesis.proposer_address`.
 - Header encoding remains unchanged. `Header.ProposerAddress` continues to identify the signer of the current block only.
 
 The execution result is the authority for proposer rotation. Header-only paths cannot derive proposer transitions without either replaying execution or using a future proof/certificate mechanism. This preserves header compatibility while keeping the rotation rule deterministic for full nodes.
@@ -49,7 +48,7 @@ The system contract must restrict writes to the configured authority. Unauthoriz
 
 ev-node validates each block's signer against the proposer address stored in the previous state. A malicious proposer cannot rotate the next signer through node-local configuration; the rotation must be derived from execution.
 
-If the execution interface returns an empty proposer, ev-node treats the proposer as unchanged. At startup, empty execution info falls back to genesis so existing execution implementations remain usable.
+If the execution interface returns an empty proposer from `ExecuteTxs`, ev-node treats the proposer as unchanged. At startup, missing proposer data in legacy state falls back to genesis so existing execution implementations remain usable.
 
 Compromise of the security council can still rotate the proposer to an attacker. This ADR reduces node configuration risk; it does not eliminate governance-key risk.
 
