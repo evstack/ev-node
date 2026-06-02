@@ -29,8 +29,8 @@ func TestBuildScenarioConfig(t *testing.T) {
 	require.Equal(t, "500000000000000000000", cfg["refill_amount"])
 	require.Equal(t, "200000000000000000000", cfg["refill_balance"])
 	require.Equal(t, 300, cfg["refill_interval"])
-	require.Equal(t, 42, cfg["total_count"])
-	require.Equal(t, 100, cfg["throughput"])
-	require.Equal(t, 500, cfg["base_fee"])
+	require.Equal(t, uint64(42), cfg["total_count"])
+	require.Equal(t, uint64(100), cfg["throughput"])
+	require.Equal(t, uint64(500), cfg["base_fee"])
 	require.Equal(t, "true", cfg["rebroadcast"])
 }

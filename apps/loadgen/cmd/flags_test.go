@@ -7,9 +7,7 @@ import (
 )
 
 func TestStartFlags(t *testing.T) {
-	root := NewRootCmd()
 	startCmd := newStartCmd()
-	root.AddCommand(startCmd)
 
 	err := startCmd.ParseFlags([]string{"--regular-matrix", "custom.json"})
 	require.NoError(t, err)

@@ -15,10 +15,14 @@ ENV TZ=UTC
 #hadolint ignore=DL3018
 RUN apk --no-cache add ca-certificates curl tzdata
 
-WORKDIR /root
+RUN addgroup -S ev && adduser -S ev -G ev
+
+WORKDIR /home/ev
 
 COPY --from=build-env /src/ev-loadgen /usr/bin/ev-loadgen
-COPY apps/loadgen/matrices/baseline.json /root/baseline.json
-COPY apps/loadgen/matrices/burst.json /root/burst.json
+COPY apps/loadgen/matrices/baseline.json /home/ev/baseline.json
+COPY apps/loadgen/matrices/burst.json /home/ev/burst.json
+
+USER ev
 
 CMD ["ev-loadgen", "start"]

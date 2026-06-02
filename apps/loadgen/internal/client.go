@@ -68,7 +68,7 @@ func (c spamoorAPIClient) GetClients() ([]spamoor.Client, error) {
 	url := fmt.Sprintf("%s/api/clients", c.api.BaseURL)
 	resp, err := c.client.Get(url)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get clients: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -77,7 +77,7 @@ func (c spamoorAPIClient) GetClients() ([]spamoor.Client, error) {
 	}
 	var raw []clientResponse
 	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decode clients response: %w", err)
 	}
 	clients := make([]spamoor.Client, len(raw))
 	for i, r := range raw {

@@ -41,7 +41,7 @@ func BuildScenarioConfig(env map[string]string) map[string]any {
 		if !ok {
 			continue
 		}
-		if n, err := strconv.Atoi(val); err == nil {
+		if n, err := strconv.ParseUint(val, 10, 64); err == nil {
 			cfg[cfgKey] = n
 		} else {
 			cfg[cfgKey] = val

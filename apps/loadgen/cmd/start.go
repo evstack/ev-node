@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	defaultBaselinePath = "/root/baseline.json"
-	defaultBurstPath    = "/root/burst.json"
+	defaultBaselinePath = "/home/ev/baseline.json"
+	defaultBurstPath    = "/home/ev/burst.json"
 	burstWindow         = 24 * time.Hour
 )
 

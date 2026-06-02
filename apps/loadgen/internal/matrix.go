@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/celestiaorg/tastora/framework/docker/evstack/spamoor"
 )
@@ -96,6 +97,12 @@ func (e *Entry) validate() error {
 
 	if e.Probability != nil && (*e.Probability < 0 || *e.Probability > 1) {
 		return fmt.Errorf("probability must be between 0.0 and 1.0, got %f", *e.Probability)
+	}
+
+	if e.Timeout != "" {
+		if _, err := time.ParseDuration(e.Timeout); err != nil {
+			return fmt.Errorf("invalid timeout %q: %w", e.Timeout, err)
+		}
 	}
 
 	return nil

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 
@@ -17,5 +16,4 @@ func main() {
 func init() {
 	log.SetFlags(log.Ldate | log.Ltime | log.LUTC)
 	log.SetOutput(os.Stdout)
-	fmt.Fprintln(os.Stderr, "ev-loadgen starting")
 }

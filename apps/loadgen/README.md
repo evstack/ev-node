@@ -4,7 +4,7 @@ Standalone load generator for ev-node stress testing. Talks to a [spamoor-daemon
 
 ## Architecture
 
-```
+```text
 ev-loadgen (this binary)  -->  spamoor-daemon  -->  ev-reth RPC
         |                              |
    reads matrix JSON            manages wallets,
@@ -16,7 +16,7 @@ ev-loadgen (this binary)  -->  spamoor-daemon  -->  ev-reth RPC
 
 ## Commands
 
-```
+```text
 ev-loadgen start                         # run continuous scheduler (regular + burst)
 ev-loadgen check                         # send 1 tx to verify spamoor → ev-reth connectivity
 ev-loadgen run <matrix.json>             # one-shot: run a custom matrix file
@@ -30,8 +30,8 @@ ev-loadgen run <matrix.json>             # one-shot: run a custom matrix file
 | `--interval` | `BENCH_INTERVAL` | `1h` | regular workload frequency |
 | `--burst-tx-count` | `BENCH_BURST_TX_COUNT` | `500000` | txs per burst |
 | `--burst-per-day` | `BENCH_BURST_PER_DAY` | `2` | bursts per day, randomly spaced |
-| `--regular-matrix` | `BENCH_REGULAR_MATRIX` | `/root/baseline.json` | path to regular matrix JSON |
-| `--burst-matrix` | `BENCH_BURST_MATRIX` | `/root/burst.json` | path to burst matrix JSON |
+| `--regular-matrix` | `BENCH_REGULAR_MATRIX` | `/home/ev/baseline.json` | path to regular matrix JSON |
+| `--burst-matrix` | `BENCH_BURST_MATRIX` | `/home/ev/burst.json` | path to burst matrix JSON |
 
 Global flag: `--spamoor-url` (or `BENCH_SPAMOOR_URL` env, default `http://spamoor-daemon:8080`)
 
