@@ -913,44 +913,27 @@ func (s *Syncer) ValidateBlock(_ context.Context, currState types.State, data *t
 	header.SetCustomVerifierForSyncNode(s.options.SyncNodeSignatureBytesProvider)
 
 	if err := header.ValidateBasicWithData(data); err != nil { //nolint:contextcheck // validation API does not accept context
-		return classifyValidationError(fmt.Errorf("invalid header: %w", err))
+		return errors.Join(errInvalidBlock, &BlockValidationError{Fault: FaultHeader, Err: fmt.Errorf("invalid header: %w", err)})
 	}
 
 	if err := currState.AssertExpectedProposer(header); err != nil {
 		return errors.Join(errInvalidBlock, &BlockValidationError{Fault: FaultHeader, Err: err})
 	}
 
-	if err := currState.AssertValidForNextState(header, data); err != nil {
-		if vErr := classifyValidationError(err); vErr != nil {
-			return errors.Join(errInvalidBlock, vErr)
+	if err := currState.AssertValidSequence(header); err != nil {
+		if errors.Is(err, types.ErrInvalidChainID) ||
+			errors.Is(err, types.ErrInvalidBlockHeight) ||
+			errors.Is(err, types.ErrInvalidBlockTime) {
+			return errors.Join(errInvalidBlock, &BlockValidationError{Fault: FaultHeader, Err: err})
 		}
 		return errors.Join(errInvalidState, err)
 	}
-	return nil
-}
 
-// classifyValidationError tags a known external validation error with the side
-// at fault. It returns nil for errors that signal state divergence (the caller
-// must then classify them as errInvalidState).
-func classifyValidationError(err error) *BlockValidationError {
-	switch {
-	case errors.Is(err, types.ErrHeaderDataMismatch),
-		errors.Is(err, types.ErrDataHashMismatch):
-		return &BlockValidationError{Fault: FaultData, Err: err}
-	case errors.Is(err, types.ErrUnexpectedProposer),
-		errors.Is(err, types.ErrInvalidChainID),
-		errors.Is(err, types.ErrInvalidBlockHeight),
-		errors.Is(err, types.ErrInvalidBlockTime),
-		errors.Is(err, types.ErrSignerPubKeyMissing),
-		errors.Is(err, types.ErrSignerAddressMismatch),
-		errors.Is(err, types.ErrSignatureEmpty),
-		errors.Is(err, types.ErrSignatureVerificationFailed),
-		errors.Is(err, types.ErrProposerAddressMismatch),
-		errors.Is(err, types.ErrNoProposerAddress):
-		return &BlockValidationError{Fault: FaultHeader, Err: err}
-	default:
-		return nil
+	if err := types.Validate(header, data); err != nil {
+		return errors.Join(errInvalidBlock, &BlockValidationError{Fault: FaultData, Err: fmt.Errorf("header-data validation failed: %w", err)})
 	}
+
+	return nil
 }
 
 var errMaliciousProposer = errors.New("malicious proposer detected")
