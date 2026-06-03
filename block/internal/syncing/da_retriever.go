@@ -32,12 +32,16 @@ type pendingDataCleaner interface {
 	removePendingData(height uint64)
 }
 
+type expectedProposerProvider func(height uint64) ([]byte, bool)
+
 // daRetriever handles DA retrieval operations for syncing
 type daRetriever struct {
 	client  da.Client
 	cache   cache.CacheManager
 	genesis genesis.Genesis
 	logger  zerolog.Logger
+
+	expectedProposer expectedProposerProvider
 
 	mu sync.Mutex
 	// transient cache, only full event need to be passed to the syncer
@@ -66,6 +70,10 @@ func NewDARetriever(
 		pendingData:    make(map[uint64]*types.Data),
 		strictMode:     false,
 	}
+}
+
+func (r *daRetriever) setExpectedProposerProvider(provider expectedProposerProvider) {
+	r.expectedProposer = provider
 }
 
 // RetrieveFromDA retrieves blocks from the specified DA height and returns height events
@@ -309,6 +317,11 @@ func (r *daRetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedH
 		return nil
 	}
 
+	if err := r.assertExpectedProposer(header); err != nil {
+		r.logger.Debug().Err(err).Msg("unexpected proposer")
+		return nil
+	}
+
 	if isValidEnvelope && !r.strictMode {
 		r.logger.Info().Uint64("height", header.Height()).Msg("valid DA envelope detected, switching to STRICT MODE")
 		r.strictMode = true
@@ -327,6 +340,21 @@ func (r *daRetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedH
 		Msg("optimistically marked header as DA included")
 
 	return header
+}
+
+func (r *daRetriever) assertExpectedProposer(header *types.SignedHeader) error {
+	if r.expectedProposer == nil {
+		return nil
+	}
+
+	expected, ok := r.expectedProposer(header.Height())
+	if !ok || len(expected) == 0 {
+		return nil
+	}
+	if !bytes.Equal(header.ProposerAddress, expected) {
+		return fmt.Errorf("%w - got: %x, want: %x", types.ErrUnexpectedProposer, header.ProposerAddress, expected)
+	}
+	return nil
 }
 
 // tryDecodeData attempts to decode a blob as signed data

@@ -214,6 +214,22 @@ func TestSyncer_ValidateBlock_UsesStateNextProposer(t *testing.T) {
 	require.Contains(t, err.Error(), "unexpected proposer")
 }
 
+func TestSyncer_ExpectedProposerForHeight_OnlyNextHeight(t *testing.T) {
+	addr, _, _ := buildSyncTestSigner(t)
+	s := &Syncer{lastState: &atomic.Pointer[types.State]{}}
+	s.SetLastState(types.State{
+		LastBlockHeight:     4,
+		NextProposerAddress: addr,
+	})
+
+	got, ok := s.expectedProposerForHeight(5)
+	require.True(t, ok)
+	require.Equal(t, addr, got)
+
+	_, ok = s.expectedProposerForHeight(6)
+	require.False(t, ok)
+}
+
 func TestSyncer_TrySyncNextBlock_ClassifiesExternalValidationFailures(t *testing.T) {
 	expectedAddr, expectedPub, expectedSigner := buildSyncTestSigner(t)
 	wrongAddr, wrongPub, wrongSigner := buildSyncTestSigner(t)

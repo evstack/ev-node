@@ -181,7 +181,9 @@ func (s *Syncer) Start(ctx context.Context) (err error) {
 	}
 
 	// Initialize handlers
-	s.daRetriever = NewDARetriever(s.daClient, s.cache, s.genesis, s.logger)
+	daRetriever := NewDARetriever(s.daClient, s.cache, s.genesis, s.logger)
+	daRetriever.setExpectedProposerProvider(s.expectedProposerForHeight)
+	s.daRetriever = daRetriever
 	if s.config.Instrumentation.IsTracingEnabled() {
 		s.daRetriever = WithTracingDARetriever(s.daRetriever)
 	}
@@ -300,6 +302,14 @@ func (s *Syncer) getLastState() types.State {
 // SetLastState updates the current state
 func (s *Syncer) SetLastState(state types.State) {
 	s.lastState.Store(&state)
+}
+
+func (s *Syncer) expectedProposerForHeight(height uint64) ([]byte, bool) {
+	state := s.getLastState()
+	if height != state.LastBlockHeight+1 || len(state.NextProposerAddress) == 0 {
+		return nil, false
+	}
+	return state.NextProposerAddress, true
 }
 
 // initializeState loads the current sync state
