@@ -184,9 +184,15 @@ func (r *daRetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 		}
 
 		if header := r.tryDecodeHeader(bz, daHeight); header != nil {
-			if _, ok := r.pendingHeaders[header.Height()]; ok {
-				// a (malicious) node may have re-published valid header to another da height (should never happen)
-				// we can already discard it, only the first one is valid
+			if existing, ok := r.pendingHeaders[header.Height()]; ok {
+				if r.shouldReplacePendingHeader(existing, header) {
+					r.cache.RemoveHeaderDAIncluded(existing.Hash().String())
+					r.pendingHeaders[header.Height()] = header
+					r.logger.Debug().Uint64("height", header.Height()).Uint64("da_height", daHeight).Msg("replaced pending header with expected proposer header")
+					continue
+				}
+
+				r.cache.RemoveHeaderDAIncluded(header.Hash().String())
 				r.logger.Debug().Uint64("height", header.Height()).Uint64("da_height", daHeight).Msg("header blob already exists for height, discarding")
 				continue
 			}
@@ -254,6 +260,18 @@ func (r *daRetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 	}
 
 	return events
+}
+
+func (r *daRetriever) shouldReplacePendingHeader(existing, candidate *types.SignedHeader) bool {
+	if r.expectedProposer == nil {
+		return false
+	}
+
+	expected, ok := r.expectedProposer(candidate.Height())
+	if !ok || len(expected) == 0 {
+		return false
+	}
+	return !bytes.Equal(existing.ProposerAddress, expected) && bytes.Equal(candidate.ProposerAddress, expected)
 }
 
 func (r *daRetriever) removePendingData(height uint64) {

@@ -365,6 +365,35 @@ func TestDARetriever_ProcessBlobs_RejectsUnexpectedProposerBeforePendingHeader(t
 	require.Equal(t, correctHeader.Hash().String(), r.pendingHeaders[5].Hash().String())
 }
 
+func TestDARetriever_ProcessBlobs_ReplacesFutureHeaderOnceExpectedProposerIsKnown(t *testing.T) {
+	expectedAddr, expectedPub, expectedSigner := buildSyncTestSigner(t)
+	wrongAddr, wrongPub, wrongSigner := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: expectedAddr}
+
+	r := newTestDARetriever(t, nil, config.DefaultConfig(), gen)
+	expectedKnown := false
+	r.setExpectedProposerProvider(func(height uint64) ([]byte, bool) {
+		if height != 5 || !expectedKnown {
+			return nil, false
+		}
+		return expectedAddr, true
+	})
+
+	dataBin, data := makeSignedDataBytes(t, gen.ChainID, 5, expectedAddr, expectedPub, expectedSigner, 1)
+	wrongHeaderBin, wrongHeader := makeSignedHeaderBytes(t, gen.ChainID, 5, wrongAddr, wrongPub, wrongSigner, nil, &data.Data, nil)
+	correctHeaderBin, correctHeader := makeSignedHeaderBytes(t, gen.ChainID, 5, expectedAddr, expectedPub, expectedSigner, nil, &data.Data, nil)
+
+	events := r.processBlobs(context.Background(), [][]byte{wrongHeaderBin}, 100)
+	require.Empty(t, events)
+	require.Equal(t, wrongHeader.Hash().String(), r.pendingHeaders[5].Hash().String())
+
+	expectedKnown = true
+	events = r.processBlobs(context.Background(), [][]byte{correctHeaderBin, dataBin}, 101)
+	require.Len(t, events, 1)
+	require.Equal(t, correctHeader.Hash().String(), events[0].Header.Hash().String())
+	require.Equal(t, data.Data.DACommitment().String(), events[0].Data.DACommitment().String())
+}
+
 func TestDARetriever_ProcessBlobs_MultipleHeadersCrossDAHeightMatching(t *testing.T) {
 
 	addr, pub, signer := buildSyncTestSigner(t)
