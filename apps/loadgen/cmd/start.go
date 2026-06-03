@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
@@ -74,7 +75,9 @@ func runScheduler(parent context.Context, cfg startConfig) error {
 		return err
 	}
 
+	var wg sync.WaitGroup
 	runWorkload := func(label, matrixPath string, txCount int) {
+		defer wg.Done()
 		log.Printf("==> %s workload starting (%d tx)", label, txCount)
 		if err := internal.ExecuteMatrixWithOverridesFromFile(ctx, matrixPath, api, txCount); err != nil {
 			log.Printf("%s workload error: %v", label, err)
@@ -82,6 +85,7 @@ func runScheduler(parent context.Context, cfg startConfig) error {
 	}
 
 	// fire regular immediately
+	wg.Add(1)
 	go runWorkload("regular", cfg.regularMatrix, regularTxPerRun)
 
 	ticker := time.NewTicker(cfg.interval)
@@ -89,15 +93,17 @@ func runScheduler(parent context.Context, cfg startConfig) error {
 
 	// burst: single timer, reschedule after each fire, reset count every 24h.
 	burstsRemaining := cfg.burstPerDay
-	burstTimer := nextBurstTimer(burstsRemaining, burstWindow)
+	nextReset := time.Now().Add(burstWindow)
+	burstTimer := nextBurstTimer(burstsRemaining, time.Until(nextReset))
 	resetTimer := time.NewTimer(burstWindow)
 	defer resetTimer.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
-			log.Printf("shutting down...")
+			log.Printf("shutting down, waiting for in-flight workloads...")
 			burstTimer.Stop()
+			wg.Wait()
 			log.Printf("cleaning up spammers")
 			if err := internal.DeleteAllSpammers(api); err != nil {
 				log.Printf("warning: shutdown cleanup failed: %v", err)
@@ -105,18 +111,21 @@ func runScheduler(parent context.Context, cfg startConfig) error {
 			return nil
 
 		case <-ticker.C:
+			wg.Add(1)
 			go runWorkload("regular", cfg.regularMatrix, regularTxPerRun)
 
 		case <-burstTimer.C:
+			wg.Add(1)
 			go runWorkload("burst", cfg.burstMatrix, cfg.burstTxCount)
 			burstsRemaining--
-			burstTimer = nextBurstTimer(burstsRemaining, burstWindow)
+			burstTimer = nextBurstTimer(burstsRemaining, time.Until(nextReset))
 
 		case <-resetTimer.C:
 			log.Printf("24h elapsed - resetting burst count")
 			burstTimer.Stop()
 			burstsRemaining = cfg.burstPerDay
-			burstTimer = nextBurstTimer(burstsRemaining, burstWindow)
+			nextReset = time.Now().Add(burstWindow)
+			burstTimer = nextBurstTimer(burstsRemaining, time.Until(nextReset))
 			resetTimer.Reset(burstWindow)
 		}
 	}
