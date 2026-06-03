@@ -22,7 +22,7 @@ jobs:
     name: Docker E2E Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v6.0.3
       - name: set up go
         uses: actions/setup-go@v6.4.0
         with:
@@ -42,7 +42,7 @@ jobs:
       contents: read
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v6.0.3
       - name: set up go
         uses: actions/setup-go@v6.4.0
         with:
@@ -62,7 +62,7 @@ jobs:
       contents: read
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v6.0.3
       - name: set up go
         uses: actions/setup-go@v6.4.0
         with:
