@@ -53,13 +53,6 @@ func (sh *SignedHeader) SetCustomVerifierForSyncNode(provider SyncNodeSignatureB
 
 // Verify verifies the signed header.
 func (sh *SignedHeader) Verify(untrstH *SignedHeader) error {
-	// go-header ensures untrustH already passed ValidateBasic.
-	if err := sh.Header.Verify(&untrstH.Header); err != nil {
-		return &header.VerifyError{
-			Reason: err,
-		}
-	}
-
 	if sh.isAdjacent(untrstH) {
 		if err := sh.verifyHeaderHash(untrstH); err != nil {
 			return err
