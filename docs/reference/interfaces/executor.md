@@ -124,12 +124,10 @@ GetExecutionInfo(ctx context.Context) (ExecutionInfo, error)
 ```go
 type ExecutionInfo struct {
     MaxGas uint64
-    NextProposerAddress []byte
 }
 ```
 
 - `MaxGas` - Maximum gas per block (0 = no gas-based limiting)
-- `NextProposerAddress` - Execution layer's current next proposer. Empty at startup means ev-node falls back to `genesis.proposer_address`.
 
 ### FilterTxs
 
