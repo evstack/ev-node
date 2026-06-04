@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1780479070867,
+  "lastUpdate": 1780557165970,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -142,6 +142,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 190706,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "7344e09dfd8f9e4d26bf2464144239afa538421f",
+          "message": "build(deps): Bump the all-go group across 3 directories with 9 updates (#3337)\n\n* build(deps): Bump the all-go group across 3 directories with 9 updates\n\nBumps the all-go group with 6 updates in the / directory:\n\n| Package | From | To |\n| --- | --- | --- |\n| [github.com/aws/aws-sdk-go-v2](https://github.com/aws/aws-sdk-go-v2) | `1.41.7` | `1.41.11` |\n| [github.com/aws/aws-sdk-go-v2/config](https://github.com/aws/aws-sdk-go-v2) | `1.32.18` | `1.32.22` |\n| [github.com/aws/aws-sdk-go-v2/service/kms](https://github.com/aws/aws-sdk-go-v2) | `1.52.0` | `1.53.2` |\n| [go.opentelemetry.io/otel](https://github.com/open-telemetry/opentelemetry-go) | `1.43.0` | `1.44.0` |\n| [go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp](https://github.com/open-telemetry/opentelemetry-go) | `1.43.0` | `1.44.0` |\n| [google.golang.org/api](https://github.com/googleapis/google-api-go-client) | `0.280.0` | `0.283.0` |\n\nBumps the all-go group with 1 update in the /execution/evm directory: [go.opentelemetry.io/otel](https://github.com/open-telemetry/opentelemetry-go).\nBumps the all-go group with 2 updates in the /execution/grpc directory: [go.opentelemetry.io/otel](https://github.com/open-telemetry/opentelemetry-go) and [go.opentelemetry.io/otel/sdk](https://github.com/open-telemetry/opentelemetry-go).\n\n\nUpdates `github.com/aws/aws-sdk-go-v2` from 1.41.7 to 1.41.11\n- [Release notes](https://github.com/aws/aws-sdk-go-v2/releases)\n- [Commits](https://github.com/aws/aws-sdk-go-v2/compare/v1.41.7...v1.41.11)\n\nUpdates `github.com/aws/aws-sdk-go-v2/config` from 1.32.18 to 1.32.22\n- [Release notes](https://github.com/aws/aws-sdk-go-v2/releases)\n- [Commits](https://github.com/aws/aws-sdk-go-v2/compare/config/v1.32.18...config/v1.32.22)\n\nUpdates `github.com/aws/aws-sdk-go-v2/service/kms` from 1.52.0 to 1.53.2\n- [Release notes](https://github.com/aws/aws-sdk-go-v2/releases)\n- [Commits](https://github.com/aws/aws-sdk-go-v2/compare/service/s3/v1.52.0...service/s3/v1.53.2)\n\nUpdates `github.com/aws/smithy-go` from 1.25.1 to 1.27.0\n- [Release notes](https://github.com/aws/smithy-go/releases)\n- [Changelog](https://github.com/aws/smithy-go/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/aws/smithy-go/compare/v1.25.1...v1.27.0)\n\nUpdates `go.opentelemetry.io/otel` from 1.43.0 to 1.44.0\n- [Release notes](https://github.com/open-telemetry/opentelemetry-go/releases)\n- [Changelog](https://github.com/open-telemetry/opentelemetry-go/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/open-telemetry/opentelemetry-go/compare/v1.43.0...v1.44.0)\n\nUpdates `go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp` from 1.43.0 to 1.44.0\n- [Release notes](https://github.com/open-telemetry/opentelemetry-go/releases)\n- [Changelog](https://github.com/open-telemetry/opentelemetry-go/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/open-telemetry/opentelemetry-go/compare/v1.43.0...v1.44.0)\n\nUpdates `go.opentelemetry.io/otel/sdk` from 1.43.0 to 1.44.0\n- [Release notes](https://github.com/open-telemetry/opentelemetry-go/releases)\n- [Changelog](https://github.com/open-telemetry/opentelemetry-go/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/open-telemetry/opentelemetry-go/compare/v1.43.0...v1.44.0)\n\nUpdates `go.opentelemetry.io/otel/trace` from 1.43.0 to 1.44.0\n- [Release notes](https://github.com/open-telemetry/opentelemetry-go/releases)\n- [Changelog](https://github.com/open-telemetry/opentelemetry-go/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/open-telemetry/opentelemetry-go/compare/v1.43.0...v1.44.0)\n\nUpdates `google.golang.org/api` from 0.280.0 to 0.283.0\n- [Release notes](https://github.com/googleapis/google-api-go-client/releases)\n- [Changelog](https://github.com/googleapis/google-api-go-client/blob/main/CHANGES.md)\n- [Commits](https://github.com/googleapis/google-api-go-client/compare/v0.280.0...v0.283.0)\n\nUpdates `go.opentelemetry.io/otel` from 1.43.0 to 1.44.0\n- [Release notes](https://github.com/open-telemetry/opentelemetry-go/releases)\n- [Changelog](https://github.com/open-telemetry/opentelemetry-go/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/open-telemetry/opentelemetry-go/compare/v1.43.0...v1.44.0)\n\nUpdates `go.opentelemetry.io/otel/sdk` from 1.43.0 to 1.44.0\n- [Release notes](https://github.com/open-telemetry/opentelemetry-go/releases)\n- [Changelog](https://github.com/open-telemetry/opentelemetry-go/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/open-telemetry/opentelemetry-go/compare/v1.43.0...v1.44.0)\n\nUpdates `go.opentelemetry.io/otel/trace` from 1.43.0 to 1.44.0\n- [Release notes](https://github.com/open-telemetry/opentelemetry-go/releases)\n- [Changelog](https://github.com/open-telemetry/opentelemetry-go/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/open-telemetry/opentelemetry-go/compare/v1.43.0...v1.44.0)\n\nUpdates `go.opentelemetry.io/otel` from 1.43.0 to 1.44.0\n- [Release notes](https://github.com/open-telemetry/opentelemetry-go/releases)\n- [Changelog](https://github.com/open-telemetry/opentelemetry-go/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/open-telemetry/opentelemetry-go/compare/v1.43.0...v1.44.0)\n\nUpdates `go.opentelemetry.io/otel/sdk` from 1.43.0 to 1.44.0\n- [Release notes](https://github.com/open-telemetry/opentelemetry-go/releases)\n- [Changelog](https://github.com/open-telemetry/opentelemetry-go/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/open-telemetry/opentelemetry-go/compare/v1.43.0...v1.44.0)\n\nUpdates `go.opentelemetry.io/otel/trace` from 1.43.0 to 1.44.0\n- [Release notes](https://github.com/open-telemetry/opentelemetry-go/releases)\n- [Changelog](https://github.com/open-telemetry/opentelemetry-go/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/open-telemetry/opentelemetry-go/compare/v1.43.0...v1.44.0)\n\n---\nupdated-dependencies:\n- dependency-name: github.com/aws/aws-sdk-go-v2\n  dependency-version: 1.41.11\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/aws/aws-sdk-go-v2/config\n  dependency-version: 1.32.22\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: all-go\n- dependency-name: github.com/aws/aws-sdk-go-v2/service/kms\n  dependency-version: 1.53.2\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: github.com/aws/smithy-go\n  dependency-version: 1.27.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: go.opentelemetry.io/otel\n  dependency-version: 1.44.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp\n  dependency-version: 1.44.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: go.opentelemetry.io/otel/sdk\n  dependency-version: 1.44.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: go.opentelemetry.io/otel/trace\n  dependency-version: 1.44.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: google.golang.org/api\n  dependency-version: 0.283.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: go.opentelemetry.io/otel\n  dependency-version: 1.44.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: go.opentelemetry.io/otel/sdk\n  dependency-version: 1.44.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: go.opentelemetry.io/otel/trace\n  dependency-version: 1.44.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: go.opentelemetry.io/otel\n  dependency-version: 1.44.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: go.opentelemetry.io/otel/sdk\n  dependency-version: 1.44.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n- dependency-name: go.opentelemetry.io/otel/trace\n  dependency-version: 1.44.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: all-go\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\n\n* chore: run just deps after Dependabot update\n\n---------\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\nCo-authored-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>\nCo-authored-by: julienrbrt <julien@rbrt.fr>",
+          "timestamp": "2026-06-04T09:08:59+02:00",
+          "tree_id": "f7a1b17dcf206c7cffb01dc0def69b385b47b760",
+          "url": "https://github.com/evstack/ev-node/commit/7344e09dfd8f9e4d26bf2464144239afa538421f"
+        },
+        "date": 1780557161950,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 919446632,
+            "unit": "ns/op\t32663428 B/op\t  181473 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 919446632,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 32663428,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 181473,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
