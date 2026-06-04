@@ -12,20 +12,20 @@ type Sequencer interface {
 	// SubmitBatchTxs submits a batch of transactions from executor to sequencer
 	// Id is the unique identifier for the target chain
 	// Batch is the batch of transactions to submit
-	// returns an error if any from the sequencer
+	// returns any error from the sequencer
 	SubmitBatchTxs(ctx context.Context, req SubmitBatchTxsRequest) (*SubmitBatchTxsResponse, error)
 
-	// GetNextBatch returns the next batch of transactions from sequencer and from DA to
+	// GetNextBatch returns the next batch of transactions from the sequencer and DA to the chain
 	// Id is the unique identifier for the target chain
-	// LastBatchHash is the cryptographic hash of the last batch received by the
+	// LastBatchHash is the cryptographic hash of the last batch received by the chain
 	// MaxBytes is the maximum number of bytes to return in the batch
-	// returns the next batch of transactions and an error if any from the sequencer
+	// returns the next batch of transactions and any error from the sequencer
 	GetNextBatch(ctx context.Context, req GetNextBatchRequest) (*GetNextBatchResponse, error)
 
 	// VerifyBatch verifies a batch of transactions received from the sequencer
 	// Id is the unique identifier for the target chain
 	// BatchHash is the cryptographic hash of the batch to verify
-	// returns a boolean indicating if the batch is valid and an error if any from the sequencer
+	// returns whether the batch is valid and any error from the sequencer
 	VerifyBatch(ctx context.Context, req VerifyBatchRequest) (*VerifyBatchResponse, error)
 
 	// SetDAHeight sets the current DA height for the sequencer
