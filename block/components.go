@@ -286,7 +286,7 @@ func newAggregatorComponents(
 		return nil, fmt.Errorf("failed to create reaper: %w", err)
 	}
 
-	if config.Node.BasedSequencer { // no submissions needed for bases sequencer
+	if config.Node.BasedSequencer { // no submissions needed for based sequencer
 		return &Components{
 			Executor: executor,
 			Pruner:   pruner,
