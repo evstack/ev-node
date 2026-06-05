@@ -30,10 +30,6 @@ const (
 	// pruned state height in the store.
 	LastPrunedStateHeightKey = "lst-prnd-s"
 
-	// DoubleSignEvidenceKey is the metadata key prefix for persisted double-sign
-	// evidence. Full keys are like: ds/<height>/<alt-hash-hex>
-	DoubleSignEvidenceKey = "ds"
-
 	headerPrefix    = "h"
 	dataPrefix      = "d"
 	signaturePrefix = "c"
@@ -105,10 +101,4 @@ func GetHeightToDAHeightHeaderKey(height uint64) string {
 // where a block's data was included for a given sequencer height.
 func GetHeightToDAHeightDataKey(height uint64) string {
 	return HeightToDAHeightKey + "/" + strconv.FormatUint(height, 10) + "/d"
-}
-
-// GetDoubleSignEvidenceKey returns the metadata key for persisted double-sign
-// evidence at the given height and alternate-header hash.
-func GetDoubleSignEvidenceKey(height uint64, altHash types.Hash) string {
-	return DoubleSignEvidenceKey + "/" + strconv.FormatUint(height, 10) + "/" + altHash.String()
 }

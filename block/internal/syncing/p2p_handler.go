@@ -33,9 +33,6 @@ type P2PHandler struct {
 	genesis     genesis.Genesis
 	logger      zerolog.Logger
 
-	// detectDoubleSign returns true on a confirmed double-sign. Nil disables.
-	detectDoubleSign doubleSignDetector
-
 	processedHeight atomic.Uint64
 }
 
@@ -46,15 +43,13 @@ func NewP2PHandler(
 	cache cache.CacheManager,
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
-	detectDoubleSign doubleSignDetector,
 ) *P2PHandler {
 	return &P2PHandler{
-		headerStore:      headerStore,
-		dataStore:        dataStore,
-		cache:            cache,
-		genesis:          genesis,
-		logger:           logger.With().Str("component", "p2p_handler").Logger(),
-		detectDoubleSign: detectDoubleSign,
+		headerStore: headerStore,
+		dataStore:   dataStore,
+		cache:       cache,
+		genesis:     genesis,
+		logger:      logger.With().Str("component", "p2p_handler").Logger(),
 	}
 }
 
@@ -74,14 +69,9 @@ func (h *P2PHandler) SetProcessedHeight(height uint64) {
 // ProcessHeight retrieves and validates both header and data for the given height from P2P stores.
 // It blocks until both are available, validates consistency (proposer address and data hash match),
 // then emits the event to heightInCh or stores it as pending. Updates processedHeight on success.
-//
-// When double-sign detection is enabled, the processedHeight short-circuit is
-// deferred so alternates at already-processed heights still trigger detection.
 func (h *P2PHandler) ProcessHeight(ctx context.Context, height uint64, heightInCh chan<- common.DAHeightEvent) error {
-	if h.detectDoubleSign == nil {
-		if height <= h.processedHeight.Load() {
-			return nil
-		}
+	if height <= h.processedHeight.Load() {
+		return nil
 	}
 
 	p2pHeader, err := h.headerStore.GetByHeight(ctx, height)
@@ -94,20 +84,6 @@ func (h *P2PHandler) ProcessHeight(ctx context.Context, height uint64, heightInC
 	if err := h.assertExpectedProposer(p2pHeader.ProposerAddress); err != nil {
 		h.logger.Debug().Uint64("height", height).Err(err).Msg("invalid header from P2P")
 		return err
-	}
-
-	// ValidateBasic is the precondition for treating an alternate as evidence.
-	if h.detectDoubleSign != nil {
-		if err := p2pHeader.ValidateBasic(); err != nil {
-			h.logger.Debug().Uint64("height", height).Err(err).Msg("invalid signed header from P2P")
-			return err
-		}
-		if h.detectDoubleSign(ctx, p2pHeader.SignedHeader, types.EvidenceSourceP2P) {
-			return nil
-		}
-		if height <= h.processedHeight.Load() {
-			return nil
-		}
 	}
 
 	p2pData, err := h.dataStore.GetByHeight(ctx, height)

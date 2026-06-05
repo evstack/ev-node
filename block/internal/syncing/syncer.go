@@ -183,17 +183,16 @@ func (s *Syncer) Start(ctx context.Context) (err error) {
 		return fmt.Errorf("failed to initialize syncer state: %w", err)
 	}
 
-	// Initialize handlers. DA and P2P share s.detectDoubleSign so cross-path
-	// duplicates are deduped through doubleSignSeen and only reported once.
+	// Initialize handlers
 	s.doubleSignSeen = newDoubleSignDedup()
-	s.daRetriever = NewDARetriever(s.daClient, s.cache, s.genesis, s.logger, s.detectDoubleSign)
+	s.daRetriever = NewDARetriever(s.daClient, s.cache, s.genesis, s.logger, s.reportInBatchDoubleSign)
 	if s.config.Instrumentation.IsTracingEnabled() {
 		s.daRetriever = WithTracingDARetriever(s.daRetriever)
 	}
 
 	s.fiRetriever = da.NewForcedInclusionRetriever(s.daClient, s.logger, s.config.DA.BlockTime.Duration, s.config.Instrumentation.IsTracingEnabled(), s.genesis.DAStartHeight, s.genesis.DAEpochForcedInclusion)
 	s.fiRetriever.Start(ctx)
-	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.cache, s.genesis, s.logger, s.detectDoubleSign)
+	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.cache, s.genesis, s.logger)
 
 	currentHeight, initErr := s.store.Height(ctx)
 	if initErr != nil {
@@ -564,8 +563,20 @@ func (s *Syncer) processHeightEvent(ctx context.Context, event *common.DAHeightE
 		return
 	}
 
-	// Skip if already processed
-	if height <= currentHeight || s.cache.IsHeaderSeen(headerHash) {
+	if height <= currentHeight {
+		// Alternate header for an already-applied height: run the equivocation check.
+		if err := s.checkDoubleSign(ctx, event.Header, event.Data); err != nil {
+			s.sendCriticalError(err)
+		}
+		s.logger.Debug().
+			Uint64("height", height).
+			Str("source", string(event.Source)).
+			Msg("height already processed")
+		return
+	}
+
+	// Skip if already seen
+	if s.cache.IsHeaderSeen(headerHash) {
 		s.logger.Debug().
 			Uint64("height", height).
 			Str("source", string(event.Source)).
@@ -803,8 +814,6 @@ func (s *Syncer) trySyncNextBlockWithState(ctx context.Context, event *common.DA
 	if !bytes.Equal(header.DataHash, common.DataHashForEmptyTxs) {
 		s.cache.SetDataSeen(data.DACommitment().String(), newState.LastBlockHeight)
 	}
-	// Subsequent alternates resolve against the persisted header.
-	s.cache.RemovePendingSignedHeader(header.Height())
 
 	if s.p2pHandler != nil {
 		s.p2pHandler.SetProcessedHeight(newState.LastBlockHeight)
@@ -1072,30 +1081,69 @@ func (s *Syncer) sendCriticalError(err error) {
 	}
 }
 
-// handleDoubleSign persists evidence, bumps the metric, and halts the syncer
-// via sendCriticalError on the first equivocation sighting.
-func (s *Syncer) handleDoubleSign(ctx context.Context, ev *types.DoubleSignEvidence) {
-	if err := reportDoubleSign(ctx, s.store, s.metrics, s.logger, s.doubleSignSeen, ev); err != nil {
-		s.sendCriticalError(err)
+// checkDoubleSign compares an alternate header against the canonical header
+// already applied at the same height. Returns a halt error when
+// node.halt_on_double_sign is set, otherwise nil (warn-only).
+func (s *Syncer) checkDoubleSign(ctx context.Context, alt *types.SignedHeader, data *types.Data) error {
+	if alt == nil {
+		return nil
 	}
+	height := alt.Height()
+	canonical, err := s.store.GetHeader(ctx, height)
+	if err != nil {
+		if store.IsNotFound(err) {
+			return nil
+		}
+		s.logger.Error().Err(err).Uint64("height", height).Msg("double-sign check skipped: header lookup failed")
+		return nil
+	}
+	if canonical == nil || bytes.Equal(canonical.Hash(), alt.Hash()) {
+		return nil // missing or benign duplicate
+	}
+	// Equivocation requires the same proposer to have signed both headers.
+	if !bytes.Equal(canonical.ProposerAddress, alt.ProposerAddress) {
+		return nil // not the sequencer equivocating
+	}
+
+	// Verify the alternate's signature to avoid halting on forged headers.
+	alt.SetCustomVerifierForSyncNode(s.options.SyncNodeSignatureBytesProvider)
+	if err := alt.ValidateBasicWithData(data); err != nil { //nolint:contextcheck // validation API does not accept context
+		s.logger.Debug().Err(err).Uint64("height", height).Msg("conflicting header failed signature validation; ignoring")
+		return nil
+	}
+
+	return s.reportDoubleSign(height, canonical.Hash().String(), alt.Hash().String())
 }
 
-// detectDoubleSign records the observation and returns true when header equivocates
-// with a prior observation at the same height, halting the syncer as a side effect.
-func (s *Syncer) detectDoubleSign(ctx context.Context, header *types.SignedHeader, source string) bool {
-	if header == nil {
-		return false
+// reportDoubleSign warns and counts a confirmed equivocation (deduped).
+// Returns a halt error when node.halt_on_double_sign is set.
+func (s *Syncer) reportDoubleSign(height uint64, canonicalHash, altHash string) error {
+	if !s.doubleSignSeen.markSeen(height, altHash) {
+		return nil
 	}
-	prior, priorSource, err := firstObservation(ctx, s.store, s.cache, header.Height())
-	if err != nil {
-		// Detection bypassed for this observation, still cached below so a later arrival can match against this header
-		s.logger.Error().Err(err).Uint64("height", header.Height()).Msg("double-sign detection bypassed")
-	} else if ev := buildEvidenceFromPair(prior, header, priorSource, source); ev != nil {
-		s.handleDoubleSign(ctx, ev)
-		return true
+	s.metrics.DoubleSignsDetected.Add(1)
+	s.logger.Error().
+		Uint64("height", height).
+		Str("canonical_hash", canonicalHash).
+		Str("alternate_hash", altHash).
+		Msg("DOUBLE-SIGN DETECTED: sequencer equivocation")
+
+	if !s.config.Node.HaltOnDoubleSign {
+		return nil // warn-only mode
 	}
-	s.cache.SetPendingSignedHeader(header, source)
-	return false
+	return errors.Join(errMaliciousProposer,
+		fmt.Errorf("double-sign detected at height %d: sequencer signed conflicting headers %s and %s. "+
+			"Node halted for human resolution of the equivocation (the conflicting headers are permanently "+
+			"recorded on DA and cannot be cleared). Once resolved, restart with --%s=false to resume",
+			height, canonicalHash, altHash, config.FlagHaltOnDoubleSign))
+}
+
+// reportInBatchDoubleSign handles equivocation detected by the DA retriever
+// among in-flight headers before either is applied.
+func (s *Syncer) reportInBatchDoubleSign(height uint64, canonical, alt *types.SignedHeader) {
+	if err := s.reportDoubleSign(height, canonical.Hash().String(), alt.Hash().String()); err != nil {
+		s.sendCriticalError(err)
+	}
 }
 
 // processPendingEvents fetches and processes pending events from cache

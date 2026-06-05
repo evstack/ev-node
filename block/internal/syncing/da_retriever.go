@@ -34,8 +34,10 @@ type daRetriever struct {
 	cache   cache.CacheManager
 	genesis genesis.Genesis
 	logger  zerolog.Logger
-	// detectDoubleSign aborts the batch when it returns true. Nil disables.
-	detectDoubleSign doubleSignDetector
+
+	// reportInBatchDoubleSign halts/warns on two distinct sequencer-signed
+	// headers seen at the same height before either is applied. Set by the syncer.
+	reportInBatchDoubleSign inBatchDoubleSignReporter
 
 	mu sync.Mutex
 	// transient cache, only full event need to be passed to the syncer
@@ -54,17 +56,17 @@ func NewDARetriever(
 	cache cache.CacheManager,
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
-	detectDoubleSign doubleSignDetector,
+	reportInBatchDoubleSign inBatchDoubleSignReporter,
 ) *daRetriever {
 	return &daRetriever{
-		client:           client,
-		cache:            cache,
-		genesis:          genesis,
-		logger:           logger.With().Str("component", "da_retriever").Logger(),
-		detectDoubleSign: detectDoubleSign,
-		pendingHeaders:   make(map[uint64]*types.SignedHeader),
-		pendingData:      make(map[uint64]*types.Data),
-		strictMode:       false,
+		client:                  client,
+		cache:                   cache,
+		genesis:                 genesis,
+		logger:                  logger.With().Str("component", "da_retriever").Logger(),
+		reportInBatchDoubleSign: reportInBatchDoubleSign,
+		pendingHeaders:          make(map[uint64]*types.SignedHeader),
+		pendingData:             make(map[uint64]*types.Data),
+		strictMode:              false,
 	}
 }
 
@@ -176,12 +178,19 @@ func (r *daRetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 		}
 
 		if header := r.tryDecodeHeader(bz, daHeight); header != nil {
-			// Catches both in-batch alternates and alternates of already-persisted heights.
-			if r.detectDoubleSign != nil && r.detectDoubleSign(ctx, header, types.EvidenceSourceDA) {
-				return nil
-			}
-
-			if _, ok := r.pendingHeaders[header.Height()]; ok {
+			// First-write-wins per height. A second, distinct header for a height
+			// already in flight is in-flight equivocation when both are provably
+			// sequencer-authored from their DA envelope signatures (verified in
+			// tryDecodeHeader; execution-independent, so no need to wait for block
+			// n-1). Cross-batch and already-applied alternates are handled
+			// centrally in Syncer.checkDoubleSign.
+			if existing, ok := r.pendingHeaders[header.Height()]; ok {
+				if r.reportInBatchDoubleSign != nil &&
+					!bytes.Equal(existing.Hash(), header.Hash()) &&
+					r.envelopeAuthoredBySequencer(existing) &&
+					r.envelopeAuthoredBySequencer(header) {
+					r.reportInBatchDoubleSign(header.Height(), existing, header)
+				}
 				r.logger.Debug().Uint64("height", header.Height()).Uint64("da_height", daHeight).Msg("header blob already exists for height, discarding")
 				continue
 			}
@@ -311,15 +320,6 @@ func (r *daRetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedH
 		return nil
 	}
 
-	// Precondition for the double-sign detector: a forged blob must never
-	// reach the pending cache or be persisted as equivocation evidence.
-	// Required even in strict envelope mode — the inner SignedHeader
-	// signature is a separate commitment from the envelope signature.
-	if err := header.ValidateBasic(); err != nil {
-		r.logger.Debug().Err(err).Msg("signed header failed validation")
-		return nil
-	}
-
 	if isValidEnvelope && !r.strictMode {
 		r.logger.Info().Uint64("height", header.Height()).Msg("valid DA envelope detected, switching to STRICT MODE")
 		r.strictMode = true
@@ -338,6 +338,11 @@ func (r *daRetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedH
 		Msg("optimistically marked header as DA included")
 
 	return header
+}
+
+// envelopeAuthoredBySequencer reports whether h is proven to be authored by the genesis sequencer
+func (r *daRetriever) envelopeAuthoredBySequencer(h *types.SignedHeader) bool {
+	return r.strictMode && bytes.Equal(h.Signer.Address, h.ProposerAddress)
 }
 
 // tryDecodeData attempts to decode a blob as signed data

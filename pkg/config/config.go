@@ -50,6 +50,8 @@ const (
 	FlagReadinessWindowSeconds = FlagPrefixEvnode + "node.readiness_window_seconds"
 	// FlagReadinessMaxBlocksBehind configures how many blocks behind best-known head is still considered ready
 	FlagReadinessMaxBlocksBehind = FlagPrefixEvnode + "node.readiness_max_blocks_behind"
+	// FlagHaltOnDoubleSign halts the node when sequencer equivocation (double-signing) is detected
+	FlagHaltOnDoubleSign = FlagPrefixEvnode + "node.halt_on_double_sign"
 	// FlagScrapeInterval is a flag for specifying the reaper scrape interval
 	FlagScrapeInterval = FlagPrefixEvnode + "node.scrape_interval"
 	// FlagCatchupTimeout is a flag for waiting for P2P catchup before starting block production
@@ -305,6 +307,9 @@ type NodeConfig struct {
 	// Readiness / health configuration
 	ReadinessWindowSeconds   uint64 `mapstructure:"readiness_window_seconds" yaml:"readiness_window_seconds" comment:"Time window in seconds used to calculate ReadinessMaxBlocksBehind based on block time. Default: 15 seconds."`
 	ReadinessMaxBlocksBehind uint64 `mapstructure:"readiness_max_blocks_behind" yaml:"readiness_max_blocks_behind" comment:"How many blocks behind best-known head the node can be and still be considered ready. 0 means must be exactly at head."`
+
+	// Equivocation handling
+	HaltOnDoubleSign bool `mapstructure:"halt_on_double_sign" yaml:"halt_on_double_sign" comment:"Halt the node when sequencer equivocation (double-signing) is detected. When false, it is logged and counted but the node continues. Default: true."`
 }
 
 // LogConfig contains all logging configuration parameters
@@ -600,6 +605,7 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().Uint64(FlagReadinessMaxBlocksBehind, def.Node.ReadinessMaxBlocksBehind, "how many blocks behind best-known head the node can be and still be considered ready (0 = must be at head)")
 	cmd.Flags().Duration(FlagScrapeInterval, def.Node.ScrapeInterval.Duration, "interval at which the reaper polls the execution layer for new transactions")
 	cmd.Flags().Duration(FlagCatchupTimeout, def.Node.CatchupTimeout.Duration, "sync from DA and P2P before producing blocks. Value specifies time to wait for P2P catchup. Requires aggregator mode.")
+	cmd.Flags().Bool(FlagHaltOnDoubleSign, def.Node.HaltOnDoubleSign, "halt the node when sequencer equivocation (double-signing) is detected")
 
 	// Data Availability configuration flags
 	cmd.Flags().String(FlagDAAddress, def.DA.Address, "DA address (host:port)")

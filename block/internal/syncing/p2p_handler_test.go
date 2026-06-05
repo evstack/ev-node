@@ -90,7 +90,7 @@ func setupP2P(t *testing.T) *P2PTestData {
 	cacheManager, err := cache.NewManager(cfg, st, zerolog.Nop())
 	require.NoError(t, err, "failed to create cache manager")
 
-	handler := NewP2PHandler(headerStoreMock, dataStoreMock, cacheManager, gen, zerolog.Nop(), nil)
+	handler := NewP2PHandler(headerStoreMock, dataStoreMock, cacheManager, gen, zerolog.Nop())
 	return &P2PTestData{
 		Handler:      handler,
 		HeaderStore:  headerStoreMock,
