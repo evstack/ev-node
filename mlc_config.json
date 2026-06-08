@@ -1,0 +1,34 @@
+{
+  "ignorePatterns": [
+    {
+      "pattern": "^/"
+    },
+    {
+      "pattern": "^https?://localhost(:[0-9]+)?(/.*)?$"
+    },
+    {
+      "pattern": "^https://rpc\\.your-chain\\.com$"
+    },
+    {
+      "pattern": "^https://docs\\.celestia\\.org/(how-to-guides|learn|tutorials)/"
+    },
+    {
+      "pattern": "^https://faucet\\.celestia-arabica\\.com/?$"
+    },
+    {
+      "pattern": "^https://github\\.com/evstack/ev-node/blob/main/specs/src/adr/adr-022-validator-network\\.md$"
+    },
+    {
+      "pattern": "^https://github\\.com/ignite/apps/blob/main/evolve/template/init\\.go#L48-L60$"
+    },
+    {
+      "pattern": "^https://github\\.com/libp2p/go-libp2p$"
+    },
+    {
+      "pattern": "^https://docs\\.cosmos\\.network/main"
+    },
+    {
+      "pattern": "^https://medium\\.com/zeeve/exploring-data-availability-layer-and-its-importance-in-rollups-0a4fbf2e0ffc$"
+    }
+  ]
+}
