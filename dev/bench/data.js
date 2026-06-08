@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1780557167998,
+  "lastUpdate": 1780930965834,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -190,6 +190,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 181473,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "github.qpeyb@simplelogin.fr",
+            "name": "Cian Hatton",
+            "username": "chatton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "8846ed3847e6c99675eede2d87d858558f363f71",
+          "message": "fix: increase P2P pubsub max message size to match blob size limit (#3344)\n\nMove DefaultMaxBlobSize from block/internal/common to pkg/blobsize so\nthe P2P layer can import it. Pass it to pubsub.WithMaxMessageSize when\ncreating FloodSub, preventing fullnode desync when blocks exceed the\ndefault 1 MB libp2p limit.",
+          "timestamp": "2026-06-08T14:42:54Z",
+          "tree_id": "dc2f9947248260d7e9b5b0c24f7ecca7c3a8e833",
+          "url": "https://github.com/evstack/ev-node/commit/8846ed3847e6c99675eede2d87d858558f363f71"
+        },
+        "date": 1780930961895,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 902342248,
+            "unit": "ns/op\t31892892 B/op\t  176197 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 902342248,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 31892892,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 176197,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
