@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Increase P2P pubsub max message size to match `DefaultMaxBlobSize`, preventing fullnode desync on large blocks
+- Increase P2P pubsub max message size to match `DefaultMaxBlobSize`, preventing fullnode desync on large blocks [#3344](https://github.com/evstack/ev-node/pull/3344).
 
 ## v1.1.1
 
