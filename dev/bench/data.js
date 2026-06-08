@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1780930965834,
+  "lastUpdate": 1780930967885,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -530,6 +530,102 @@ window.BENCHMARK_DATA = {
             "value": 54,
             "unit": "allocs/op",
             "extra": "30930 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "github.qpeyb@simplelogin.fr",
+            "name": "Cian Hatton",
+            "username": "chatton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "8846ed3847e6c99675eede2d87d858558f363f71",
+          "message": "fix: increase P2P pubsub max message size to match blob size limit (#3344)\n\nMove DefaultMaxBlobSize from block/internal/common to pkg/blobsize so\nthe P2P layer can import it. Pass it to pubsub.WithMaxMessageSize when\ncreating FloodSub, preventing fullnode desync when blocks exceed the\ndefault 1 MB libp2p limit.",
+          "timestamp": "2026-06-08T14:42:54Z",
+          "tree_id": "dc2f9947248260d7e9b5b0c24f7ecca7c3a8e833",
+          "url": "https://github.com/evstack/ev-node/commit/8846ed3847e6c99675eede2d87d858558f363f71"
+        },
+        "date": 1780930967406,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 38079,
+            "unit": "ns/op\t    4773 B/op\t      50 allocs/op",
+            "extra": "31982 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 38079,
+            "unit": "ns/op",
+            "extra": "31982 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 4773,
+            "unit": "B/op",
+            "extra": "31982 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 50,
+            "unit": "allocs/op",
+            "extra": "31982 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 38661,
+            "unit": "ns/op\t    4986 B/op\t      54 allocs/op",
+            "extra": "31168 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 38661,
+            "unit": "ns/op",
+            "extra": "31168 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 4986,
+            "unit": "B/op",
+            "extra": "31168 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 54,
+            "unit": "allocs/op",
+            "extra": "31168 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 45929,
+            "unit": "ns/op\t   10293 B/op\t      54 allocs/op",
+            "extra": "26605 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 45929,
+            "unit": "ns/op",
+            "extra": "26605 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 10293,
+            "unit": "B/op",
+            "extra": "26605 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 54,
+            "unit": "allocs/op",
+            "extra": "26605 times\n4 procs"
           }
         ]
       }
