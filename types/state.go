@@ -65,11 +65,11 @@ type State struct {
 	NextProposerAddress []byte
 }
 
-func (s *State) NextState(header Header, stateRoot []byte, nextProposerAddress ...[]byte) (State, error) {
+func (s *State) NextState(header Header, stateRoot []byte, nextProposerAddress []byte) (State, error) {
 	height := header.Height()
 	nextProposer := s.NextProposerAddress
-	if len(nextProposerAddress) > 0 && len(nextProposerAddress[0]) > 0 {
-		nextProposer = nextProposerAddress[0]
+	if len(nextProposerAddress) > 0 {
+		nextProposer = nextProposerAddress
 	}
 	if len(nextProposer) == 0 {
 		nextProposer = header.ProposerAddress

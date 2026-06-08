@@ -777,9 +777,9 @@ const file_evnode_v1_execution_proto_rawDesc = "" +
 	"\x0fSetFinalRequest\x12!\n" +
 	"\fblock_height\x18\x01 \x01(\x04R\vblockHeight\"\x12\n" +
 	"\x10SetFinalResponse\"\x19\n" +
-	"\x17GetExecutionInfoRequest\"P\n" +
+	"\x17GetExecutionInfoRequest\"3\n" +
 	"\x18GetExecutionInfoResponse\x12\x17\n" +
-	"\amax_gas\x18\x01 \x01(\x04R\x06maxGasJ\x04\b\x02\x10\x03R\x15next_proposer_address\"\xc7\x01\n" +
+	"\amax_gas\x18\x01 \x01(\x04R\x06maxGas\"\xc7\x01\n" +
 	"\x10FilterTxsRequest\x12\x1b\n" +
 	"\tmax_bytes\x18\x02 \x01(\x04R\bmaxBytes\x12\x17\n" +
 	"\amax_gas\x18\x03 \x01(\x04R\x06maxGas\x12C\n" +

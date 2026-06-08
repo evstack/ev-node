@@ -505,6 +505,8 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("promotable mode cannot be combined with light node mode")
 	}
 
+	// Promotable mode and Raft both control leader/follower role switching.
+	// Combining them needs a composed elector that gates Raft leadership on the execution-selected proposer.
 	if c.Node.Promotable && c.Raft.Enable {
 		return fmt.Errorf("promotable mode cannot be combined with Raft consensus")
 	}

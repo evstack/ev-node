@@ -123,11 +123,9 @@ GetExecutionInfo(ctx context.Context) (ExecutionInfo, error)
 
 ```go
 type ExecutionInfo struct {
-    MaxGas uint64
+    MaxGas uint64  // Maximum gas per block (0 = no gas-based limiting)
 }
 ```
-
-- `MaxGas` - Maximum gas per block (0 = no gas-based limiting)
 
 ### FilterTxs
 
