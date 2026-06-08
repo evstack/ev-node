@@ -38,6 +38,7 @@ When you're ready to test with real network conditions, you can deploy to testne
 
 Choose the deployment approach that matches your current needs:
 
+- [🏠 Local Development](./local.md) - Run everything on your machine with local-da (no external dependencies)
 - [🌐 Testnet Deployment](./testnet.md) - Deploy on testnet with external DA networks
 
 :::warning Disclaimer
