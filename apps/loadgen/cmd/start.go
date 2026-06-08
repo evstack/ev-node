@@ -46,7 +46,7 @@ func newStartCmd() *cobra.Command {
 	cmd.Flags().IntVar(&cfg.txPerDay, "tx-per-day", envIntOr("BENCH_TX_PER_DAY", 1000000), "sustained txs/day")
 	cmd.Flags().DurationVar(&cfg.interval, "interval", envDurationOr("BENCH_INTERVAL", time.Hour), "regular workload frequency")
 	cmd.Flags().IntVar(&cfg.burstTxCount, "burst-tx-count", envIntOr("BENCH_BURST_TX_COUNT", 500000), "txs per burst")
-	cmd.Flags().IntVar(&cfg.burstPerDay, "burst-per-day", envIntOr("BENCH_BURST_PER_DAY", 2), "bursts per day, randomly spaced")
+	cmd.Flags().IntVar(&cfg.burstPerDay, "burst-per-day", envIntOr("BENCH_BURST_PER_DAY", 0), "bursts per day, randomly spaced (0 = no bursts)")
 	cmd.Flags().StringVar(&cfg.regularMatrix, "regular-matrix", envStringOr("BENCH_REGULAR_MATRIX", defaultBaselinePath), "path to regular matrix JSON")
 	cmd.Flags().StringVar(&cfg.burstMatrix, "burst-matrix", envStringOr("BENCH_BURST_MATRIX", defaultBurstPath), "path to burst matrix JSON")
 

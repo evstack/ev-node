@@ -16,7 +16,7 @@ func NewRootCmd() *cobra.Command {
 
 	rootCmd.PersistentFlags().StringVar(&spamoorFlag, "spamoor-url", "", "spamoor-daemon API URL (env: BENCH_SPAMOOR_URL)")
 
-	rootCmd.AddCommand(newRunCmd(), newStartCmd(), newCheckCmd())
+	rootCmd.AddCommand(newRunCmd(), newStartCmd(), newCheckCmd(), newBurstCmd())
 
 	return rootCmd
 }
