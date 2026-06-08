@@ -7,13 +7,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/evstack/ev-node/block/internal/common"
+	"github.com/evstack/ev-node/pkg/blobsize"
 	"github.com/evstack/ev-node/pkg/config"
 )
 
 func TestImmediateStrategy(t *testing.T) {
 	strategy := &ImmediateStrategy{}
-	maxBlobSize := common.DefaultMaxBlobSize
+	maxBlobSize := blobsize.DefaultMaxBlobSize
 
 	tests := []struct {
 		name         string
@@ -50,7 +50,7 @@ func TestImmediateStrategy(t *testing.T) {
 }
 
 func TestSizeBasedStrategy(t *testing.T) {
-	maxBlobSize := common.DefaultMaxBlobSize
+	maxBlobSize := blobsize.DefaultMaxBlobSize
 
 	tests := []struct {
 		name           string
@@ -120,7 +120,7 @@ func TestSizeBasedStrategy(t *testing.T) {
 
 func TestTimeBasedStrategy(t *testing.T) {
 	maxDelay := 6 * time.Second
-	maxBlobSize := common.DefaultMaxBlobSize
+	maxBlobSize := blobsize.DefaultMaxBlobSize
 
 	tests := []struct {
 		name                string
@@ -174,7 +174,7 @@ func TestTimeBasedStrategy(t *testing.T) {
 }
 
 func TestAdaptiveStrategy(t *testing.T) {
-	maxBlobSize := common.DefaultMaxBlobSize
+	maxBlobSize := blobsize.DefaultMaxBlobSize
 	sizeThreshold := 0.8
 	maxDelay := 6 * time.Second
 
@@ -306,7 +306,7 @@ func TestNewBatchingStrategy(t *testing.T) {
 }
 
 func TestBatchingStrategiesComparison(t *testing.T) {
-	maxBlobSize := common.DefaultMaxBlobSize
+	maxBlobSize := blobsize.DefaultMaxBlobSize
 	pendingCount := uint64(10)
 	totalSize := maxBlobSize / 2
 	timeSinceLastSubmit := 3 * time.Second

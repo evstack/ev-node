@@ -24,6 +24,7 @@ import (
 	"github.com/multiformats/go-multiaddr"
 	"github.com/rs/zerolog"
 
+	"github.com/evstack/ev-node/pkg/blobsize"
 	"github.com/evstack/ev-node/pkg/config"
 	rollhash "github.com/evstack/ev-node/pkg/hash"
 )
@@ -465,7 +466,7 @@ func (c *Client) tryConnect(ctx context.Context, peer peer.AddrInfo) {
 
 func (c *Client) setupGossiping(ctx context.Context) error {
 	var err error
-	c.ps, err = pubsub.NewFloodSub(ctx, c.host)
+	c.ps, err = pubsub.NewFloodSub(ctx, c.host, pubsub.WithMaxMessageSize(int(blobsize.DefaultMaxBlobSize)))
 	if err != nil {
 		return err
 	}

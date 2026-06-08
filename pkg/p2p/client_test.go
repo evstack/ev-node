@@ -82,6 +82,48 @@ func TestNewClientWithHost(t *testing.T) {
 
 }
 
+func TestPubSubMaxMessageSize(t *testing.T) {
+	require := require.New(t)
+	logger := zerolog.Nop()
+
+	ctx := t.Context()
+	clients := startTestNetwork(ctx, t, 2, map[int]hostDescr{
+		1: {conns: []int{0}},
+	}, logger)
+	defer clients.Close()
+	clients.WaitForDHT()
+
+	const topic = "test-large-msg"
+
+	subTopic, err := clients[1].PubSub().Join(topic)
+	require.NoError(err)
+	sub, err := subTopic.Subscribe()
+	require.NoError(err)
+
+	// allow subscription to propagate
+	time.Sleep(200 * time.Millisecond)
+
+	tp, err := clients[0].PubSub().Join(topic)
+	require.NoError(err)
+
+	// 1.5 MB — exceeds the default 1 MB limit but fits within our configured limit
+	msgSize := 1.5 * 1024 * 1024
+	payload := make([]byte, int(msgSize))
+	for i := range payload {
+		payload[i] = byte(i % 256)
+	}
+
+	err = tp.Publish(ctx, payload)
+	require.NoError(err)
+
+	recvCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	msg, err := sub.Next(recvCtx)
+	require.NoError(err)
+	require.Equal(payload, msg.Data)
+}
+
 func TestClientStartup(t *testing.T) {
 	assert := assert.New(t)
 	// create temp config dir
