@@ -12,7 +12,7 @@ import (
 	"github.com/celestiaorg/go-square/v3/share"
 	"github.com/rs/zerolog"
 
-	"github.com/evstack/ev-node/block/internal/common"
+	"github.com/evstack/ev-node/pkg/blobsize"
 	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
@@ -161,7 +161,7 @@ func (c *client) Submit(ctx context.Context, data [][]byte, _ float64, namespace
 
 	blobs := make([]*blobrpc.Blob, len(data))
 	for i, raw := range data {
-		if uint64(len(raw)) > common.DefaultMaxBlobSize {
+		if uint64(len(raw)) > blobsize.DefaultMaxBlobSize {
 			return datypes.ResultSubmit{
 				BaseResult: datypes.BaseResult{
 					Code:    datypes.StatusTooBig,
@@ -559,7 +559,7 @@ func extractBlobData(resp *blobrpc.SubscriptionResponse) [][]byte {
 			continue
 		}
 		data := blob.Data()
-		if len(data) == 0 || uint64(len(data)) > common.DefaultMaxBlobSize {
+		if len(data) == 0 || uint64(len(data)) > blobsize.DefaultMaxBlobSize {
 			continue
 		}
 		blobs = append(blobs, data)

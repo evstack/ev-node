@@ -16,6 +16,7 @@ import (
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
+	"github.com/evstack/ev-node/pkg/blobsize"
 	"github.com/evstack/ev-node/pkg/config"
 	pkgda "github.com/evstack/ev-node/pkg/da"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
@@ -50,7 +51,7 @@ func defaultRetryPolicy(maxAttempts int, maxDuration time.Duration) retryPolicy 
 		MaxAttempts:  maxAttempts,
 		MinBackoff:   initialBackoff,
 		MaxBackoff:   maxDuration,
-		MaxBlobBytes: common.DefaultMaxBlobSize,
+		MaxBlobBytes: blobsize.DefaultMaxBlobSize,
 	}
 }
 
