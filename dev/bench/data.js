@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1780933797926,
+  "lastUpdate": 1780934231181,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -334,6 +334,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 180126,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "julien@rbrt.fr",
+            "name": "julienrbrt",
+            "username": "julienrbrt"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "89c7fe8731fe2a9f5707f6e5a066cfb0f0b43cc1",
+          "message": "chore: bring back dev replaces (#3347)",
+          "timestamp": "2026-06-08T17:55:15+02:00",
+          "tree_id": "17339bd6249c72a2f25891beca598aaf102e3ec8",
+          "url": "https://github.com/evstack/ev-node/commit/89c7fe8731fe2a9f5707f6e5a066cfb0f0b43cc1"
+        },
+        "date": 1780934226737,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 886419943,
+            "unit": "ns/op\t27761196 B/op\t  140310 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 886419943,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 27761196,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 140310,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
