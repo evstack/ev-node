@@ -15,6 +15,7 @@ import (
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
 	"github.com/evstack/ev-node/core/execution"
+	"github.com/evstack/ev-node/pkg/blobsize"
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
@@ -480,7 +481,7 @@ func TestGracePeriodForEpoch_LightBlocks(t *testing.T) {
 func TestGracePeriodForEpoch_FullBlocks(t *testing.T) {
 	s := &Syncer{daBlockBytes: make(map[uint64]uint64)}
 	for h := uint64(0); h <= 4; h++ {
-		s.daBlockBytes[h] = common.DefaultMaxBlobSize
+		s.daBlockBytes[h] = blobsize.DefaultMaxBlobSize
 	}
 	grace := s.gracePeriodForEpoch(0, 4)
 	require.GreaterOrEqual(t, grace, baseGracePeriodEpochs)
@@ -490,7 +491,7 @@ func TestGracePeriodForEpoch_FullBlocks(t *testing.T) {
 // avgBytes=1.6·M, threshold=0.8·M → extra=1 → grace=base+1.
 func TestGracePeriodForEpoch_ExtendedUnderHighCongestion(t *testing.T) {
 	s := &Syncer{daBlockBytes: make(map[uint64]uint64)}
-	congested := uint64(float64(common.DefaultMaxBlobSize) * 1.6)
+	congested := uint64(float64(blobsize.DefaultMaxBlobSize) * 1.6)
 	for h := uint64(0); h <= 2; h++ {
 		s.daBlockBytes[h] = congested
 	}
@@ -501,7 +502,7 @@ func TestGracePeriodForEpoch_ExtendedUnderHighCongestion(t *testing.T) {
 // TestGracePeriodForEpoch_CappedAtMax verifies the grace period never exceeds maxGracePeriodEpochs.
 func TestGracePeriodForEpoch_CappedAtMax(t *testing.T) {
 	s := &Syncer{daBlockBytes: make(map[uint64]uint64)}
-	huge := common.DefaultMaxBlobSize * 100
+	huge := blobsize.DefaultMaxBlobSize * 100
 	for h := uint64(0); h <= 4; h++ {
 		s.daBlockBytes[h] = huge
 	}
@@ -526,7 +527,7 @@ func TestVerifyForcedInclusionTxs_DynamicGrace_CongestedEpochGetsExtraTime(t *te
 	mockFIEmpty(client, 2, 9)
 
 	// avgBytes = 1.6·M → extra=1 → gracePeriodForEpoch(0,1)=2 → graceBoundary=5.
-	blockBytes := uint64(float64(common.DefaultMaxBlobSize) * 1.6)
+	blockBytes := uint64(float64(blobsize.DefaultMaxBlobSize) * 1.6)
 
 	d0 := makeData("tchain", 1, 1)
 	d0.Txs[0] = types.Tx(make([]byte, blockBytes))

@@ -19,6 +19,7 @@ import (
 	"github.com/evstack/ev-node/block/internal/common"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	"github.com/evstack/ev-node/pkg/blobsize"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/raft"
@@ -681,7 +682,7 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 func (e *Executor) RetrieveBatch(ctx context.Context) (*BatchData, error) {
 	req := coresequencer.GetNextBatchRequest{
 		Id:            []byte(e.genesis.ChainID),
-		MaxBytes:      common.DefaultMaxBlobSize,
+		MaxBytes:      blobsize.DefaultMaxBlobSize,
 		LastBatchData: [][]byte{}, // Can be populated if needed for sequencer context
 	}
 

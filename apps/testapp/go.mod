@@ -8,7 +8,7 @@ replace (
 )
 
 require (
-	github.com/evstack/ev-node v1.1.1
+	github.com/evstack/ev-node v1.1.2
 	github.com/evstack/ev-node/core v1.0.0
 	github.com/ipfs/go-datastore v0.9.1
 	github.com/rs/zerolog v1.35.1

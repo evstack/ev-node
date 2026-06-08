@@ -16,6 +16,7 @@ import (
 	"github.com/evstack/ev-node/block/internal/common"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	"github.com/evstack/ev-node/pkg/blobsize"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/signer"
@@ -219,7 +220,7 @@ func (s *Submitter) daSubmissionLoop() {
 						shouldSubmit := s.batchingStrategy.ShouldSubmit(
 							uint64(len(headers)),
 							totalSize,
-							common.DefaultMaxBlobSize,
+							blobsize.DefaultMaxBlobSize,
 							timeSinceLastSubmit,
 						)
 
@@ -279,7 +280,7 @@ func (s *Submitter) daSubmissionLoop() {
 						shouldSubmit := s.batchingStrategy.ShouldSubmit(
 							uint64(len(signedDataList)),
 							totalSize,
-							common.DefaultMaxBlobSize,
+							blobsize.DefaultMaxBlobSize,
 							timeSinceLastSubmit,
 						)
 

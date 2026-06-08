@@ -20,6 +20,7 @@ import (
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
+	"github.com/evstack/ev-node/pkg/blobsize"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/raft"
@@ -964,7 +965,7 @@ func (s *Syncer) gracePeriodForEpoch(epochStart, epochEnd uint64) uint64 {
 	s.forcedInclusionMu.RUnlock()
 
 	avgBytes := totalBytes / heightCount
-	threshold := uint64(math.Round(fullnessThreshold * float64(common.DefaultMaxBlobSize)))
+	threshold := uint64(math.Round(fullnessThreshold * float64(blobsize.DefaultMaxBlobSize)))
 
 	var extra uint64
 	if avgBytes > threshold {
@@ -1048,7 +1049,7 @@ func (s *Syncer) VerifyForcedInclusionTxs(ctx context.Context, daHeight uint64, 
 		}
 
 		// Skip intrinsically invalid txs so the sequencer isn't blamed for dropping them.
-		filterStatuses, filterErr := s.exec.FilterTxs(ctx, event.Txs, common.DefaultMaxBlobSize, executionInfo.MaxGas, true)
+		filterStatuses, filterErr := s.exec.FilterTxs(ctx, event.Txs, blobsize.DefaultMaxBlobSize, executionInfo.MaxGas, true)
 		if filterErr != nil {
 			return fmt.Errorf("failed to filter forced inclusion txs: %w", filterErr)
 		}
