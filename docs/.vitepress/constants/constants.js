@@ -9,7 +9,7 @@ const constants = Object.freeze({
 
   celestiaNodeArabicaTag: "v0.23.4-arabica",
   celestiaNodeArabicaEvolveTag: "v1.0.0-beta.1",
-  celestiaNodeMochaTag: "v0.23.4-mocha",
+  celestiaNodeMochaTag: "v0.30.2-mocha",
   celestiaNodeMochaEvolveTag: "v1.0.0-beta.1",
   celestiaNodeMainnetTag: "v0.22.3",
   celestiaNodeMainnetEvolveTag: "v1.0.0-beta.1",
