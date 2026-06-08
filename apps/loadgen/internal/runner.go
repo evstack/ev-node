@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand/v2"
+	"strings"
 	"time"
 
 	"github.com/celestiaorg/tastora/framework/docker/evstack/spamoor"
@@ -142,7 +143,8 @@ func runCheck(ctx context.Context, api SpamoorClient, timeout time.Duration) err
 		return fmt.Errorf("waiting for spamoor sync: %w", err)
 	}
 
-	baselineSent, baselineFailed, err := getSpamoorCounters(api)
+	checkPrefix := "check-"
+	baselineSent, baselineFailed, err := getSpamoorCountersForPrefix(api, checkPrefix)
 	if err != nil {
 		return fmt.Errorf("get baseline metrics: %w", err)
 	}
@@ -173,7 +175,7 @@ func runCheck(ctx context.Context, api SpamoorClient, timeout time.Duration) err
 	checkCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	sent, failed, err := waitForSpamoorDone(checkCtx, api, 1, baselineSent, baselineFailed)
+	sent, failed, err := waitForSpamoorDone(checkCtx, api, 1, baselineSent, baselineFailed, checkPrefix)
 	if err != nil {
 		return fmt.Errorf("tx not confirmed: %w", err)
 	}
@@ -186,7 +188,7 @@ func runCheck(ctx context.Context, api SpamoorClient, timeout time.Duration) err
 	return nil
 }
 
-type waitForDoneFunc func(context.Context, SpamoorClient, int, float64, float64) (float64, float64, error)
+type waitForDoneFunc func(ctx context.Context, api SpamoorClient, targetCount int, baselineSent, baselineFailed float64, namePrefix string) (float64, float64, error)
 
 func runEntry(ctx context.Context, api SpamoorClient, entry Entry) error {
 	return runEntryWithWait(ctx, api, entry, waitForSpamoorDone)
@@ -198,7 +200,9 @@ func runEntryWithWait(ctx context.Context, api SpamoorClient, entry Entry, wait 
 	log.Printf("[%s] scenario=%s spammers=%d count_per=%d total=%d",
 		entry.TestName, entry.Scenario, entry.NumSpammers, entry.CountPerSpammer, totalCount)
 
-	baselineSent, baselineFailed, err := getSpamoorCounters(api)
+	namePrefix := spammerPrefix(entry.TestName)
+
+	baselineSent, baselineFailed, err := getSpamoorCountersForPrefix(api, namePrefix)
 	if err != nil {
 		return fmt.Errorf("get baseline metrics: %w", err)
 	}
@@ -207,7 +211,7 @@ func runEntryWithWait(ctx context.Context, api SpamoorClient, entry Entry, wait 
 
 	var spammerIDs []int
 	for i := range entry.NumSpammers {
-		name := fmt.Sprintf("bench-%s-%d", entry.TestName, i)
+		name := fmt.Sprintf("%s%d", namePrefix, i)
 		id, err := api.CreateSpammer(name, entry.Scenario, scenarioCfg, true)
 		if err != nil {
 			return fmt.Errorf("create spammer %s: %w", name, err)
@@ -234,7 +238,7 @@ func runEntryWithWait(ctx context.Context, api SpamoorClient, entry Entry, wait 
 	}
 
 	start := time.Now()
-	sent, failed, err := wait(ctx, api, totalCount, baselineSent, baselineFailed)
+	sent, failed, err := wait(ctx, api, totalCount, baselineSent, baselineFailed, namePrefix)
 	elapsed := time.Since(start)
 
 	if err != nil {
@@ -263,11 +267,11 @@ func DeleteAllSpammers(api SpamoorClient) error {
 	return nil
 }
 
-func waitForSpamoorDone(ctx context.Context, api SpamoorClient, targetCount int, baselineSent, baselineFailed float64) (sent, failed float64, err error) {
-	return waitForSpamoorDoneWithInterval(ctx, api, targetCount, baselineSent, baselineFailed, 2*time.Second)
+func waitForSpamoorDone(ctx context.Context, api SpamoorClient, targetCount int, baselineSent, baselineFailed float64, namePrefix string) (sent, failed float64, err error) {
+	return waitForSpamoorDoneWithInterval(ctx, api, targetCount, baselineSent, baselineFailed, namePrefix, 2*time.Second)
 }
 
-func waitForSpamoorDoneWithInterval(ctx context.Context, api SpamoorClient, targetCount int, baselineSent, baselineFailed float64, pollInterval time.Duration) (sent, failed float64, err error) {
+func waitForSpamoorDoneWithInterval(ctx context.Context, api SpamoorClient, targetCount int, baselineSent, baselineFailed float64, namePrefix string, pollInterval time.Duration) (sent, failed float64, err error) {
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
@@ -279,7 +283,7 @@ func waitForSpamoorDoneWithInterval(ctx context.Context, api SpamoorClient, targ
 		case <-ctx.Done():
 			return sent, failed, fmt.Errorf("timed out waiting for %d txs (sent %.0f): %w", targetCount, sent, ctx.Err())
 		case <-ticker.C:
-			currentSent, currentFailed, mErr := getSpamoorCounters(api)
+			currentSent, currentFailed, mErr := getSpamoorCountersForPrefix(api, namePrefix)
 			if mErr != nil {
 				log.Printf("warning: failed to get metrics: %v", mErr)
 				continue
@@ -308,13 +312,13 @@ func waitForSpamoorDoneWithInterval(ctx context.Context, api SpamoorClient, targ
 	}
 }
 
-func getSpamoorCounters(api SpamoorClient) (sent, failed float64, err error) {
+func getSpamoorCountersForPrefix(api SpamoorClient, namePrefix string) (sent, failed float64, err error) {
 	metrics, err := api.GetMetrics()
 	if err != nil {
 		return 0, 0, err
 	}
-	return sumCounter(metrics["spamoor_transactions_sent_total"]),
-		sumCounter(metrics["spamoor_transactions_failed_total"]),
+	return sumCounterWithPrefix(metrics["spamoor_transactions_sent_total"], namePrefix),
+		sumCounterWithPrefix(metrics["spamoor_transactions_failed_total"], namePrefix),
 		nil
 }
 
@@ -371,15 +375,32 @@ func getSpamoorHeight(api SpamoorClient) (uint64, error) {
 	return clients[0].Height, nil
 }
 
-func sumCounter(f *dto.MetricFamily) float64 {
+func sumCounterWithPrefix(f *dto.MetricFamily, namePrefix string) float64 {
 	if f == nil || f.GetType() != dto.MetricType_COUNTER {
 		return 0
 	}
 	var sum float64
 	for _, m := range f.GetMetric() {
-		if m.GetCounter() != nil && m.GetCounter().Value != nil {
-			sum += m.GetCounter().GetValue()
+		if m.GetCounter() == nil || m.GetCounter().Value == nil {
+			continue
 		}
+		if namePrefix != "" && !hasLabelPrefix(m, "spammer_name", namePrefix) {
+			continue
+		}
+		sum += m.GetCounter().GetValue()
 	}
 	return sum
+}
+
+func spammerPrefix(testName string) string {
+	return fmt.Sprintf("bench-%s-", testName)
+}
+
+func hasLabelPrefix(m *dto.Metric, name, prefix string) bool {
+	for _, lp := range m.GetLabel() {
+		if lp.GetName() == name {
+			return strings.HasPrefix(lp.GetValue(), prefix)
+		}
+	}
+	return false
 }

@@ -23,6 +23,7 @@ func TestRunEntryUsesBaselineCounters(t *testing.T) {
 		metricsSeq: []metricSnapshot{
 			{sent: 100, failed: 7},
 		},
+		spammerNames: []string{"bench-baseline-0", "bench-baseline-1"},
 	}
 
 	var gotTarget int
@@ -35,7 +36,7 @@ func TestRunEntryUsesBaselineCounters(t *testing.T) {
 		Env:             map[string]string{"BENCH_COUNT_PER_SPAMMER": "5"},
 		NumSpammers:     2,
 		CountPerSpammer: 5,
-	}, func(ctx context.Context, api SpamoorClient, targetCount int, baselineSent, baselineFailed float64) (float64, float64, error) {
+	}, func(ctx context.Context, api SpamoorClient, targetCount int, baselineSent, baselineFailed float64, namePrefix string) (float64, float64, error) {
 		gotTarget = targetCount
 		gotBaselineSent = baselineSent
 		gotBaselineFailed = baselineFailed
@@ -58,6 +59,7 @@ func TestRunEntryFailsWhenSpammerDoesNotStart(t *testing.T) {
 		metricsSeq: []metricSnapshot{
 			{sent: 0, failed: 0},
 		},
+		spammerNames: []string{"bench-fail-0"},
 	}
 
 	err := runEntryWithWait(context.Background(), client, Entry{
@@ -66,7 +68,7 @@ func TestRunEntryFailsWhenSpammerDoesNotStart(t *testing.T) {
 		Env:             map[string]string{"BENCH_COUNT_PER_SPAMMER": "1"},
 		NumSpammers:     1,
 		CountPerSpammer: 1,
-	}, func(ctx context.Context, api SpamoorClient, targetCount int, baselineSent, baselineFailed float64) (float64, float64, error) {
+	}, func(ctx context.Context, api SpamoorClient, targetCount int, baselineSent, baselineFailed float64, namePrefix string) (float64, float64, error) {
 		t.Fatal("wait function should not be called when spammer startup fails")
 		return 0, 0, nil
 	})
@@ -80,9 +82,10 @@ func TestWaitForSpamoorDoneUsesDeltas(t *testing.T) {
 			{sent: 105, failed: 3},
 			{sent: 108, failed: 4},
 		},
+		spammerNames: []string{"bench-test-0"},
 	}
 
-	sent, failed, err := waitForSpamoorDoneWithInterval(context.Background(), client, 8, 100, 2, time.Millisecond)
+	sent, failed, err := waitForSpamoorDoneWithInterval(context.Background(), client, 8, 100, 2, "", time.Millisecond)
 	require.NoError(t, err)
 	require.Equal(t, 8.0, sent)
 	require.Equal(t, 2.0, failed)
@@ -93,12 +96,13 @@ func TestWaitForSpamoorDoneHonorsContext(t *testing.T) {
 		metricsSeq: []metricSnapshot{
 			{sent: 100, failed: 0},
 		},
+		spammerNames: []string{"bench-test-0"},
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
 	defer cancel()
 
-	_, _, err := waitForSpamoorDoneWithInterval(ctx, client, 2, 100, 0, 10*time.Millisecond)
+	_, _, err := waitForSpamoorDoneWithInterval(ctx, client, 2, 100, 0, "", 10*time.Millisecond)
 	require.ErrorContains(t, err, "timed out waiting for 2 txs")
 }
 
@@ -126,6 +130,41 @@ func TestWaitForSyncHonorsContext(t *testing.T) {
 	require.ErrorContains(t, err, "cancelled waiting for sync")
 }
 
+func TestSumCounterWithPrefixFiltersCorrectly(t *testing.T) {
+	family := labeledCounterFamily("spamoor_transactions_sent_total", map[string]float64{
+		"bench-EOATransferBurst-0": 1000,
+		"bench-EOATransferBurst-1": 1000,
+		"bench-EOATransfer-0":      500,
+		"bench-EOATransfer-1":      500,
+	})
+
+	t.Run("no prefix sums all", func(t *testing.T) {
+		total := sumCounterWithPrefix(family, "")
+		require.Equal(t, 3000.0, total)
+	})
+
+	t.Run("burst prefix sums only burst spammers", func(t *testing.T) {
+		total := sumCounterWithPrefix(family, "bench-EOATransferBurst-")
+		require.Equal(t, 2000.0, total)
+	})
+
+	t.Run("baseline prefix does not match burst spammers", func(t *testing.T) {
+		// "bench-EOATransfer-" does not match "bench-EOATransferBurst-"
+		// because the dash after "Transfer" differs from "B" in "Burst".
+		total := sumCounterWithPrefix(family, "bench-EOATransfer-")
+		require.Equal(t, 1000.0, total)
+	})
+
+	t.Run("nil family returns zero", func(t *testing.T) {
+		require.Equal(t, 0.0, sumCounterWithPrefix(nil, "anything"))
+	})
+
+	t.Run("unmatched prefix returns zero", func(t *testing.T) {
+		total := sumCounterWithPrefix(family, "bench-Nonexistent-")
+		require.Equal(t, 0.0, total)
+	})
+}
+
 type metricSnapshot struct {
 	sent   float64
 	failed float64
@@ -141,6 +180,7 @@ type fakeSpamoorClient struct {
 	clientsSeq     [][]spamoor.Client
 	clientsIndex   int
 	getClientsErr  error
+	spammerNames []string
 }
 
 type createCall struct {
@@ -189,9 +229,17 @@ func (f *fakeSpamoorClient) GetMetrics() (map[string]*dto.MetricFamily, error) {
 		}
 	}
 
+	perSpammer := snapshot.sent / float64(len(f.spammerNames))
+	perFailed := snapshot.failed / float64(len(f.spammerNames))
+	sentMap := make(map[string]float64, len(f.spammerNames))
+	failedMap := make(map[string]float64, len(f.spammerNames))
+	for _, name := range f.spammerNames {
+		sentMap[name] = perSpammer
+		failedMap[name] = perFailed
+	}
 	return map[string]*dto.MetricFamily{
-		"spamoor_transactions_sent_total":   counterFamily("spamoor_transactions_sent_total", snapshot.sent),
-		"spamoor_transactions_failed_total": counterFamily("spamoor_transactions_failed_total", snapshot.failed),
+		"spamoor_transactions_sent_total":   labeledCounterFamily("spamoor_transactions_sent_total", sentMap),
+		"spamoor_transactions_failed_total": labeledCounterFamily("spamoor_transactions_failed_total", failedMap),
 	}, nil
 }
 
@@ -210,17 +258,23 @@ func (f *fakeSpamoorClient) GetClients() ([]spamoor.Client, error) {
 	return clients, nil
 }
 
-func counterFamily(name string, value float64) *dto.MetricFamily {
+func labeledCounterFamily(name string, spammerValues map[string]float64) *dto.MetricFamily {
 	counterType := dto.MetricType_COUNTER
-	return &dto.MetricFamily{
-		Name: &name,
-		Type: &counterType,
-		Metric: []*dto.Metric{
-			{
-				Counter: &dto.Counter{
-					Value: &value,
-				},
+	labelName := "spammer_name"
+	var metrics []*dto.Metric
+	for spammerName, value := range spammerValues {
+		n := spammerName
+		v := value
+		metrics = append(metrics, &dto.Metric{
+			Label: []*dto.LabelPair{
+				{Name: &labelName, Value: &n},
 			},
-		},
+			Counter: &dto.Counter{Value: &v},
+		})
+	}
+	return &dto.MetricFamily{
+		Name:   &name,
+		Type:   &counterType,
+		Metric: metrics,
 	}
 }
