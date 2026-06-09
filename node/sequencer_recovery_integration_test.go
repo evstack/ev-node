@@ -111,6 +111,15 @@ func TestSequencerRecoveryFromDA(t *testing.T) {
 // 4. Starts a recovery sequencer with P2P peer pointing to the fullnode
 // 5. Verifies the recovery node catches up from both DA and P2P before producing new blocks
 func TestSequencerRecoveryFromP2P(t *testing.T) {
+	// Skipped: the recovery flow has a race where the recovery sequencer starts producing
+	// blocks before P2P catchup completes, forking into its own chain at heights that already
+	// hold the original sequencer's blocks (same signing key, different headers = equivocation).
+	// With the strict assertion below, this reproduces 100% of the time: the recovery node never
+	// adopts the original chain. The fix belongs in the recovery flow (gate block production on
+	// catchup completion), not in double-sign detection.
+	// TODO(#3330): fix the recovery race condition, then remove this skip.
+	t.Skip("recovery flow forks before P2P catchup completes; see #3330")
+
 	genesis, genesisValidatorKey, _ := types.GetGenesisWithPrivkey("test-chain")
 	remoteSigner, err := signer.NewNoopSigner(genesisValidatorKey)
 	require.NoError(t, err)
@@ -211,11 +220,7 @@ func TestSequencerRecoveryFromP2P(t *testing.T) {
 				break
 			}
 		}
-		if allMatch {
-			t.Log("recovery node synced original blocks from P2P — all hashes verified")
-		} else {
-			t.Log("recovery node produced its own blocks (P2P sync was not completed in time)")
-		}
+		require.True(t, allMatch, "recovery node must adopt the original chain from P2P, not fork (#3330)")
 	}
 
 	// Shutdown

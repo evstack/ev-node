@@ -1070,7 +1070,7 @@ func TestProcessHeightEvent_TriggersAsyncDARetrieval(t *testing.T) {
 	s.ctx = context.Background()
 
 	// Create a real daRetriever to test priority queue
-	s.daRetriever = NewDARetriever(nil, cm, gen, zerolog.Nop())
+	s.daRetriever = NewDARetriever(nil, cm, gen, zerolog.Nop(), nil)
 	s.daFollower = NewDAFollower(DAFollowerConfig{
 		Retriever:     s.daRetriever,
 		Logger:        zerolog.Nop(),
@@ -1139,7 +1139,7 @@ func TestProcessHeightEvent_RejectsUnreasonableDAHint(t *testing.T) {
 	)
 	require.NoError(t, s.initializeState())
 	s.ctx = context.Background()
-	s.daRetriever = NewDARetriever(nil, cm, gen, zerolog.Nop())
+	s.daRetriever = NewDARetriever(nil, cm, gen, zerolog.Nop(), nil)
 	s.daFollower = NewDAFollower(DAFollowerConfig{
 		Retriever:     s.daRetriever,
 		Logger:        zerolog.Nop(),
@@ -1208,7 +1208,7 @@ func TestProcessHeightEvent_AcceptsValidDAHint(t *testing.T) {
 	)
 	require.NoError(t, s.initializeState())
 	s.ctx = context.Background()
-	s.daRetriever = NewDARetriever(nil, cm, gen, zerolog.Nop())
+	s.daRetriever = NewDARetriever(nil, cm, gen, zerolog.Nop(), nil)
 	s.daFollower = NewDAFollower(DAFollowerConfig{
 		Retriever:     s.daRetriever,
 		Logger:        zerolog.Nop(),
@@ -1278,7 +1278,7 @@ func TestProcessHeightEvent_SkipsDAHintWhenAlreadyDAIncluded(t *testing.T) {
 	)
 	require.NoError(t, s.initializeState())
 	s.ctx = context.Background()
-	s.daRetriever = NewDARetriever(nil, cm, gen, zerolog.Nop())
+	s.daRetriever = NewDARetriever(nil, cm, gen, zerolog.Nop(), nil)
 	s.daFollower = NewDAFollower(DAFollowerConfig{
 		Retriever:     s.daRetriever,
 		Logger:        zerolog.Nop(),
@@ -1377,7 +1377,7 @@ func TestProcessHeightEvent_SkipsDAHintWhenBelowRetrieverCursor(t *testing.T) {
 	s.ctx = context.Background()
 
 	// Create a real daRetriever to test priority queue
-	s.daRetriever = NewDARetriever(nil, cm, gen, zerolog.Nop())
+	s.daRetriever = NewDARetriever(nil, cm, gen, zerolog.Nop(), nil)
 	s.daFollower = NewDAFollower(DAFollowerConfig{
 		Retriever:     s.daRetriever,
 		Logger:        zerolog.Nop(),

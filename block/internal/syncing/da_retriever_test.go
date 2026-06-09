@@ -52,7 +52,7 @@ func newTestDARetriever(t *testing.T, mockClient *mocks.MockClient, cfg config.C
 	mockClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 	mockClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
 
-	return NewDARetriever(mockClient, cm, gen, zerolog.Nop())
+	return NewDARetriever(mockClient, cm, gen, zerolog.Nop(), nil)
 }
 
 // makeSignedDataBytes builds SignedData containing the provided Data and returns its binary encoding

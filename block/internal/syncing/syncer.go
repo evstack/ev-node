@@ -96,6 +96,9 @@ type Syncer struct {
 	wg               sync.WaitGroup
 	hasCriticalError atomic.Bool
 
+	// Double-sign detection
+	doubleSignSeen *doubleSignDedup
+
 	// P2P wait coordination
 	p2pWaitState atomic.Value // stores p2pWaitState
 
@@ -182,7 +185,8 @@ func (s *Syncer) Start(ctx context.Context) (err error) {
 	}
 
 	// Initialize handlers
-	s.daRetriever = NewDARetriever(s.daClient, s.cache, s.genesis, s.logger)
+	s.doubleSignSeen = newDoubleSignDedup()
+	s.daRetriever = NewDARetriever(s.daClient, s.cache, s.genesis, s.logger, s.reportInBatchDoubleSign)
 	if s.config.Instrumentation.IsTracingEnabled() {
 		s.daRetriever = WithTracingDARetriever(s.daRetriever)
 	}
@@ -560,8 +564,20 @@ func (s *Syncer) processHeightEvent(ctx context.Context, event *common.DAHeightE
 		return
 	}
 
-	// Skip if already processed
-	if height <= currentHeight || s.cache.IsHeaderSeen(headerHash) {
+	if height <= currentHeight {
+		// Alternate header for an already-applied height: run the equivocation check.
+		if err := s.checkDoubleSign(ctx, event.Header, event.Data); err != nil {
+			s.sendCriticalError(err)
+		}
+		s.logger.Debug().
+			Uint64("height", height).
+			Str("source", string(event.Source)).
+			Msg("height already processed")
+		return
+	}
+
+	// Skip if already seen
+	if s.cache.IsHeaderSeen(headerHash) {
 		s.logger.Debug().
 			Uint64("height", height).
 			Str("source", string(event.Source)).
@@ -1063,6 +1079,71 @@ func (s *Syncer) sendCriticalError(err error) {
 		default:
 			// Channel full, error already reported
 		}
+	}
+}
+
+// checkDoubleSign compares an alternate header against the canonical header
+// already applied at the same height. Returns a halt error when
+// node.halt_on_double_sign is set, otherwise nil (warn-only).
+func (s *Syncer) checkDoubleSign(ctx context.Context, alt *types.SignedHeader, data *types.Data) error {
+	if alt == nil {
+		return nil
+	}
+	height := alt.Height()
+	canonical, err := s.store.GetHeader(ctx, height)
+	if err != nil {
+		if store.IsNotFound(err) {
+			return nil
+		}
+		s.logger.Error().Err(err).Uint64("height", height).Msg("double-sign check skipped: header lookup failed")
+		return nil
+	}
+	if canonical == nil || bytes.Equal(canonical.Hash(), alt.Hash()) {
+		return nil // missing or benign duplicate
+	}
+	// Equivocation requires the same proposer to have signed both headers.
+	if !bytes.Equal(canonical.ProposerAddress, alt.ProposerAddress) {
+		return nil // not the sequencer equivocating
+	}
+
+	// Verify the alternate's signature to avoid halting on forged headers.
+	alt.SetCustomVerifierForSyncNode(s.options.SyncNodeSignatureBytesProvider)
+	if err := alt.ValidateBasicWithData(data); err != nil { //nolint:contextcheck // validation API does not accept context
+		s.logger.Debug().Err(err).Uint64("height", height).Msg("conflicting header failed signature validation; ignoring")
+		return nil
+	}
+
+	return s.reportDoubleSign(height, canonical.Hash().String(), alt.Hash().String())
+}
+
+// reportDoubleSign warns and counts a confirmed equivocation (deduped).
+// Returns a halt error when node.halt_on_double_sign is set.
+func (s *Syncer) reportDoubleSign(height uint64, canonicalHash, altHash string) error {
+	if !s.doubleSignSeen.markSeen(height, altHash) {
+		return nil
+	}
+	s.metrics.DoubleSignsDetected.Add(1)
+	s.logger.Error().
+		Uint64("height", height).
+		Str("canonical_hash", canonicalHash).
+		Str("alternate_hash", altHash).
+		Msg("DOUBLE-SIGN DETECTED: sequencer equivocation")
+
+	if !s.config.Node.HaltOnDoubleSign {
+		return nil // warn-only mode
+	}
+	return errors.Join(errMaliciousProposer,
+		fmt.Errorf("double-sign detected at height %d: sequencer signed conflicting headers %s and %s. "+
+			"Node halted for human resolution of the equivocation (the conflicting headers are permanently "+
+			"recorded on DA and cannot be cleared). Once resolved, restart with --%s=false to resume",
+			height, canonicalHash, altHash, config.FlagHaltOnDoubleSign))
+}
+
+// reportInBatchDoubleSign handles equivocation detected by the DA retriever
+// among in-flight headers before either is applied.
+func (s *Syncer) reportInBatchDoubleSign(height uint64, canonical, alt *types.SignedHeader) {
+	if err := s.reportDoubleSign(height, canonical.Hash().String(), alt.Hash().String()); err != nil {
+		s.sendCriticalError(err)
 	}
 }
 

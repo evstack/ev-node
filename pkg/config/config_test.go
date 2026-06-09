@@ -69,6 +69,7 @@ func TestAddFlags(t *testing.T) {
 		assertFlagValue(t, flags, FlagReadinessWindowSeconds, DefaultConfig().Node.ReadinessWindowSeconds)
 		assertFlagValue(t, flags, FlagReadinessMaxBlocksBehind, DefaultConfig().Node.ReadinessMaxBlocksBehind)
 		assertFlagValue(t, flags, FlagScrapeInterval, DefaultConfig().Node.ScrapeInterval)
+		assertFlagValue(t, flags, FlagHaltOnDoubleSign, DefaultConfig().Node.HaltOnDoubleSign)
 
 		// DA flags
 		assertFlagValue(t, flags, FlagDAAddress, DefaultConfig().DA.Address)
@@ -148,7 +149,7 @@ func TestAddFlags(t *testing.T) {
 		assertFlagValue(t, flags, FlagPruningInterval, DefaultConfig().Pruning.Interval.Duration)
 
 		// Count the number of flags we're explicitly checking
-		expectedFlagCount := 82 // Update this number if you add more flag checks above
+		expectedFlagCount := 83 // Update this number if you add more flag checks above
 
 		// Get the actual number of flags (both regular and persistent)
 		actualFlagCount := 0

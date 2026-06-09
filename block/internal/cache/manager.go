@@ -38,6 +38,7 @@ type CacheManager interface {
 	// Header operations
 	IsHeaderSeen(hash string) bool
 	SetHeaderSeen(hash string, blockHeight uint64)
+	GetHeaderHashByHeight(blockHeight uint64) (string, bool)
 	GetHeaderDAIncludedByHash(hash string) (uint64, bool)
 	GetHeaderDAIncludedByHeight(blockHeight uint64) (uint64, bool)
 	SetHeaderDAIncluded(hash string, daHeight uint64, blockHeight uint64)
@@ -155,6 +156,11 @@ func (m *implementation) IsHeaderSeen(hash string) bool {
 
 func (m *implementation) SetHeaderSeen(hash string, blockHeight uint64) {
 	m.headerCache.setSeen(hash, blockHeight)
+}
+
+// GetHeaderHashByHeight returns the first-seen header hash at the given height.
+func (m *implementation) GetHeaderHashByHeight(blockHeight uint64) (string, bool) {
+	return m.headerCache.getHashByHeight(blockHeight)
 }
 
 func (m *implementation) GetHeaderDAIncludedByHash(hash string) (uint64, bool) {
