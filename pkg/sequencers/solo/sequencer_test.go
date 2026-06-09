@@ -296,7 +296,7 @@ func TestSoloSequencer_SubmitBatchTxs_UnboundedByDefault(t *testing.T) {
 	seq := newTestSequencer(t)
 
 	bigTx := make([]byte, 1024*1024)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		_, err := seq.SubmitBatchTxs(context.Background(), coresequencer.SubmitBatchTxsRequest{
 			Id:    []byte("test"),
 			Batch: &coresequencer.Batch{Transactions: [][]byte{bigTx}},

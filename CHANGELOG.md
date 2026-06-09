@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## v1.1.2
+
 ### Changes
 
 - Add max bytes contraints in simple solo sequnecer [#3312](https://github.com/evstack/ev-node/pull/3312)
@@ -20,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Replace legacy gRPC execution `txs` payload fields with `tx_batch` so clients and servers use contiguous transaction buffers [#3297](https://github.com/evstack/ev-node/pull/3297)
 - Optimize metadata writes by making it async in cache store [#3298](https://github.com/evstack/ev-node/pull/3298)
 - Reduce tx cache retention to avoid OOM under (really) heavy tx load [#3299](https://github.com/evstack/ev-node/pull/3299)
+
+### Fixed
+
+- Increase P2P pubsub max message size to match `DefaultMaxBlobSize`, preventing fullnode desync on large blocks [#3344](https://github.com/evstack/ev-node/pull/3344).
 
 ## v1.1.1
 
