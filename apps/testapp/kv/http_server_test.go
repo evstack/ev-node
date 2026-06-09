@@ -2,7 +2,6 @@ package executor
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -241,8 +240,14 @@ func TestHTTPServerContextCancellation(t *testing.T) {
 		errCh <- server.Start(ctx)
 	}()
 
-	// Give it time to start
-	time.Sleep(100 * time.Millisecond)
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("Server start error: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Server start timed out")
+	}
 
 	// Send a request to confirm it's running
 	client := &http.Client{Timeout: 1 * time.Second}
@@ -260,21 +265,33 @@ func TestHTTPServerContextCancellation(t *testing.T) {
 
 	// Cancel the context to shut down the server
 	cancel()
+	client.CloseIdleConnections()
 
-	// Wait for shutdown to complete with timeout
-	select {
-	case err := <-errCh:
-		if err != nil && errors.Is(err, http.ErrServerClosed) {
-			t.Fatalf("Server shutdown error: %v", err)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("Server shutdown timed out")
+	// Verify server is actually shutdown by waiting until new connections fail.
+	shutdownClient := &http.Client{
+		Timeout: 100 * time.Millisecond,
+		Transport: &http.Transport{
+			DisableKeepAlives: true,
+		},
 	}
+	defer shutdownClient.CloseIdleConnections()
 
-	// Verify server is actually shutdown by attempting a new connection
-	_, err = client.Get(fmt.Sprintf("http://%s/store", serverAddr))
-	if err == nil {
-		t.Fatal("Expected connection error after shutdown, but got none")
+	deadline := time.After(2 * time.Second)
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-deadline:
+			t.Fatal("Expected connection error after shutdown, but server kept accepting requests")
+		case <-ticker.C:
+			resp, err := shutdownClient.Get(fmt.Sprintf("http://%s/store", serverAddr))
+			if err != nil {
+				return
+			}
+			if err := resp.Body.Close(); err != nil {
+				t.Fatalf("Failed to close response body: %v", err)
+			}
+		}
 	}
 }
 
