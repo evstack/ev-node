@@ -87,6 +87,14 @@ type Executor struct {
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
+	// onBatchCommitted is called after a block is committed to ack drained queue entries.
+	// if the ack fails it is retried before the next block is produced.
+	onBatchCommitted func(ctx context.Context) error
+
+	// pendingBatchAck is set when a committed block's batch ack failed and
+	// must be retried before producing the next block.
+	pendingBatchAck atomic.Bool
+
 	// blockProducer is the interface used for block production operations.
 	// defaults to self, but can be wrapped with tracing.
 	blockProducer BlockProducer
@@ -161,6 +169,26 @@ func NewExecutor(
 // a tracing wrapper or other decorator.
 func (e *Executor) SetBlockProducer(bp BlockProducer) {
 	e.blockProducer = bp
+}
+
+// SetOnBatchCommitted registers a callback fired after each block commit.
+// If the callback fails, it is retried before the next block is produced.
+func (e *Executor) SetOnBatchCommitted(fn func(ctx context.Context) error) {
+	e.onBatchCommitted = fn
+}
+
+// ackCommittedBatch invokes the batch ack callback and tracks failures so
+// they can be retried before the next block is produced.
+func (e *Executor) ackCommittedBatch(ctx context.Context) error {
+	if e.onBatchCommitted == nil {
+		return nil
+	}
+	if err := e.onBatchCommitted(ctx); err != nil {
+		e.pendingBatchAck.Store(true)
+		return err
+	}
+	e.pendingBatchAck.Store(false)
+	return nil
 }
 
 // Start begins the execution component
@@ -471,6 +499,15 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 		return errors.New("raft cluster does not have quorum")
 	}
 
+	// retry a failed ack from the previous block before retrieving a new batch.
+	// without this, the un-acked drained entries would be rolled back and
+	// re-included in the next block.
+	if e.pendingBatchAck.Load() {
+		if err := e.ackCommittedBatch(ctx); err != nil {
+			return fmt.Errorf("failed to ack previously committed batch: %w", err)
+		}
+	}
+
 	currentState := e.getLastState()
 	newHeight := currentState.LastBlockHeight + 1
 
@@ -620,6 +657,12 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 
 	// Update in-memory state after successful commit
 	e.setLastState(newState)
+
+	// ack the drained queue entries now that the block is durably committed.
+	// failure is not fatal: the ack is retried before the next block.
+	if err := e.ackCommittedBatch(ctx); err != nil {
+		e.logger.Warn().Err(err).Msg("failed to ack batch after commit, will retry before next block")
+	}
 
 	// Update last-block cache so the next CreateBlock avoids a store read.
 	e.lastBlockInfo.Store(&lastBlockInfo{

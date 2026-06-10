@@ -623,6 +623,9 @@ func TestSequencer_GetNextBatch_AlwaysCheckPendingForcedInclusion(t *testing.T) 
 	assert.Equal(t, uint64(1), seq.checkpoint.TxIndex, "TxIndex should be 1 (consumed first forced tx)")
 	assert.Equal(t, 2, len(seq.cachedForcedInclusionTxs), "Cache should still contain all original txs")
 
+	// ack the first batch so drained queue entries are committed
+	require.NoError(t, seq.AckBatch(ctx))
+
 	// Second call with larger maxBytes = 200
 	// Should process pending forced tx first
 	getReq2 := coresequencer.GetNextBatchRequest{
@@ -718,7 +721,7 @@ func TestSequencer_QueueLimit_Integration(t *testing.T) {
 		t.Error("expected nil response when submission fails")
 	}
 
-	// Test that getting a batch frees up space
+	// Test that getting a batch + acking frees up space
 	nextResp, err := seq.GetNextBatch(ctx, coresequencer.GetNextBatchRequest{Id: seq.Id})
 	if err != nil {
 		t.Fatalf("unexpected error getting next batch: %v", err)
@@ -726,6 +729,8 @@ func TestSequencer_QueueLimit_Integration(t *testing.T) {
 	if nextResp == nil || nextResp.Batch == nil {
 		t.Fatal("expected non-nil batch response")
 	}
+	// ack the drained batch to free queue capacity
+	require.NoError(t, seq.AckBatch(ctx))
 
 	// Now the third batch should succeed
 	resp3_retry, err := seq.SubmitBatchTxs(ctx, req3)
@@ -829,6 +834,8 @@ func TestSequencer_DAFailureAndQueueThrottling_Integration(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, nextResp)
 	require.NotNil(t, nextResp.Batch)
+	// ack the drained batch to free queue capacity
+	require.NoError(t, seq.AckBatch(ctx))
 
 	// Now we should be able to add the overflow batch
 	resp, err = seq.SubmitBatchTxs(ctx, overflowReq)

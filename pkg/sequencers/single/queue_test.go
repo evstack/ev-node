@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -21,11 +22,43 @@ import (
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
 
-// createTestBatch creates a batch with dummy transactions for testing
+var testBatchNonce atomic.Uint64
+
+// failingDeleteOnceDatastore fails the first batched WAL delete commit.
+type failingDeleteOnceDatastore struct {
+	ds.Batching
+	failed bool
+}
+
+func (d *failingDeleteOnceDatastore) Batch(ctx context.Context) (ds.Batch, error) {
+	b, err := d.Batching.Batch(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &failingOnceBatch{Batch: b, parent: d}, nil
+}
+
+// failingOnceBatch fails its first Commit, then delegates.
+type failingOnceBatch struct {
+	ds.Batch
+	parent *failingDeleteOnceDatastore
+}
+
+func (b *failingOnceBatch) Commit(ctx context.Context) error {
+	if !b.parent.failed {
+		b.parent.failed = true
+		return assert.AnError
+	}
+	return b.Batch.Commit(ctx)
+}
+
+// createTestBatch creates a batch with unique dummy transactions for testing.
+// each tx is globally unique via an incrementing nonce.
 func createTestBatch(t *testing.T, txCount int) coresequencer.Batch {
 	txs := make([][]byte, txCount)
 	for i := range txCount {
-		txs[i] = []byte{byte(i), byte(i + 1), byte(i + 2)}
+		n := testBatchNonce.Add(1)
+		txs[i] = []byte(fmt.Sprintf("tx-%d-%d", n, i))
 	}
 	return coresequencer.Batch{Transactions: txs}
 }
@@ -34,6 +67,15 @@ func setupTestQueue(t *testing.T) *BatchQueue {
 	// Create an in-memory thread-safe datastore
 	memdb := store.NewPrefixKVStore(ds.NewMapDatastore(), "single")
 	return NewBatchQueue(memdb, "batching", 0) // 0 = unlimited for existing tests
+}
+
+// drainOne pops exactly one queue entry and acks it immediately.
+func drainOne(ctx context.Context, t *testing.T, bq *BatchQueue) *coresequencer.Batch {
+	t.Helper()
+	batch, err := bq.Drain(ctx, 1)
+	require.NoError(t, err)
+	require.NoError(t, bq.Ack(ctx))
+	return batch
 }
 
 func TestNewBatchQueue(t *testing.T) {
@@ -85,7 +127,7 @@ func TestAddBatch(t *testing.T) {
 		{
 			name:           "add empty batch",
 			batchesToAdd:   []int{0},
-			expectQueueLen: 1,
+			expectQueueLen: 0, // empty batches are no-ops after dedup
 			expectErr:      false,
 		},
 	}
@@ -130,12 +172,12 @@ func TestAddBatch(t *testing.T) {
 	}
 }
 
-func TestNextBatch(t *testing.T) {
+func TestDrainOneByOne(t *testing.T) {
 	tests := []struct {
 		name          string
 		batchesToAdd  []int
 		callNextCount int
-		expectEmptyAt int // At which call to Next() we expect an empty batch
+		expectEmptyAt int // At which drain we expect an empty batch
 		expectErrors  []bool
 	}{
 		{
@@ -177,9 +219,12 @@ func TestNextBatch(t *testing.T) {
 				}
 			}
 
-			// Call Next the specified number of times
+			// Drain one entry at a time the specified number of times
 			for i := 0; i < tc.callNextCount; i++ {
-				batch, err := bq.Next(ctx)
+				batch, err := bq.Drain(ctx, 1)
+				if err == nil {
+					err = bq.Ack(ctx)
+				}
 
 				// Check error as expected
 				if i < len(tc.expectErrors) && tc.expectErrors[i] {
@@ -311,16 +356,16 @@ func TestBatchQueue_Load_SetsSequencesProperly(t *testing.T) {
 	db := ds.NewMapDatastore()
 	prefix := "test-load-sequences"
 
-	// Build some persisted state with both AddBatch and Prepend so we have
-	// keys on both sides of the initialSeqNum.
+	// Build some persisted state with keys on both sides of the initialSeqNum.
+	// Prepend-side keys are written the same way the postponed-ack path does.
 	q1 := NewBatchQueue(db, prefix, 0)
 	require.NoError(t, q1.Load(ctx))
 
 	require.NoError(t, q1.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("add-1")}})) // initialSeqNum
 	require.NoError(t, q1.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("add-2")}})) // initialSeqNum+1
 
-	require.NoError(t, q1.Prepend(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("pre-1")}})) // initialSeqNum-1
-	require.NoError(t, q1.Prepend(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("pre-2")}})) // initialSeqNum-2
+	require.NoError(t, q1.persistBatch(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("pre-1")}}, seqToKey(initialSeqNum-1)))
+	require.NoError(t, q1.persistBatch(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("pre-2")}}, seqToKey(initialSeqNum-2)))
 
 	// Simulate restart.
 	q2 := NewBatchQueue(db, prefix, 0)
@@ -337,9 +382,13 @@ func TestBatchQueue_Load_SetsSequencesProperly(t *testing.T) {
 	_, err := q2.db.Get(ctx, ds.NewKey(seqToKey(initialSeqNum+2)))
 	require.NoError(t, err, "expected AddBatch after Load to persist using nextAddSeq key")
 
-	require.NoError(t, q2.Prepend(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("pre-after-load")}}))
+	// postponed txs are requeued during Ack using nextPrependSeq
+	_, err = q2.Drain(ctx, 1)
+	require.NoError(t, err)
+	q2.SetPostponed([][]byte{[]byte("pre-after-load")})
+	require.NoError(t, q2.Ack(ctx))
 	_, err = q2.db.Get(ctx, ds.NewKey(seqToKey(initialSeqNum-3)))
-	require.NoError(t, err, "expected Prepend after Load to persist using nextPrependSeq key")
+	require.NoError(t, err, "expected postponed requeue after Load to persist using nextPrependSeq key")
 }
 
 func TestConcurrency(t *testing.T) {
@@ -372,26 +421,14 @@ func TestConcurrency(t *testing.T) {
 		t.Errorf("expected %d batches, got %d", numOperations, bq.Size())
 	}
 
-	// Next operations concurrently (only half)
-	nextWg := new(sync.WaitGroup)
+	// drain half the entries one at a time (single consumer)
 	nextCount := numOperations / 2
-	nextWg.Add(nextCount)
-
 	for range nextCount {
-		go func() {
-			defer nextWg.Done()
-			batch, err := bq.Next(ctx)
-			if err != nil {
-				t.Errorf("unexpected error getting batch: %v", err)
-			}
-			if batch == nil {
-				t.Error("expected non-nil batch")
-			}
-		}()
+		batch := drainOne(ctx, t, bq)
+		if len(batch.Transactions) == 0 {
+			t.Error("expected non-empty batch")
+		}
 	}
-
-	// Wait for all nexts to complete
-	nextWg.Wait()
 
 	// Verify we have expected number of batches left
 	if bq.Size() != numOperations-nextCount {
@@ -491,8 +528,8 @@ func TestBatchQueue_QueueLimit(t *testing.T) {
 	}
 }
 
-func TestBatchQueue_QueueLimit_WithNext(t *testing.T) {
-	// Test that removing batches with Next() allows adding more batches
+func TestBatchQueue_QueueLimit_WithDrain(t *testing.T) {
+	// Test that removing batches with Drain+Ack allows adding more batches
 	maxSize := 3
 	memdb := store.NewPrefixKVStore(ds.NewMapDatastore(), "single")
 	bq := NewBatchQueue(memdb, "batching", maxSize)
@@ -519,25 +556,22 @@ func TestBatchQueue_QueueLimit_WithNext(t *testing.T) {
 		t.Errorf("expected ErrQueueFull, got %v", err)
 	}
 
-	// Remove one batch using Next()
-	batch, err := bq.Next(ctx)
-	if err != nil {
-		t.Fatalf("unexpected error in Next(): %v", err)
-	}
-	if batch == nil || len(batch.Transactions) == 0 {
-		t.Error("expected non-empty batch from Next()")
+	// Remove one batch
+	batch := drainOne(ctx, t, bq)
+	if len(batch.Transactions) == 0 {
+		t.Error("expected non-empty batch from drain")
 	}
 
 	// Verify queue size decreased
 	if bq.Size() != maxSize-1 {
-		t.Errorf("expected queue size %d after Next(), got %d", maxSize-1, bq.Size())
+		t.Errorf("expected queue size %d after drain, got %d", maxSize-1, bq.Size())
 	}
 
 	// Now adding a batch should succeed
 	newBatch := createTestBatch(t, 1000)
 	err = bq.AddBatch(ctx, newBatch)
 	if err != nil {
-		t.Errorf("unexpected error adding batch after Next(): %v", err)
+		t.Errorf("unexpected error adding batch after drain: %v", err)
 	}
 
 	// Verify queue is full again
@@ -609,204 +643,487 @@ func TestBatchQueue_QueueLimit_Concurrency(t *testing.T) {
 	t.Logf("Successfully added %d batches, rejected %d due to queue being full", addedCount, errorCount)
 }
 
-func TestBatchQueue_Prepend(t *testing.T) {
+func TestBatchQueue_Drain_MergesMultipleEntries(t *testing.T) {
 	ctx := context.Background()
 	db := ds.NewMapDatastore()
+	queue := NewBatchQueue(db, "test-drain-merge", 0)
+	require.NoError(t, queue.Load(ctx))
 
-	t.Run("prepend to empty queue", func(t *testing.T) {
-		queue := NewBatchQueue(db, "test-prepend-empty", 0)
-		err := queue.Load(ctx)
-		require.NoError(t, err)
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("tx1")}}))
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("tx2")}}))
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("tx3")}}))
 
-		batch := coresequencer.Batch{
-			Transactions: [][]byte{[]byte("tx1"), []byte("tx2")},
-		}
+	batch, err := queue.Drain(ctx, 0)
+	require.NoError(t, err)
+	assert.Equal(t, 3, len(batch.Transactions))
+	assert.Equal(t, []byte("tx1"), batch.Transactions[0])
+	assert.Equal(t, []byte("tx2"), batch.Transactions[1])
+	assert.Equal(t, []byte("tx3"), batch.Transactions[2])
 
-		err = queue.Prepend(ctx, batch)
-		require.NoError(t, err)
+	// Size includes inFlight (3 drained entries)
+	assert.Equal(t, 3, queue.Size())
+}
 
-		assert.Equal(t, 1, queue.Size())
+func TestBatchQueue_Drain_RespectsMaxBytes(t *testing.T) {
+	ctx := context.Background()
+	db := ds.NewMapDatastore()
+	queue := NewBatchQueue(db, "test-drain-maxbytes", 0)
+	require.NoError(t, queue.Load(ctx))
 
-		// Next should return the prepended batch
-		nextBatch, err := queue.Next(ctx)
-		require.NoError(t, err)
-		assert.Equal(t, 2, len(nextBatch.Transactions))
-		assert.Equal(t, []byte("tx1"), nextBatch.Transactions[0])
-	})
+	// each tx is 3 bytes
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("aaa")}}))
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("bbb")}}))
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("ccc")}}))
 
-	t.Run("prepend to queue with items", func(t *testing.T) {
-		queue := NewBatchQueue(db, "test-prepend-with-items", 0)
-		err := queue.Load(ctx)
-		require.NoError(t, err)
+	// maxBytes=5 should only fit the first entry (3 bytes), second would exceed
+	batch, err := queue.Drain(ctx, 5)
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(batch.Transactions))
+	assert.Equal(t, []byte("aaa"), batch.Transactions[0])
 
-		// Add some batches first
-		batch1 := coresequencer.Batch{Transactions: [][]byte{[]byte("tx1")}}
-		batch2 := coresequencer.Batch{Transactions: [][]byte{[]byte("tx2")}}
-		err = queue.AddBatch(ctx, batch1)
-		require.NoError(t, err)
-		err = queue.AddBatch(ctx, batch2)
-		require.NoError(t, err)
+	// 2 entries in queue + 1 inFlight = 3 total
+	assert.Equal(t, 3, queue.Size())
+}
 
-		assert.Equal(t, 2, queue.Size())
+func TestBatchQueue_Drain_AlwaysTakesAtLeastOne(t *testing.T) {
+	ctx := context.Background()
+	db := ds.NewMapDatastore()
+	queue := NewBatchQueue(db, "test-drain-atleastone", 0)
+	require.NoError(t, queue.Load(ctx))
 
-		// Prepend a batch
-		prependedBatch := coresequencer.Batch{Transactions: [][]byte{[]byte("prepended")}}
-		err = queue.Prepend(ctx, prependedBatch)
-		require.NoError(t, err)
+	// entry is 10 bytes, maxBytes is 1
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("0123456789")}}))
 
-		assert.Equal(t, 3, queue.Size())
+	batch, err := queue.Drain(ctx, 1)
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(batch.Transactions))
+	assert.Equal(t, 1, queue.Size()) // inFlight counts
+}
 
-		// Next should return the prepended batch first
-		nextBatch, err := queue.Next(ctx)
-		require.NoError(t, err)
-		assert.Equal(t, 1, len(nextBatch.Transactions))
-		assert.Equal(t, []byte("prepended"), nextBatch.Transactions[0])
+func TestBatchQueue_Drain_EmptyQueue(t *testing.T) {
+	ctx := context.Background()
+	db := ds.NewMapDatastore()
+	queue := NewBatchQueue(db, "test-drain-empty", 0)
+	require.NoError(t, queue.Load(ctx))
 
-		// Then the original batches
-		nextBatch, err = queue.Next(ctx)
-		require.NoError(t, err)
-		assert.Equal(t, []byte("tx1"), nextBatch.Transactions[0])
+	batch, err := queue.Drain(ctx, 0)
+	require.NoError(t, err)
+	assert.Nil(t, batch.Transactions)
+}
 
-		nextBatch, err = queue.Next(ctx)
-		require.NoError(t, err)
-		assert.Equal(t, []byte("tx2"), nextBatch.Transactions[0])
-	})
+func TestBatchQueue_Drain_RollsBackUnackedInFlight(t *testing.T) {
+	ctx := context.Background()
+	db := ds.NewMapDatastore()
+	queue := NewBatchQueue(db, "test-drain-rollback", 0)
+	require.NoError(t, queue.Load(ctx))
 
-	t.Run("prepend after consuming some items", func(t *testing.T) {
-		queue := NewBatchQueue(db, "test-prepend-after-consume", 0)
-		err := queue.Load(ctx)
-		require.NoError(t, err)
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("tx1")}}))
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("tx2")}}))
 
-		// Add batches
-		batch1 := coresequencer.Batch{Transactions: [][]byte{[]byte("tx1")}}
-		batch2 := coresequencer.Batch{Transactions: [][]byte{[]byte("tx2")}}
-		batch3 := coresequencer.Batch{Transactions: [][]byte{[]byte("tx3")}}
-		err = queue.AddBatch(ctx, batch1)
-		require.NoError(t, err)
-		err = queue.AddBatch(ctx, batch2)
-		require.NoError(t, err)
-		err = queue.AddBatch(ctx, batch3)
-		require.NoError(t, err)
+	// first drain takes both entries
+	batch1, err := queue.Drain(ctx, 0)
+	require.NoError(t, err)
+	assert.Equal(t, 2, len(batch1.Transactions))
+	assert.Equal(t, 2, queue.Size()) // inFlight counts
 
-		assert.Equal(t, 3, queue.Size())
+	// second drain without ack should roll back inFlight
+	batch2, err := queue.Drain(ctx, 0)
+	require.NoError(t, err)
+	assert.Equal(t, 2, len(batch2.Transactions))
+	assert.Equal(t, []byte("tx1"), batch2.Transactions[0])
+	assert.Equal(t, []byte("tx2"), batch2.Transactions[1])
+}
 
-		// Consume first batch
-		nextBatch, err := queue.Next(ctx)
-		require.NoError(t, err)
-		assert.Equal(t, []byte("tx1"), nextBatch.Transactions[0])
-		assert.Equal(t, 2, queue.Size())
+func TestBatchQueue_Ack_DeletesWALEntries(t *testing.T) {
+	ctx := context.Background()
+	db := ds.NewMapDatastore()
+	queue := NewBatchQueue(db, "test-ack-wal", 0)
+	require.NoError(t, queue.Load(ctx))
 
-		// Prepend - should reuse the head position
-		prependedBatch := coresequencer.Batch{Transactions: [][]byte{[]byte("prepended")}}
-		err = queue.Prepend(ctx, prependedBatch)
-		require.NoError(t, err)
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("tx1")}}))
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("tx2")}}))
 
-		assert.Equal(t, 3, queue.Size())
+	_, err := queue.Drain(ctx, 0)
+	require.NoError(t, err)
 
-		// Should get prepended, then tx2, then tx3
-		nextBatch, err = queue.Next(ctx)
-		require.NoError(t, err)
-		assert.Equal(t, []byte("prepended"), nextBatch.Transactions[0])
+	require.NoError(t, queue.Ack(ctx))
 
-		nextBatch, err = queue.Next(ctx)
-		require.NoError(t, err)
-		assert.Equal(t, []byte("tx2"), nextBatch.Transactions[0])
+	// WAL should be empty — reload and verify
+	queue2 := NewBatchQueue(db, "test-ack-wal", 0)
+	require.NoError(t, queue2.Load(ctx))
+	assert.Equal(t, 0, queue2.Size())
+}
 
-		nextBatch, err = queue.Next(ctx)
-		require.NoError(t, err)
-		assert.Equal(t, []byte("tx3"), nextBatch.Transactions[0])
+func TestBatchQueue_Ack_RequeuesPostponedTxs(t *testing.T) {
+	ctx := context.Background()
+	db := ds.NewMapDatastore()
+	queue := NewBatchQueue(db, "test-ack-postponed", 0)
+	require.NoError(t, queue.Load(ctx))
 
-		assert.Equal(t, 0, queue.Size())
-	})
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("tx1"), []byte("tx2")}}))
 
-	t.Run("multiple prepends", func(t *testing.T) {
-		queue := NewBatchQueue(db, "test-multiple-prepends", 0)
-		err := queue.Load(ctx)
-		require.NoError(t, err)
+	_, err := queue.Drain(ctx, 0)
+	require.NoError(t, err)
 
-		// Add a batch
-		batch1 := coresequencer.Batch{Transactions: [][]byte{[]byte("tx1")}}
-		err = queue.AddBatch(ctx, batch1)
-		require.NoError(t, err)
+	// set postponed txs and ack
+	queue.SetPostponed([][]byte{[]byte("postponed1"), []byte("postponed2")})
+	require.NoError(t, queue.Ack(ctx))
 
-		// Prepend multiple batches
-		prepend1 := coresequencer.Batch{Transactions: [][]byte{[]byte("prepend1")}}
-		prepend2 := coresequencer.Batch{Transactions: [][]byte{[]byte("prepend2")}}
-		prepend3 := coresequencer.Batch{Transactions: [][]byte{[]byte("prepend3")}}
+	// queue should have the postponed txs
+	assert.Equal(t, 1, queue.Size())
 
-		err = queue.Prepend(ctx, prepend1)
-		require.NoError(t, err)
-		err = queue.Prepend(ctx, prepend2)
-		require.NoError(t, err)
-		err = queue.Prepend(ctx, prepend3)
-		require.NoError(t, err)
+	batch, err := queue.Drain(ctx, 0)
+	require.NoError(t, err)
+	assert.Equal(t, 2, len(batch.Transactions))
+	assert.Equal(t, []byte("postponed1"), batch.Transactions[0])
+	assert.Equal(t, []byte("postponed2"), batch.Transactions[1])
+}
 
-		assert.Equal(t, 4, queue.Size())
+func TestBatchQueue_Ack_PostponedTxsStayDeduped(t *testing.T) {
+	ctx := context.Background()
+	db := ds.NewMapDatastore()
+	queue := NewBatchQueue(db, "test-ack-postponed-dedup", 0)
+	require.NoError(t, queue.Load(ctx))
 
-		// Should get in reverse order of prepending (LIFO for prepended items)
-		nextBatch, err := queue.Next(ctx)
-		require.NoError(t, err)
-		assert.Equal(t, []byte("prepend3"), nextBatch.Transactions[0])
+	postponedTx := []byte("postponed")
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("tx1"), postponedTx}}))
 
-		nextBatch, err = queue.Next(ctx)
-		require.NoError(t, err)
-		assert.Equal(t, []byte("prepend2"), nextBatch.Transactions[0])
+	_, err := queue.Drain(ctx, 0)
+	require.NoError(t, err)
 
-		nextBatch, err = queue.Next(ctx)
-		require.NoError(t, err)
-		assert.Equal(t, []byte("prepend1"), nextBatch.Transactions[0])
+	queue.SetPostponed([][]byte{postponedTx})
+	require.NoError(t, queue.Ack(ctx))
+	assert.Equal(t, 1, queue.Size())
 
-		nextBatch, err = queue.Next(ctx)
-		require.NoError(t, err)
-		assert.Equal(t, []byte("tx1"), nextBatch.Transactions[0])
-	})
+	// re-submitting the postponed tx (e.g. reaper rescrape) must be deduped,
+	// otherwise it would be included twice in the next drained batch
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{postponedTx}}))
+	assert.Equal(t, 1, queue.Size())
 
-	t.Run("prepend persistence across restarts", func(t *testing.T) {
-		prefix := "test-prepend-persistence"
-		queue := NewBatchQueue(db, prefix, 0)
-		err := queue.Load(ctx)
-		require.NoError(t, err)
+	batch, err := queue.Drain(ctx, 0)
+	require.NoError(t, err)
+	assert.Equal(t, [][]byte{postponedTx}, batch.Transactions)
 
-		// Add some batches
-		batch1 := coresequencer.Batch{Transactions: [][]byte{[]byte("tx1")}}
-		batch2 := coresequencer.Batch{Transactions: [][]byte{[]byte("tx2")}}
-		err = queue.AddBatch(ctx, batch1)
-		require.NoError(t, err)
-		err = queue.AddBatch(ctx, batch2)
-		require.NoError(t, err)
+	// committed (non-postponed) txs are released from the dedup set on ack
+	require.NoError(t, queue.Ack(ctx))
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("tx1")}}))
+	assert.Equal(t, 1, queue.Size())
+}
 
-		// Consume first batch
-		_, err = queue.Next(ctx)
-		require.NoError(t, err)
+func TestBatchQueue_InFlight_SurvivesRestart(t *testing.T) {
+	ctx := context.Background()
+	db := ds.NewMapDatastore()
+	queue := NewBatchQueue(db, "test-inflight-restart", 0)
+	require.NoError(t, queue.Load(ctx))
 
-		// Prepend a batch (simulating transactions that couldn't fit)
-		prependedBatch := coresequencer.Batch{Transactions: [][]byte{[]byte("prepended")}}
-		err = queue.Prepend(ctx, prependedBatch)
-		require.NoError(t, err)
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("tx1")}}))
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("tx2")}}))
 
-		assert.Equal(t, 2, queue.Size())
+	// drain without ack
+	_, err := queue.Drain(ctx, 0)
+	require.NoError(t, err)
 
-		// Simulate restart by creating a new queue with same prefix
-		queue2 := NewBatchQueue(db, prefix, 0)
-		err = queue2.Load(ctx)
-		require.NoError(t, err)
+	// simulate restart — WAL entries should still exist since no ack
+	queue2 := NewBatchQueue(db, "test-inflight-restart", 0)
+	require.NoError(t, queue2.Load(ctx))
+	assert.Equal(t, 2, queue2.Size())
 
-		// Should have both the prepended batch and tx2
-		assert.Equal(t, 2, queue2.Size())
+	batch, err := queue2.Drain(ctx, 1)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("tx1"), batch.Transactions[0])
+}
 
-		// First should be prepended batch
-		nextBatch, err := queue2.Next(ctx)
-		require.NoError(t, err)
-		assert.Equal(t, 1, len(nextBatch.Transactions))
-		assert.Contains(t, nextBatch.Transactions, []byte("prepended"))
+func TestBatchQueue_InFlight_CountsTowardQueueLimit(t *testing.T) {
+	ctx := context.Background()
+	db := ds.NewMapDatastore()
+	maxSize := 3
+	queue := NewBatchQueue(db, "test-inflight-limit", maxSize)
+	require.NoError(t, queue.Load(ctx))
 
-		// Then tx2
-		nextBatch, err = queue2.Next(ctx)
-		require.NoError(t, err)
-		assert.Equal(t, 1, len(nextBatch.Transactions))
-		assert.Contains(t, nextBatch.Transactions, []byte("tx2"))
+	// fill to capacity
+	for i := range maxSize {
+		require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{
+			Transactions: [][]byte{[]byte(fmt.Sprintf("tx%d", i))},
+		}))
+	}
 
-		// Queue should be empty now
-		assert.Equal(t, 0, queue2.Size())
-	})
+	// drain all — moves entries to inFlight
+	_, err := queue.Drain(ctx, 0)
+	require.NoError(t, err)
+
+	// Size includes inFlight
+	assert.Equal(t, 3, queue.Size())
+
+	// adding should still be rejected because inFlight counts
+	err = queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("overflow")}})
+	assert.ErrorIs(t, err, ErrQueueFull)
+
+	// after ack, adding should succeed
+	require.NoError(t, queue.Ack(ctx))
+	err = queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("ok")}})
+	assert.NoError(t, err)
+}
+
+func TestBatchQueue_Ack_PersistsPostponedBeforeDeletingWAL(t *testing.T) {
+	ctx := context.Background()
+	db := ds.NewMapDatastore()
+	queue := NewBatchQueue(db, "test-ack-order", 0)
+	require.NoError(t, queue.Load(ctx))
+
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("tx1")}}))
+
+	_, err := queue.Drain(ctx, 0)
+	require.NoError(t, err)
+
+	// set postponed txs and ack
+	queue.SetPostponed([][]byte{[]byte("postponed")})
+	require.NoError(t, queue.Ack(ctx))
+
+	// simulate restart — postponed tx should survive
+	queue2 := NewBatchQueue(db, "test-ack-order", 0)
+	require.NoError(t, queue2.Load(ctx))
+	assert.Equal(t, 1, queue2.Size())
+
+	batch, err := queue2.Drain(ctx, 0)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("postponed"), batch.Transactions[0])
+}
+
+func TestBatchQueue_AckRetry_DoesNotDuplicatePostponed(t *testing.T) {
+	ctx := context.Background()
+	db := ds.NewMapDatastore()
+	queue := NewBatchQueue(db, "test-ack-retry-postponed", 0)
+	require.NoError(t, queue.Load(ctx))
+
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("tx1")}}))
+	_, err := queue.Drain(ctx, 0)
+	require.NoError(t, err)
+	queue.SetPostponed([][]byte{[]byte("postponed")})
+
+	// Simulate the first WAL delete failing after postponed txs were already persisted.
+	originalDB := queue.db
+	queue.db = &failingDeleteOnceDatastore{Batching: originalDB}
+	err = queue.Ack(ctx)
+	require.Error(t, err)
+
+	// Retry with the original datastore. The postponed batch should not be persisted twice.
+	queue.db = originalDB
+	require.NoError(t, queue.Ack(ctx))
+
+	reloaded := NewBatchQueue(db, "test-ack-retry-postponed", 0)
+	require.NoError(t, reloaded.Load(ctx))
+	assert.Equal(t, 1, reloaded.Size())
+
+	batch, err := reloaded.Drain(ctx, 0)
+	require.NoError(t, err)
+	assert.Equal(t, [][]byte{[]byte("postponed")}, batch.Transactions)
+}
+
+func TestBatchQueue_DropIncluded_CrashBetweenCommitAndAck(t *testing.T) {
+	ctx := context.Background()
+	db := ds.NewMapDatastore()
+	queue := NewBatchQueue(db, "test-drop-included", 0)
+	require.NoError(t, queue.Load(ctx))
+
+	committed1 := []byte("committed1")
+	committed2 := []byte("committed2")
+	postponed := []byte("postponed")
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{committed1, postponed}}))
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{committed2}}))
+
+	// drain, block commits with committed1+committed2, then crash before Ack
+	_, err := queue.Drain(ctx, 0)
+	require.NoError(t, err)
+
+	// restart — WAL reloads all entries
+	queue2 := NewBatchQueue(db, "test-drop-included", 0)
+	require.NoError(t, queue2.Load(ctx))
+	assert.Equal(t, 2, queue2.Size())
+
+	dropped, err := queue2.DropIncluded(ctx, [][]byte{committed1, committed2})
+	require.NoError(t, err)
+	assert.Equal(t, 2, dropped)
+
+	// only the postponed tx remains
+	batch, err := queue2.Drain(ctx, 0)
+	require.NoError(t, err)
+	assert.Equal(t, [][]byte{postponed}, batch.Transactions)
+	require.NoError(t, queue2.Ack(ctx))
+
+	// dropped txs are released from the dedup set
+	require.NoError(t, queue2.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{committed1}}))
+	assert.Equal(t, 1, queue2.Size())
+
+	// rewritten WAL is consistent across another reload
+	queue3 := NewBatchQueue(db, "test-drop-included", 0)
+	require.NoError(t, queue3.Load(ctx))
+	batch, err = queue3.Drain(ctx, 0)
+	require.NoError(t, err)
+	assert.Equal(t, [][]byte{committed1}, batch.Transactions)
+}
+
+func TestBatchQueue_DropIncluded_NoMatches(t *testing.T) {
+	ctx := context.Background()
+	db := ds.NewMapDatastore()
+	queue := NewBatchQueue(db, "test-drop-none", 0)
+	require.NoError(t, queue.Load(ctx))
+
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("tx1")}}))
+
+	dropped, err := queue.DropIncluded(ctx, [][]byte{[]byte("other")})
+	require.NoError(t, err)
+	assert.Equal(t, 0, dropped)
+	assert.Equal(t, 1, queue.Size())
+}
+
+// countWALEntries returns the number of WAL keys stored under the queue's prefix.
+func countWALEntries(t *testing.T, bq *BatchQueue) int {
+	t.Helper()
+	results, err := bq.db.Query(context.Background(), query.Query{})
+	require.NoError(t, err)
+	defer results.Close()
+	count := 0
+	for result := range results.Next() {
+		require.NoError(t, result.Error)
+		count++
+	}
+	return count
+}
+
+func TestBatchQueue_Load_DeletesFullyDuplicateWALEntries(t *testing.T) {
+	ctx := context.Background()
+	db := ds.NewMapDatastore()
+	queue := NewBatchQueue(db, "test-load-dup-clean", 0)
+
+	// craft a WAL with the same tx persisted under two keys,
+	// simulating a partially failed ack/cleanup from a previous run
+	tx := []byte("dup-tx")
+	batch := coresequencer.Batch{Transactions: [][]byte{tx}}
+	require.NoError(t, queue.persistBatch(ctx, batch, seqToKey(initialSeqNum)))
+	require.NoError(t, queue.persistBatch(ctx, batch, seqToKey(initialSeqNum+1)))
+
+	require.NoError(t, queue.Load(ctx))
+	assert.Equal(t, 1, queue.Size())
+
+	// the duplicate WAL entry must be deleted, not just dropped in memory
+	assert.Equal(t, 1, countWALEntries(t, queue))
+
+	// a fresh reload sees the same clean state
+	queue2 := NewBatchQueue(db, "test-load-dup-clean", 0)
+	require.NoError(t, queue2.Load(ctx))
+	assert.Equal(t, 1, queue2.Size())
+}
+
+func TestBatchQueue_Load_RewritesPartiallyDuplicateWALEntries(t *testing.T) {
+	ctx := context.Background()
+	db := ds.NewMapDatastore()
+	queue := NewBatchQueue(db, "test-load-partial-clean", 0)
+
+	// a prepend-keyed entry (loads first) shares one tx with an add-keyed entry
+	shared := []byte("shared")
+	other := []byte("other")
+	require.NoError(t, queue.persistBatch(ctx, coresequencer.Batch{Transactions: [][]byte{shared}}, seqToKey(initialSeqNum-1)))
+	require.NoError(t, queue.persistBatch(ctx, coresequencer.Batch{Transactions: [][]byte{shared, other}}, seqToKey(initialSeqNum)))
+
+	require.NoError(t, queue.Load(ctx))
+	assert.Equal(t, 2, queue.Size())
+
+	// consume and ack the entry holding the shared tx, releasing its hash
+	batch, err := queue.Drain(ctx, 1) // small cap drains only the first entry
+	require.NoError(t, err)
+	assert.Equal(t, [][]byte{shared}, batch.Transactions)
+	require.NoError(t, queue.Ack(ctx))
+
+	// reload: the second entry's WAL value must have been rewritten without
+	// the shared tx, so it cannot be resurrected after the first was consumed
+	queue2 := NewBatchQueue(db, "test-load-partial-clean", 0)
+	require.NoError(t, queue2.Load(ctx))
+	nextBatch, err := queue2.Drain(ctx, 0)
+	require.NoError(t, err)
+	assert.Equal(t, [][]byte{other}, nextBatch.Transactions)
+}
+
+func TestBatchQueue_Dedup_SkipsDuplicateTxs(t *testing.T) {
+	ctx := context.Background()
+	db := ds.NewMapDatastore()
+	queue := NewBatchQueue(db, "test-dedup", 0)
+	require.NoError(t, queue.Load(ctx))
+
+	tx := []byte("same-tx")
+
+	// first add succeeds
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{tx}}))
+	assert.Equal(t, 1, queue.Size())
+
+	// second add of same tx is silently skipped (dedup)
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{tx}}))
+	assert.Equal(t, 1, queue.Size())
+
+	// after drain + ack, the hash is freed and the tx can be re-enqueued
+	_, err := queue.Drain(ctx, 0)
+	require.NoError(t, err)
+	require.NoError(t, queue.Ack(ctx))
+
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{tx}}))
+	assert.Equal(t, 1, queue.Size())
+}
+
+func TestBatchQueue_Dedup_PartialBatch(t *testing.T) {
+	ctx := context.Background()
+	db := ds.NewMapDatastore()
+	queue := NewBatchQueue(db, "test-dedup-partial", 0)
+	require.NoError(t, queue.Load(ctx))
+
+	tx1 := []byte("tx1")
+	tx2 := []byte("tx2")
+
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{tx1}}))
+
+	// batch with one dup and one new tx: only new tx enqueued
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{tx1, tx2}}))
+	assert.Equal(t, 2, queue.Size())
+
+	// drain entries one at a time: batch1 has tx1, batch2 has only tx2
+	batch1 := drainOne(ctx, t, queue)
+	assert.Equal(t, [][]byte{tx1}, batch1.Transactions)
+
+	batch2 := drainOne(ctx, t, queue)
+	assert.Equal(t, [][]byte{tx2}, batch2.Transactions)
+}
+
+func TestBatchQueue_Dedup_InFlightBlocksReenqueue(t *testing.T) {
+	ctx := context.Background()
+	db := ds.NewMapDatastore()
+	queue := NewBatchQueue(db, "test-dedup-inflight", 0)
+	require.NoError(t, queue.Load(ctx))
+
+	tx := []byte("inflight-tx")
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{tx}}))
+
+	// drain moves to inFlight — tx hash stays in dedup set
+	_, err := queue.Drain(ctx, 0)
+	require.NoError(t, err)
+
+	// re-add same tx while in-flight: silently skipped
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{tx}}))
+	// Size is 1 (inFlight), not 2
+	assert.Equal(t, 1, queue.Size())
+}
+
+func TestBatchQueue_Dedup_SurvivesLoad(t *testing.T) {
+	ctx := context.Background()
+	db := ds.NewMapDatastore()
+	queue := NewBatchQueue(db, "test-dedup-load", 0)
+	require.NoError(t, queue.Load(ctx))
+
+	tx := []byte("persist-tx")
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{tx}}))
+
+	// simulate restart
+	queue2 := NewBatchQueue(db, "test-dedup-load", 0)
+	require.NoError(t, queue2.Load(ctx))
+
+	// dedup set is rebuilt from WAL — re-add should be skipped
+	require.NoError(t, queue2.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{tx}}))
+	assert.Equal(t, 1, queue2.Size())
 }

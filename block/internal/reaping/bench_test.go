@@ -9,29 +9,11 @@ import (
 	"testing"
 	"time"
 
-	ds "github.com/ipfs/go-datastore"
-	dssync "github.com/ipfs/go-datastore/sync"
-	"github.com/rs/zerolog"
-
-	"github.com/evstack/ev-node/block/internal/cache"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
-	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
-	"github.com/evstack/ev-node/pkg/store"
+	"github.com/rs/zerolog"
 )
-
-func newBenchCache(b *testing.B) cache.CacheManager {
-	b.Helper()
-	cfg := config.Config{RootDir: b.TempDir()}
-	memDS := dssync.MutexWrap(ds.NewMapDatastore())
-	st := store.New(memDS)
-	cm, err := cache.NewManager(cfg, st, zerolog.Nop())
-	if err != nil {
-		b.Fatal(err)
-	}
-	return cm
-}
 
 type infiniteExecutor struct {
 	mu      sync.Mutex
@@ -105,7 +87,6 @@ func benchmarkReaperFlow(b *testing.B, batchSize int, txSize int, feedInterval t
 		exec := &infiniteExecutor{}
 		seq := &countingSequencer{}
 
-		cm := newBenchCache(b)
 		var notified atomic.Int64
 
 		r, err := NewReaper(
@@ -113,9 +94,9 @@ func benchmarkReaperFlow(b *testing.B, batchSize int, txSize int, feedInterval t
 			seq,
 			genesis.Genesis{ChainID: "bench"},
 			zerolog.Nop(),
-			cm,
 			50*time.Millisecond,
 			func() { notified.Add(1) },
+			nil,
 		)
 		if err != nil {
 			b.Fatal(err)
@@ -191,15 +172,15 @@ func BenchmarkReaperFlow_Sustained(b *testing.B) {
 	b.Run("steady_100txs_256B", func(b *testing.B) {
 		exec := &infiniteExecutor{}
 		seq := &countingSequencer{}
-		cm := newBenchCache(b)
 		var notified atomic.Int64
 
 		r, err := NewReaper(
 			exec, seq,
 			genesis.Genesis{ChainID: "bench"},
-			zerolog.Nop(), cm,
+			zerolog.Nop(),
 			10*time.Millisecond,
 			func() { notified.Add(1) },
+			nil,
 		)
 		if err != nil {
 			b.Fatal(err)
@@ -250,15 +231,15 @@ func BenchmarkReaperFlow_StartStop(b *testing.B) {
 	b.Run("lifecycle", func(b *testing.B) {
 		exec := &infiniteExecutor{}
 		seq := &countingSequencer{}
-		cm := newBenchCache(b)
 
 		for i := 0; i < b.N; i++ {
 			r, err := NewReaper(
 				exec, seq,
 				genesis.Genesis{ChainID: "bench"},
-				zerolog.Nop(), cm,
+				zerolog.Nop(),
 				100*time.Millisecond,
 				func() {},
+				nil,
 			)
 			if err != nil {
 				b.Fatal(err)
@@ -283,7 +264,6 @@ func BenchmarkReaperFlow_StartStop(b *testing.B) {
 
 			exec := &infiniteExecutor{}
 			seq := &countingSequencer{}
-			cm := newBenchCache(b)
 
 			txs := make([][]byte, batchSize)
 			for j := range txs {
@@ -297,9 +277,10 @@ func BenchmarkReaperFlow_StartStop(b *testing.B) {
 			r, err := NewReaper(
 				exec, seq,
 				genesis.Genesis{ChainID: "bench"},
-				zerolog.Nop(), cm,
+				zerolog.Nop(),
 				10*time.Millisecond,
 				func() {},
+				nil,
 			)
 			if err != nil {
 				b.Fatal(err)

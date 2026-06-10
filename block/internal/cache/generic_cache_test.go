@@ -199,8 +199,6 @@ func TestCache_BasicOperations(t *testing.T) {
 	assert.False(t, c.isSeen("hash1"))
 	c.setSeen("hash1", 1)
 	assert.True(t, c.isSeen("hash1"))
-	c.removeSeen("hash1")
-	assert.False(t, c.isSeen("hash1"))
 
 	_, ok := c.getDAIncluded("hash2")
 	assert.False(t, ok)

@@ -102,6 +102,12 @@ func NewSequencer(
 		return nil, fmt.Errorf("failed to load batch queue from DB: %w", err)
 	}
 
+	// reconcile a crash between block commit and queue ack: drop reloaded
+	// WAL entries whose txs were already committed in the last block
+	if err := s.reconcileQueueWithLastBlock(loadCtx); err != nil {
+		return nil, fmt.Errorf("failed to reconcile batch queue with last committed block: %w", err)
+	}
+
 	// Load checkpoint from DB or initialize
 	checkpoint, err := s.checkpointStore.Load(loadCtx)
 	if err != nil {
@@ -132,6 +138,53 @@ func NewSequencer(
 	s.fiRetriever = block.NewForcedInclusionRetriever(daClient, cfg, logger, initialDAHeight, genesis.DAEpochForcedInclusion)
 	s.fiRetriever.Start(context.Background())
 	return s, nil
+}
+
+// reconcileQueueWithLastBlock drops queued txs that were already committed in
+// the last block. This covers a crash between block commit and queue Ack:
+// the un-acked WAL entries are reloaded by Load, but their txs are already
+// on chain. Only the last block needs checking — block production retries a
+// failed ack before draining again, so at most one committed block can be
+// un-acked at any time. Postponed txs were not included in the block and
+// therefore survive reconciliation.
+func (c *Sequencer) reconcileQueueWithLastBlock(ctx context.Context) error {
+	if c.queue.Size() == 0 {
+		return nil
+	}
+
+	s := store.New(store.NewEvNodeKVStore(c.db))
+	height, err := s.Height(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to read chain height: %w", err)
+	}
+	if height == 0 {
+		return nil
+	}
+
+	_, data, err := s.GetBlockData(ctx, height)
+	if err != nil {
+		return fmt.Errorf("failed to read block data at height %d: %w", height, err)
+	}
+	if data == nil || len(data.Txs) == 0 {
+		return nil
+	}
+
+	included := make([][]byte, len(data.Txs))
+	for i, tx := range data.Txs {
+		included[i] = tx
+	}
+
+	dropped, err := c.queue.DropIncluded(ctx, included)
+	if err != nil {
+		return err
+	}
+	if dropped > 0 {
+		c.logger.Info().
+			Int("dropped_txs", dropped).
+			Uint64("height", height).
+			Msg("dropped queued txs already committed in last block (crash recovery)")
+	}
+	return nil
 }
 
 // getInitialDAStartHeight retrieves the DA height of the first included chain height from store.
@@ -226,7 +279,7 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 	var mempoolBatch *coresequencer.Batch
 	if c.catchUpState.Load() != catchUpInProgress {
 		var err error
-		mempoolBatch, err = c.queue.Next(ctx)
+		mempoolBatch, err = c.queue.Drain(ctx, req.MaxBytes)
 		if err != nil {
 			return nil, err
 		}
@@ -300,19 +353,14 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 		}
 	}
 
-	// Return any postponed mempool txs to the queue for the next batch
-	// (they were valid but didn't fit due to size/gas limits)
+	// collect postponed mempool txs to be requeued at ack time (after block commit)
 	var postponedMempoolTxs [][]byte
 	for i, status := range filterStatuses {
 		if i >= forcedTxCount && status == execution.FilterPostpone {
 			postponedMempoolTxs = append(postponedMempoolTxs, allTxs[i])
 		}
 	}
-	if len(postponedMempoolTxs) > 0 {
-		if err := c.queue.Prepend(ctx, coresequencer.Batch{Transactions: postponedMempoolTxs}); err != nil {
-			c.logger.Error().Err(err).Int("count", len(postponedMempoolTxs)).Msg("failed to prepend postponed mempool txs")
-		}
-	}
+	c.queue.SetPostponed(postponedMempoolTxs)
 
 	// Update checkpoint after consuming forced inclusion transactions.
 	// txIndexForTimestamp is captured before the epoch-boundary reset so the
@@ -371,6 +419,16 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 		Timestamp: timestamp,
 		BatchData: req.LastBatchData,
 	}, nil
+}
+
+// AckBatch commits the current in-flight queue entries and requeues any postponed txs.
+func (c *Sequencer) AckBatch(ctx context.Context) error {
+	return c.queue.Ack(ctx)
+}
+
+// PendingBatchCount reports the number of queued plus drained-but-unacked batches.
+func (c *Sequencer) PendingBatchCount() int {
+	return c.queue.Size()
 }
 
 // VerifyBatch implements sequencing.Sequencer.
