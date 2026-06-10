@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"github.com/evstack/ev-node/apps/loadgen/internal"
+	"github.com/evstack/ev-node/apps/loadgen/internal/spamoor"
 	"github.com/spf13/cobra"
 )
 
@@ -16,7 +16,7 @@ func NewRootCmd() *cobra.Command {
 
 	rootCmd.PersistentFlags().StringVar(&spamoorFlag, "spamoor-url", "", "spamoor-daemon API URL (env: BENCH_SPAMOOR_URL)")
 
-	rootCmd.AddCommand(newRunCmd(), newStartCmd(), newCheckCmd(), newBurstCmd())
+	rootCmd.AddCommand(newRunCmd(), newStartCmd(), newBurstCmd())
 
 	return rootCmd
 }
@@ -25,5 +25,5 @@ func resolveSpamoorURL() string {
 	if spamoorFlag != "" {
 		return spamoorFlag
 	}
-	return internal.SpamoorURL()
+	return spamoor.URL()
 }

@@ -12,7 +12,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/evstack/ev-node/apps/loadgen/internal"
+	"github.com/evstack/ev-node/apps/loadgen/internal/runner"
+	"github.com/evstack/ev-node/apps/loadgen/internal/spamoor"
 	"github.com/spf13/cobra"
 )
 
@@ -62,7 +63,7 @@ func runScheduler(parent context.Context, cfg startConfig) error {
 	defer cancel()
 
 	spamoorAddr := resolveSpamoorURL()
-	api := internal.NewSpamoorClient(spamoorAddr)
+	api := spamoor.NewClient(spamoorAddr)
 
 	runsPerDay := float64(24*time.Hour) / float64(cfg.interval)
 	regularTxPerRun := int(float64(cfg.txPerDay) / runsPerDay)
@@ -71,7 +72,7 @@ func runScheduler(parent context.Context, cfg startConfig) error {
 		cfg.txPerDay, cfg.interval, regularTxPerRun, cfg.burstTxCount, cfg.burstPerDay)
 	log.Printf("regular-matrix=%s burst-matrix=%s spamoor=%s", cfg.regularMatrix, cfg.burstMatrix, spamoorAddr)
 
-	if err := internal.WaitForSync(ctx, api); err != nil {
+	if err := runner.WaitForSync(ctx, api); err != nil {
 		return err
 	}
 
@@ -79,7 +80,7 @@ func runScheduler(parent context.Context, cfg startConfig) error {
 	runWorkload := func(label, matrixPath string, txCount int) {
 		defer wg.Done()
 		log.Printf("==> %s workload starting (%d tx)", label, txCount)
-		if err := internal.ExecuteMatrixWithOverridesFromFile(ctx, matrixPath, api, txCount); err != nil {
+		if err := runner.ExecuteMatrixWithOverridesFromFile(ctx, matrixPath, api, txCount); err != nil {
 			log.Printf("%s workload error: %v", label, err)
 		}
 	}
@@ -105,7 +106,7 @@ func runScheduler(parent context.Context, cfg startConfig) error {
 			burstTimer.Stop()
 			wg.Wait()
 			log.Printf("cleaning up spammers")
-			if err := internal.DeleteAllSpammers(api); err != nil {
+			if err := runner.DeleteAllSpammers(api); err != nil {
 				log.Printf("warning: shutdown cleanup failed: %v", err)
 			}
 			return nil
@@ -153,7 +154,6 @@ func nextBurstTimer(remaining int, window time.Duration) *time.Timer {
 	if remaining <= 0 {
 		t := time.NewTimer(0)
 		t.Stop()
-		// drain channel in case it fired before Stop
 		select {
 		case <-t.C:
 		default:

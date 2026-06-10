@@ -1,4 +1,4 @@
-package internal
+package matrix
 
 import (
 	"encoding/json"
@@ -7,29 +7,29 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/celestiaorg/tastora/framework/docker/evstack/spamoor"
+	spamoorapi "github.com/celestiaorg/tastora/framework/docker/evstack/spamoor"
 )
 
 var validScenarios = map[string]bool{
-	spamoor.ScenarioEOATX:            true,
-	spamoor.ScenarioERC20TX:          true,
-	spamoor.ScenarioERC721TX:         true,
-	spamoor.ScenarioERC1155TX:        true,
-	spamoor.ScenarioCallTX:           true,
-	spamoor.ScenarioDeployTX:         true,
-	spamoor.ScenarioDeployDestruct:   true,
-	spamoor.ScenarioSetCodeTX:        true,
-	spamoor.ScenarioUniswapSwaps:     true,
-	spamoor.ScenarioBlobs:            true,
-	spamoor.ScenarioBlobAverage:      true,
-	spamoor.ScenarioBlobReplacements: true,
-	spamoor.ScenarioBlobConflicting:  true,
-	spamoor.ScenarioBlobCombined:     true,
-	spamoor.ScenarioGasBurnerTX:      true,
-	spamoor.ScenarioStorageSpam:      true,
-	spamoor.ScenarioGeasTX:           true,
-	spamoor.ScenarioXenToken:         true,
-	spamoor.ScenarioTaskRunner:       true,
+	spamoorapi.ScenarioEOATX:            true,
+	spamoorapi.ScenarioERC20TX:          true,
+	spamoorapi.ScenarioERC721TX:         true,
+	spamoorapi.ScenarioERC1155TX:        true,
+	spamoorapi.ScenarioCallTX:           true,
+	spamoorapi.ScenarioDeployTX:         true,
+	spamoorapi.ScenarioDeployDestruct:   true,
+	spamoorapi.ScenarioSetCodeTX:        true,
+	spamoorapi.ScenarioUniswapSwaps:     true,
+	spamoorapi.ScenarioBlobs:            true,
+	spamoorapi.ScenarioBlobAverage:      true,
+	spamoorapi.ScenarioBlobReplacements: true,
+	spamoorapi.ScenarioBlobConflicting:  true,
+	spamoorapi.ScenarioBlobCombined:     true,
+	spamoorapi.ScenarioGasBurnerTX:      true,
+	spamoorapi.ScenarioStorageSpam:      true,
+	spamoorapi.ScenarioGeasTX:           true,
+	spamoorapi.ScenarioXenToken:         true,
+	spamoorapi.ScenarioTaskRunner:       true,
 }
 
 // Matrix is the top-level structure of a benchmark matrix JSON file.
@@ -37,8 +37,13 @@ type Matrix struct {
 	Entries []Entry `json:"entries"`
 }
 
-// Entry is a single benchmark scenario in a matrix file. NumSpammers and
-// CountPerSpammer are derived from Env during validation.
+const (
+	EnvNumSpammers     = "BENCH_NUM_SPAMMERS"
+	EnvCountPerSpammer = "BENCH_COUNT_PER_SPAMMER"
+)
+
+// Entry is a single benchmark scenario in a matrix file. NumSpammers,
+// CountPerSpammer, and ParsedTimeout are derived from Env/Timeout during validation.
 type Entry struct {
 	TestName        string            `json:"test_name"`
 	Scenario        string            `json:"scenario"`
@@ -47,10 +52,11 @@ type Entry struct {
 	Env             map[string]string `json:"env"`
 	NumSpammers     int               `json:"-"`
 	CountPerSpammer int               `json:"-"`
+	ParsedTimeout   time.Duration     `json:"-"`
 }
 
-// LoadMatrix reads and validates a matrix JSON file from disk.
-func LoadMatrix(path string) (*Matrix, error) {
+// Load reads and validates a matrix JSON file from disk.
+func Load(path string) (*Matrix, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read matrix file: %w", err)
@@ -59,13 +65,13 @@ func LoadMatrix(path string) (*Matrix, error) {
 	if err := json.Unmarshal(data, &m); err != nil {
 		return nil, fmt.Errorf("parse matrix JSON: %w", err)
 	}
-	if err := validateMatrix(&m); err != nil {
+	if err := Validate(&m); err != nil {
 		return nil, err
 	}
 	return &m, nil
 }
 
-func validateMatrix(m *Matrix) error {
+func Validate(m *Matrix) error {
 	if len(m.Entries) == 0 {
 		return fmt.Errorf("matrix has no entries")
 	}
@@ -85,14 +91,14 @@ func (e *Entry) validate() error {
 		return fmt.Errorf("unknown scenario %q", e.Scenario)
 	}
 
-	e.NumSpammers = envInt(e.Env, "BENCH_NUM_SPAMMERS", 1)
+	e.NumSpammers = envInt(e.Env, EnvNumSpammers, 1)
 	if e.NumSpammers <= 0 {
-		return fmt.Errorf("BENCH_NUM_SPAMMERS must be > 0")
+		return fmt.Errorf("%s must be > 0", EnvNumSpammers)
 	}
 
-	e.CountPerSpammer = envInt(e.Env, "BENCH_COUNT_PER_SPAMMER", 0)
+	e.CountPerSpammer = envInt(e.Env, EnvCountPerSpammer, 0)
 	if e.CountPerSpammer <= 0 {
-		return fmt.Errorf("BENCH_COUNT_PER_SPAMMER must be > 0")
+		return fmt.Errorf("%s must be > 0", EnvCountPerSpammer)
 	}
 
 	if e.Probability != nil && (*e.Probability < 0 || *e.Probability > 1) {
@@ -100,9 +106,11 @@ func (e *Entry) validate() error {
 	}
 
 	if e.Timeout != "" {
-		if _, err := time.ParseDuration(e.Timeout); err != nil {
+		d, err := time.ParseDuration(e.Timeout)
+		if err != nil {
 			return fmt.Errorf("invalid timeout %q: %w", e.Timeout, err)
 		}
+		e.ParsedTimeout = d
 	}
 
 	return nil

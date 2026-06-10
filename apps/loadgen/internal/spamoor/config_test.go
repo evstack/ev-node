@@ -1,4 +1,4 @@
-package internal
+package spamoor
 
 import (
 	"testing"
@@ -6,15 +6,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSpamoorURL(t *testing.T) {
+func TestURL(t *testing.T) {
 	t.Run("default", func(t *testing.T) {
 		t.Setenv("BENCH_SPAMOOR_URL", "")
-		require.Equal(t, DefaultSpamoorURL, SpamoorURL())
+		require.Equal(t, DefaultURL, URL())
 	})
 
 	t.Run("env override", func(t *testing.T) {
 		t.Setenv("BENCH_SPAMOOR_URL", "http://localhost:9999")
-		require.Equal(t, "http://localhost:9999", SpamoorURL())
+		require.Equal(t, "http://localhost:9999", URL())
 	})
 }
 

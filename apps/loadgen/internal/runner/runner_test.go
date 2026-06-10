@@ -1,4 +1,4 @@
-package internal
+package runner
 
 import (
 	"context"
@@ -7,16 +7,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/celestiaorg/tastora/framework/docker/evstack/spamoor"
+	"github.com/evstack/ev-node/apps/loadgen/internal/matrix"
+	"github.com/evstack/ev-node/apps/loadgen/internal/spamoor"
+
+	spamoorapi "github.com/celestiaorg/tastora/framework/docker/evstack/spamoor"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 )
 
 func TestRunEntryUsesBaselineCounters(t *testing.T) {
-	client := &fakeSpamoorClient{
-		spammers:  []spamoor.Spammer{{ID: 99}},
+	client := &fakeClient{
+		spammers:  []spamoorapi.Spammer{{ID: 99}},
 		createIDs: []int{11, 12},
-		getSpammerByID: map[int]*spamoor.Spammer{
+		getSpammerByID: map[int]*spamoorapi.Spammer{
 			11: {ID: 11, Name: "bench-baseline-0", Status: 1},
 			12: {ID: 12, Name: "bench-baseline-1", Status: 1},
 		},
@@ -30,13 +33,13 @@ func TestRunEntryUsesBaselineCounters(t *testing.T) {
 	var gotBaselineSent float64
 	var gotBaselineFailed float64
 
-	err := runEntryWithWait(context.Background(), client, Entry{
+	err := runEntryWithWait(context.Background(), client, matrix.Entry{
 		TestName:        "baseline",
-		Scenario:        spamoor.ScenarioEOATX,
+		Scenario:        spamoorapi.ScenarioEOATX,
 		Env:             map[string]string{"BENCH_COUNT_PER_SPAMMER": "5"},
 		NumSpammers:     2,
 		CountPerSpammer: 5,
-	}, func(ctx context.Context, api SpamoorClient, targetCount int, baselineSent, baselineFailed float64, namePrefix string) (float64, float64, error) {
+	}, func(ctx context.Context, api spamoor.Client, targetCount int, baselineSent, baselineFailed float64, namePrefix string) (float64, float64, error) {
 		gotTarget = targetCount
 		gotBaselineSent = baselineSent
 		gotBaselineFailed = baselineFailed
@@ -51,9 +54,9 @@ func TestRunEntryUsesBaselineCounters(t *testing.T) {
 }
 
 func TestRunEntryFailsWhenSpammerDoesNotStart(t *testing.T) {
-	client := &fakeSpamoorClient{
+	client := &fakeClient{
 		createIDs: []int{11},
-		getSpammerByID: map[int]*spamoor.Spammer{
+		getSpammerByID: map[int]*spamoorapi.Spammer{
 			11: {ID: 11, Name: "bench-fail-0", Status: 0},
 		},
 		metricsSeq: []metricSnapshot{
@@ -62,13 +65,13 @@ func TestRunEntryFailsWhenSpammerDoesNotStart(t *testing.T) {
 		spammerNames: []string{"bench-fail-0"},
 	}
 
-	err := runEntryWithWait(context.Background(), client, Entry{
+	err := runEntryWithWait(context.Background(), client, matrix.Entry{
 		TestName:        "fail",
-		Scenario:        spamoor.ScenarioEOATX,
+		Scenario:        spamoorapi.ScenarioEOATX,
 		Env:             map[string]string{"BENCH_COUNT_PER_SPAMMER": "1"},
 		NumSpammers:     1,
 		CountPerSpammer: 1,
-	}, func(ctx context.Context, api SpamoorClient, targetCount int, baselineSent, baselineFailed float64, namePrefix string) (float64, float64, error) {
+	}, func(ctx context.Context, api spamoor.Client, targetCount int, baselineSent, baselineFailed float64, namePrefix string) (float64, float64, error) {
 		t.Fatal("wait function should not be called when spammer startup fails")
 		return 0, 0, nil
 	})
@@ -77,7 +80,7 @@ func TestRunEntryFailsWhenSpammerDoesNotStart(t *testing.T) {
 }
 
 func TestWaitForSpamoorDoneUsesDeltas(t *testing.T) {
-	client := &fakeSpamoorClient{
+	client := &fakeClient{
 		metricsSeq: []metricSnapshot{
 			{sent: 105, failed: 3},
 			{sent: 108, failed: 4},
@@ -92,7 +95,7 @@ func TestWaitForSpamoorDoneUsesDeltas(t *testing.T) {
 }
 
 func TestWaitForSpamoorDoneHonorsContext(t *testing.T) {
-	client := &fakeSpamoorClient{
+	client := &fakeClient{
 		metricsSeq: []metricSnapshot{
 			{sent: 100, failed: 0},
 		},
@@ -107,8 +110,8 @@ func TestWaitForSpamoorDoneHonorsContext(t *testing.T) {
 }
 
 func TestWaitForSyncReturnsOnceHeightDeltaSettles(t *testing.T) {
-	client := &fakeSpamoorClient{
-		clientsSeq: [][]spamoor.Client{
+	client := &fakeClient{
+		clientsSeq: [][]spamoorapi.Client{
 			{{Height: 100}},
 			{{Height: 108}},
 		},
@@ -119,7 +122,7 @@ func TestWaitForSyncReturnsOnceHeightDeltaSettles(t *testing.T) {
 }
 
 func TestWaitForSyncHonorsContext(t *testing.T) {
-	client := &fakeSpamoorClient{
+	client := &fakeClient{
 		getClientsErr: errors.New("boom"),
 	}
 
@@ -149,8 +152,6 @@ func TestSumCounterWithPrefixFiltersCorrectly(t *testing.T) {
 	})
 
 	t.Run("baseline prefix does not match burst spammers", func(t *testing.T) {
-		// "bench-EOATransfer-" does not match "bench-EOATransferBurst-"
-		// because the dash after "Transfer" differs from "B" in "Burst".
 		total := sumCounterWithPrefix(family, "bench-EOATransfer-")
 		require.Equal(t, 1000.0, total)
 	})
@@ -170,17 +171,17 @@ type metricSnapshot struct {
 	failed float64
 }
 
-type fakeSpamoorClient struct {
-	spammers       []spamoor.Spammer
+type fakeClient struct {
+	spammers       []spamoorapi.Spammer
 	createIDs      []int
 	createCalls    []createCall
-	getSpammerByID map[int]*spamoor.Spammer
+	getSpammerByID map[int]*spamoorapi.Spammer
 	metricsSeq     []metricSnapshot
 	metricsIndex   int
-	clientsSeq     [][]spamoor.Client
+	clientsSeq     [][]spamoorapi.Client
 	clientsIndex   int
 	getClientsErr  error
-	spammerNames []string
+	spammerNames   []string
 }
 
 type createCall struct {
@@ -190,17 +191,17 @@ type createCall struct {
 	start    bool
 }
 
-func (f *fakeSpamoorClient) URL() string { return "http://spamoor.test" }
+func (f *fakeClient) URL() string { return "http://spamoor.test" }
 
-func (f *fakeSpamoorClient) ListSpammers() ([]spamoor.Spammer, error) {
-	return append([]spamoor.Spammer(nil), f.spammers...), nil
+func (f *fakeClient) ListSpammers() ([]spamoorapi.Spammer, error) {
+	return append([]spamoorapi.Spammer(nil), f.spammers...), nil
 }
 
-func (f *fakeSpamoorClient) DeleteSpammer(id int) error {
+func (f *fakeClient) DeleteSpammer(id int) error {
 	return nil
 }
 
-func (f *fakeSpamoorClient) CreateSpammer(name, scenario string, config any, start bool) (int, error) {
+func (f *fakeClient) CreateSpammer(name, scenario string, config any, start bool) (int, error) {
 	f.createCalls = append(f.createCalls, createCall{name: name, scenario: scenario, config: config, start: start})
 	if len(f.createIDs) == 0 {
 		return 0, fmt.Errorf("unexpected CreateSpammer call")
@@ -210,7 +211,7 @@ func (f *fakeSpamoorClient) CreateSpammer(name, scenario string, config any, sta
 	return id, nil
 }
 
-func (f *fakeSpamoorClient) GetSpammer(id int) (*spamoor.Spammer, error) {
+func (f *fakeClient) GetSpammer(id int) (*spamoorapi.Spammer, error) {
 	sp, ok := f.getSpammerByID[id]
 	if !ok {
 		return nil, fmt.Errorf("spammer %d not found", id)
@@ -218,7 +219,7 @@ func (f *fakeSpamoorClient) GetSpammer(id int) (*spamoor.Spammer, error) {
 	return sp, nil
 }
 
-func (f *fakeSpamoorClient) GetMetrics() (map[string]*dto.MetricFamily, error) {
+func (f *fakeClient) GetMetrics() (map[string]*dto.MetricFamily, error) {
 	snapshot := metricSnapshot{}
 	if len(f.metricsSeq) > 0 {
 		if f.metricsIndex >= len(f.metricsSeq) {
@@ -243,7 +244,7 @@ func (f *fakeSpamoorClient) GetMetrics() (map[string]*dto.MetricFamily, error) {
 	}, nil
 }
 
-func (f *fakeSpamoorClient) GetClients() ([]spamoor.Client, error) {
+func (f *fakeClient) GetClients() ([]spamoorapi.Client, error) {
 	if f.getClientsErr != nil {
 		return nil, f.getClientsErr
 	}
@@ -263,13 +264,11 @@ func labeledCounterFamily(name string, spammerValues map[string]float64) *dto.Me
 	labelName := "spammer_name"
 	var metrics []*dto.Metric
 	for spammerName, value := range spammerValues {
-		n := spammerName
-		v := value
 		metrics = append(metrics, &dto.Metric{
 			Label: []*dto.LabelPair{
-				{Name: &labelName, Value: &n},
+				{Name: &labelName, Value: &spammerName},
 			},
-			Counter: &dto.Counter{Value: &v},
+			Counter: &dto.Counter{Value: &value},
 		})
 	}
 	return &dto.MetricFamily{

@@ -3,7 +3,8 @@ package cmd
 import (
 	"log"
 
-	"github.com/evstack/ev-node/apps/loadgen/internal"
+	"github.com/evstack/ev-node/apps/loadgen/internal/runner"
+	"github.com/evstack/ev-node/apps/loadgen/internal/spamoor"
 	"github.com/spf13/cobra"
 )
 
@@ -18,15 +19,14 @@ func newBurstCmd() *cobra.Command {
 		Short: "trigger a single burst workload immediately",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			spamoorAddr := resolveSpamoorURL()
-			api := internal.NewSpamoorClient(spamoorAddr)
+			api := spamoor.NewClient(resolveSpamoorURL())
 
-			if err := internal.WaitForSync(cmd.Context(), api); err != nil {
+			if err := runner.WaitForSync(cmd.Context(), api); err != nil {
 				return err
 			}
 
 			log.Printf("==> burst workload starting (%d tx)", txCount)
-			return internal.ExecuteMatrixWithOverridesFromFile(cmd.Context(), matrixPath, api, txCount)
+			return runner.ExecuteMatrixWithOverridesFromFile(cmd.Context(), matrixPath, api, txCount)
 		},
 	}
 

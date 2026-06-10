@@ -1,6 +1,6 @@
 # loadgen
 
-Standalone load generator for ev-node stress testing. Talks to a [spamoor-daemon](https://github.com/ethpandaops/spamoor) sidecar via HTTP API. Runs an in-process scheduler with configurable regular and burst workloads.
+Standalone load generator for ev-node stress testing. Talks to a [spamoor-daemon](https://github.com/ethpandaops/spamoor) sidecar via HTTP API.
 
 ## Architecture
 
@@ -14,32 +14,57 @@ ev-loadgen (this binary)  -->  spamoor-daemon  -->  ev-reth RPC
 - **spamoor-daemon** needs: a funded private key + ev-reth RPC URL
 - **ev-loadgen** needs: spamoor-daemon API URL + matrix JSON files
 
-## Commands
+## Modes
 
-```text
-ev-loadgen start                         # run continuous scheduler (regular + burst)
-ev-loadgen check                         # send 1 tx to verify spamoor → ev-reth connectivity
-ev-loadgen run <matrix.json>             # one-shot: run a custom matrix file
+### Daemon mode (`start`)
+
+Runs a continuous scheduler with regular and burst workloads. Designed for long-running deployments.
+
+```sh
+ev-loadgen start --spamoor-url=http://localhost:8080
 ```
 
-### start flags
+Regular workloads fire immediately at startup, then repeat at `--interval`. Per-run tx count = `tx-per-day / (24h / interval)`, overriding each matrix entry's `BENCH_COUNT_PER_SPAMMER`.
+
+Bursts are randomly spaced throughout a rolling 24h window. Set `--burst-per-day=0` (the default) to disable bursts entirely.
+
+#### start flags
 
 | Flag | Env | Default | Description |
 |------|-----|---------|-------------|
 | `--tx-per-day` | `BENCH_TX_PER_DAY` | `1000000` | sustained txs/day |
 | `--interval` | `BENCH_INTERVAL` | `1h` | regular workload frequency |
 | `--burst-tx-count` | `BENCH_BURST_TX_COUNT` | `500000` | txs per burst |
-| `--burst-per-day` | `BENCH_BURST_PER_DAY` | `2` | bursts per day, randomly spaced |
+| `--burst-per-day` | `BENCH_BURST_PER_DAY` | `0` | bursts per day, randomly spaced (0 = disabled) |
 | `--regular-matrix` | `BENCH_REGULAR_MATRIX` | `/home/ev/baseline.json` | path to regular matrix JSON |
 | `--burst-matrix` | `BENCH_BURST_MATRIX` | `/home/ev/burst.json` | path to burst matrix JSON |
 
-Global flag: `--spamoor-url` (or `BENCH_SPAMOOR_URL` env, default `http://spamoor-daemon:8080`)
+### CLI mode (one-shot commands)
 
-### Scheduling
+#### `run` — execute a matrix file
 
-- **Regular**: fires immediately at startup, then repeats at `--interval`. Per-run tx count = `tx-per-day / (24h / interval)`. Overrides each matrix entry's `BENCH_COUNT_PER_SPAMMER`.
-- **Burst**: at startup + each midnight UTC, generates N random times across the day. Each burst overrides `BENCH_COUNT_PER_SPAMMER` = `burst-tx-count / NumSpammers`.
-- **Serialization**: a mutex prevents concurrent spamoor access. If burst fires during regular (or vice versa), it waits for the lock.
+Runs all entries from a matrix JSON file with probability filtering and sync waiting, then exits.
+
+```sh
+ev-loadgen run matrices/baseline.json --spamoor-url=http://localhost:8080
+```
+
+#### `burst` — trigger a single burst
+
+Fires one burst workload immediately and exits.
+
+```sh
+ev-loadgen burst --spamoor-url=http://localhost:8080
+```
+
+| Flag | Env | Default | Description |
+|------|-----|---------|-------------|
+| `--tx-count` | `BENCH_BURST_TX_COUNT` | `500000` | total transactions for the burst |
+| `--burst-matrix` | `BENCH_BURST_MATRIX` | `/home/ev/burst.json` | path to burst matrix JSON |
+
+### Global flag
+
+`--spamoor-url` (or `BENCH_SPAMOOR_URL` env, default `http://spamoor-daemon:8080`)
 
 ## Quick Start
 
@@ -59,10 +84,13 @@ docker run -d --name spamoor -p 8080:8080 \
 # build
 cd apps/loadgen && go build -o ev-loadgen .
 
-# run with defaults (~1M tx/day, 2 bursts/day)
+# one-shot matrix run
+./ev-loadgen run matrices/baseline.json --spamoor-url=http://localhost:8080
+
+# continuous daemon (~1M tx/day, no bursts)
 ./ev-loadgen start --spamoor-url=http://localhost:8080
 
-# custom config
+# continuous daemon with bursts
 ./ev-loadgen start \
   --spamoor-url=http://localhost:8080 \
   --tx-per-day=500000 \
@@ -109,10 +137,10 @@ Each entry specifies a spamoor scenario, tx counts, and optional probability:
 | Field | Description |
 |---|---|
 | `scenario` | spamoor scenario name (`eoatx`, `gasburnertx`, `erc20tx`, `uniswap-swaps`, etc.) |
-| `probability` | 0.0–1.0, chance of running per invocation (omit = always run) |
+| `probability` | 0.0-1.0, chance of running per invocation (omit = always run) |
 | `timeout` | max duration per entry (default `15m`) |
 
-When using `start`, the `BENCH_COUNT_PER_SPAMMER` value in the matrix is overridden by the computed per-run count. The matrix value is still used by the `run` command.
+When using `start` or `burst`, `BENCH_COUNT_PER_SPAMMER` is overridden by the computed per-run count. The matrix value is used as-is by `run`.
 
 ## Build
 

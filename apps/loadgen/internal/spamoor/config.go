@@ -1,20 +1,6 @@
-package internal
+package spamoor
 
-import (
-	"os"
-	"strconv"
-)
-
-const DefaultSpamoorURL = "http://spamoor-daemon:8080"
-
-// SpamoorURL returns the spamoor-daemon API URL from BENCH_SPAMOOR_URL,
-// falling back to DefaultSpamoorURL.
-func SpamoorURL() string {
-	if v := os.Getenv("BENCH_SPAMOOR_URL"); v != "" {
-		return v
-	}
-	return DefaultSpamoorURL
-}
+import "strconv"
 
 var envMapping = map[string]string{
 	"BENCH_COUNT_PER_SPAMMER": "total_count",

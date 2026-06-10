@@ -1,4 +1,4 @@
-package internal
+package matrix
 
 import (
 	"encoding/json"
@@ -6,37 +6,37 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/celestiaorg/tastora/framework/docker/evstack/spamoor"
+	spamoorapi "github.com/celestiaorg/tastora/framework/docker/evstack/spamoor"
 	"github.com/stretchr/testify/require"
 )
 
-func TestValidateMatrix(t *testing.T) {
+func TestValidate(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		m := Matrix{
 			Entries: []Entry{
 				{
 					TestName: "EOA",
-					Scenario: spamoor.ScenarioEOATX,
+					Scenario: spamoorapi.ScenarioEOATX,
 					Timeout:  "2m",
 					Probability: func() *float64 {
 						v := 0.5
 						return &v
 					}(),
 					Env: map[string]string{
-						"BENCH_NUM_SPAMMERS":     "2",
+						"BENCH_NUM_SPAMMERS":      "2",
 						"BENCH_COUNT_PER_SPAMMER": "7",
 					},
 				},
 			},
 		}
 
-		require.NoError(t, validateMatrix(&m))
+		require.NoError(t, Validate(&m))
 		require.Equal(t, 2, m.Entries[0].NumSpammers)
 		require.Equal(t, 7, m.Entries[0].CountPerSpammer)
 	})
 
 	t.Run("empty entries", func(t *testing.T) {
-		err := validateMatrix(&Matrix{})
+		err := Validate(&Matrix{})
 		require.ErrorContains(t, err, "matrix has no entries")
 	})
 
@@ -53,7 +53,7 @@ func TestValidateMatrix(t *testing.T) {
 			},
 		}
 
-		err := validateMatrix(&m)
+		err := Validate(&m)
 		require.ErrorContains(t, err, `unknown scenario "unknown"`)
 	})
 
@@ -62,16 +62,16 @@ func TestValidateMatrix(t *testing.T) {
 			Entries: []Entry{
 				{
 					TestName: "Bad",
-					Scenario: spamoor.ScenarioEOATX,
+					Scenario: spamoorapi.ScenarioEOATX,
 					Env: map[string]string{
-						"BENCH_NUM_SPAMMERS":     "0",
+						"BENCH_NUM_SPAMMERS":      "0",
 						"BENCH_COUNT_PER_SPAMMER": "1",
 					},
 				},
 			},
 		}
 
-		err := validateMatrix(&m)
+		err := Validate(&m)
 		require.ErrorContains(t, err, "BENCH_NUM_SPAMMERS must be > 0")
 	})
 
@@ -80,7 +80,7 @@ func TestValidateMatrix(t *testing.T) {
 			Entries: []Entry{
 				{
 					TestName: "Bad",
-					Scenario: spamoor.ScenarioEOATX,
+					Scenario: spamoorapi.ScenarioEOATX,
 					Env: map[string]string{
 						"BENCH_COUNT_PER_SPAMMER": "0",
 					},
@@ -88,7 +88,7 @@ func TestValidateMatrix(t *testing.T) {
 			},
 		}
 
-		err := validateMatrix(&m)
+		err := Validate(&m)
 		require.ErrorContains(t, err, "BENCH_COUNT_PER_SPAMMER must be > 0")
 	})
 
@@ -98,7 +98,7 @@ func TestValidateMatrix(t *testing.T) {
 			Entries: []Entry{
 				{
 					TestName:    "Bad",
-					Scenario:    spamoor.ScenarioEOATX,
+					Scenario:    spamoorapi.ScenarioEOATX,
 					Probability: &v,
 					Env: map[string]string{
 						"BENCH_COUNT_PER_SPAMMER": "1",
@@ -107,18 +107,18 @@ func TestValidateMatrix(t *testing.T) {
 			},
 		}
 
-		err := validateMatrix(&m)
+		err := Validate(&m)
 		require.ErrorContains(t, err, "probability must be between 0.0 and 1.0")
 	})
 }
 
-func TestLoadMatrix(t *testing.T) {
+func TestLoad(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		m := Matrix{
 			Entries: []Entry{
 				{
 					TestName: "EOA",
-					Scenario: spamoor.ScenarioEOATX,
+					Scenario: spamoorapi.ScenarioEOATX,
 					Env: map[string]string{
 						"BENCH_NUM_SPAMMERS":      "2",
 						"BENCH_COUNT_PER_SPAMMER": "7",
@@ -132,7 +132,7 @@ func TestLoadMatrix(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "matrix.json")
 		require.NoError(t, os.WriteFile(path, data, 0o600))
 
-		loaded, err := LoadMatrix(path)
+		loaded, err := Load(path)
 		require.NoError(t, err)
 		require.Equal(t, m.Entries[0].TestName, loaded.Entries[0].TestName)
 		require.Equal(t, 2, loaded.Entries[0].NumSpammers)
@@ -143,7 +143,7 @@ func TestLoadMatrix(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "invalid.json")
 		require.NoError(t, os.WriteFile(path, []byte(`{`), 0o600))
 
-		_, err := LoadMatrix(path)
+		_, err := Load(path)
 		require.ErrorContains(t, err, "parse matrix JSON")
 	})
 }
