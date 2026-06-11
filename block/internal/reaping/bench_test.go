@@ -97,7 +97,6 @@ func benchmarkReaperFlow(b *testing.B, batchSize int, txSize int, feedInterval t
 			zerolog.Nop(),
 			50*time.Millisecond,
 			func() { notified.Add(1) },
-			nil,
 		)
 		if err != nil {
 			b.Fatal(err)
@@ -181,7 +180,6 @@ func BenchmarkReaperFlow_Sustained(b *testing.B) {
 			zerolog.Nop(),
 			10*time.Millisecond,
 			func() { notified.Add(1) },
-			nil,
 		)
 		if err != nil {
 			b.Fatal(err)
@@ -240,7 +238,6 @@ func BenchmarkReaperFlow_StartStop(b *testing.B) {
 				zerolog.Nop(),
 				100*time.Millisecond,
 				func() {},
-				nil,
 			)
 			if err != nil {
 				b.Fatal(err)
@@ -281,7 +278,6 @@ func BenchmarkReaperFlow_StartStop(b *testing.B) {
 				zerolog.Nop(),
 				10*time.Millisecond,
 				func() {},
-				nil,
 			)
 			if err != nil {
 				b.Fatal(err)

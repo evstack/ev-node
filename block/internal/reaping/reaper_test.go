@@ -39,7 +39,6 @@ func newTestEnv(t *testing.T) *testEnv {
 		zerolog.Nop(),
 		100*time.Millisecond,
 		env.notify,
-		nil,
 	)
 	require.NoError(t, err)
 	env.reaper = r
@@ -130,7 +129,6 @@ func TestReaper_NilCallback_NoPanic(t *testing.T) {
 		zerolog.Nop(),
 		100*time.Millisecond,
 		nil,
-		nil,
 	)
 	require.NoError(t, err)
 
@@ -141,31 +139,6 @@ func TestReaper_NilCallback_NoPanic(t *testing.T) {
 
 	err = r.drainMempool()
 	assert.NoError(t, err)
-}
-
-func TestReaper_DuplicateScrape_NoNotify(t *testing.T) {
-	mockExec := testmocks.NewMockExecutor(t)
-	mockSeq := testmocks.NewMockSequencer(t)
-
-	var notified atomic.Bool
-	// enqueue count never changes — submission was fully deduped
-	r, err := NewReaper(
-		mockExec, mockSeq,
-		genesis.Genesis{ChainID: "test-chain"},
-		zerolog.Nop(),
-		100*time.Millisecond,
-		func() { notified.Store(true) },
-		func() uint64 { return 1 },
-	)
-	require.NoError(t, err)
-
-	tx := []byte("dup-tx")
-	mockExec.EXPECT().GetTxs(mock.Anything).Return([][]byte{tx}, nil).Once()
-	mockSeq.EXPECT().SubmitBatchTxs(mock.Anything, mock.AnythingOfType("sequencer.SubmitBatchTxsRequest")).
-		Return(&coresequencer.SubmitBatchTxsResponse{}, nil).Once()
-
-	require.NoError(t, r.drainMempool())
-	assert.False(t, notified.Load())
 }
 
 func TestReaper_StopTerminates(t *testing.T) {

@@ -425,13 +425,6 @@ func (c *Sequencer) AckBatch(ctx context.Context) error {
 	return c.queue.Ack(ctx)
 }
 
-// TotalEnqueuedBatches reports a monotonic count of batches enqueued via
-// SubmitBatchTxs. It never decreases, so two snapshots reliably detect
-// whether new batches were enqueued in between.
-func (c *Sequencer) TotalEnqueuedBatches() uint64 {
-	return c.queue.TotalEnqueued()
-}
-
 // VerifyBatch implements sequencing.Sequencer.
 func (c *Sequencer) VerifyBatch(ctx context.Context, req coresequencer.VerifyBatchRequest) (*coresequencer.VerifyBatchResponse, error) {
 	if !c.isValid(req.Id) {

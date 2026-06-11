@@ -28,12 +28,6 @@ type Reaper struct {
 	interval       time.Duration
 	onTxsSubmitted func()
 
-	// totalEnqueuedBatches reports the sequencer's monotonic enqueue count,
-	// used to detect whether a submission actually enqueued new entries.
-	// monotonicity makes the before/after comparison immune to concurrent
-	// drains shrinking the queue. Optional.
-	totalEnqueuedBatches func() uint64
-
 	logger zerolog.Logger
 
 	ctx    context.Context
@@ -48,20 +42,18 @@ func NewReaper(
 	logger zerolog.Logger,
 	scrapeInterval time.Duration,
 	onTxsSubmitted func(),
-	totalEnqueuedBatches func() uint64,
 ) (*Reaper, error) {
 	if scrapeInterval == 0 {
 		return nil, errors.New("scrape interval cannot be empty")
 	}
 
 	return &Reaper{
-		exec:                 exec,
-		sequencer:            sequencer,
-		chainID:              genesis.ChainID,
-		interval:             scrapeInterval,
-		logger:               logger.With().Str("component", "reaper").Logger(),
-		onTxsSubmitted:       onTxsSubmitted,
-		totalEnqueuedBatches: totalEnqueuedBatches,
+		exec:           exec,
+		sequencer:      sequencer,
+		chainID:        genesis.ChainID,
+		interval:       scrapeInterval,
+		logger:         logger.With().Str("component", "reaper").Logger(),
+		onTxsSubmitted: onTxsSubmitted,
 	}, nil
 }
 
@@ -141,11 +133,6 @@ func (r *Reaper) drainMempool() error {
 		return nil
 	}
 
-	var before uint64
-	if r.totalEnqueuedBatches != nil {
-		before = r.totalEnqueuedBatches()
-	}
-
 	_, err = r.sequencer.SubmitBatchTxs(r.ctx, coresequencer.SubmitBatchTxsRequest{
 		Id:    []byte(r.chainID),
 		Batch: &coresequencer.Batch{Transactions: txs},
@@ -154,19 +141,15 @@ func (r *Reaper) drainMempool() error {
 		return fmt.Errorf("failed to submit txs to sequencer: %w", err)
 	}
 
-	// without an enqueue count we cannot tell duplicates apart, so assume queued
-	queued := true
-	if r.totalEnqueuedBatches != nil {
-		queued = r.totalEnqueuedBatches() > before
-	}
-
-	if r.onTxsSubmitted != nil && queued {
+	// the sequencer dedups resubmitted txs, so this may notify for txs that
+	// were already queued. at worst this triggers an unnecessary (possibly
+	// empty) block in lazy mode.
+	if r.onTxsSubmitted != nil {
 		r.onTxsSubmitted()
 	}
 
 	r.logger.Debug().
 		Int("seen_txs", len(txs)).
-		Bool("queued", queued).
 		Msg("drained mempool")
 
 	return nil

@@ -276,17 +276,6 @@ func newAggregatorComponents(
 	}
 	pruner := pruner.New(logger, store, execPruner, config.Pruning, config.Node.BlockTime.Duration, config.DA.Address)
 
-	// expose the raw sequencer's monotonic enqueue count so the reaper can
-	// distinguish duplicate scrapes from newly queued entries, even when
-	// the sequencer is wrapped with tracing
-	type enqueueCounter interface {
-		TotalEnqueuedBatches() uint64
-	}
-	var totalEnqueuedBatches func() uint64
-	if counter, ok := rawSequencer.(enqueueCounter); ok {
-		totalEnqueuedBatches = counter.TotalEnqueuedBatches
-	}
-
 	reaper, err := reaping.NewReaper(
 		exec,
 		sequencer,
@@ -294,7 +283,6 @@ func newAggregatorComponents(
 		logger,
 		config.Node.ScrapeInterval.Duration,
 		executor.NotifyNewTransactions,
-		totalEnqueuedBatches,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create reaper: %w", err)

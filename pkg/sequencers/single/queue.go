@@ -61,10 +61,6 @@ type BatchQueue struct {
 	// by maxQueueSize (unbounded when maxQueueSize is 0).
 	txSeen map[[32]byte]struct{}
 
-	// totalEnqueued counts batches ever enqueued via AddBatch. Monotonic,
-	// never decremented, so callers can detect new enqueues race-free.
-	totalEnqueued uint64
-
 	// Sequence numbers for generating new keys
 	nextAddSeq     uint64
 	nextPrependSeq uint64
@@ -142,7 +138,6 @@ func (bq *BatchQueue) AddBatch(ctx context.Context, batch coresequencer.Batch) e
 	bq.nextAddSeq++
 
 	bq.queue = append(bq.queue, queuedItem{Batch: batch, Key: key})
-	bq.totalEnqueued++
 
 	return nil
 }
@@ -535,15 +530,6 @@ func (bq *BatchQueue) Size() int {
 	bq.mu.Lock()
 	defer bq.mu.Unlock()
 	return len(bq.queue) - bq.head + len(bq.inFlight)
-}
-
-// TotalEnqueued returns a monotonic count of batches ever enqueued via
-// AddBatch. Unlike Size it never decreases, so comparing two snapshots
-// reliably detects whether new batches were enqueued in between.
-func (bq *BatchQueue) TotalEnqueued() uint64 {
-	bq.mu.Lock()
-	defer bq.mu.Unlock()
-	return bq.totalEnqueued
 }
 
 // persistBatch persists a batch to the datastore with the given key
