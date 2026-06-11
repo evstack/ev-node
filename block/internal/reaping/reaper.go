@@ -28,9 +28,11 @@ type Reaper struct {
 	interval       time.Duration
 	onTxsSubmitted func()
 
-	// pendingBatchCount reports the sequencer's pending batch count, used to
-	// detect whether a submission actually enqueued new entries. Optional.
-	pendingBatchCount func() int
+	// totalEnqueuedBatches reports the sequencer's monotonic enqueue count,
+	// used to detect whether a submission actually enqueued new entries.
+	// monotonicity makes the before/after comparison immune to concurrent
+	// drains shrinking the queue. Optional.
+	totalEnqueuedBatches func() uint64
 
 	logger zerolog.Logger
 
@@ -46,20 +48,20 @@ func NewReaper(
 	logger zerolog.Logger,
 	scrapeInterval time.Duration,
 	onTxsSubmitted func(),
-	pendingBatchCount func() int,
+	totalEnqueuedBatches func() uint64,
 ) (*Reaper, error) {
 	if scrapeInterval == 0 {
 		return nil, errors.New("scrape interval cannot be empty")
 	}
 
 	return &Reaper{
-		exec:              exec,
-		sequencer:         sequencer,
-		chainID:           genesis.ChainID,
-		interval:          scrapeInterval,
-		logger:            logger.With().Str("component", "reaper").Logger(),
-		onTxsSubmitted:    onTxsSubmitted,
-		pendingBatchCount: pendingBatchCount,
+		exec:                 exec,
+		sequencer:            sequencer,
+		chainID:              genesis.ChainID,
+		interval:             scrapeInterval,
+		logger:               logger.With().Str("component", "reaper").Logger(),
+		onTxsSubmitted:       onTxsSubmitted,
+		totalEnqueuedBatches: totalEnqueuedBatches,
 	}, nil
 }
 
@@ -139,9 +141,9 @@ func (r *Reaper) drainMempool() error {
 		return nil
 	}
 
-	before := 0
-	if r.pendingBatchCount != nil {
-		before = r.pendingBatchCount()
+	var before uint64
+	if r.totalEnqueuedBatches != nil {
+		before = r.totalEnqueuedBatches()
 	}
 
 	_, err = r.sequencer.SubmitBatchTxs(r.ctx, coresequencer.SubmitBatchTxsRequest{
@@ -152,10 +154,10 @@ func (r *Reaper) drainMempool() error {
 		return fmt.Errorf("failed to submit txs to sequencer: %w", err)
 	}
 
-	// without a pending count we cannot tell duplicates apart, so assume queued
+	// without an enqueue count we cannot tell duplicates apart, so assume queued
 	queued := true
-	if r.pendingBatchCount != nil {
-		queued = r.pendingBatchCount() > before
+	if r.totalEnqueuedBatches != nil {
+		queued = r.totalEnqueuedBatches() > before
 	}
 
 	if r.onTxsSubmitted != nil && queued {

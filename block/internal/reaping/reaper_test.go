@@ -148,14 +148,14 @@ func TestReaper_DuplicateScrape_NoNotify(t *testing.T) {
 	mockSeq := testmocks.NewMockSequencer(t)
 
 	var notified atomic.Bool
-	// pending batch count never changes — submission was fully deduped
+	// enqueue count never changes — submission was fully deduped
 	r, err := NewReaper(
 		mockExec, mockSeq,
 		genesis.Genesis{ChainID: "test-chain"},
 		zerolog.Nop(),
 		100*time.Millisecond,
 		func() { notified.Store(true) },
-		func() int { return 1 },
+		func() uint64 { return 1 },
 	)
 	require.NoError(t, err)
 

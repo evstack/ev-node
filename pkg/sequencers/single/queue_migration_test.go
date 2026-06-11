@@ -6,6 +6,7 @@ import (
 
 	ds "github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/query"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
@@ -53,7 +54,7 @@ func TestLoad_MigratesLegacyKeys(t *testing.T) {
 	require.NoError(err)
 
 	// 2. Create Queue and call Load
-	bq := NewBatchQueue(memdb, prefix, 0)
+	bq := NewBatchQueue(memdb, prefix, 0, zerolog.Nop())
 	err = bq.Load(ctx)
 	require.NoError(err)
 
@@ -129,7 +130,7 @@ func TestLoad_Migration_DBCheck(t *testing.T) {
 	require.NoError(err)
 
 	// Load
-	bq := NewBatchQueue(memdb, prefix, 0)
+	bq := NewBatchQueue(memdb, prefix, 0, zerolog.Nop())
 	require.NoError(bq.Load(ctx))
 
 	// Verify DB keys

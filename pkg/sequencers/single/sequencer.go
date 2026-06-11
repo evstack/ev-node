@@ -85,7 +85,7 @@ func NewSequencer(
 		cfg:              cfg,
 		batchTime:        cfg.Node.BlockTime.Duration,
 		Id:               id,
-		queue:            NewBatchQueue(db, "batches", maxQueueSize),
+		queue:            NewBatchQueue(db, "batches", maxQueueSize, logger),
 		checkpointStore:  seqcommon.NewCheckpointStore(db, ds.NewKey("/single/checkpoint")),
 		genesis:          genesis,
 		currentDAEndTime: genesis.StartTime.UTC(),
@@ -426,9 +426,11 @@ func (c *Sequencer) AckBatch(ctx context.Context) error {
 	return c.queue.Ack(ctx)
 }
 
-// PendingBatchCount reports the number of queued plus drained-but-unacked batches.
-func (c *Sequencer) PendingBatchCount() int {
-	return c.queue.Size()
+// TotalEnqueuedBatches reports a monotonic count of batches enqueued via
+// SubmitBatchTxs. It never decreases, so two snapshots reliably detect
+// whether new batches were enqueued in between.
+func (c *Sequencer) TotalEnqueuedBatches() uint64 {
+	return c.queue.TotalEnqueued()
 }
 
 // VerifyBatch implements sequencing.Sequencer.
