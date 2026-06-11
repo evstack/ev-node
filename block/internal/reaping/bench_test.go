@@ -9,10 +9,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
+
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/genesis"
-	"github.com/rs/zerolog"
 )
 
 type infiniteExecutor struct {
