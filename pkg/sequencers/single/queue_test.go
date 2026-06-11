@@ -735,6 +735,38 @@ func TestBatchQueue_Drain_RollsBackUnackedInFlight(t *testing.T) {
 	assert.Equal(t, []byte("tx2"), batch2.Transactions[1])
 }
 
+func TestBatchQueue_Drain_RollbackBulkPrependAfterCompact(t *testing.T) {
+	ctx := context.Background()
+	db := ds.NewMapDatastore()
+	queue := NewBatchQueue(db, "test-drain-rollback-bulk", 0, zerolog.Nop())
+	require.NoError(t, queue.Load(ctx))
+
+	// drain >100 entries so compactLocked resets head to 0 while they
+	// are in flight, forcing the bulk-prepend rollback path on next drain
+	const n = 150
+	for i := range n {
+		tx := []byte(fmt.Sprintf("tx-%03d", i))
+		require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{tx}}))
+	}
+
+	batch1, err := queue.Drain(ctx, 0)
+	require.NoError(t, err)
+	require.Len(t, batch1.Transactions, n)
+	require.Equal(t, 0, queue.head, "compact should reset head while entries are in flight")
+
+	// enqueue one more so the rollback has a tail to prepend in front of
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("tx-new")}}))
+
+	// second drain without ack rolls back via the bulk-prepend path
+	batch2, err := queue.Drain(ctx, 0)
+	require.NoError(t, err)
+	require.Len(t, batch2.Transactions, n+1)
+	for i := range n {
+		assert.Equal(t, []byte(fmt.Sprintf("tx-%03d", i)), batch2.Transactions[i])
+	}
+	assert.Equal(t, []byte("tx-new"), batch2.Transactions[n])
+}
+
 func TestBatchQueue_Ack_DeletesWALEntries(t *testing.T) {
 	ctx := context.Background()
 	db := ds.NewMapDatastore()

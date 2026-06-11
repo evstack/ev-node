@@ -19,8 +19,10 @@ import (
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/test/mocks"
 	"github.com/evstack/ev-node/test/testda"
+	"github.com/evstack/ev-node/types"
 )
 
 // MockFullDAClient combines MockClient and MockVerifier to implement FullDAClient
@@ -2308,4 +2310,36 @@ func TestSequencer_GetNextBatch_GasFilteringPreservesUnprocessedTxs(t *testing.T
 	assert.True(t, txFound[string(tx1)], "tx1 should have been processed (was gas-limited, retried later)")
 	assert.True(t, txFound[string(tx2)], "tx2 should have been processed (must not be lost)")
 	assert.True(t, txFound[string(tx3)], "tx3 should have been processed (must not be lost)")
+}
+
+func TestSequencer_ReconcileQueueWithLastBlock_CrashRecovery(t *testing.T) {
+	ctx := context.Background()
+	db := ds.NewMapDatastore()
+
+	// commit a block at height 1 containing two txs
+	header, data := types.GetRandomBlock(1, 2, "test")
+	evStore := store.New(store.NewEvNodeKVStore(db))
+	batch, err := evStore.NewBatch(ctx)
+	require.NoError(t, err)
+	require.NoError(t, batch.SaveBlockData(header, data, &header.Signature))
+	require.NoError(t, batch.SetHeight(1))
+	require.NoError(t, batch.Commit())
+
+	committed1 := []byte(data.Txs[0])
+	committed2 := []byte(data.Txs[1])
+	pending := []byte("tx-still-pending")
+
+	// simulate a crash between block commit and queue ack: WAL still holds
+	// the committed txs alongside a tx that was never included
+	queue := NewBatchQueue(db, "batches", 0, zerolog.Nop())
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{committed1, committed2}}))
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{pending}}))
+
+	// restart: NewSequencer loads the queue and reconciles against the last block
+	seq := newTestSequencer(t, db, newDummyDA(100_000_000))
+
+	drained, err := seq.queue.Drain(ctx, 0)
+	require.NoError(t, err)
+	require.Len(t, drained.Transactions, 1, "committed txs should have been dropped on reconcile")
+	assert.Equal(t, pending, drained.Transactions[0])
 }

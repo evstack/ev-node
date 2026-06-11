@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
+	"time"
 
 	ds "github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/query"
@@ -56,6 +57,8 @@ type BatchQueue struct {
 	// txSeen is an in-memory dedup set keyed by sha256 hash of each tx.
 	// hashes are added in AddBatch and removed on successful Ack.
 	// prevents the reaper from enqueuing the same tx multiple scrape cycles.
+	// its size tracks queued + in-flight txs, so it is bounded indirectly
+	// by maxQueueSize (unbounded when maxQueueSize is 0).
 	txSeen map[[32]byte]struct{}
 
 	// totalEnqueued counts batches ever enqueued via AddBatch. Monotonic,
@@ -134,7 +137,7 @@ func (bq *BatchQueue) AddBatch(ctx context.Context, batch coresequencer.Batch) e
 	key := seqToKey(bq.nextAddSeq)
 	if err := bq.persistBatch(ctx, batch, key); err != nil {
 		bq.rollbackSeenLocked(hashes)
-		return err
+		return fmt.Errorf("failed to persist batch %s to WAL: %w", key, err)
 	}
 	bq.nextAddSeq++
 
@@ -198,8 +201,11 @@ func (bq *BatchQueue) Drain(ctx context.Context, maxBytes uint64) (*coresequence
 }
 
 // SetPostponed records txs that should be requeued on the next Ack.
-// Must be called between Drain and Ack. The queue owns this state so
-// it is only cleared on successful Ack — no data loss on failure.
+// Must be called at most once between a Drain and its Ack — a later call in
+// the same cycle would overwrite the recorded txs. The postponedItem guard
+// makes a repeated call after a failed Ack a no-op, so the already-persisted
+// entry is not replaced. The queue owns this state so it is only cleared on
+// successful Ack — no data loss on failure.
 func (bq *BatchQueue) SetPostponed(txs [][]byte) {
 	bq.mu.Lock()
 	defer bq.mu.Unlock()
@@ -305,7 +311,11 @@ func (bq *BatchQueue) rollbackInFlightLocked(ctx context.Context) {
 	}
 
 	if bq.postponedItem != nil {
-		if err := bq.db.Delete(ctx, ds.NewKey(bq.postponedItem.Key)); err != nil {
+		// detach from the caller's context so this best-effort cleanup still
+		// runs during graceful shutdown when the drain context is cancelled
+		delCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		if err := bq.db.Delete(delCtx, ds.NewKey(bq.postponedItem.Key)); err != nil {
 			bq.logger.Warn().Err(err).Str("key", bq.postponedItem.Key).
 				Msg("failed to delete rolled-back postponed WAL entry")
 		}
@@ -395,6 +405,9 @@ func (bq *BatchQueue) DropIncluded(ctx context.Context, included [][]byte) (int,
 	}
 
 	var dropped int
+	// in-place compaction: kept aliases bq.queue's backing array. This is safe
+	// because range evaluates the slice header once and writes always trail
+	// reads (at most one item is appended per item iterated).
 	kept := bq.queue[:bq.head]
 	for _, item := range bq.queue[bq.head:] {
 		remaining := make([][]byte, 0, len(item.Batch.Transactions))
@@ -456,8 +469,9 @@ func (bq *BatchQueue) Load(ctx context.Context) error {
 	var legacyItems []queuedItem
 	for result := range results.Next() {
 		if result.Error != nil {
-			bq.logger.Error().Err(result.Error).Msg("failed to read entry from datastore")
-			continue
+			// a datastore read failure means the WAL cannot be trusted as
+			// loaded — fail startup rather than silently dropping txs.
+			return fmt.Errorf("failed to read WAL entry from datastore: %w", result.Error)
 		}
 		// We care about the last part of the key (the sequence number)
 		// ds.Key usually has a leading slash.

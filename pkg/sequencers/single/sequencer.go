@@ -94,7 +94,9 @@ func NewSequencer(
 	s.SetDAHeight(genesis.DAStartHeight) // default value, will be overridden by executor or submitter
 	s.daStartHeight.Store(genesis.DAStartHeight)
 
-	loadCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// generous timeout: loading and reconciling a large WAL backlog
+	// (e.g. after a burst followed by a crash) can take a while
+	loadCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
 	// Load batch queue from DB
@@ -321,6 +323,7 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 	// TxIndex tracks consumed txs from the start of the epoch, so we must process in order.
 	var validForcedTxs [][]byte
 	var validMempoolTxs [][]byte
+	var postponedMempoolTxs [][]byte
 	var forcedTxConsumedCount uint64
 	var forcedTxPostponed bool
 
@@ -347,19 +350,15 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 			switch status {
 			case execution.FilterOK:
 				validMempoolTxs = append(validMempoolTxs, allTxs[i])
-			case execution.FilterPostpone, execution.FilterRemove:
-				// Mempool txs that are postponed/removed are handled separately
+			case execution.FilterPostpone:
+				// requeued at ack time (after block commit)
+				postponedMempoolTxs = append(postponedMempoolTxs, allTxs[i])
+			case execution.FilterRemove:
+				// dropped permanently
 			}
 		}
 	}
 
-	// collect postponed mempool txs to be requeued at ack time (after block commit)
-	var postponedMempoolTxs [][]byte
-	for i, status := range filterStatuses {
-		if i >= forcedTxCount && status == execution.FilterPostpone {
-			postponedMempoolTxs = append(postponedMempoolTxs, allTxs[i])
-		}
-	}
 	c.queue.SetPostponed(postponedMempoolTxs)
 
 	// Update checkpoint after consuming forced inclusion transactions.
