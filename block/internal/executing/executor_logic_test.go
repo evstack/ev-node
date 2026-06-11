@@ -127,13 +127,13 @@ func TestProduceBlock_RetriesFailedAckBeforeNextBlock(t *testing.T) {
 	defer fx.Cancel()
 
 	var ackCalls int
-	fx.Exec.SetOnBatchCommitted(func(ctx context.Context) error {
+	fx.Exec.onBatchCommitted = func(ctx context.Context) error {
 		ackCalls++
 		if ackCalls <= 2 {
 			return assert.AnError
 		}
 		return nil
-	})
+	}
 
 	fx.MockSeq.EXPECT().GetNextBatch(mock.Anything, mock.AnythingOfType("sequencer.GetNextBatchRequest")).
 		RunAndReturn(func(ctx context.Context, req coreseq.GetNextBatchRequest) (*coreseq.GetNextBatchResponse, error) {

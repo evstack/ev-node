@@ -100,6 +100,12 @@ type Executor struct {
 	blockProducer BlockProducer
 }
 
+// batchAcknowledger is implemented by sequencers whose drained queue
+// entries must be acknowledged after the block is durably committed.
+type batchAcknowledger interface {
+	AckBatch(ctx context.Context) error
+}
+
 // NewExecutor creates a new block executor.
 // The executor is responsible for:
 // - Block production from sequencer batches
@@ -162,6 +168,17 @@ func NewExecutor(
 		logger:            logger.With().Str("component", "executor").Logger(),
 	}
 	e.blockProducer = e
+
+	// wire the batch ack so drained queue entries are committed after block
+	// commit. tracing wrappers forward AckBatch to the underlying sequencer.
+	if acker, ok := sequencer.(batchAcknowledger); ok {
+		e.onBatchCommitted = acker.AckBatch
+	} else if !config.Node.BasedSequencer {
+		// without an ack, drained queue entries are rolled back on every
+		// retrieval and the same transactions would be re-included each block
+		e.logger.Warn().Msg("sequencer does not implement AckBatch; drained batch entries will not be acknowledged after block commit")
+	}
+
 	return e, nil
 }
 
@@ -169,12 +186,6 @@ func NewExecutor(
 // a tracing wrapper or other decorator.
 func (e *Executor) SetBlockProducer(bp BlockProducer) {
 	e.blockProducer = bp
-}
-
-// SetOnBatchCommitted registers a callback fired after each block commit.
-// If the callback fails, it is retried before the next block is produced.
-func (e *Executor) SetOnBatchCommitted(fn func(ctx context.Context) error) {
-	e.onBatchCommitted = fn
 }
 
 // ackCommittedBatch invokes the batch ack callback and tracks failures so

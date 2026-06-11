@@ -238,9 +238,6 @@ func newAggregatorComponents(
 	// error channel for critical failures
 	errorCh := make(chan error, 1)
 
-	// capture raw sequencer before tracing wrap for batch ack interface
-	rawSequencer := sequencer
-
 	// wrap sequencer with tracing if enabled
 	if config.Instrumentation.IsTracingEnabled() {
 		sequencer = telemetry.WithTracingSequencer(sequencer)
@@ -286,18 +283,6 @@ func newAggregatorComponents(
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create reaper: %w", err)
-	}
-
-	// wire batch ack callback so drained queue entries are committed after block commit
-	type batchAcknowledger interface {
-		AckBatch(ctx context.Context) error
-	}
-	if acker, ok := rawSequencer.(batchAcknowledger); ok {
-		executor.SetOnBatchCommitted(acker.AckBatch)
-	} else if !config.Node.BasedSequencer {
-		// without an ack, drained queue entries are rolled back on every
-		// retrieval and the same transactions would be re-included each block
-		logger.Warn().Msg("sequencer does not implement AckBatch; drained batch entries will not be acknowledged after block commit")
 	}
 
 	if config.Node.BasedSequencer { // no submissions needed for based sequencer
