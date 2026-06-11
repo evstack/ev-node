@@ -25,14 +25,14 @@ Configure both sides:
 ```text
 ev-node                                    ev-reth
    │                                          │
-   │  1. engine_forkchoiceUpdatedV3           │
+   │  1. engine_forkchoiceUpdatedV3/V4        │
    │     (headBlockHash, payloadAttributes)   │
    │─────────────────────────────────────────►│
    │                                          │
    │  2. {payloadId}                          │
    │◄─────────────────────────────────────────│
    │                                          │
-   │  3. engine_getPayloadV3(payloadId)       │
+   │  3. engine_getPayloadV4/V5/V6(payloadId) │
    │─────────────────────────────────────────►│
    │                                          │
    │  4. {executionPayload, blockValue}       │
@@ -40,7 +40,7 @@ ev-node                                    ev-reth
    │                                          │
    │  [ev-node broadcasts to P2P, submits DA] │
    │                                          │
-   │  5. engine_newPayloadV3(executionPayload)│
+   │  5. engine_newPayloadV4/V5(payload)      │
    │─────────────────────────────────────────►│
    │                                          │
    │  6. {status: VALID}                      │
@@ -54,7 +54,20 @@ ev-node                                    ev-reth
 
 ## Methods
 
-### engine_forkchoiceUpdatedV3
+| Fork family | Forkchoice | Get payload | New payload |
+|-------------|------------|-------------|-------------|
+| Prague | `engine_forkchoiceUpdatedV3` | `engine_getPayloadV4` | `engine_newPayloadV4` |
+| Osaka/Fusaka | `engine_forkchoiceUpdatedV3` | `engine_getPayloadV5` | `engine_newPayloadV4` |
+| Amsterdam | `engine_forkchoiceUpdatedV4` | `engine_getPayloadV6` | `engine_newPayloadV5` |
+
+Amsterdam support is more than a method rename: payload attributes include
+`slotNumber`, and built payloads include `executionPayload.blockAccessList`.
+ev-node preserves the raw Amsterdam `executionPayload` returned by ev-reth and
+submits it unchanged to `engine_newPayloadV5`.
+ev-node detects Amsterdam by retrying `engine_forkchoiceUpdatedV4` after an
+unsupported-fork response from `engine_forkchoiceUpdatedV3`, then caches V4.
+
+### engine_forkchoiceUpdatedV3 / V4
 
 Update the fork choice and optionally start building a new block.
 
@@ -62,7 +75,7 @@ Update the fork choice and optionally start building a new block.
 
 ```json
 {
-  "method": "engine_forkchoiceUpdatedV3",
+  "method": "engine_forkchoiceUpdatedV4",
   "params": [
     {
       "headBlockHash": "0x...",
@@ -74,7 +87,8 @@ Update the fork choice and optionally start building a new block.
       "prevRandao": "0x...",
       "suggestedFeeRecipient": "0x...",
       "withdrawals": [],
-      "parentBeaconBlockRoot": "0x..."
+      "parentBeaconBlockRoot": "0x...",
+      "slotNumber": "0x..."
     }
   ]
 }
@@ -92,7 +106,7 @@ Update the fork choice and optionally start building a new block.
 }
 ```
 
-### engine_getPayloadV3
+### engine_getPayloadV4 / V5 / V6
 
 Retrieve a built payload.
 
@@ -100,7 +114,7 @@ Retrieve a built payload.
 
 ```json
 {
-  "method": "engine_getPayloadV3",
+  "method": "engine_getPayloadV6",
   "params": ["0x...payloadId"]
 }
 ```
@@ -123,13 +137,15 @@ Retrieve a built payload.
     "extraData": "0x",
     "baseFeePerGas": "0x...",
     "blockHash": "0x...",
-    "transactions": ["0x..."]
+    "transactions": ["0x..."],
+    "slotNumber": "0x...",
+    "blockAccessList": []
   },
   "blockValue": "0x..."
 }
 ```
 
-### engine_newPayloadV3
+### engine_newPayloadV4 / V5
 
 Validate and execute a payload.
 
@@ -137,11 +153,17 @@ Validate and execute a payload.
 
 ```json
 {
-  "method": "engine_newPayloadV3",
+  "method": "engine_newPayloadV5",
   "params": [
-    { "executionPayload": "..." },
+    {
+      "parentHash": "0x...",
+      "blockHash": "0x...",
+      "slotNumber": "0x...",
+      "blockAccessList": []
+    },
     ["0x...versionedHashes"],
-    "0x...parentBeaconBlockRoot"
+    "0x...parentBeaconBlockRoot",
+    []
   ]
 }
 ```
