@@ -82,8 +82,8 @@ func TestRunEntryFailsWhenSpammerDoesNotStart(t *testing.T) {
 func TestWaitForSpamoorDoneUsesDeltas(t *testing.T) {
 	client := &fakeClient{
 		metricsSeq: []metricSnapshot{
-			{sent: 105, failed: 3},
-			{sent: 108, failed: 4},
+			{sent: 105, failed: 3, running: 1},
+			{sent: 108, failed: 4, running: 0},
 		},
 		spammerNames: []string{"bench-test-0"},
 	}
@@ -92,6 +92,22 @@ func TestWaitForSpamoorDoneUsesDeltas(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 8.0, sent)
 	require.Equal(t, 2.0, failed)
+}
+
+func TestWaitForSpamoorDoneWaitsForSpammersToStop(t *testing.T) {
+	client := &fakeClient{
+		metricsSeq: []metricSnapshot{
+			{sent: 110, failed: 0, running: 1},
+			{sent: 110, failed: 0, running: 1},
+			{sent: 110, failed: 0, running: 0},
+		},
+		spammerNames: []string{"bench-test-0"},
+	}
+
+	sent, _, err := waitForSpamoorDoneWithInterval(context.Background(), client, 10, 100, 0, "", time.Millisecond)
+	require.NoError(t, err)
+	require.Equal(t, 10.0, sent)
+	require.Equal(t, 3, client.metricsIndex)
 }
 
 func TestWaitForSpamoorDoneHonorsContext(t *testing.T) {
@@ -167,8 +183,9 @@ func TestSumCounterWithPrefixFiltersCorrectly(t *testing.T) {
 }
 
 type metricSnapshot struct {
-	sent   float64
-	failed float64
+	sent    float64
+	failed  float64
+	running float64
 }
 
 type fakeClient struct {
@@ -234,14 +251,36 @@ func (f *fakeClient) GetMetrics() (map[string]*dto.MetricFamily, error) {
 	perFailed := snapshot.failed / float64(len(f.spammerNames))
 	sentMap := make(map[string]float64, len(f.spammerNames))
 	failedMap := make(map[string]float64, len(f.spammerNames))
+	runningMap := make(map[string]float64, len(f.spammerNames))
 	for _, name := range f.spammerNames {
 		sentMap[name] = perSpammer
 		failedMap[name] = perFailed
+		runningMap[name] = snapshot.running
 	}
 	return map[string]*dto.MetricFamily{
-		"spamoor_transactions_sent_total":   labeledCounterFamily("spamoor_transactions_sent_total", sentMap),
-		"spamoor_transactions_failed_total": labeledCounterFamily("spamoor_transactions_failed_total", failedMap),
+		"spamoor_transactions_sent_total":    labeledCounterFamily("spamoor_transactions_sent_total", sentMap),
+		"spamoor_transaction_failures_total": labeledCounterFamily("spamoor_transaction_failures_total", failedMap),
+		"spamoor_spammer_running":            labeledGaugeFamily("spamoor_spammer_running", runningMap),
 	}, nil
+}
+
+func labeledGaugeFamily(name string, spammerValues map[string]float64) *dto.MetricFamily {
+	gaugeType := dto.MetricType_GAUGE
+	labelName := "spammer_name"
+	var metrics []*dto.Metric
+	for spammerName, value := range spammerValues {
+		metrics = append(metrics, &dto.Metric{
+			Label: []*dto.LabelPair{
+				{Name: &labelName, Value: &spammerName},
+			},
+			Gauge: &dto.Gauge{Value: &value},
+		})
+	}
+	return &dto.MetricFamily{
+		Name:   &name,
+		Type:   &gaugeType,
+		Metric: metrics,
+	}
 }
 
 func (f *fakeClient) GetClients() ([]spamoorapi.Client, error) {

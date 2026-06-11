@@ -15,8 +15,9 @@ import (
 )
 
 const (
-	metricSentTotal   = "spamoor_transactions_sent_total"
-	metricFailedTotal = "spamoor_transactions_failed_total"
+	metricSentTotal      = "spamoor_transactions_sent_total"
+	metricFailedTotal    = "spamoor_transaction_failures_total"
+	metricSpammerRunning = "spamoor_spammer_running"
 )
 
 type matrixOpts struct {
@@ -201,20 +202,21 @@ func waitForSpamoorDoneWithInterval(ctx context.Context, api spamoor.Client, tar
 
 	start := time.Now()
 	var prevSent float64
+	var sawRunning bool
 
 	for {
 		select {
 		case <-ctx.Done():
 			return sent, failed, fmt.Errorf("timed out waiting for %d txs (sent %.0f): %w", targetCount, sent, ctx.Err())
 		case <-ticker.C:
-			currentSent, currentFailed, mErr := getSpamoorCountersForPrefix(api, namePrefix)
+			metrics, mErr := api.GetMetrics()
 			if mErr != nil {
 				log.Printf("warning: failed to get metrics: %v", mErr)
 				continue
 			}
 
-			sent = currentSent - baselineSent
-			failed = currentFailed - baselineFailed
+			sent = sumCounterWithPrefix(metrics[metricSentTotal], namePrefix) - baselineSent
+			failed = sumCounterWithPrefix(metrics[metricFailedTotal], namePrefix) - baselineFailed
 			if sent < 0 {
 				sent = 0
 			}
@@ -222,18 +224,45 @@ func waitForSpamoorDoneWithInterval(ctx context.Context, api spamoor.Client, tar
 				failed = 0
 			}
 
+			running := countRunningWithPrefix(metrics[metricSpammerRunning], namePrefix)
+			if running > 0 {
+				sawRunning = true
+			}
+
 			delta := sent - prevSent
 			rate := delta / pollInterval.Seconds()
 			elapsed := time.Since(start)
-			log.Printf("  progress: %.0f/%d sent (%.0f tx/s instant, %.1f tx/s avg, %.0f failed) [%s]",
-				sent, targetCount, rate, sent/elapsed.Seconds(), failed, elapsed.Round(time.Second))
+			log.Printf("  progress: %.0f/%d sent (%.0f tx/s instant, %.1f tx/s avg, %.0f failed, %d running) [%s]",
+				sent, targetCount, rate, sent/elapsed.Seconds(), failed, running, elapsed.Round(time.Second))
 			prevSent = sent
 
-			if sent >= float64(targetCount) {
+			// spammers report running=0 once the scenario fully completes,
+			// which includes flushing pending txs. the sent>=target fallback
+			// covers scenarios that finish before the gauge is first observed.
+			if running == 0 && (sawRunning || sent >= float64(targetCount)) {
 				return sent, failed, nil
 			}
 		}
 	}
+}
+
+func countRunningWithPrefix(f *dto.MetricFamily, namePrefix string) int {
+	if f == nil || f.GetType() != dto.MetricType_GAUGE {
+		return 0
+	}
+	var n int
+	for _, m := range f.GetMetric() {
+		if m.GetGauge() == nil {
+			continue
+		}
+		if namePrefix != "" && !hasLabelPrefix(m, "spammer_name", namePrefix) {
+			continue
+		}
+		if m.GetGauge().GetValue() > 0 {
+			n++
+		}
+	}
+	return n
 }
 
 func getSpamoorCountersForPrefix(api spamoor.Client, namePrefix string) (sent, failed float64, err error) {
