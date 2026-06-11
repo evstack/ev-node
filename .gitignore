@@ -26,9 +26,11 @@ docs/.vitepress/cache
 *.log
 *.tgz
 .idea
+.junie
 .temp
 .vite_opt_cache
 .vscode
 .gocache
 .gomodcache
 /.cache
+*.diff
