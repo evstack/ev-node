@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1781191609112,
+  "lastUpdate": 1781191611643,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -482,6 +482,102 @@ window.BENCHMARK_DATA = {
             "value": 54,
             "unit": "allocs/op",
             "extra": "27974 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "github.qpeyb@simplelogin.fr",
+            "name": "Cian Hatton",
+            "username": "chatton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "85119a6ec4182f56dbd2a010d18e47e90b23747d",
+          "message": "fix: drain pending tx queue in batches with durable ack (#3351)\n\n* fix: drain pending tx queue in batches with durable ack\n\nResolves slow pending-tx drain caused by one-queue-entry-per-block\nconsumption and seen-on-enqueue dedup poisoning:\n\n- single sequencer drains multiple queue entries per block up to\n  MaxBytes; WAL entries are deleted only on ack after block commit,\n  with retry before the next batch and startup reconciliation against\n  the last committed block (DropIncluded)\n- tx dedup moves from the 30-min cache-manager tx cache into the batch\n  queue itself, keyed by sha256, released on ack; dead cache tx-seen\n  subsystem removed\n- postponed txs are requeued durably during ack and stay deduped\n- Load cleans duplicate/stale WAL entries so restarts cannot\n  resurrect committed txs\n- reaper submits one scrape per interval and notifies the executor\n  only when new entries were actually queued (explicit pending count\n  wiring, immune to tracing wrappers)\n\n* fix: address review findings in batch queue drain/ack path\n\n- defer postponed entry requeue until ack fully succeeds so a drain\n  rollback after a failed ack neither loses nor duplicates postponed txs\n- replace fmt.Printf with structured logging in BatchQueue\n- use monotonic enqueue counter in reaper to detect new submissions\n  race-free against concurrent drain/ack\n\n* chore: fix import grouping in reaping bench test\n\n* fix: address PR review feedback on batch queue durability\n\n- fail Load on datastore read errors instead of dropping txs\n- detach rollback WAL cleanup from drain context so it runs on shutdown\n- raise queue load timeout for large WAL backlogs\n- merge postponed-tx collection into the filter loop\n- document DropIncluded aliasing, SetPostponed contract, txSeen bound\n- add tests: executor ack retry, reconcile crash recovery, bulk-prepend rollback\n\n* chore: addressing PR feedback\n\n* chore: pr feedback",
+          "timestamp": "2026-06-11T15:06:24Z",
+          "tree_id": "09f7a5238493e1596c8df19e4950ad2ed2e5bbaf",
+          "url": "https://github.com/evstack/ev-node/commit/85119a6ec4182f56dbd2a010d18e47e90b23747d"
+        },
+        "date": 1781191610776,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 39982,
+            "unit": "ns/op\t    4807 B/op\t      50 allocs/op",
+            "extra": "30646 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 39982,
+            "unit": "ns/op",
+            "extra": "30646 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 4807,
+            "unit": "B/op",
+            "extra": "30646 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 50,
+            "unit": "allocs/op",
+            "extra": "30646 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 40674,
+            "unit": "ns/op\t    5011 B/op\t      54 allocs/op",
+            "extra": "30210 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 40674,
+            "unit": "ns/op",
+            "extra": "30210 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 5011,
+            "unit": "B/op",
+            "extra": "30210 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 54,
+            "unit": "allocs/op",
+            "extra": "30210 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 46470,
+            "unit": "ns/op\t   10326 B/op\t      54 allocs/op",
+            "extra": "25712 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 46470,
+            "unit": "ns/op",
+            "extra": "25712 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 10326,
+            "unit": "B/op",
+            "extra": "25712 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 54,
+            "unit": "allocs/op",
+            "extra": "25712 times\n4 procs"
           }
         ]
       }
