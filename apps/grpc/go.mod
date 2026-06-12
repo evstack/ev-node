@@ -2,13 +2,13 @@ module github.com/evstack/ev-node/apps/grpc
 
 go 1.25.8
 
-replace (
-	github.com/evstack/ev-node => ../../
-	github.com/evstack/ev-node/execution/grpc => ../../execution/grpc
-)
+// replace (
+// 	github.com/evstack/ev-node => ../../
+// 	github.com/evstack/ev-node/execution/grpc => ../../execution/grpc
+// )
 
 require (
-	github.com/evstack/ev-node v1.1.2
+	github.com/evstack/ev-node v1.1.3
 	github.com/evstack/ev-node/core v1.0.0
 	github.com/evstack/ev-node/execution/grpc v1.0.0
 	github.com/ipfs/go-datastore v0.9.1
