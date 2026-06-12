@@ -188,12 +188,8 @@ github.com/envoyproxy/go-control-plane/envoy v1.37.0/go.mod h1:DReE9MMrmecPy+YvQ
 github.com/envoyproxy/protoc-gen-validate v0.1.0/go.mod h1:iSmxcyjqTsJpI2R4NaDN7+kN2VEUnK/pcBlmesArF7c=
 github.com/envoyproxy/protoc-gen-validate v1.3.3 h1:MVQghNeW+LZcmXe7SY1V36Z+WFMDjpqGAGacLe2T0ds=
 github.com/envoyproxy/protoc-gen-validate v1.3.3/go.mod h1:TsndJ/ngyIdQRhMcVVGDDHINPLWB7C82oDArY51KfB0=
-github.com/evstack/ev-node v1.1.3 h1:yzwNJYeCppQeXI8V+NS0XGUYjtHMI87Oe+sU7AJ3LvQ=
-github.com/evstack/ev-node v1.1.3/go.mod h1:/3l+zh6LM8NA9O+mKEL9WB4gX0TFrAB1+85Lnxtstok=
 github.com/evstack/ev-node/core v1.0.0 h1:s0Tx0uWHme7SJn/ZNEtee4qNM8UO6PIxXnHhPbbKTz8=
 github.com/evstack/ev-node/core v1.0.0/go.mod h1:n2w/LhYQTPsi48m6lMj16YiIqsaQw6gxwjyJvR+B3sY=
-github.com/evstack/ev-node/execution/grpc v1.0.0 h1:oVFZXmJO1rrnIEfVOfi3ftkeUz9NMpqeZFDxoZp2WY8=
-github.com/evstack/ev-node/execution/grpc v1.0.0/go.mod h1:ur0NEJg3DlaDKKRTuoiNMU4/hEy68fqvgQ/6udwqBFg=
 github.com/fatih/color v1.7.0/go.mod h1:Zm6kSWBoL9eyXnKyktHP6abPY2pDugNf5KwzbycvMj4=
 github.com/fatih/color v1.13.0/go.mod h1:kLAiJbzzSOZDVNGyDpeOxJ47H46qBXwg5ILebYFFOfk=
 github.com/fatih/color v1.18.0 h1:S8gINlzdQ840/4pfAwic/ZE0djQEH3wM94VfqLTZcOM=
