@@ -2,14 +2,17 @@ package single
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"strconv"
 	"sync"
+	"time"
 
 	ds "github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/query"
+	"github.com/rs/zerolog"
 	"google.golang.org/protobuf/proto"
 
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
@@ -37,24 +40,48 @@ type BatchQueue struct {
 	head         int // index of the first element in the queue
 	maxQueueSize int // maximum number of batches allowed in queue (0 = unlimited)
 
+	// inFlight holds items returned by Drain that haven't been acked yet.
+	// A subsequent Drain rolls these back to the front of the queue.
+	inFlight []queuedItem
+
+	// inFlightPostponed holds txs that should be requeued on Ack.
+	// Set via SetPostponed between Drain and Ack. Cleared only on successful Ack.
+	inFlightPostponed [][]byte
+	// postponedItem holds a postponed batch persisted to the WAL during Ack.
+	// It is only prepended to the in-memory queue once Ack fully succeeds, so
+	// a direct Ack retry does not persist a duplicate entry. If a Drain rolls
+	// the in-flight state back instead, the entry is discarded again because
+	// its txs are still covered by the rolled-back WAL entries.
+	postponedItem *queuedItem
+
+	// txSeen is an in-memory dedup set keyed by sha256 hash of each tx.
+	// hashes are added in AddBatch and removed on successful Ack.
+	// prevents the reaper from enqueuing the same tx multiple scrape cycles.
+	// its size tracks queued + in-flight txs, so it is bounded indirectly
+	// by maxQueueSize (unbounded when maxQueueSize is 0).
+	txSeen map[[32]byte]struct{}
+
 	// Sequence numbers for generating new keys
 	nextAddSeq     uint64
 	nextPrependSeq uint64
 
-	mu sync.Mutex
-	db ds.Batching
+	mu     sync.Mutex
+	db     ds.Batching
+	logger zerolog.Logger
 }
 
 // NewBatchQueue creates a new BatchQueue with the specified maximum size.
 // If maxSize is 0, the queue will be unlimited.
-func NewBatchQueue(db ds.Batching, prefix string, maxSize int) *BatchQueue {
+func NewBatchQueue(db ds.Batching, prefix string, maxSize int, logger zerolog.Logger) *BatchQueue {
 	return &BatchQueue{
 		queue:          make([]queuedItem, 0),
 		head:           0,
 		maxQueueSize:   maxSize,
+		txSeen:         make(map[[32]byte]struct{}),
 		db:             store.NewPrefixKVStore(db, prefix),
 		nextAddSeq:     initialSeqNum,
 		nextPrependSeq: initialSeqNum - 1,
+		logger:         logger,
 	}
 }
 
@@ -66,99 +93,348 @@ func seqToKey(seq uint64) string {
 	return hex.EncodeToString(b)
 }
 
-// AddBatch adds a new transaction to the queue and writes it to the WAL.
+// txHash returns the sha256 of a transaction.
+func txHash(tx []byte) [32]byte {
+	return sha256.Sum256(tx)
+}
+
+// AddBatch adds a new transaction batch to the queue and writes it to the WAL.
+// Duplicate transactions (by hash) already in the queue or in-flight are silently skipped.
 // Returns ErrQueueFull if the queue has reached its maximum size.
 func (bq *BatchQueue) AddBatch(ctx context.Context, batch coresequencer.Batch) error {
 	bq.mu.Lock()
 	defer bq.mu.Unlock()
 
+	// dedup: skip txs already queued or in-flight, track accepted hashes immediately
+	unique := make([][]byte, 0, len(batch.Transactions))
+	hashes := make([][32]byte, 0, len(batch.Transactions))
+	for _, tx := range batch.Transactions {
+		h := txHash(tx)
+		if _, dup := bq.txSeen[h]; dup {
+			continue
+		}
+		unique = append(unique, tx)
+		hashes = append(hashes, h)
+		bq.txSeen[h] = struct{}{}
+	}
+	if len(unique) == 0 {
+		return nil
+	}
+	batch = coresequencer.Batch{Transactions: unique}
+
 	// Check if queue is full (maxQueueSize of 0 means unlimited)
-	// Use effective queue size (total length minus processed head items)
-	effectiveSize := len(bq.queue) - bq.head
+	// effective size includes both queued and drained-but-unacked entries
+	effectiveSize := len(bq.queue) - bq.head + len(bq.inFlight)
 	if bq.maxQueueSize > 0 && effectiveSize >= bq.maxQueueSize {
+		bq.rollbackSeenLocked(hashes)
 		return ErrQueueFull
 	}
 
 	key := seqToKey(bq.nextAddSeq)
 	if err := bq.persistBatch(ctx, batch, key); err != nil {
-		return err
+		bq.rollbackSeenLocked(hashes)
+		return fmt.Errorf("failed to persist batch %s to WAL: %w", key, err)
 	}
 	bq.nextAddSeq++
 
-	// Then add to in-memory queue
 	bq.queue = append(bq.queue, queuedItem{Batch: batch, Key: key})
 
 	return nil
 }
 
-// Prepend adds a batch to the front of the queue (before head position).
-// This is used to return transactions that couldn't fit in the current batch.
-// The batch is persisted to the DB to ensure durability in case of crashes.
-//
-// NOTE: Prepend intentionally bypasses the maxQueueSize limit to ensure high-priority
-// transactions can always be re-queued.
-func (bq *BatchQueue) Prepend(ctx context.Context, batch coresequencer.Batch) error {
-	bq.mu.Lock()
-	defer bq.mu.Unlock()
-
-	key := seqToKey(bq.nextPrependSeq)
-	if err := bq.persistBatch(ctx, batch, key); err != nil {
-		return err
+// rollbackSeenLocked removes the given hashes from the dedup set.
+// Must be called with bq.mu held.
+func (bq *BatchQueue) rollbackSeenLocked(hashes [][32]byte) {
+	for _, h := range hashes {
+		delete(bq.txSeen, h)
 	}
-	bq.nextPrependSeq--
-
-	item := queuedItem{Batch: batch, Key: key}
-
-	// Then add to in-memory queue
-	// If we have room before head, use it
-	if bq.head > 0 {
-		bq.head--
-		bq.queue[bq.head] = item
-	} else {
-		// Need to expand the queue at the front
-		bq.queue = append([]queuedItem{item}, bq.queue...)
-	}
-
-	return nil
 }
 
-// Next extracts a batch of transactions from the queue and marks it as processed in the WAL
-func (bq *BatchQueue) Next(ctx context.Context) (*coresequencer.Batch, error) {
+// Drain merges multiple queue entries into a single batch up to maxBytes.
+// If maxBytes is 0, all available entries are drained.
+// Any previously un-acked inFlight entries are rolled back to the front first.
+// Drained entries move to inFlight state; WAL entries are NOT deleted until Ack.
+func (bq *BatchQueue) Drain(ctx context.Context, maxBytes uint64) (*coresequencer.Batch, error) {
 	bq.mu.Lock()
 	defer bq.mu.Unlock()
 
-	// Check if queue is empty
+	bq.rollbackInFlightLocked(ctx)
+
 	if bq.head >= len(bq.queue) {
 		return &coresequencer.Batch{Transactions: nil}, nil
 	}
 
-	item := bq.queue[bq.head]
-	// Release memory for the dequeued element
-	bq.queue[bq.head] = queuedItem{}
-	bq.head++
+	var totalBytes uint64
+	var allTxs [][]byte
 
-	// Compact when head gets too large to prevent memory leaks
-	// Only compact when we have significant waste (more than half processed)
-	// and when we have a reasonable number of processed items to avoid
-	// frequent compactions on small queues
+	for bq.head < len(bq.queue) {
+		item := bq.queue[bq.head]
+
+		var entryBytes uint64
+		for _, tx := range item.Batch.Transactions {
+			entryBytes += uint64(len(tx))
+		}
+
+		if maxBytes > 0 && totalBytes+entryBytes > maxBytes && len(allTxs) > 0 {
+			break
+		}
+
+		allTxs = append(allTxs, item.Batch.Transactions...)
+		totalBytes += entryBytes
+		bq.inFlight = append(bq.inFlight, item)
+		bq.queue[bq.head] = queuedItem{}
+		bq.head++
+	}
+
+	bq.compactLocked()
+
+	if len(allTxs) == 0 {
+		return &coresequencer.Batch{Transactions: nil}, nil
+	}
+
+	return &coresequencer.Batch{Transactions: allTxs}, nil
+}
+
+// SetPostponed records txs that should be requeued on the next Ack.
+// Must be called at most once between a Drain and its Ack — a later call in
+// the same cycle would overwrite the recorded txs. The postponedItem guard
+// makes a repeated call after a failed Ack a no-op, so the already-persisted
+// entry is not replaced. The queue owns this state so it is only cleared on
+// successful Ack — no data loss on failure.
+func (bq *BatchQueue) SetPostponed(txs [][]byte) {
+	bq.mu.Lock()
+	defer bq.mu.Unlock()
+	if bq.postponedItem != nil {
+		return
+	}
+	bq.inFlightPostponed = txs
+}
+
+// Ack commits the current inFlight entries: durably requeues any postponed
+// transactions first, then deletes committed WAL entries. On failure neither
+// inFlight nor inFlightPostponed is cleared, so the next Drain will roll
+// entries back and a retry is safe.
+func (bq *BatchQueue) Ack(ctx context.Context) error {
+	bq.mu.Lock()
+	defer bq.mu.Unlock()
+
+	// persist postponed txs BEFORE deleting source WAL entries.
+	// if this fails the original entries still exist — no data loss.
+	// the item is only prepended to the in-memory queue after the WAL
+	// deletes succeed, so a rollback never sees its txs twice.
+	if len(bq.inFlightPostponed) > 0 && bq.postponedItem == nil {
+		batch := coresequencer.Batch{Transactions: bq.inFlightPostponed}
+		key := seqToKey(bq.nextPrependSeq)
+		if err := bq.persistBatch(ctx, batch, key); err != nil {
+			return fmt.Errorf("failed to persist postponed txs: %w", err)
+		}
+		bq.nextPrependSeq--
+		bq.postponedItem = &queuedItem{Batch: batch, Key: key}
+	}
+
+	// delete WAL entries for committed inFlight items in one batch.
+	// on failure, return error WITHOUT clearing state so next Drain
+	// rolls them back and they can be retried.
+	if len(bq.inFlight) > 0 {
+		b, err := bq.db.Batch(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to create WAL delete batch: %w", err)
+		}
+		for _, item := range bq.inFlight {
+			if err := b.Delete(ctx, ds.NewKey(item.Key)); err != nil {
+				return fmt.Errorf("failed to delete committed WAL entry %s: %w", item.Key, err)
+			}
+		}
+		if err := b.Commit(ctx); err != nil {
+			return fmt.Errorf("failed to commit WAL deletes: %w", err)
+		}
+	}
+
+	// success — remove committed tx hashes from dedup set.
+	// postponed txs are a subset of inFlight but stay in txSeen
+	// since they're re-queued via the prepended item.
+	var postponed map[[32]byte]struct{}
+	if len(bq.inFlightPostponed) > 0 {
+		postponed = make(map[[32]byte]struct{}, len(bq.inFlightPostponed))
+		for _, tx := range bq.inFlightPostponed {
+			postponed[txHash(tx)] = struct{}{}
+		}
+	}
+	for _, item := range bq.inFlight {
+		for _, tx := range item.Batch.Transactions {
+			h := txHash(tx)
+			if _, ok := postponed[h]; ok {
+				continue
+			}
+			delete(bq.txSeen, h)
+		}
+	}
+
+	// requeue the persisted postponed entry now that the commit is durable
+	if bq.postponedItem != nil {
+		bq.prependItemLocked(*bq.postponedItem)
+	}
+
+	clear(bq.inFlight)
+	bq.inFlight = bq.inFlight[:0]
+	bq.inFlightPostponed = nil
+	bq.postponedItem = nil
+
+	return nil
+}
+
+// prependItemLocked inserts an item at the front of the queue.
+// Must be called with bq.mu held.
+func (bq *BatchQueue) prependItemLocked(item queuedItem) {
+	if bq.head > 0 {
+		bq.head--
+		bq.queue[bq.head] = item
+	} else {
+		bq.queue = append([]queuedItem{item}, bq.queue...)
+	}
+}
+
+// rollbackInFlightLocked moves un-acked inFlight items back to the front of the queue.
+// Postponed state is discarded: the postponed txs are still covered by the
+// rolled-back WAL entries, so a persisted postponed entry would duplicate
+// them and is deleted (best-effort; Load dedups any leftover on restart).
+// The caller is expected to make a fresh SetPostponed decision after the
+// next Drain. Must be called with bq.mu held.
+func (bq *BatchQueue) rollbackInFlightLocked(ctx context.Context) {
+	if len(bq.inFlight) == 0 {
+		return
+	}
+
+	if bq.postponedItem != nil {
+		// detach from the caller's context so this best-effort cleanup still
+		// runs during graceful shutdown when the drain context is cancelled
+		delCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		if err := bq.db.Delete(delCtx, ds.NewKey(bq.postponedItem.Key)); err != nil {
+			bq.logger.Warn().Err(err).Str("key", bq.postponedItem.Key).
+				Msg("failed to delete rolled-back postponed WAL entry")
+		}
+		bq.postponedItem = nil
+	}
+	bq.inFlightPostponed = nil
+
+	if bq.head >= len(bq.inFlight) {
+		// enough head slots — fill them directly
+		for i := len(bq.inFlight) - 1; i >= 0; i-- {
+			bq.head--
+			bq.queue[bq.head] = bq.inFlight[i]
+		}
+	} else {
+		// not enough head slots — single bulk prepend O(n)
+		tail := bq.queue[bq.head:]
+		newQueue := make([]queuedItem, 0, len(bq.inFlight)+len(tail))
+		newQueue = append(newQueue, bq.inFlight...)
+		newQueue = append(newQueue, tail...)
+		bq.queue = newQueue
+		bq.head = 0
+	}
+
+	clear(bq.inFlight)
+	bq.inFlight = bq.inFlight[:0]
+}
+
+// compactLocked compacts the queue when head gets too large.
+// Must be called with bq.mu held.
+func (bq *BatchQueue) compactLocked() {
 	if bq.head > len(bq.queue)/2 && bq.head > 100 {
 		remaining := copy(bq.queue, bq.queue[bq.head:])
-		// Zero out the rest of the slice
 		for i := remaining; i < len(bq.queue); i++ {
 			bq.queue[i] = queuedItem{}
 		}
 		bq.queue = bq.queue[:remaining]
 		bq.head = 0
 	}
+}
 
-	// Delete the batch from the WAL since it's been processed
-	// Use the stored key directly
-	if err := bq.db.Delete(ctx, ds.NewKey(item.Key)); err != nil {
-		// Log the error but continue
-		fmt.Printf("Error deleting processed batch: %v\n", err)
+// dedupAndEnqueueLocked filters duplicate txs from batch and enqueues the remainder.
+// The WAL is kept in sync: fully-duplicate entries are deleted and partially-duplicate
+// entries are rewritten, so stale duplicate txs cannot be resurrected by a later reload.
+// Cleanup failures are non-fatal — the filtered in-memory state stays authoritative.
+// Must be called with bq.mu held.
+func (bq *BatchQueue) dedupAndEnqueueLocked(ctx context.Context, batch coresequencer.Batch, key string) {
+	filtered := make([][]byte, 0, len(batch.Transactions))
+	for _, tx := range batch.Transactions {
+		h := txHash(tx)
+		if _, dup := bq.txSeen[h]; dup {
+			continue
+		}
+		filtered = append(filtered, tx)
+		bq.txSeen[h] = struct{}{}
 	}
 
-	return &item.Batch, nil
+	switch {
+	case len(filtered) == 0:
+		if err := bq.db.Delete(ctx, ds.NewKey(key)); err != nil {
+			bq.logger.Error().Err(err).Str("key", key).Msg("failed to delete duplicate WAL entry")
+		}
+		return
+	case len(filtered) < len(batch.Transactions):
+		batch = coresequencer.Batch{Transactions: filtered}
+		if err := bq.persistBatch(ctx, batch, key); err != nil {
+			bq.logger.Error().Err(err).Str("key", key).Msg("failed to rewrite partially duplicate WAL entry")
+		}
+	}
+
+	bq.queue = append(bq.queue, queuedItem{Batch: batch, Key: key})
+}
+
+// DropIncluded removes the given transactions from queued entries and the WAL.
+// It reconciles a crash between block commit and Ack: after a restart the WAL
+// may still hold entries whose txs were already committed in the last block.
+// Entries are rewritten in place (or deleted when emptied) so a subsequent
+// reload stays consistent. Returns the number of dropped transactions.
+// It must be called on a freshly loaded queue: only queued entries are
+// scanned, so any in-flight entries would be missed.
+func (bq *BatchQueue) DropIncluded(ctx context.Context, included [][]byte) (int, error) {
+	bq.mu.Lock()
+	defer bq.mu.Unlock()
+
+	includedSet := make(map[[32]byte]struct{}, len(included))
+	for _, tx := range included {
+		includedSet[txHash(tx)] = struct{}{}
+	}
+
+	var dropped int
+	// in-place compaction: kept aliases bq.queue's backing array. This is safe
+	// because range evaluates the slice header once and writes always trail
+	// reads (at most one item is appended per item iterated).
+	kept := bq.queue[:bq.head]
+	for _, item := range bq.queue[bq.head:] {
+		remaining := make([][]byte, 0, len(item.Batch.Transactions))
+		for _, tx := range item.Batch.Transactions {
+			h := txHash(tx)
+			if _, ok := includedSet[h]; ok {
+				delete(bq.txSeen, h)
+				dropped++
+				continue
+			}
+			remaining = append(remaining, tx)
+		}
+
+		switch {
+		case len(remaining) == len(item.Batch.Transactions):
+			// nothing dropped, keep as is
+		case len(remaining) == 0:
+			if err := bq.db.Delete(ctx, ds.NewKey(item.Key)); err != nil {
+				return dropped, fmt.Errorf("failed to delete included WAL entry %s: %w", item.Key, err)
+			}
+			continue
+		default:
+			item.Batch = coresequencer.Batch{Transactions: remaining}
+			if err := bq.persistBatch(ctx, item.Batch, item.Key); err != nil {
+				return dropped, fmt.Errorf("failed to rewrite WAL entry %s: %w", item.Key, err)
+			}
+		}
+		kept = append(kept, item)
+	}
+	bq.queue = kept
+
+	return dropped, nil
 }
 
 // Load reloads all batches from WAL file into the in-memory queue after a crash or restart
@@ -166,9 +442,13 @@ func (bq *BatchQueue) Load(ctx context.Context) error {
 	bq.mu.Lock()
 	defer bq.mu.Unlock()
 
-	// Clear the current queue and reset sequences
+	// Clear the current queue, dedup set, and reset sequences
 	bq.queue = make([]queuedItem, 0)
 	bq.head = 0
+	bq.txSeen = make(map[[32]byte]struct{})
+	bq.inFlight = nil
+	bq.inFlightPostponed = nil
+	bq.postponedItem = nil
 	bq.nextAddSeq = initialSeqNum
 	bq.nextPrependSeq = initialSeqNum - 1
 
@@ -184,8 +464,9 @@ func (bq *BatchQueue) Load(ctx context.Context) error {
 	var legacyItems []queuedItem
 	for result := range results.Next() {
 		if result.Error != nil {
-			fmt.Printf("Error reading entry from datastore: %v\n", result.Error)
-			continue
+			// a datastore read failure means the WAL cannot be trusted as
+			// loaded — fail startup rather than silently dropping txs.
+			return fmt.Errorf("failed to read WAL entry from datastore: %w", result.Error)
 		}
 		// We care about the last part of the key (the sequence number)
 		// ds.Key usually has a leading slash.
@@ -194,7 +475,7 @@ func (bq *BatchQueue) Load(ctx context.Context) error {
 		var pbBatch pb.Batch
 		err := proto.Unmarshal(result.Value, &pbBatch)
 		if err != nil {
-			fmt.Printf("Error decoding batch for key '%s': %v. Skipping entry.\n", keyName, err)
+			bq.logger.Error().Err(err).Str("key", keyName).Msg("failed to decode batch, skipping entry")
 			continue
 		}
 
@@ -215,7 +496,7 @@ func (bq *BatchQueue) Load(ctx context.Context) error {
 			}
 		}
 		if isValid {
-			bq.queue = append(bq.queue, queuedItem{Batch: batch, Key: keyName})
+			bq.dedupAndEnqueueLocked(ctx, batch, keyName)
 		} else {
 			legacyItems = append(legacyItems, queuedItem{Batch: batch, Key: result.Key})
 		}
@@ -223,33 +504,32 @@ func (bq *BatchQueue) Load(ctx context.Context) error {
 	if len(legacyItems) == 0 {
 		return nil
 	}
-	fmt.Printf("Found %d legacy items to migrate...\n", len(legacyItems))
+	bq.logger.Info().Int("count", len(legacyItems)).Msg("found legacy items to migrate")
 
 	for _, item := range legacyItems {
 		newKeyName := seqToKey(bq.nextAddSeq)
 
 		if err := bq.persistBatch(ctx, item.Batch, newKeyName); err != nil {
-			fmt.Printf("Failed to migrate legacy item %s: %v\n", item.Key, err)
+			bq.logger.Error().Err(err).Str("key", item.Key).Msg("failed to migrate legacy item")
 			continue
 		}
 
 		if err := bq.db.Delete(ctx, ds.NewKey(item.Key)); err != nil {
-			fmt.Printf("Failed to delete legacy key %s after migration: %v\n", item.Key, err)
+			bq.logger.Error().Err(err).Str("key", item.Key).Msg("failed to delete legacy key after migration")
 		}
 
-		bq.queue = append(bq.queue, queuedItem{Batch: item.Batch, Key: newKeyName})
+		bq.dedupAndEnqueueLocked(ctx, item.Batch, newKeyName)
 		bq.nextAddSeq++
 	}
 
 	return nil
 }
 
-// Size returns the effective number of batches in the queue
-// This method is primarily for testing and monitoring purposes
+// Size returns the total number of pending batches (queued + drained-but-unacked).
 func (bq *BatchQueue) Size() int {
 	bq.mu.Lock()
 	defer bq.mu.Unlock()
-	return len(bq.queue) - bq.head
+	return len(bq.queue) - bq.head + len(bq.inFlight)
 }
 
 // persistBatch persists a batch to the datastore with the given key

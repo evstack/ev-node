@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/rs/zerolog"
 
@@ -24,10 +23,6 @@ const (
 
 	// DataDAIncludedPrefix is the store key prefix for data DA inclusion tracking.
 	DataDAIncludedPrefix = "cache/data-da-included/"
-
-	// DefaultTxCacheRetention is the default time to keep transaction hashes in cache.
-	// Keeping a too high value can lead to OOM during heavy transaction load.
-	DefaultTxCacheRetention = 30 * time.Minute
 )
 
 // CacheManager provides thread-safe cache operations for tracking seen blocks
@@ -50,13 +45,6 @@ type CacheManager interface {
 	GetDataDAIncludedByHeight(blockHeight uint64) (uint64, bool)
 	SetDataDAIncluded(daCommitmentHash string, daHeight uint64, blockHeight uint64)
 	RemoveDataDAIncluded(hash string)
-
-	// Transaction operations
-	IsTxSeen(hash string) bool
-	AreTxsSeen(hashes []string) []bool
-	SetTxSeen(hash string)
-	SetTxsSeen(hashes []string)
-	CleanupOldTxs(olderThan time.Duration) int
 
 	// Pending events syncing coordination
 	GetNextPendingEvent(blockHeight uint64) *common.DAHeightEvent
@@ -94,8 +82,6 @@ var _ Manager = (*implementation)(nil)
 type implementation struct {
 	headerCache    *Cache
 	dataCache      *Cache
-	txCache        *Cache
-	txTimestamps   *sync.Map // map[string]time.Time
 	pendingEvents  map[uint64]*common.DAHeightEvent
 	pendingMu      sync.Mutex
 	pendingHeaders *PendingHeaders
@@ -109,7 +95,6 @@ type implementation struct {
 func NewManager(cfg config.Config, st store.Store, logger zerolog.Logger) (Manager, error) {
 	headerCache := NewCache(st, HeaderDAIncludedPrefix)
 	dataCache := NewCache(st, DataDAIncludedPrefix)
-	txCache := NewCache(nil, "")
 
 	pendingHeaders, err := NewPendingHeaders(st, logger)
 	if err != nil {
@@ -124,8 +109,6 @@ func NewManager(cfg config.Config, st store.Store, logger zerolog.Logger) (Manag
 	impl := &implementation{
 		headerCache:    headerCache,
 		dataCache:      dataCache,
-		txCache:        txCache,
-		txTimestamps:   new(sync.Map),
 		pendingEvents:  make(map[uint64]*common.DAHeightEvent),
 		pendingHeaders: pendingHeaders,
 		pendingData:    pendingData,
@@ -202,59 +185,6 @@ func (m *implementation) RemoveDataDAIncluded(hash string) {
 	m.dataCache.removeDAIncluded(hash)
 }
 
-func (m *implementation) IsTxSeen(hash string) bool {
-	return m.txCache.isSeen(hash)
-}
-
-func (m *implementation) AreTxsSeen(hashes []string) []bool {
-	return m.txCache.areSeen(hashes)
-}
-
-func (m *implementation) SetTxSeen(hash string) {
-	// Use 0 as height since transactions don't have a block height yet
-	m.txCache.setSeen(hash, 0)
-	// Track timestamp for cleanup purposes
-	m.txTimestamps.Store(hash, time.Now())
-}
-
-func (m *implementation) SetTxsSeen(hashes []string) {
-	m.txCache.setSeenBatch(hashes, 0)
-	now := time.Now()
-	for _, hash := range hashes {
-		m.txTimestamps.Store(hash, now)
-	}
-}
-
-// CleanupOldTxs removes transaction hashes older than olderThan and returns
-// the count removed. Defaults to DefaultTxCacheRetention if olderThan <= 0.
-func (m *implementation) CleanupOldTxs(olderThan time.Duration) int {
-	if olderThan <= 0 {
-		olderThan = DefaultTxCacheRetention
-	}
-
-	cutoff := time.Now().Add(-olderThan)
-	removed := 0
-
-	m.txTimestamps.Range(func(key, value any) bool {
-		hash, ok := key.(string)
-		if !ok {
-			return true
-		}
-		timestamp, ok := value.(time.Time)
-		if !ok {
-			return true
-		}
-		if timestamp.Before(cutoff) {
-			m.txCache.removeSeen(hash)
-			m.txTimestamps.Delete(hash)
-			removed++
-		}
-		return true
-	})
-
-	return removed
-}
-
 // DeleteHeight removes from all caches the given height.
 // This can be done when a height has been da included.
 func (m *implementation) DeleteHeight(blockHeight uint64) {
@@ -263,12 +193,6 @@ func (m *implementation) DeleteHeight(blockHeight uint64) {
 	m.pendingMu.Lock()
 	delete(m.pendingEvents, blockHeight)
 	m.pendingMu.Unlock()
-
-	// Note: txCache is intentionally NOT deleted here because:
-	// 1. Transactions are tracked by hash, not by block height (they use height 0)
-	// 2. A transaction seen at one height may be resubmitted at a different height
-	// 3. The cache prevents duplicate submissions across block heights
-	// 4. Cleanup is handled separately via CleanupOldTxs() based on time, not height
 }
 
 // Pending operations
@@ -363,7 +287,7 @@ func (m *implementation) SaveToStore() error {
 		return fmt.Errorf("failed to save data cache to store: %w", err)
 	}
 
-	// TX cache and pending events are ephemeral - not persisted
+	// pending events are ephemeral - not persisted
 	return nil
 }
 
@@ -406,7 +330,6 @@ func (m *implementation) ClearFromStore() error {
 
 	m.headerCache = NewCache(m.store, HeaderDAIncludedPrefix)
 	m.dataCache = NewCache(m.store, DataDAIncludedPrefix)
-	m.txCache = NewCache(nil, "")
 	m.pendingEvents = make(map[uint64]*common.DAHeightEvent)
 
 	// Initialize DA height from store metadata to ensure DaHeight() is never 0.

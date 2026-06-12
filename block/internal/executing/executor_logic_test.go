@@ -122,6 +122,61 @@ func TestPendingLimit_SkipsProduction(t *testing.T) {
 	assert.Equal(t, h1, h2, "height should not change when production is skipped")
 }
 
+func TestProduceBlock_RetriesFailedAckBeforeNextBlock(t *testing.T) {
+	fx := setupTestExecutor(t, 1000)
+	defer fx.Cancel()
+
+	var ackCalls int
+	fx.Exec.onBatchCommitted = func(ctx context.Context) error {
+		ackCalls++
+		if ackCalls <= 2 {
+			return assert.AnError
+		}
+		return nil
+	}
+
+	fx.MockSeq.EXPECT().GetNextBatch(mock.Anything, mock.AnythingOfType("sequencer.GetNextBatchRequest")).
+		RunAndReturn(func(ctx context.Context, req coreseq.GetNextBatchRequest) (*coreseq.GetNextBatchResponse, error) {
+			return &coreseq.GetNextBatchResponse{Batch: &coreseq.Batch{Transactions: nil}, Timestamp: time.Now()}, nil
+		}).Once()
+	fx.MockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.AnythingOfType("time.Time"), fx.InitStateRoot).
+		Return([]byte("root1"), nil).Once()
+	fx.MockSeq.EXPECT().GetDAHeight().Return(uint64(0)).Once()
+
+	// block 1 commits, but the post-commit ack fails (non-fatal)
+	require.NoError(t, fx.Exec.ProduceBlock(fx.Exec.ctx))
+	assert.Equal(t, 1, ackCalls)
+	assert.True(t, fx.Exec.pendingBatchAck.Load())
+
+	// the pending ack is retried before draining a new batch; if the retry
+	// fails again block production aborts without calling GetNextBatch
+	err := fx.Exec.ProduceBlock(fx.Exec.ctx)
+	require.Error(t, err)
+	assert.Equal(t, 2, ackCalls)
+	assert.True(t, fx.Exec.pendingBatchAck.Load())
+
+	h, err := fx.MemStore.Height(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, uint64(1), h, "no block should be produced while the ack retry fails")
+
+	// once the retry succeeds production resumes: retry ack + post-commit ack
+	fx.MockSeq.EXPECT().GetNextBatch(mock.Anything, mock.AnythingOfType("sequencer.GetNextBatchRequest")).
+		RunAndReturn(func(ctx context.Context, req coreseq.GetNextBatchRequest) (*coreseq.GetNextBatchResponse, error) {
+			return &coreseq.GetNextBatchResponse{Batch: &coreseq.Batch{Transactions: nil}, Timestamp: time.Now()}, nil
+		}).Once()
+	fx.MockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(2), mock.AnythingOfType("time.Time"), []byte("root1")).
+		Return([]byte("root2"), nil).Once()
+	fx.MockSeq.EXPECT().GetDAHeight().Return(uint64(0)).Once()
+
+	require.NoError(t, fx.Exec.ProduceBlock(fx.Exec.ctx))
+	assert.Equal(t, 4, ackCalls)
+	assert.False(t, fx.Exec.pendingBatchAck.Load())
+
+	h, err = fx.MemStore.Height(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, uint64(2), h)
+}
+
 func TestExecutor_executeTxsWithRetry(t *testing.T) {
 	t.Parallel()
 

@@ -28,6 +28,8 @@ build-all:
     @cd apps/evm && go build -ldflags "{{ ldflags }}" -o {{ build_dir }}/evm .
     @echo "--> Building grpc"
     @cd apps/grpc && go build -ldflags "{{ ldflags }}" -o {{ build_dir }}/evgrpc .
+    @echo "--> Building loadgen"
+    @cd apps/loadgen && go build -ldflags "{{ ldflags }}" -o {{ build_dir }}/ev-loadgen .
     @echo "--> Building local-da"
     @cd tools/local-da && go build -ldflags "{{ ldflags }}" -o {{ build_dir }}/local-da .
     @echo "--> All ev-node binaries built!"

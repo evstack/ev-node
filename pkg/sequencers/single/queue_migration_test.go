@@ -6,6 +6,7 @@ import (
 
 	ds "github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/query"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
@@ -53,7 +54,7 @@ func TestLoad_MigratesLegacyKeys(t *testing.T) {
 	require.NoError(err)
 
 	// 2. Create Queue and call Load
-	bq := NewBatchQueue(memdb, prefix, 0)
+	bq := NewBatchQueue(memdb, prefix, 0, zerolog.Nop())
 	err = bq.Load(ctx)
 	require.NoError(err)
 
@@ -64,7 +65,7 @@ func TestLoad_MigratesLegacyKeys(t *testing.T) {
 	// Check Order:
 	// Appended items should be LAST.
 	// Valid strings are < Appended strings (because we use nextAddSeq which is > validSeq)
-	// So Next() should return Valid item first.
+	// So draining should return Valid item first.
 	// Between legacy items, the order depends on how they were iterated from DB and appended.
 	// Iteration order: L2 (11...), L1 (aa...)
 	// Process L2: append -> [Valid, L2]
@@ -73,18 +74,15 @@ func TestLoad_MigratesLegacyKeys(t *testing.T) {
 	// So expected retrieval order: Valid, L2, L1.
 
 	// 1st Item (Valid)
-	item1, err := bq.Next(ctx)
-	require.NoError(err)
+	item1 := drainOne(ctx, t, bq)
 	require.Equal(validBatch.Transactions, item1.Transactions)
 
 	// 2nd Item (L2)
-	item2, err := bq.Next(ctx)
-	require.NoError(err)
+	item2 := drainOne(ctx, t, bq)
 	require.Equal(legacyBatch2.Transactions, item2.Transactions)
 
 	// 3rd Item (L1)
-	item3, err := bq.Next(ctx)
-	require.NoError(err)
+	item3 := drainOne(ctx, t, bq)
 	require.Equal(legacyBatch.Transactions, item3.Transactions)
 
 	// Queue empty
@@ -104,7 +102,7 @@ func TestLoad_MigratesLegacyKeys(t *testing.T) {
 		keys = append(keys, "found")
 	}
 
-	// We expect 0 keys in DB because we called Next() 3 times which deletes them from DB as well!
+	// We expect 0 keys in DB because draining and acking all 3 items deletes them from DB as well!
 	require.Empty(keys, "Expected DB to be empty after processing all items")
 }
 
@@ -132,7 +130,7 @@ func TestLoad_Migration_DBCheck(t *testing.T) {
 	require.NoError(err)
 
 	// Load
-	bq := NewBatchQueue(memdb, prefix, 0)
+	bq := NewBatchQueue(memdb, prefix, 0, zerolog.Nop())
 	require.NoError(bq.Load(ctx))
 
 	// Verify DB keys
