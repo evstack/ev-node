@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changes
 
+- Add automatic DA retriever walkback when P2P stalls and DA blocks too far ahead [#3262](https://github.com/evstack/ev-node/pull/3262)
 - Add max bytes contraints in simple solo sequnecer [#3312](https://github.com/evstack/ev-node/pull/3312)
 - Add support for otlp in execution/grpc. [#3300](https://github.com/evstack/ev-node/pull/3300)
 - Optimization of mutex usage in cache for reaper [#3286](https://github.com/evstack/ev-node/pull/3286)

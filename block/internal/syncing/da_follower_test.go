@@ -12,6 +12,7 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/common"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
+	"github.com/evstack/ev-node/types"
 )
 
 func TestDAFollower_HandleEvent(t *testing.T) {
@@ -164,7 +165,6 @@ func TestDAFollower_HandleCatchup(t *testing.T) {
 			initialPriorityHeights: []uint64{99},
 			wantPipedHeights:       []uint64{100},
 			setupMock: func(m *MockDARetriever) {
-				// stale priority hint (< daHeight) is discarded; only sequential height is fetched
 				m.On("RetrieveFromDA", mock.Anything, uint64(100)).
 					Return([]common.DAHeightEvent{{DaHeight: 100}}, nil).Once()
 			},
@@ -179,7 +179,7 @@ func TestDAFollower_HandleCatchup(t *testing.T) {
 			}
 
 			follower, getPipedEvents := newFollower(t, s, daRetriever)
-			err := follower.HandleCatchup(t.Context(), s.daHeight)
+			events, err := follower.HandleCatchup(t.Context(), s.daHeight)
 
 			if s.wantErrIs != nil {
 				require.ErrorIs(t, err, s.wantErrIs)
@@ -203,6 +203,8 @@ func TestDAFollower_HandleCatchup(t *testing.T) {
 			} else {
 				assert.Empty(t, follower.priorityHeights)
 			}
+
+			_ = events
 		})
 	}
 }
@@ -250,4 +252,8 @@ func makeRange(start, end uint64) []uint64 {
 		out = append(out, v)
 	}
 	return out
+}
+
+func makeHeader(height uint64) *types.SignedHeader {
+	return &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{Height: height}}}
 }
