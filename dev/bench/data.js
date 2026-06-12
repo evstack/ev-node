@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1781191611643,
+  "lastUpdate": 1781259772128,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -190,6 +190,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 175922,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "julien@rbrt.fr",
+            "name": "julienrbrt",
+            "username": "julienrbrt"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "d208cd0dd1cb0ae86d327710994e83b67ca19d89",
+          "message": "chore: prep ev-node v1.1.3 (#3353)",
+          "timestamp": "2026-06-12T12:21:29+02:00",
+          "tree_id": "7cfc8a1befa03af694cc06c18dee46ebff5bcd75",
+          "url": "https://github.com/evstack/ev-node/commit/d208cd0dd1cb0ae86d327710994e83b67ca19d89"
+        },
+        "date": 1781259767113,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 890636174,
+            "unit": "ns/op\t29594884 B/op\t  155901 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 890636174,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 29594884,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 155901,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
