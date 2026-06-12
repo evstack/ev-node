@@ -8,7 +8,7 @@ The Executor interface defines how ev-node communicates with execution layers. I
 type Executor interface {
     InitChain(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) (stateRoot []byte, err error)
     GetTxs(ctx context.Context) ([][]byte, error)
-    ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (updatedStateRoot []byte, err error)
+    ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (result ExecuteResult, err error)
     SetFinal(ctx context.Context, blockHeight uint64) error
     GetExecutionInfo(ctx context.Context) (ExecutionInfo, error)
     FilterTxs(ctx context.Context, txs [][]byte, maxBytes, maxGas uint64, hasForceIncludedTransaction bool) ([]FilterStatus, error)
@@ -64,7 +64,7 @@ GetTxs(ctx context.Context) ([][]byte, error)
 Processes transactions to produce a new block state.
 
 ```go
-ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (updatedStateRoot []byte, err error)
+ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (result ExecuteResult, err error)
 ```
 
 **Parameters:**
@@ -76,7 +76,15 @@ ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time
 
 **Returns:**
 
-- `updatedStateRoot` - New state root after execution
+- `result.UpdatedStateRoot` - New state root after execution
+- `result.NextProposerAddress` - Address expected to sign the next block. Empty means the proposer is unchanged.
+
+```go
+type ExecuteResult struct {
+    UpdatedStateRoot []byte
+    NextProposerAddress []byte
+}
+```
 
 **Requirements:**
 

@@ -152,11 +152,12 @@ func (s *Replayer) replayBlock(ctx context.Context, height uint64) error {
 	if height == s.genesis.InitialHeight {
 		// For the first block, use genesis state.
 		prevState = types.State{
-			ChainID:         s.genesis.ChainID,
-			InitialHeight:   s.genesis.InitialHeight,
-			LastBlockHeight: s.genesis.InitialHeight - 1,
-			LastBlockTime:   s.genesis.StartTime,
-			AppHash:         header.AppHash, // Genesis app hash (input to first block execution)
+			ChainID:             s.genesis.ChainID,
+			InitialHeight:       s.genesis.InitialHeight,
+			LastBlockHeight:     s.genesis.InitialHeight - 1,
+			LastBlockTime:       s.genesis.StartTime,
+			AppHash:             header.AppHash, // Genesis app hash (input to first block execution)
+			NextProposerAddress: append([]byte(nil), s.genesis.ProposerAddress...),
 		}
 	} else {
 		// GetStateAtHeight(height-1) returns the state AFTER block height-1 was executed,
@@ -179,9 +180,15 @@ func (s *Replayer) replayBlock(ctx context.Context, height uint64) error {
 		Int("tx_count", len(rawTxs)).
 		Msg("executing transactions on execution layer")
 
-	newAppHash, err := s.exec.ExecuteTxs(ctx, rawTxs, height, header.Time(), prevState.AppHash)
+	result, err := s.exec.ExecuteTxs(ctx, rawTxs, height, header.Time(), prevState.AppHash)
 	if err != nil {
 		return fmt.Errorf("failed to execute transactions: %w", err)
+	}
+	newAppHash := result.UpdatedStateRoot
+
+	newState, err := prevState.NextState(header.Header, newAppHash, result.NextProposerAddress)
+	if err != nil {
+		return fmt.Errorf("calculate next state: %w", err)
 	}
 
 	// The result of ExecuteTxs (newAppHash) should match the stored state at this height.
@@ -207,6 +214,15 @@ func (s *Replayer) replayBlock(ctx context.Context, height uint64) error {
 				Msg("app hash mismatch during replay")
 			return err
 		}
+		if len(expectedState.NextProposerAddress) > 0 {
+			if !bytes.Equal(newState.NextProposerAddress, expectedState.NextProposerAddress) {
+				return fmt.Errorf("next proposer mismatch at height %d: expected %x got %x",
+					height,
+					expectedState.NextProposerAddress,
+					newState.NextProposerAddress,
+				)
+			}
+		}
 		s.logger.Debug().
 			Uint64("height", height).
 			Str("app_hash", hex.EncodeToString(newAppHash)).
@@ -217,12 +233,6 @@ func (s *Replayer) replayBlock(ctx context.Context, height uint64) error {
 			Uint64("height", height).
 			Str("app_hash", hex.EncodeToString(newAppHash)).
 			Msg("replayBlock: ExecuteTxs completed (no stored state to verify against)")
-	}
-
-	// Calculate new state
-	newState, err := prevState.NextState(header.Header, newAppHash)
-	if err != nil {
-		return fmt.Errorf("calculate next state: %w", err)
 	}
 
 	// Persist the new state

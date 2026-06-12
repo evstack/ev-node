@@ -63,9 +63,9 @@ type Executor interface {
 	// - prevStateRoot: Previous block's state root hash
 	//
 	// Returns:
-	// - updatedStateRoot: New state root after executing transactions
+	// - result: New execution result after executing transactions
 	// - err: Any execution errors
-	ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (updatedStateRoot []byte, err error)
+	ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (result ExecuteResult, err error)
 
 	// SetFinal marks a block as finalized at the specified height.
 	// Requirements:
@@ -132,6 +132,19 @@ type ExecutionInfo struct {
 	// MaxGas is the maximum gas allowed for transactions in a block.
 	// For non-gas-based execution layers, this should be 0.
 	MaxGas uint64
+}
+
+// ExecuteResult contains execution output that consensus must persist.
+type ExecuteResult = struct {
+	// UpdatedStateRoot is the new state root after executing transactions.
+	UpdatedStateRoot []byte
+
+	// NextProposerAddress is the authoritative proposer address selected by
+	// the execution layer to sign block blockHeight+1 (the block immediately
+	// after the one just executed). An empty value means the current proposer
+	// remains active; execution layers that do not support proposer rotation
+	// MUST leave this field empty.
+	NextProposerAddress []byte
 }
 
 // HeightProvider is an optional interface that execution clients can implement

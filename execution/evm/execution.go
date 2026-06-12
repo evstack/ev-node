@@ -160,6 +160,9 @@ type EthRPCClient interface {
 
 	// GetTxs retrieves pending transactions from the transaction pool.
 	GetTxs(ctx context.Context) ([]string, error)
+
+	// GetNextProposer retrieves the proposer selected by the execution layer.
+	GetNextProposer(ctx context.Context, number *big.Int) (common.Hash, error)
 }
 
 // EngineClient represents a client that interacts with an Ethereum execution engine
@@ -344,7 +347,7 @@ func (c *EngineClient) GetTxs(ctx context.Context) ([][]byte, error) {
 // - Checks for already-promoted blocks to enable idempotent execution
 // - Saves ExecMeta with payloadID after forkchoiceUpdatedV3 for crash recovery
 // - Updates ExecMeta to "promoted" after successful execution
-func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (updatedStateRoot []byte, err error) {
+func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (execution.ExecuteResult, error) {
 
 	// 1. Check for idempotent execution
 	stateRoot, payloadID, found, idempotencyErr := c.reconcileExecutionAtHeight(ctx, blockHeight, timestamp, txs)
@@ -353,22 +356,26 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 		// Continue execution on error, as it might be transient
 	} else if found {
 		if stateRoot != nil {
-			return stateRoot, nil
+			return c.executionResultAfterBlock(ctx, stateRoot, blockHeight)
 		}
 		if payloadID != nil {
 			// Found in-progress execution, attempt to resume
-			return c.processPayload(ctx, *payloadID, txs)
+			stateRoot, err := c.processPayload(ctx, *payloadID, txs)
+			if err != nil {
+				return execution.ExecuteResult{}, err
+			}
+			return c.executionResultAfterBlock(ctx, stateRoot, blockHeight)
 		}
 	}
 
 	prevBlockHash, prevHeaderStateRoot, prevGasLimit, _, err := c.getBlockInfo(ctx, blockHeight-1)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get block info: %w", err)
+		return execution.ExecuteResult{}, fmt.Errorf("failed to get block info: %w", err)
 	}
 	// It's possible that the prev state root passed in is nil if this is the first block.
 	// If so, we can't do a comparison. Otherwise, we compare the roots.
 	if len(prevStateRoot) > 0 && !bytes.Equal(prevStateRoot, prevHeaderStateRoot.Bytes()) {
-		return nil, fmt.Errorf("prevStateRoot mismatch at height %d: consensus=%x execution=%x", blockHeight-1, prevStateRoot, prevHeaderStateRoot.Bytes())
+		return execution.ExecuteResult{}, fmt.Errorf("prevStateRoot mismatch at height %d: consensus=%x execution=%x", blockHeight-1, prevStateRoot, prevHeaderStateRoot.Bytes())
 	}
 
 	// 2. Prepare payload attributes
@@ -445,7 +452,7 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 		return nil
 	}, MaxPayloadStatusRetries, InitialRetryBackoff, "ExecuteTxs forkchoice")
 	if err != nil {
-		return nil, err
+		return execution.ExecuteResult{}, err
 	}
 
 	// Save ExecMeta with payloadID for crash recovery (Stage="started")
@@ -453,7 +460,11 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 	c.saveExecMeta(ctx, blockHeight, timestamp.Unix(), newPayloadID[:], nil, nil, txs, ExecStageStarted)
 
 	// 4. Process the payload (get, submit, finalize)
-	return c.processPayload(ctx, *newPayloadID, txs)
+	stateRoot, err = c.processPayload(ctx, *newPayloadID, txs)
+	if err != nil {
+		return execution.ExecuteResult{}, err
+	}
+	return c.executionResultAfterBlock(ctx, stateRoot, blockHeight)
 }
 
 // setHead updates the head block hash without changing safe or finalized.
@@ -850,19 +861,68 @@ func (c *EngineClient) filterTransactions(txs [][]byte) []string {
 
 // GetExecutionInfo returns current execution layer parameters.
 func (c *EngineClient) GetExecutionInfo(ctx context.Context) (execution.ExecutionInfo, error) {
+	var info execution.ExecutionInfo
 	if cached := c.cachedExecutionInfo.Load(); cached != nil {
-		return *cached, nil
-	}
+		info.MaxGas = cached.MaxGas
+	} else {
+		header, err := c.ethClient.HeaderByNumber(ctx, nil) // nil = latest
+		if err != nil {
+			return execution.ExecutionInfo{}, fmt.Errorf("failed to get latest block: %w", err)
+		}
 
-	header, err := c.ethClient.HeaderByNumber(ctx, nil) // nil = latest
-	if err != nil {
-		return execution.ExecutionInfo{}, fmt.Errorf("failed to get latest block: %w", err)
+		info.MaxGas = header.GasLimit
+		c.cachedExecutionInfo.Store(&execution.ExecutionInfo{MaxGas: info.MaxGas})
 	}
-
-	info := execution.ExecutionInfo{MaxGas: header.GasLimit}
-	c.cachedExecutionInfo.Store(&info)
 
 	return info, nil
+}
+
+func isRPCMethodNotFound(err error) bool {
+	var rpcErr rpc.Error
+	return errors.As(err, &rpcErr) && rpcErr.ErrorCode() == -32601
+}
+
+func (c *EngineClient) executionResultAfterBlock(ctx context.Context, stateRoot []byte, executedBlockHeight uint64) (execution.ExecuteResult, error) {
+	nextProposer, err := c.nextProposerChangeAfterBlock(ctx, executedBlockHeight)
+	if err != nil {
+		return execution.ExecuteResult{}, err
+	}
+	return execution.ExecuteResult{
+		UpdatedStateRoot:    stateRoot,
+		NextProposerAddress: nextProposer,
+	}, nil
+}
+
+func (c *EngineClient) nextProposerChangeAfterBlock(ctx context.Context, executedBlockHeight uint64) ([]byte, error) {
+	if executedBlockHeight == 0 {
+		return nil, nil
+	}
+
+	before, supported, err := c.nextProposerAtBlock(ctx, executedBlockHeight-1)
+	if err != nil || !supported {
+		return nil, err
+	}
+
+	after, supported, err := c.nextProposerAtBlock(ctx, executedBlockHeight)
+	if err != nil || !supported {
+		return nil, err
+	}
+
+	if after == (common.Hash{}) || after == before {
+		return nil, nil
+	}
+	return after.Bytes(), nil
+}
+
+func (c *EngineClient) nextProposerAtBlock(ctx context.Context, blockHeight uint64) (common.Hash, bool, error) {
+	proposer, err := c.ethClient.GetNextProposer(ctx, new(big.Int).SetUint64(blockHeight))
+	if err != nil {
+		if isRPCMethodNotFound(err) {
+			return common.Hash{}, false, nil
+		}
+		return common.Hash{}, true, fmt.Errorf("failed to get next proposer at block %d: %w", blockHeight, err)
+	}
+	return proposer, true, nil
 }
 
 // FilterTxs validates force-included transactions and applies gas and size filtering for all passed txs.

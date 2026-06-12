@@ -72,5 +72,5 @@ Based sequencing minimizes trust assumptions:
 
 ## Further Reading
 
-- [Data Availability](../data-availability.md) - Understanding the DA layer
-- [Transaction Flow](../transaction-flow.md) - How transactions move through the system
+- [Data Availability](../../concepts/data-availability.md) - Understanding the DA layer
+- [Transaction Flow](../../concepts/transaction-flow.md) - How transactions move through the system

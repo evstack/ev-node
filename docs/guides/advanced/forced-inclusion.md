@@ -14,7 +14,7 @@ Forced inclusion is a censorship-resistance mechanism that allows users to submi
    - **With lazy mode:** the sequencer produces a block once either
      - enough transactions are collected
      - the lazy-mode block interval elapses
-       More info in the [lazy mode configuration guide](../config.md#lazy-mode-lazy-aggregator).
+       More info in the [lazy mode configuration guide](../../learn/config.md#lazy-mode-lazy-aggregator).
    - Each block contains a batch of ordered transactions and metadata.
 
 4. **Data Availability Posting:**

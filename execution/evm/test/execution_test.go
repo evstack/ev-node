@@ -129,8 +129,9 @@ func TestEngineExecution(t *testing.T) {
 			allTimestamps = append(allTimestamps, blockTimestamp)
 
 			// Execute transactions and get the new state root
-			newStateRoot, err := executionClient.ExecuteTxs(ctx, payload, blockHeight, blockTimestamp, prevStateRoot)
+			executeResult, err := executionClient.ExecuteTxs(ctx, payload, blockHeight, blockTimestamp, prevStateRoot)
 			require.NoError(tt, err)
+			newStateRoot := executeResult.UpdatedStateRoot
 
 			err = executionClient.SetFinal(ctx, blockHeight)
 			require.NoError(tt, err)
@@ -201,8 +202,9 @@ func TestEngineExecution(t *testing.T) {
 
 			// Use timestamp from build phase for each block to ensure proper ordering
 			blockTimestamp := allTimestamps[blockHeight-1]
-			newStateRoot, err := executionClient.ExecuteTxs(ctx, payload, blockHeight, blockTimestamp, prevStateRoot)
+			executeResult, err := executionClient.ExecuteTxs(ctx, payload, blockHeight, blockTimestamp, prevStateRoot)
 			require.NoError(t, err)
+			newStateRoot := executeResult.UpdatedStateRoot
 			if len(payload) == 0 {
 				require.Equal(tt, prevStateRoot, newStateRoot)
 			} else {

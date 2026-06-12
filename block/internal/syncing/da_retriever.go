@@ -28,12 +28,20 @@ type DARetriever interface {
 	ProcessBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent
 }
 
+type pendingDataCleaner interface {
+	removePendingData(height uint64)
+}
+
+type expectedProposerProvider func(height uint64) ([]byte, bool)
+
 // daRetriever handles DA retrieval operations for syncing
 type daRetriever struct {
 	client  da.Client
 	cache   cache.CacheManager
 	genesis genesis.Genesis
 	logger  zerolog.Logger
+
+	expectedProposer expectedProposerProvider
 
 	mu sync.Mutex
 	// transient cache, only full event need to be passed to the syncer
@@ -62,6 +70,10 @@ func NewDARetriever(
 		pendingData:    make(map[uint64]*types.Data),
 		strictMode:     false,
 	}
+}
+
+func (r *daRetriever) setExpectedProposerProvider(provider expectedProposerProvider) {
+	r.expectedProposer = provider
 }
 
 // RetrieveFromDA retrieves blocks from the specified DA height and returns height events
@@ -172,9 +184,15 @@ func (r *daRetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 		}
 
 		if header := r.tryDecodeHeader(bz, daHeight); header != nil {
-			if _, ok := r.pendingHeaders[header.Height()]; ok {
-				// a (malicious) node may have re-published valid header to another da height (should never happen)
-				// we can already discard it, only the first one is valid
+			if existing, ok := r.pendingHeaders[header.Height()]; ok {
+				if r.shouldReplacePendingHeader(existing, header) {
+					r.cache.RemoveHeaderDAIncluded(existing.Hash().String())
+					r.pendingHeaders[header.Height()] = header
+					r.logger.Debug().Uint64("height", header.Height()).Uint64("da_height", daHeight).Msg("replaced pending header with expected proposer header")
+					continue
+				}
+
+				r.cache.RemoveHeaderDAIncluded(header.Hash().String())
 				r.logger.Debug().Uint64("height", header.Height()).Uint64("da_height", daHeight).Msg("header blob already exists for height, discarding")
 				continue
 			}
@@ -213,7 +231,6 @@ func (r *daRetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 			}
 		} else {
 			delete(r.pendingHeaders, height)
-			delete(r.pendingData, height)
 		}
 
 		// Create height event
@@ -243,6 +260,25 @@ func (r *daRetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 	}
 
 	return events
+}
+
+func (r *daRetriever) shouldReplacePendingHeader(existing, candidate *types.SignedHeader) bool {
+	if r.expectedProposer == nil {
+		return false
+	}
+
+	expected, ok := r.expectedProposer(candidate.Height())
+	if !ok || len(expected) == 0 {
+		return false
+	}
+	return !bytes.Equal(existing.ProposerAddress, expected) && bytes.Equal(candidate.ProposerAddress, expected)
+}
+
+func (r *daRetriever) removePendingData(height uint64) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	delete(r.pendingData, height)
 }
 
 // tryDecodeHeader attempts to decode a blob as a header
@@ -299,7 +335,7 @@ func (r *daRetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedH
 		return nil
 	}
 
-	if err := r.assertExpectedProposer(header.ProposerAddress); err != nil {
+	if err := r.assertExpectedProposer(header); err != nil {
 		r.logger.Debug().Err(err).Msg("unexpected proposer")
 		return nil
 	}
@@ -322,6 +358,21 @@ func (r *daRetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedH
 		Msg("optimistically marked header as DA included")
 
 	return header
+}
+
+func (r *daRetriever) assertExpectedProposer(header *types.SignedHeader) error {
+	if r.expectedProposer == nil {
+		return nil
+	}
+
+	expected, ok := r.expectedProposer(header.Height())
+	if !ok || len(expected) == 0 {
+		return nil
+	}
+	if !bytes.Equal(header.ProposerAddress, expected) {
+		return fmt.Errorf("%w - got: %x, want: %x", types.ErrUnexpectedProposer, header.ProposerAddress, expected)
+	}
+	return nil
 }
 
 // tryDecodeData attempts to decode a blob as signed data
@@ -353,11 +404,6 @@ func (r *daRetriever) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
 		Msg("data marked as DA included")
 
 	return &signedData.Data
-}
-
-// assertExpectedProposer validates the proposer address
-func (r *daRetriever) assertExpectedProposer(proposerAddr []byte) error {
-	return assertExpectedProposer(r.genesis, proposerAddr)
 }
 
 // assertValidSignedData validates signed data using the configured signature provider

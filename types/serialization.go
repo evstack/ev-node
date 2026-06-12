@@ -436,7 +436,6 @@ func (h *Header) FromProto(other *pb.Header) error {
 	} else {
 		h.ValidatorHash = nil
 	}
-
 	legacy, err := decodeLegacyHeaderFields(other)
 	if err != nil {
 		return err
@@ -533,6 +532,7 @@ func (s *State) MarshalBinary() ([]byte, error) {
 	ps.DaHeight = s.DAHeight
 	ps.AppHash = s.AppHash
 	ps.LastHeaderHash = s.LastHeaderHash
+	ps.NextProposerAddress = s.NextProposerAddress
 
 	bz, err := proto.Marshal(ps)
 
@@ -554,13 +554,14 @@ func (s *State) ToProto() (*pb.State, error) {
 			Block: s.Version.Block,
 			App:   s.Version.App,
 		},
-		ChainId:         s.ChainID,
-		InitialHeight:   s.InitialHeight,
-		LastBlockHeight: s.LastBlockHeight,
-		LastBlockTime:   &timestamppb.Timestamp{Seconds: secs, Nanos: nanos},
-		DaHeight:        s.DAHeight,
-		AppHash:         s.AppHash[:],
-		LastHeaderHash:  s.LastHeaderHash[:],
+		ChainId:             s.ChainID,
+		InitialHeight:       s.InitialHeight,
+		LastBlockHeight:     s.LastBlockHeight,
+		LastBlockTime:       &timestamppb.Timestamp{Seconds: secs, Nanos: nanos},
+		DaHeight:            s.DAHeight,
+		AppHash:             s.AppHash[:],
+		LastHeaderHash:      s.LastHeaderHash[:],
+		NextProposerAddress: s.NextProposerAddress,
 	}, nil
 }
 
@@ -596,6 +597,11 @@ func (s *State) FromProto(other *pb.State) error {
 		s.LastHeaderHash = nil
 	}
 	s.DAHeight = other.GetDaHeight()
+	if other.NextProposerAddress != nil {
+		s.NextProposerAddress = append([]byte(nil), other.NextProposerAddress...)
+	} else {
+		s.NextProposerAddress = nil
+	}
 	return nil
 }
 

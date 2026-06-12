@@ -567,6 +567,8 @@ pub struct State {
     pub app_hash: ::prost::alloc::vec::Vec<u8>,
     #[prost(bytes = "vec", tag = "9")]
     pub last_header_hash: ::prost::alloc::vec::Vec<u8>,
+    #[prost(bytes = "vec", tag = "10")]
+    pub next_proposer_address: ::prost::alloc::vec::Vec<u8>,
 }
 /// RaftBlockState represents a replicated block state
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -1088,6 +1090,10 @@ pub struct ExecuteTxsResponse {
     /// Maximum allowed transaction size (may change with protocol updates)
     #[prost(uint64, tag = "2")]
     pub max_bytes: u64,
+    /// Proposer address that should sign the next block.
+    /// Empty means the current proposer remains active.
+    #[prost(bytes = "vec", tag = "3")]
+    pub next_proposer_address: ::prost::alloc::vec::Vec<u8>,
 }
 /// SetFinalRequest marks a block as finalized
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
@@ -1105,12 +1111,16 @@ pub struct SetFinalResponse {}
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GetExecutionInfoRequest {}
 /// GetExecutionInfoResponse contains execution layer parameters
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GetExecutionInfoResponse {
     /// Maximum gas allowed for transactions in a block
     /// For non-gas-based execution layers, this should be 0
     #[prost(uint64, tag = "1")]
     pub max_gas: u64,
+    /// Proposer address that should sign the next block from the execution
+    /// layer's current view. Empty means unchanged or unavailable.
+    #[prost(bytes = "vec", tag = "2")]
+    pub next_proposer_address: ::prost::alloc::vec::Vec<u8>,
 }
 /// FilterTxsRequest contains transactions to validate and filter
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]

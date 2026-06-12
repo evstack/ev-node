@@ -85,7 +85,7 @@ raft:
   enable: true
 ```
 
-**CLI:** `--evnode.raft.enable`  
+**CLI:** `--evnode.raft.enable`
 **Default:** `false`
 
 Enables Raft consensus. Must be `true` on every cluster member. When disabled (the default), the node runs as a traditional single sequencer. Setting this to `true` also requires `node.aggregator: true`.
@@ -99,7 +99,7 @@ raft:
   node_id: "node-1"
 ```
 
-**CLI:** `--evnode.raft.node_id`  
+**CLI:** `--evnode.raft.node_id`
 **Default:** _(none, required)_
 
 A string that uniquely identifies this node within the cluster. Every node must have a different `node_id`. The ID is stored in the Raft log and used by other nodes to route messages — **never change it after the cluster is bootstrapped**, as doing so will break the cluster membership records.
@@ -115,7 +115,7 @@ raft:
   raft_addr: "0.0.0.0:5001"
 ```
 
-**CLI:** `--evnode.raft.raft_addr`  
+**CLI:** `--evnode.raft.raft_addr`
 **Default:** _(none, required)_
 
 The TCP address this node listens on for Raft transport messages from other cluster members. The `0.0.0.0` bind address accepts connections on all interfaces; bind to a specific private IP if you want to restrict which interface is used for cluster traffic.
@@ -133,7 +133,7 @@ raft:
   raft_dir: "/var/lib/ev-node/raft"
 ```
 
-**CLI:** `--evnode.raft.raft_dir`  
+**CLI:** `--evnode.raft.raft_dir`
 **Default:** `<home>/raft`
 
 The directory where Raft stores its persistent state: log database, stable store, and snapshots. This directory **must be on persistent storage** (not tmpfs, not ephemeral container storage). Losing this directory means the node loses its cluster identity — it cannot rejoin without being reconfigured as a new member.
@@ -149,7 +149,7 @@ raft:
   peers: "node-2@10.0.0.2:5001,node-3@10.0.0.3:5001,node-4@10.0.0.4:5001,node-5@10.0.0.5:5001"
 ```
 
-**CLI:** `--evnode.raft.peers`  
+**CLI:** `--evnode.raft.peers`
 **Default:** _(none, required)_
 
 A comma-separated list of the **other** cluster members (exclude the local node), in the format `nodeID@host:port`. The host and port must be the Raft address (`raft_addr`) of each peer as reachable from this node. Do not list the node's own `node_id` in its own `peers` field.
@@ -170,7 +170,7 @@ raft:
   bootstrap: false
 ```
 
-**CLI:** `--evnode.raft.bootstrap`  
+**CLI:** `--evnode.raft.bootstrap`
 **Default:** `false`
 
 Compatibility flag retained for older deployments. **You do not need to set this.** ev-node auto-detects the correct startup mode from the state of `raft_dir`:
@@ -202,7 +202,7 @@ raft:
   heartbeat_timeout: "92ms"
 ```
 
-**CLI:** `--evnode.raft.heartbeat_timeout`  
+**CLI:** `--evnode.raft.heartbeat_timeout`
 **Default:** `350ms`
 
 The maximum time a follower will wait without receiving a heartbeat from the leader before starting a new election. The leader sends heartbeats more frequently than this value internally; this parameter is purely a follower-side timeout that triggers a new election when crossed.
@@ -228,7 +228,7 @@ raft:
   election_timeout: "368ms"
 ```
 
-**CLI:** `--evnode.raft.election_timeout`  
+**CLI:** `--evnode.raft.election_timeout`
 **Default:** `1000ms`
 
 How long a follower waits without receiving a heartbeat before it concludes the leader is dead and starts a new election. Must be greater than or equal to `heartbeat_timeout`.
@@ -246,7 +246,7 @@ raft:
   leader_lease_timeout: "46ms"
 ```
 
-**CLI:** `--evnode.raft.leader_lease_timeout`  
+**CLI:** `--evnode.raft.leader_lease_timeout`
 **Default:** `175ms`
 
 The duration for which a leader considers its leadership valid after the last successful heartbeat acknowledgment. Leader lease enables local reads from the leader without a round-trip to quorum.
@@ -262,7 +262,7 @@ raft:
   send_timeout: "50ms"
 ```
 
-**CLI:** `--evnode.raft.send_timeout`  
+**CLI:** `--evnode.raft.send_timeout`
 **Default:** `200ms`
 
 The maximum time the leader waits for a single message (log entry, heartbeat) to be delivered to a peer before marking the delivery as failed. A failed send is retried, but repeated failures trigger follower health tracking.
@@ -282,7 +282,7 @@ raft:
   snapshot_threshold: 5000
 ```
 
-**CLI:** `--evnode.raft.snapshot_threshold`  
+**CLI:** `--evnode.raft.snapshot_threshold`
 **Default:** `500`
 
 The number of committed log entries that must accumulate before Raft automatically takes a snapshot of the FSM state. After a snapshot, log entries older than the snapshot are compacted away.
@@ -303,7 +303,7 @@ raft:
   trailing_logs: 18000
 ```
 
-**CLI:** `--evnode.raft.trailing_logs`  
+**CLI:** `--evnode.raft.trailing_logs`
 **Default:** `200`
 
 The number of log entries to **retain after a snapshot** is taken. These entries act as a catch-up buffer: a node that missed fewer than `trailing_logs` entries since the last snapshot can replay from the log without needing to transfer the full snapshot.
@@ -324,7 +324,7 @@ raft:
   snap_count: 3
 ```
 
-**CLI:** `--evnode.raft.snap_count`  
+**CLI:** `--evnode.raft.snap_count`
 **Default:** `3`
 
 The number of snapshot files to retain on disk. Older snapshots are deleted when new ones are created. Keeping 2–3 snapshots provides a rollback option in case the latest snapshot is corrupt.

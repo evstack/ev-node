@@ -59,3 +59,9 @@ func (t *tracedDARetriever) RetrieveFromDA(ctx context.Context, daHeight uint64)
 func (t *tracedDARetriever) ProcessBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent {
 	return t.inner.ProcessBlobs(ctx, blobs, daHeight)
 }
+
+func (t *tracedDARetriever) removePendingData(height uint64) {
+	if cleaner, ok := t.inner.(pendingDataCleaner); ok {
+		cleaner.removePendingData(height)
+	}
+}

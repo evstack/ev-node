@@ -81,8 +81,9 @@ func (h *P2PHandler) ProcessHeight(ctx context.Context, height uint64, heightInC
 		}
 		return err
 	}
-	if err := h.assertExpectedProposer(p2pHeader.ProposerAddress); err != nil {
-		h.logger.Debug().Uint64("height", height).Err(err).Msg("invalid header from P2P")
+	if got := p2pHeader.Height(); got != height {
+		err := fmt.Errorf("header height mismatch: requested %d, got %d", height, got)
+		h.logger.Warn().Uint64("requested_height", height).Uint64("header_height", got).Err(err).Msg("discarding mismatched header from P2P")
 		return err
 	}
 
@@ -91,6 +92,11 @@ func (h *P2PHandler) ProcessHeight(ctx context.Context, height uint64, heightInC
 		if ctx.Err() == nil {
 			h.logger.Debug().Uint64("height", height).Err(err).Msg("data unavailable in store")
 		}
+		return err
+	}
+	if got := p2pData.Height(); got != height {
+		err := fmt.Errorf("data height mismatch: requested %d, got %d", height, got)
+		h.logger.Warn().Uint64("requested_height", height).Uint64("data_height", got).Err(err).Msg("discarding mismatched data from P2P")
 		return err
 	}
 	dataCommitment := p2pData.DACommitment()
@@ -122,14 +128,5 @@ func (h *P2PHandler) ProcessHeight(ctx context.Context, height uint64, heightInC
 	h.SetProcessedHeight(height)
 
 	h.logger.Debug().Uint64("height", height).Msg("processed event from P2P")
-	return nil
-}
-
-// assertExpectedProposer validates the proposer address.
-func (h *P2PHandler) assertExpectedProposer(proposerAddr []byte) error {
-	if !bytes.Equal(h.genesis.ProposerAddress, proposerAddr) {
-		return fmt.Errorf("proposer address mismatch: got %x, expected %x",
-			proposerAddr, h.genesis.ProposerAddress)
-	}
 	return nil
 }

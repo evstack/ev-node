@@ -6,10 +6,11 @@ The Executor interface is the boundary between ev-node and your execution layer.
 
 ```go
 type Executor interface {
-    InitChain(ctx context.Context, genesis Genesis) ([]byte, error)
+    InitChain(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, error)
     GetTxs(ctx context.Context) ([][]byte, error)
-    ExecuteTxs(ctx context.Context, txs [][]byte, height uint64, timestamp time.Time) (*ExecutionResult, error)
+    ExecuteTxs(ctx context.Context, txs [][]byte, height uint64, timestamp time.Time, prevStateRoot []byte) (execution.ExecuteResult, error)
     SetFinal(ctx context.Context, height uint64) error
+    GetExecutionInfo(ctx context.Context) (execution.ExecutionInfo, error)
 }
 ```
 
@@ -95,7 +96,8 @@ func (e *MyExecutor) ExecuteTxs(
     txs [][]byte,
     height uint64,
     timestamp time.Time,
-) (*ExecutionResult, error)
+    prevStateRoot []byte,
+) (execution.ExecuteResult, error)
 ```
 
 **Parameters:**
@@ -103,17 +105,17 @@ func (e *MyExecutor) ExecuteTxs(
 - `txs` — Ordered transactions to execute
 - `height` — Block height
 - `timestamp` — Block timestamp
+- `prevStateRoot` — Previous block's state root
 
 **Returns:**
 
-- `ExecutionResult` containing new state root and gas used
+- `execution.ExecuteResult` containing the new state root and optional next proposer address
 - Error only for system failures (not tx failures)
 
 **Responsibilities:**
 
 - Execute each transaction in order
 - Update state
-- Track gas usage
 - Handle transaction failures gracefully
 - Return new state root
 
@@ -125,30 +127,27 @@ func (e *MyExecutor) ExecuteTxs(
     txs [][]byte,
     height uint64,
     timestamp time.Time,
-) (*ExecutionResult, error) {
-    var totalGas uint64
-
+    prevStateRoot []byte,
+) (execution.ExecuteResult, error) {
     for _, txBytes := range txs {
         tx, err := DecodeTx(txBytes)
         if err != nil {
             continue // Skip invalid tx
         }
 
-        gas, err := e.executeTx(tx)
-        if err != nil {
+        if err := e.executeTx(tx); err != nil {
             // Log but continue - tx failure != block failure
             continue
         }
-
-        totalGas += gas
     }
 
     // Commit state changes
     stateRoot := e.db.Commit()
 
-    return &ExecutionResult{
-        StateRoot: stateRoot,
-        GasUsed:   totalGas,
+    return execution.ExecuteResult{
+        UpdatedStateRoot: stateRoot,
+        // Empty keeps the current proposer.
+        NextProposerAddress: nil,
     }, nil
 }
 ```
@@ -210,9 +209,9 @@ func TestExecuteTxs(t *testing.T) {
     require.NoError(t, err)
 
     // Execute
-    result, err := exec.ExecuteTxs(ctx, txs, 1, time.Now())
+    result, err := exec.ExecuteTxs(ctx, txs, 1, time.Now(), initialStateRoot)
     require.NoError(t, err)
-    require.NotEmpty(t, result.StateRoot)
+    require.NotEmpty(t, result.UpdatedStateRoot)
 }
 ```
 

@@ -182,7 +182,9 @@ func (s *Syncer) Start(ctx context.Context) (err error) {
 	}
 
 	// Initialize handlers
-	s.daRetriever = NewDARetriever(s.daClient, s.cache, s.genesis, s.logger)
+	daRetriever := NewDARetriever(s.daClient, s.cache, s.genesis, s.logger)
+	daRetriever.setExpectedProposerProvider(s.expectedProposerForHeight)
+	s.daRetriever = daRetriever
 	if s.config.Instrumentation.IsTracingEnabled() {
 		s.daRetriever = WithTracingDARetriever(s.daRetriever)
 	}
@@ -303,6 +305,14 @@ func (s *Syncer) SetLastState(state types.State) {
 	s.lastState.Store(&state)
 }
 
+func (s *Syncer) expectedProposerForHeight(height uint64) ([]byte, bool) {
+	state := s.getLastState()
+	if height != state.LastBlockHeight+1 || len(state.NextProposerAddress) == 0 {
+		return nil, false
+	}
+	return state.NextProposerAddress, true
+}
+
 // initializeState loads the current sync state
 func (s *Syncer) initializeState() error {
 	// Load state from store
@@ -321,12 +331,21 @@ func (s *Syncer) initializeState() error {
 		}
 
 		state = types.State{
-			ChainID:         s.genesis.ChainID,
-			InitialHeight:   s.genesis.InitialHeight,
-			LastBlockHeight: s.genesis.InitialHeight - 1,
-			LastBlockTime:   s.genesis.StartTime,
-			DAHeight:        s.genesis.DAStartHeight,
-			AppHash:         stateRoot,
+			ChainID:             s.genesis.ChainID,
+			InitialHeight:       s.genesis.InitialHeight,
+			LastBlockHeight:     s.genesis.InitialHeight - 1,
+			LastBlockTime:       s.genesis.StartTime,
+			DAHeight:            s.genesis.DAStartHeight,
+			AppHash:             stateRoot,
+			NextProposerAddress: s.initialProposerAddress(),
+		}
+	}
+	if len(state.NextProposerAddress) == 0 {
+		state.NextProposerAddress = s.initialProposerAddress()
+		if state.LastBlockHeight > s.genesis.InitialHeight-1 {
+			s.logger.Warn().
+				Uint64("height", state.LastBlockHeight).
+				Msg("loaded state without NextProposerAddress; repaired from execution/genesis. Verify chain has not rotated proposer before this upgrade")
 		}
 	}
 	if state.DAHeight != 0 && state.DAHeight < s.genesis.DAStartHeight {
@@ -397,6 +416,10 @@ func (s *Syncer) initializeState() error {
 	}
 
 	return nil
+}
+
+func (s *Syncer) initialProposerAddress() []byte {
+	return append([]byte(nil), s.genesis.ProposerAddress...)
 }
 
 // processLoop is the main coordination loop for processing events
@@ -726,9 +749,22 @@ func (s *Syncer) trySyncNextBlockWithState(ctx context.Context, event *common.DA
 	// here only the previous block needs to be applied to proceed to the verification.
 	// The header validation must be done before applying the block to avoid executing gibberish
 	if err := s.ValidateBlock(ctx, currentState, data, header); err != nil {
-		// remove header as da included from cache
-		s.cache.RemoveHeaderDAIncluded(headerHash)
-		s.cache.RemoveDataDAIncluded(data.DACommitment().String())
+		var vErr *BlockValidationError
+		switch {
+		case errors.As(err, &vErr):
+			switch vErr.Fault {
+			case FaultHeader:
+				s.cache.RemoveHeaderDAIncluded(headerHash)
+			case FaultData:
+				s.cache.RemoveDataDAIncluded(data.DACommitment().String())
+			}
+		case errors.Is(err, errInvalidState):
+			// State divergence does not point at a specific side of the pair;
+			// the cached entries stay so an honest counterpart can still pair up.
+		default:
+			s.cache.RemoveHeaderDAIncluded(headerHash)
+			s.cache.RemoveDataDAIncluded(data.DACommitment().String())
+		}
 
 		if !errors.Is(err, errInvalidState) && !errors.Is(err, errInvalidBlock) {
 			return errors.Join(errInvalidBlock, err)
@@ -804,6 +840,12 @@ func (s *Syncer) trySyncNextBlockWithState(ctx context.Context, event *common.DA
 		s.p2pHandler.SetProcessedHeight(newState.LastBlockHeight)
 	}
 
+	if event.Source == common.SourceDA {
+		if cleaner, ok := s.daRetriever.(pendingDataCleaner); ok {
+			cleaner.removePendingData(nextHeight)
+		}
+	}
+
 	return nil
 }
 
@@ -817,14 +859,14 @@ func (s *Syncer) ApplyBlock(ctx context.Context, header types.Header, data *type
 
 	// Execute transactions
 	ctx = context.WithValue(ctx, types.HeaderContextKey, header)
-	newAppHash, err := s.executeTxsWithRetry(ctx, rawTxs, header, currentState)
+	result, err := s.executeTxsWithRetry(ctx, rawTxs, header, currentState)
 	if err != nil {
 		s.sendCriticalError(fmt.Errorf("failed to execute transactions: %w", err))
 		return types.State{}, fmt.Errorf("failed to execute transactions: %w", err)
 	}
 
 	// Create new state
-	newState, err := currentState.NextState(header, newAppHash)
+	newState, err := currentState.NextState(header, result.UpdatedStateRoot, result.NextProposerAddress)
 	if err != nil {
 		return types.State{}, fmt.Errorf("failed to create next state: %w", err)
 	}
@@ -834,12 +876,12 @@ func (s *Syncer) ApplyBlock(ctx context.Context, header types.Header, data *type
 
 // executeTxsWithRetry executes transactions with retry logic.
 // NOTE: the function retries the execution client call regardless of the error. Some execution clients errors are irrecoverable, and will eventually halt the node, as expected.
-func (s *Syncer) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, header types.Header, currentState types.State) ([]byte, error) {
+func (s *Syncer) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, header types.Header, currentState types.State) (coreexecutor.ExecuteResult, error) {
 	for attempt := 1; attempt <= common.MaxRetriesBeforeHalt; attempt++ {
-		newAppHash, err := s.exec.ExecuteTxs(ctx, rawTxs, header.Height(), header.Time(), currentState.AppHash)
+		result, err := s.exec.ExecuteTxs(ctx, rawTxs, header.Height(), header.Time(), currentState.AppHash)
 		if err != nil {
 			if attempt == common.MaxRetriesBeforeHalt {
-				return nil, fmt.Errorf("failed to execute transactions: %w", err)
+				return coreexecutor.ExecuteResult{}, fmt.Errorf("failed to execute transactions: %w", err)
 			}
 
 			s.logger.Error().Err(err).
@@ -852,31 +894,46 @@ func (s *Syncer) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, heade
 			case <-time.After(common.MaxRetriesTimeout):
 				continue
 			case <-ctx.Done():
-				return nil, fmt.Errorf("context cancelled during retry: %w", ctx.Err())
+				return coreexecutor.ExecuteResult{}, fmt.Errorf("context cancelled during retry: %w", ctx.Err())
 			}
 		}
 
-		return newAppHash, nil
+		return result, nil
 	}
 
-	return nil, nil
+	return coreexecutor.ExecuteResult{}, nil
 }
 
-// ValidateBlock validates a synced block
-// NOTE: if the header was gibberish and somehow passed all validation prior but the data was correct
-// or if the data was gibberish and somehow passed all validation prior but the header was correct
-// we are still losing both in the pending event. This should never happen.
+// ValidateBlock validates a synced block. It runs header-only checks first
+// (signature, proposer, sequence) and only then the pair checks between the
+// header and the attached data. Failures are wrapped in BlockValidationError so
+// callers can drop the right side of the pair from caches without discarding a
+// potentially legitimate counterpart.
 func (s *Syncer) ValidateBlock(_ context.Context, currState types.State, data *types.Data, header *types.SignedHeader) error {
 	// Set custom verifier for aggregator node signature
 	header.SetCustomVerifierForSyncNode(s.options.SyncNodeSignatureBytesProvider)
 
 	if err := header.ValidateBasicWithData(data); err != nil { //nolint:contextcheck // validation API does not accept context
-		return fmt.Errorf("invalid header: %w", err)
+		return errors.Join(errInvalidBlock, &BlockValidationError{Fault: FaultHeader, Err: fmt.Errorf("invalid header: %w", err)})
 	}
 
-	if err := currState.AssertValidForNextState(header, data); err != nil {
+	if err := currState.AssertExpectedProposer(header); err != nil {
+		return errors.Join(errInvalidBlock, &BlockValidationError{Fault: FaultHeader, Err: err})
+	}
+
+	if err := currState.AssertValidSequence(header); err != nil {
+		if errors.Is(err, types.ErrInvalidChainID) ||
+			errors.Is(err, types.ErrInvalidBlockHeight) ||
+			errors.Is(err, types.ErrInvalidBlockTime) {
+			return errors.Join(errInvalidBlock, &BlockValidationError{Fault: FaultHeader, Err: err})
+		}
 		return errors.Join(errInvalidState, err)
 	}
+
+	if err := types.Validate(header, data); err != nil {
+		return errors.Join(errInvalidBlock, &BlockValidationError{Fault: FaultData, Err: fmt.Errorf("header-data validation failed: %w", err)})
+	}
+
 	return nil
 }
 
