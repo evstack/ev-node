@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1781266226534,
+  "lastUpdate": 1781268446750,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -286,6 +286,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 196810,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "f11351d22164f000a62dff58879be28a2d108c84",
+          "message": "build(deps): Bump github.com/cosmos/cosmos-sdk from 0.50.12 to 0.50.14 in /apps/loadgen (#3355)\n\nbuild(deps): Bump github.com/cosmos/cosmos-sdk in /apps/loadgen\n\nBumps [github.com/cosmos/cosmos-sdk](https://github.com/cosmos/cosmos-sdk) from 0.50.12 to 0.50.14.\n- [Release notes](https://github.com/cosmos/cosmos-sdk/releases)\n- [Changelog](https://github.com/cosmos/cosmos-sdk/blob/v0.50.14/CHANGELOG.md)\n- [Commits](https://github.com/cosmos/cosmos-sdk/compare/v0.50.12...v0.50.14)\n\n---\nupdated-dependencies:\n- dependency-name: github.com/cosmos/cosmos-sdk\n  dependency-version: 0.50.14\n  dependency-type: indirect\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-06-12T12:26:49Z",
+          "tree_id": "f82e8e1766ec4a9eb401c57bfdb567490a3e9af8",
+          "url": "https://github.com/evstack/ev-node/commit/f11351d22164f000a62dff58879be28a2d108c84"
+        },
+        "date": 1781268442292,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 902044221,
+            "unit": "ns/op\t31424936 B/op\t  171314 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 902044221,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 31424936,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 171314,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
