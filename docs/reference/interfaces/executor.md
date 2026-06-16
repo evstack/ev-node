@@ -190,4 +190,4 @@ Only implement if your execution layer supports in-flight rollback.
 
 ## Implementation Guide
 
-See [Implement Custom Executor](/getting-started/custom/implement-executor) for a step-by-step guide.
+See [Implement Custom Executor](../../getting-started/custom/implement-executor.md) for a step-by-step guide.

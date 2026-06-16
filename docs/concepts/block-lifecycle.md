@@ -655,7 +655,7 @@ The components communicate through well-defined interfaces:
 
 ## Metrics
 
-The block components expose Prometheus metrics for monitoring block production, DA submission/retrieval, sync progress, and errors. See the [Metrics guide](/guides/metrics) for configuration and available metric names.
+The block components expose Prometheus metrics for monitoring block production, DA submission/retrieval, sync progress, and errors. See the [Metrics guide](../guides/metrics.md) for configuration and available metric names.
 
 ## Implementation
 

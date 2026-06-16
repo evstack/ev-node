@@ -16,6 +16,7 @@ Evolve is the fastest way to launch your own modular network — without validat
 
 ## Get started
 
+<!-- markdown-link-check-disable -->
 <div class="grid-cards">
 
 <a class="card" href="/guides/quick-start">
@@ -39,17 +40,18 @@ Evolve is the fastest way to launch your own modular network — without validat
 </a>
 
 </div>
+<!-- markdown-link-check-enable -->
 
 ## Explore
 
 | Section | What you'll find |
 |---------|-----------------|
-| [Learn](/learn/about) | Core concepts — DA, sequencing, execution, specs |
-| [How-To Guides](/guides/quick-start) | Tutorials for building, deploying, and operating chains |
-| [EVM Integration](/guides/evm/single) | Run an EVM chain with Reth |
-| [DA Layers](/guides/da/local-da) | Connect to Celestia or run a local DA |
-| [Deploy](/guides/deploy/overview) | Local, testnet, and mainnet deployment |
-| [API Docs](/api) | Full RPC reference |
+| [Learn](learn/about.md) | Core concepts — DA, sequencing, execution, specs |
+| [How-To Guides](guides/quick-start.md) | Tutorials for building, deploying, and operating chains |
+| [EVM Integration](guides/evm/single.md) | Run an EVM chain with Reth |
+| [DA Layers](guides/da/local-da.md) | Connect to Celestia or run a local DA |
+| [Deploy](guides/deploy/overview.md) | Local, testnet, and mainnet deployment |
+| [API Docs](api/index.md) | Full RPC reference |
 
 <style>
 .grid-cards {

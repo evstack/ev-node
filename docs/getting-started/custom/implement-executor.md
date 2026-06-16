@@ -217,7 +217,7 @@ func TestExecuteTxs(t *testing.T) {
 
 ## Next Steps
 
-- [Executor Interface Reference](/reference/interfaces/executor) — Full type definitions
+- [Executor Interface Reference](../../reference/interfaces/executor.md) — Full type definitions
 - [Testapp Source](https://github.com/evstack/ev-node/tree/main/apps/testapp) — Reference implementation
-- [EVM Quickstart](/getting-started/evm/quickstart) — Using the EVM executor (ev-reth)
-- [Cosmos SDK Quickstart](/getting-started/cosmos/quickstart) — Using the Cosmos SDK executor (ev-abci)
+- [EVM Quickstart](../evm/quickstart.md) — Using the EVM executor (ev-reth)
+- [Cosmos SDK Quickstart](../cosmos/quickstart.md) — Using the Cosmos SDK executor (ev-abci)
