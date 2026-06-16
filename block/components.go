@@ -278,7 +278,6 @@ func newAggregatorComponents(
 		sequencer,
 		genesis,
 		logger,
-		cacheManager,
 		config.Node.ScrapeInterval.Duration,
 		executor.NotifyNewTransactions,
 	)

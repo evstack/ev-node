@@ -87,9 +87,23 @@ type Executor struct {
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
+	// onBatchCommitted is called after a block is committed to ack drained queue entries.
+	// if the ack fails it is retried before the next block is produced.
+	onBatchCommitted func(ctx context.Context) error
+
+	// pendingBatchAck is set when a committed block's batch ack failed and
+	// must be retried before producing the next block.
+	pendingBatchAck atomic.Bool
+
 	// blockProducer is the interface used for block production operations.
 	// defaults to self, but can be wrapped with tracing.
 	blockProducer BlockProducer
+}
+
+// batchAcknowledger is implemented by sequencers whose drained queue
+// entries must be acknowledged after the block is durably committed.
+type batchAcknowledger interface {
+	AckBatch(ctx context.Context) error
 }
 
 // NewExecutor creates a new block executor.
@@ -146,6 +160,17 @@ func NewExecutor(
 		logger:            logger.With().Str("component", "executor").Logger(),
 	}
 	e.blockProducer = e
+
+	// wire the batch ack so drained queue entries are committed after block
+	// commit. tracing wrappers forward AckBatch to the underlying sequencer.
+	if acker, ok := sequencer.(batchAcknowledger); ok {
+		e.onBatchCommitted = acker.AckBatch
+	} else if !config.Node.BasedSequencer {
+		// without an ack, drained queue entries are rolled back on every
+		// retrieval and the same transactions would be re-included each block
+		e.logger.Warn().Msg("sequencer does not implement AckBatch; drained batch entries will not be acknowledged after block commit")
+	}
+
 	return e, nil
 }
 
@@ -153,6 +178,20 @@ func NewExecutor(
 // a tracing wrapper or other decorator.
 func (e *Executor) SetBlockProducer(bp BlockProducer) {
 	e.blockProducer = bp
+}
+
+// ackCommittedBatch invokes the batch ack callback and tracks failures so
+// they can be retried before the next block is produced.
+func (e *Executor) ackCommittedBatch(ctx context.Context) error {
+	if e.onBatchCommitted == nil {
+		return nil
+	}
+	if err := e.onBatchCommitted(ctx); err != nil {
+		e.pendingBatchAck.Store(true)
+		return err
+	}
+	e.pendingBatchAck.Store(false)
+	return nil
 }
 
 // Start begins the execution component
@@ -488,6 +527,15 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 		return errors.New("raft cluster does not have quorum")
 	}
 
+	// retry a failed ack from the previous block before retrieving a new batch.
+	// without this, the un-acked drained entries would be rolled back and
+	// re-included in the next block.
+	if e.pendingBatchAck.Load() {
+		if err := e.ackCommittedBatch(ctx); err != nil {
+			return fmt.Errorf("failed to ack previously committed batch: %w", err)
+		}
+	}
+
 	currentState := e.getLastState()
 	newHeight := currentState.LastBlockHeight + 1
 
@@ -637,6 +685,12 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 
 	// Update in-memory state after successful commit
 	e.setLastState(newState)
+
+	// ack the drained queue entries now that the block is durably committed.
+	// failure is not fatal: the ack is retried before the next block.
+	if err := e.ackCommittedBatch(ctx); err != nil {
+		e.logger.Warn().Err(err).Msg("failed to ack batch after commit, will retry before next block")
+	}
 
 	// Update last-block cache so the next CreateBlock avoids a store read.
 	e.lastBlockInfo.Store(&lastBlockInfo{

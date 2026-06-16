@@ -20,12 +20,35 @@ type tracedSequencer struct {
 	tracer trace.Tracer
 }
 
+// batchAcknowledger is implemented by sequencers that require an ack
+// after drained queue entries are durably committed in a block.
+type batchAcknowledger interface {
+	AckBatch(ctx context.Context) error
+}
+
 // WithTracingSequencer decorates the provided Sequencer with tracing spans.
+// If the inner sequencer implements AckBatch, the returned sequencer
+// forwards it so consumers can still detect and use the ack capability.
 func WithTracingSequencer(inner coresequencer.Sequencer) coresequencer.Sequencer {
-	return &tracedSequencer{
+	ts := &tracedSequencer{
 		inner:  inner,
 		tracer: otel.Tracer("ev-node/sequencer"),
 	}
+	if acker, ok := inner.(batchAcknowledger); ok {
+		return &tracedAckSequencer{tracedSequencer: ts, acker: acker}
+	}
+	return ts
+}
+
+// tracedAckSequencer is a tracedSequencer whose inner sequencer also
+// implements AckBatch.
+type tracedAckSequencer struct {
+	*tracedSequencer
+	acker batchAcknowledger
+}
+
+func (t *tracedAckSequencer) AckBatch(ctx context.Context) error {
+	return t.acker.AckBatch(ctx)
 }
 
 func (t *tracedSequencer) SubmitBatchTxs(ctx context.Context, req coresequencer.SubmitBatchTxsRequest) (*coresequencer.SubmitBatchTxsResponse, error) {

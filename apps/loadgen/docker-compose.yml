@@ -1,0 +1,28 @@
+name: "ev-loadgen"
+
+services:
+  spamoor-daemon:
+    image: ethpandaops/spamoor:latest
+    entrypoint: /app/spamoor-daemon
+    command:
+      - --privkey=${BENCH_PRIVATE_KEY:?BENCH_PRIVATE_KEY is required}
+      - --rpchost=${BENCH_ETH_RPC_URL:?BENCH_ETH_RPC_URL is required}
+      - --port=8080
+      - --startup-delay=0
+    ports:
+      - "8080:8080"
+
+  benchmarks:
+    build:
+      context: ../..
+      dockerfile: apps/loadgen/Dockerfile
+    command:
+      - ev-loadgen
+      - start
+      - --spamoor-url=http://spamoor-daemon:8080
+      - --tx-per-day=1000000
+      - --interval=1h
+      - --burst-tx-count=500000
+      - --burst-per-day=2
+    depends_on:
+      - spamoor-daemon
