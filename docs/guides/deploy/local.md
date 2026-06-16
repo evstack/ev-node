@@ -62,7 +62,7 @@ docker logs local-da
 
 Expected output:
 
-```
+```text
 INF NewLocalDA: initialized LocalDA component=da
 INF Listening on component=da host=0.0.0.0 maxBlobSize=1970176 port=7980
 INF server started component=da listening_on=0.0.0.0:7980
@@ -98,7 +98,7 @@ docker compose -f docker-compose.da.local.yml logs -f
 
 A healthy startup looks like:
 
-```
+```text
 single-sequencer  | 🚀 INIT: Starting EVM Sequencer initialization
 single-sequencer  | ✅ SUCCESS: Sequencer initialization completed
 single-sequencer  | ✅ SUCCESS: Exported genesis.json to /volumes/sequencer_export/genesis.json
