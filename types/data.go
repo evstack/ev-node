@@ -9,6 +9,14 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+var (
+	// ErrHeaderDataMismatch is returned when header and data metadata do not describe the same block.
+	ErrHeaderDataMismatch = errors.New("header and data do not match")
+
+	// ErrDataHashMismatch is returned when a header's data hash does not match its block data.
+	ErrDataHashMismatch = errors.New("dataHash from the header does not match with hash of the block's data")
+)
+
 // Version captures the consensus rules for processing a block in the blockchain,
 // including all blockchain data structures and the rules of the application's
 // state transition machine.
@@ -60,14 +68,14 @@ func Validate(header *SignedHeader, data *Data) error {
 		if header.ChainID() != data.ChainID() ||
 			header.Height() != data.Height() ||
 			header.Time() != data.Time() { // skipping LastDataHash comparison as it needs access to previous header
-			return errors.New("header and data do not match")
+			return ErrHeaderDataMismatch
 		}
 	}
 	// exclude Metadata while computing the data hash for comparison
 	d := Data{Txs: data.Txs}
 	dataHash := d.DACommitment()
 	if !bytes.Equal(dataHash[:], header.DataHash[:]) {
-		return errors.New("dataHash from the header does not match with hash of the block's data")
+		return ErrDataHashMismatch
 	}
 	return nil
 }

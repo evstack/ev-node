@@ -4,6 +4,8 @@ import (
 	"context"
 	"math/big"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
@@ -29,4 +31,20 @@ func (e *ethRPCClient) GetTxs(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 	return result, nil
+}
+
+func (e *ethRPCClient) GetNextProposer(ctx context.Context, number *big.Int) (common.Hash, error) {
+	var result common.Hash
+	err := e.client.Client().CallContext(ctx, &result, "evolve_getNextProposer", blockNumberArg(number))
+	if err != nil {
+		return common.Hash{}, err
+	}
+	return result, nil
+}
+
+func blockNumberArg(number *big.Int) string {
+	if number == nil {
+		return "latest"
+	}
+	return hexutil.EncodeBig(number)
 }

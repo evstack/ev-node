@@ -1,7 +1,6 @@
 package types
 
 import (
-	"bytes"
 	"context"
 	"encoding"
 	"errors"
@@ -42,9 +41,6 @@ const (
 var (
 	// ErrNoProposerAddress is returned when the proposer address is not set.
 	ErrNoProposerAddress = errors.New("no proposer address")
-
-	// ErrProposerVerificationFailed is returned when the proposer verification fails.
-	ErrProposerVerificationFailed = errors.New("proposer verification failed")
 
 	// ErrInvalidTimestamp is returned when the timestamp is invalid.
 	ErrInvalidTimestamp = errors.New("invalid timestamp")
@@ -122,20 +118,6 @@ func (h *Header) Time() time.Time {
 	return time.Unix(0, int64(h.BaseHeader.Time))
 }
 
-// Verify verifies the header.
-func (h *Header) Verify(untrstH *Header) error {
-	if !bytes.Equal(untrstH.ProposerAddress, h.ProposerAddress) {
-		return &header.VerifyError{
-			Reason: fmt.Errorf("%w: expected proposer (%X) got (%X)",
-				ErrProposerVerificationFailed,
-				h.ProposerAddress,
-				untrstH.ProposerAddress,
-			),
-		}
-	}
-	return nil
-}
-
 // Validate performs basic validation of a header.
 func (h *Header) Validate() error {
 	return h.ValidateBasic()
@@ -164,7 +146,6 @@ func (h *Header) ValidateBasic() error {
 }
 
 var (
-	_ header.Header[*Header]     = &Header{}
 	_ encoding.BinaryMarshaler   = &Header{}
 	_ encoding.BinaryUnmarshaler = &Header{}
 )

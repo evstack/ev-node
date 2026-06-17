@@ -70,32 +70,16 @@ func testVerify(t *testing.T, trusted *SignedHeader, untrustedAdj *SignedHeader,
 			},
 			err: nil,
 		},
-		// 4. Test proposer verification
-		// changes the proposed address to a random address
-		// Expect failure
+		// 4. Test proposer rotation at the header layer.
+		// Proposer authorization is state-owned, so header verification only
+		// checks the chain link and allows a different proposer address.
 		{
 			prepare: func() (*SignedHeader, bool) {
 				untrusted := *untrustedAdj
 				untrusted.ProposerAddress = GetRandomBytes(32)
 				return &untrusted, true
 			},
-			err: &header.VerifyError{
-				Reason: ErrProposerVerificationFailed,
-			},
-		},
-		// 5. Test proposer verification for non-adjacent headers
-		// changes the proposed address to a random address and updates height
-		// Expect failure
-		{
-			prepare: func() (*SignedHeader, bool) {
-				untrusted := *untrustedAdj
-				untrusted.ProposerAddress = GetRandomBytes(32)
-				untrusted.BaseHeader.Height++
-				return &untrusted, true
-			},
-			err: &header.VerifyError{
-				Reason: ErrProposerVerificationFailed,
-			},
+			err: nil,
 		},
 	}
 

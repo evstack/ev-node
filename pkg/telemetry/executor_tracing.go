@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"context"
+	"encoding/hex"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -58,7 +59,7 @@ func (t *tracedExecutor) GetTxs(ctx context.Context) ([][]byte, error) {
 	return txs, err
 }
 
-func (t *tracedExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, error) {
+func (t *tracedExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (execution.ExecuteResult, error) {
 	ctx, span := t.tracer.Start(ctx, "Executor.ExecuteTxs",
 		trace.WithAttributes(
 			attribute.Int("tx.count", len(txs)),
@@ -68,12 +69,14 @@ func (t *tracedExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeig
 	)
 	defer span.End()
 
-	stateRoot, err := t.inner.ExecuteTxs(ctx, txs, blockHeight, timestamp, prevStateRoot)
+	result, err := t.inner.ExecuteTxs(ctx, txs, blockHeight, timestamp, prevStateRoot)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
+	} else if len(result.NextProposerAddress) > 0 {
+		span.SetAttributes(attribute.String("next_proposer_address", hex.EncodeToString(result.NextProposerAddress)))
 	}
-	return stateRoot, err
+	return result, err
 }
 
 func (t *tracedExecutor) SetFinal(ctx context.Context, blockHeight uint64) error {

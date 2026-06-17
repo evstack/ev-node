@@ -125,10 +125,6 @@ func (r *raftRetriever) consumeRaftBlock(ctx context.Context, state *raft.RaftBl
 		r.logger.Debug().Err(err).Msg("invalid header structure")
 		return nil
 	}
-	if err := assertExpectedProposer(r.genesis, header.ProposerAddress); err != nil {
-		r.logger.Debug().Err(err).Msg("unexpected proposer")
-		return nil
-	}
 
 	var data types.Data
 	if err := data.UnmarshalBinary(state.Data); err != nil {

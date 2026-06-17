@@ -215,15 +215,18 @@ func TestDARetriever_TryDecodeHeaderAndData_Basic(t *testing.T) {
 	assert.Nil(t, r.tryDecodeData([]byte("junk"), 1))
 }
 
-func TestDARetriever_tryDecodeData_InvalidSignatureOrProposer(t *testing.T) {
+func TestDARetriever_tryDecodeData_InvalidSignature(t *testing.T) {
 
-	goodAddr, pub, signer := buildSyncTestSigner(t)
-	badAddr := []byte("not-the-proposer")
-	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: badAddr}
+	addr, pub, signer := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
 	r := newTestDARetriever(t, nil, config.DefaultConfig(), gen)
 
-	// Signed data is made by goodAddr; retriever expects badAddr -> should be rejected
-	db, _ := makeSignedDataBytes(t, gen.ChainID, 7, goodAddr, pub, signer, 1)
+	_, signedData := makeSignedDataBytes(t, gen.ChainID, 7, addr, pub, signer, 1)
+	require.NotEmpty(t, signedData.Signature)
+	signedData.Signature[0] ^= 0x01
+	db, err := signedData.MarshalBinary()
+	require.NoError(t, err)
+
 	assert.Nil(t, r.tryDecodeData(db, 55))
 }
 
@@ -304,9 +307,91 @@ func TestDARetriever_ProcessBlobs_CrossDAHeightMatching(t *testing.T) {
 	assert.Equal(t, uint64(5), event.Data.Height())
 	assert.Equal(t, uint64(102), event.DaHeight, "DaHeight should be the height where data was processed")
 
-	// Verify pending maps are cleared
+	// Verify the header is consumed, while data remains available until the
+	// candidate block is accepted by the syncer.
 	require.NotContains(t, r.pendingHeaders, uint64(5), "header should be removed from pending")
-	require.NotContains(t, r.pendingData, uint64(5), "data should be removed from pending")
+	require.Contains(t, r.pendingData, uint64(5), "data should remain pending until accepted")
+
+	r.removePendingData(5)
+	require.NotContains(t, r.pendingData, uint64(5), "accepted data should be removed from pending")
+}
+
+func TestDARetriever_ProcessBlobs_KeepsDataForLaterHeaderAfterCandidateEvent(t *testing.T) {
+	expectedAddr, expectedPub, expectedSigner := buildSyncTestSigner(t)
+	wrongAddr, wrongPub, wrongSigner := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: expectedAddr}
+
+	r := newTestDARetriever(t, nil, config.DefaultConfig(), gen)
+
+	dataBin, data := makeSignedDataBytes(t, gen.ChainID, 5, expectedAddr, expectedPub, expectedSigner, 2)
+	wrongHeaderBin, wrongHeader := makeSignedHeaderBytes(t, gen.ChainID, 5, wrongAddr, wrongPub, wrongSigner, nil, &data.Data, nil)
+	correctHeaderBin, correctHeader := makeSignedHeaderBytes(t, gen.ChainID, 5, expectedAddr, expectedPub, expectedSigner, nil, &data.Data, nil)
+
+	events := r.processBlobs(context.Background(), [][]byte{wrongHeaderBin, dataBin}, 100)
+	require.Len(t, events, 1)
+	require.Equal(t, wrongHeader.Hash().String(), events[0].Header.Hash().String())
+	require.Contains(t, r.pendingData, uint64(5), "data should stay available until the candidate block is accepted")
+
+	events = r.processBlobs(context.Background(), [][]byte{correctHeaderBin}, 101)
+	require.Len(t, events, 1)
+	require.Equal(t, correctHeader.Hash().String(), events[0].Header.Hash().String())
+	require.Equal(t, data.Data.DACommitment().String(), events[0].Data.DACommitment().String())
+}
+
+func TestDARetriever_ProcessBlobs_RejectsUnexpectedProposerBeforePendingHeader(t *testing.T) {
+	expectedAddr, expectedPub, expectedSigner := buildSyncTestSigner(t)
+	wrongAddr, wrongPub, wrongSigner := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: expectedAddr}
+
+	r := newTestDARetriever(t, nil, config.DefaultConfig(), gen)
+	r.setExpectedProposerProvider(func(height uint64) ([]byte, bool) {
+		if height != 5 {
+			return nil, false
+		}
+		return expectedAddr, true
+	})
+
+	_, data := makeSignedDataBytes(t, gen.ChainID, 5, expectedAddr, expectedPub, expectedSigner, 1)
+	wrongHeaderBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 5, wrongAddr, wrongPub, wrongSigner, nil, &data.Data, nil)
+	correctHeaderBin, correctHeader := makeSignedHeaderBytes(t, gen.ChainID, 5, expectedAddr, expectedPub, expectedSigner, nil, &data.Data, nil)
+
+	events := r.processBlobs(context.Background(), [][]byte{wrongHeaderBin}, 100)
+	require.Empty(t, events)
+	require.NotContains(t, r.pendingHeaders, uint64(5), "unexpected proposer must not occupy the pending header slot")
+
+	events = r.processBlobs(context.Background(), [][]byte{correctHeaderBin}, 101)
+	require.Empty(t, events)
+	require.Contains(t, r.pendingHeaders, uint64(5), "expected proposer should be accepted as pending while data is missing")
+	require.Equal(t, correctHeader.Hash().String(), r.pendingHeaders[5].Hash().String())
+}
+
+func TestDARetriever_ProcessBlobs_ReplacesFutureHeaderOnceExpectedProposerIsKnown(t *testing.T) {
+	expectedAddr, expectedPub, expectedSigner := buildSyncTestSigner(t)
+	wrongAddr, wrongPub, wrongSigner := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: expectedAddr}
+
+	r := newTestDARetriever(t, nil, config.DefaultConfig(), gen)
+	expectedKnown := false
+	r.setExpectedProposerProvider(func(height uint64) ([]byte, bool) {
+		if height != 5 || !expectedKnown {
+			return nil, false
+		}
+		return expectedAddr, true
+	})
+
+	dataBin, data := makeSignedDataBytes(t, gen.ChainID, 5, expectedAddr, expectedPub, expectedSigner, 1)
+	wrongHeaderBin, wrongHeader := makeSignedHeaderBytes(t, gen.ChainID, 5, wrongAddr, wrongPub, wrongSigner, nil, &data.Data, nil)
+	correctHeaderBin, correctHeader := makeSignedHeaderBytes(t, gen.ChainID, 5, expectedAddr, expectedPub, expectedSigner, nil, &data.Data, nil)
+
+	events := r.processBlobs(context.Background(), [][]byte{wrongHeaderBin}, 100)
+	require.Empty(t, events)
+	require.Equal(t, wrongHeader.Hash().String(), r.pendingHeaders[5].Hash().String())
+
+	expectedKnown = true
+	events = r.processBlobs(context.Background(), [][]byte{correctHeaderBin, dataBin}, 101)
+	require.Len(t, events, 1)
+	require.Equal(t, correctHeader.Hash().String(), events[0].Header.Hash().String())
+	require.Equal(t, data.Data.DACommitment().String(), events[0].Data.DACommitment().String())
 }
 
 func TestDARetriever_ProcessBlobs_MultipleHeadersCrossDAHeightMatching(t *testing.T) {
@@ -352,6 +437,8 @@ func TestDARetriever_ProcessBlobs_MultipleHeadersCrossDAHeightMatching(t *testin
 	assert.Equal(t, uint64(5), events2[1].Header.Height())
 	assert.Equal(t, uint64(5), events2[1].Data.Height())
 	assert.Equal(t, uint64(203), events2[1].DaHeight)
+	r.removePendingData(3)
+	r.removePendingData(5)
 
 	// Verify header 4 is still pending (no matching data yet)
 	require.Contains(t, r.pendingHeaders, uint64(4), "header 4 should still be pending")
@@ -366,6 +453,7 @@ func TestDARetriever_ProcessBlobs_MultipleHeadersCrossDAHeightMatching(t *testin
 	assert.Equal(t, uint64(4), events3[0].Header.Height())
 	assert.Equal(t, uint64(4), events3[0].Data.Height())
 	assert.Equal(t, uint64(205), events3[0].DaHeight)
+	r.removePendingData(4)
 
 	// Verify all pending maps are now clear
 	require.NotContains(t, r.pendingHeaders, uint64(4), "header 4 should be removed from pending")

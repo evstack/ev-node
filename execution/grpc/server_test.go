@@ -200,7 +200,7 @@ func TestServer_ExecuteTxs(t *testing.T) {
 	tests := []struct {
 		name     string
 		req      *pb.ExecuteTxsRequest
-		mockFunc func(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, error)
+		mockFunc func(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (execution.ExecuteResult, error)
 		wantErr  bool
 		wantCode connect.Code
 	}{
@@ -212,8 +212,8 @@ func TestServer_ExecuteTxs(t *testing.T) {
 				Timestamp:     timestamppb.New(timestamp),
 				PrevStateRoot: prevStateRoot,
 			},
-			mockFunc: func(ctx context.Context, t [][]byte, bh uint64, ts time.Time, psr []byte) ([]byte, error) {
-				return expectedStateRoot, nil
+			mockFunc: func(ctx context.Context, t [][]byte, bh uint64, ts time.Time, psr []byte) (execution.ExecuteResult, error) {
+				return execution.ExecuteResult{UpdatedStateRoot: expectedStateRoot}, nil
 			},
 			wantErr: false,
 		},
@@ -266,8 +266,8 @@ func TestServer_ExecuteTxs(t *testing.T) {
 				Timestamp:     timestamppb.New(timestamp),
 				PrevStateRoot: prevStateRoot,
 			},
-			mockFunc: func(ctx context.Context, t [][]byte, bh uint64, ts time.Time, psr []byte) ([]byte, error) {
-				return nil, errors.New("execute txs failed")
+			mockFunc: func(ctx context.Context, t [][]byte, bh uint64, ts time.Time, psr []byte) (execution.ExecuteResult, error) {
+				return execution.ExecuteResult{}, errors.New("execute txs failed")
 			},
 			wantErr:  true,
 			wantCode: connect.CodeInternal,

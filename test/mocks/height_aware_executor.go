@@ -44,9 +44,18 @@ func (m *MockHeightAwareExecutor) GetTxs(ctx context.Context) ([][]byte, error) 
 }
 
 // ExecuteTxs implements the Executor interface.
-func (m *MockHeightAwareExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, error) {
+func (m *MockHeightAwareExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (execution.ExecuteResult, error) {
 	args := m.Called(ctx, txs, blockHeight, timestamp, prevStateRoot)
-	return args.Get(0).([]byte), args.Error(1)
+	switch result := args.Get(0).(type) {
+	case nil:
+		return execution.ExecuteResult{}, args.Error(1)
+	case execution.ExecuteResult:
+		return result, args.Error(1)
+	case []byte:
+		return execution.ExecuteResult{UpdatedStateRoot: result}, args.Error(1)
+	default:
+		return args.Get(0).(execution.ExecuteResult), args.Error(1)
+	}
 }
 
 // SetFinal implements the Executor interface.
@@ -63,6 +72,20 @@ func (m *MockHeightAwareExecutor) GetLatestHeight(ctx context.Context) (uint64, 
 
 // GetExecutionInfo implements the Executor interface.
 func (m *MockHeightAwareExecutor) GetExecutionInfo(ctx context.Context) (execution.ExecutionInfo, error) {
+	if len(m.ExpectedCalls) == 0 {
+		return execution.ExecutionInfo{}, nil
+	}
+	hasExpectation := false
+	for _, call := range m.ExpectedCalls {
+		if call.Method == "GetExecutionInfo" {
+			hasExpectation = true
+			break
+		}
+	}
+	if !hasExpectation {
+		return execution.ExecutionInfo{}, nil
+	}
+
 	args := m.Called(ctx)
 	return args.Get(0).(execution.ExecutionInfo), args.Error(1)
 }

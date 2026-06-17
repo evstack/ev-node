@@ -92,6 +92,10 @@ message ExecuteTxsResponse {
 
   // Maximum allowed transaction size (may change with protocol updates)
   uint64 max_bytes = 2;
+
+  // Proposer address that should sign the next block.
+  // Empty means the current proposer remains active.
+  bytes next_proposer_address = 3;
 }
 
 // SetFinalRequest marks a block as finalized
