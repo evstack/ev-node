@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	libshare "github.com/celestiaorg/go-square/v3/share"
@@ -17,7 +18,7 @@ import (
 type Client struct {
 	Blob        BlobAPI
 	Header      HeaderAPI
-	IsWebSocket bool
+	IsWebSocket atomic.Bool
 
 	mu          sync.Mutex
 	closer      jsonrpc.ClientCloser
@@ -35,9 +36,10 @@ func (c *Client) Close() {
 		c.retryCancel()
 		c.retryCancel = nil
 	}
+	closer := c.closer
 	c.mu.Unlock()
-	if c.closer != nil {
-		c.closer()
+	if closer != nil {
+		closer()
 	}
 }
 
@@ -100,7 +102,7 @@ func NewWSClient(ctx context.Context, logger zerolog.Logger, addr, token string,
 		if err != nil {
 			return nil, err
 		}
-		client.IsWebSocket = false
+		client.IsWebSocket.Store(false)
 
 		// Retry WS in the background so transient outages don't force a permanent downgrade.
 		retryCtx, retryCancel := context.WithCancel(context.Background())
@@ -110,7 +112,7 @@ func NewWSClient(ctx context.Context, logger zerolog.Logger, addr, token string,
 		return client, nil
 	}
 
-	client.IsWebSocket = true
+	client.IsWebSocket.Store(true)
 	return client, nil
 }
 
@@ -147,7 +149,7 @@ func (c *Client) tryUpgradeWS(ctx context.Context, logger zerolog.Logger, addr, 
 	defer c.mu.Unlock()
 
 	// Another goroutine may have already upgraded.
-	if c.IsWebSocket {
+	if c.IsWebSocket.Load() {
 		wsClient.Close()
 		return true
 	}
@@ -165,7 +167,7 @@ func (c *Client) tryUpgradeWS(ctx context.Context, logger zerolog.Logger, addr, 
 		}
 	}
 
-	c.IsWebSocket = true
+	c.IsWebSocket.Store(true)
 	logger.Info().Msg("DA websocket connection restored, switching back from HTTP polling")
 	return true
 }
