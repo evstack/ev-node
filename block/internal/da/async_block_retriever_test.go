@@ -53,6 +53,8 @@ func TestAsyncBlockRetriever_SubscriptionDrivenCaching(t *testing.T) {
 	client := &mocks.MockClient{}
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 
+	client.On("SupportsSubscribe").Return(true)
+
 	// Create a subscription channel that delivers one event then blocks.
 	subCh := make(chan datypes.SubscriptionEvent, 1)
 	subCh <- datypes.SubscriptionEvent{
@@ -104,6 +106,8 @@ func TestAsyncBlockRetriever_CatchupFillsGaps(t *testing.T) {
 	client := &mocks.MockClient{}
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 
+	client.On("SupportsSubscribe").Return(true)
+
 	// Subscription delivers height 105 (no blobs — just a signal).
 	subCh := make(chan datypes.SubscriptionEvent, 1)
 	subCh <- datypes.SubscriptionEvent{Height: 105}
@@ -153,6 +157,8 @@ func TestAsyncBlockRetriever_HeightFromFuture(t *testing.T) {
 	client := &mocks.MockClient{}
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 
+	client.On("SupportsSubscribe").Return(true)
+
 	// Subscription delivers height 100 with no blobs.
 	subCh := make(chan datypes.SubscriptionEvent)
 	client.On("Subscribe", mock.Anything, fiNs, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(subCh), nil).Once()
@@ -187,6 +193,8 @@ func TestAsyncBlockRetriever_StopGracefully(t *testing.T) {
 	client := &mocks.MockClient{}
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 
+	client.On("SupportsSubscribe").Return(true)
+
 	blockCh := make(chan datypes.SubscriptionEvent)
 	client.On("Subscribe", mock.Anything, fiNs, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(blockCh), nil).Maybe()
 	client.On("Retrieve", mock.Anything, mock.Anything, fiNs).Return(datypes.ResultRetrieve{
@@ -210,6 +218,8 @@ func TestAsyncBlockRetriever_ReconnectOnSubscriptionError(t *testing.T) {
 
 	client := &mocks.MockClient{}
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
+
+	client.On("SupportsSubscribe").Return(true)
 
 	// First subscription closes immediately (simulating error).
 	closedCh := make(chan datypes.SubscriptionEvent)

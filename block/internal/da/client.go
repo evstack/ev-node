@@ -38,6 +38,7 @@ type client struct {
 	dataNamespaceBz    []byte
 	forcedNamespaceBz  []byte
 	hasForcedNamespace bool
+	isWebSocket        bool
 	timestampCache     *blockTimestampCache
 }
 
@@ -137,6 +138,7 @@ func NewClient(cfg Config) FullClient {
 		dataNamespaceBz:    datypes.NamespaceFromString(cfg.DataNamespace).Bytes(),
 		forcedNamespaceBz:  forcedNamespaceBz,
 		hasForcedNamespace: hasForcedNamespace,
+		isWebSocket:        cfg.DA.IsWebSocket,
 		timestampCache:     newBlockTimestampCache(blockTimestampCacheWindow),
 	}
 }
@@ -483,6 +485,12 @@ func (c *client) GetForcedInclusionNamespace() []byte {
 // HasForcedInclusionNamespace reports whether forced inclusion namespace is configured.
 func (c *client) HasForcedInclusionNamespace() bool {
 	return c.hasForcedNamespace
+}
+
+// SupportsSubscribe reports whether the underlying transport supports
+// channel-based subscriptions (WebSocket).
+func (c *client) SupportsSubscribe() bool {
+	return c.isWebSocket
 }
 
 // Subscribe subscribes to blobs in the given namespace via the celestia-node

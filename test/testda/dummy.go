@@ -243,6 +243,10 @@ func (d *DummyDA) GetForcedInclusionNamespace() []byte { return nil }
 // HasForcedInclusionNamespace reports whether forced inclusion is configured.
 func (d *DummyDA) HasForcedInclusionNamespace() bool { return false }
 
+// SupportsSubscribe reports whether the underlying transport supports
+// channel-based subscriptions.
+func (d *DummyDA) SupportsSubscribe() bool { return true }
+
 // GetLatestDAHeight returns the current DA height (the latest height available).
 func (d *DummyDA) GetLatestDAHeight(_ context.Context) (uint64, error) {
 	return d.height.Load(), nil
