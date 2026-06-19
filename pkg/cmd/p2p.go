@@ -40,6 +40,16 @@ var NetInfoCmd = &cobra.Command{
 			return fmt.Errorf("RPC address not found in node configuration")
 		}
 
+		outputFormat, err := cmd.Flags().GetString(flagOutput)
+		if err != nil {
+			return err
+		}
+		switch outputFormat {
+		case "text", "json":
+		default:
+			return fmt.Errorf("unsupported output format %q (supported: text, json)", outputFormat)
+		}
+
 		// Create HTTP client
 		httpClient := http.Client{
 			Transport: http.DefaultTransport,
@@ -73,11 +83,6 @@ var NetInfoCmd = &cobra.Command{
 		)
 		if err != nil {
 			return fmt.Errorf("GetPeerInfo RPC: %w", err)
-		}
-
-		outputFormat, err := cmd.Flags().GetString(flagOutput)
-		if err != nil {
-			return err
 		}
 
 		if outputFormat == "json" {
