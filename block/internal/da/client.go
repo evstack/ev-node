@@ -491,7 +491,7 @@ func (c *client) HasForcedInclusionNamespace() bool {
 // channel-based subscriptions (WebSocket). Reads the live IsWebSocket flag
 // from the jsonrpc client so transport upgrades are visible immediately.
 func (c *client) SupportsSubscribe() bool {
-	return c.da != nil && c.da.IsWebSocket
+	return c.da != nil && c.da.IsWebSocket.Load()
 }
 
 // Subscribe subscribes to blobs in the given namespace via the celestia-node
