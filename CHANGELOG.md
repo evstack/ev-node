@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- DA client falls back to HTTP polling with `Retrieve` when the WebSocket connection fails, instead of trying to use the WS-only `Subscribe` over HTTP. Automatically upgrade to WS is available [#3211](https://github.com/evstack/ev-node/pull/3361)
+- DA client falls back to HTTP polling with `Retrieve` when the WebSocket connection fails, instead of trying to use the WS-only `Subscribe` over HTTP. A background goroutine retries WS every 30s so transient outages don't force a permanent downgrade [#3361](https://github.com/evstack/ev-node/pull/3361)
 
 ## v1.1.3
 

@@ -124,11 +124,10 @@ func (s *Subscriber) Start(ctx context.Context) error {
 	s.cancel = cancel
 	s.lifecycleMu.Unlock()
 
+	s.wg.Add(2)
 	if s.client.SupportsSubscribe() {
-		s.wg.Add(2)
 		go s.followLoop(ctx)
 	} else {
-		s.wg.Add(2)
 		go s.pollLoop(ctx)
 	}
 	go s.catchupLoop(ctx)
@@ -186,7 +185,11 @@ func (s *Subscriber) pollLoop(ctx context.Context) {
 	// Do an immediate poll on startup so we don't wait for the first tick.
 	s.pollDAHeight(ctx)
 
-	ticker := time.NewTicker(s.daBlockTime)
+	interval := s.daBlockTime
+	if interval <= 0 {
+		interval = 2 * time.Second
+	}
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {

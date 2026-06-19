@@ -32,13 +32,13 @@ type Config struct {
 type client struct {
 	blobAPI            *blobrpc.BlobAPI
 	headerAPI          *blobrpc.HeaderAPI
+	da                 *blobrpc.Client // kept to read live IsWebSocket after transport upgrades
 	logger             zerolog.Logger
 	defaultTimeout     time.Duration
 	namespaceBz        []byte
 	dataNamespaceBz    []byte
 	forcedNamespaceBz  []byte
 	hasForcedNamespace bool
-	isWebSocket        bool
 	timestampCache     *blockTimestampCache
 }
 
@@ -132,13 +132,13 @@ func NewClient(cfg Config) FullClient {
 	return &client{
 		blobAPI:            &cfg.DA.Blob,
 		headerAPI:          &cfg.DA.Header,
+		da:                 cfg.DA,
 		logger:             cfg.Logger.With().Str("component", "da_client").Logger(),
 		defaultTimeout:     cfg.DefaultTimeout,
 		namespaceBz:        datypes.NamespaceFromString(cfg.Namespace).Bytes(),
 		dataNamespaceBz:    datypes.NamespaceFromString(cfg.DataNamespace).Bytes(),
 		forcedNamespaceBz:  forcedNamespaceBz,
 		hasForcedNamespace: hasForcedNamespace,
-		isWebSocket:        cfg.DA.IsWebSocket,
 		timestampCache:     newBlockTimestampCache(blockTimestampCacheWindow),
 	}
 }
@@ -488,9 +488,10 @@ func (c *client) HasForcedInclusionNamespace() bool {
 }
 
 // SupportsSubscribe reports whether the underlying transport supports
-// channel-based subscriptions (WebSocket).
+// channel-based subscriptions (WebSocket). Reads the live IsWebSocket flag
+// from the jsonrpc client so transport upgrades are visible immediately.
 func (c *client) SupportsSubscribe() bool {
-	return c.isWebSocket
+	return c.da != nil && c.da.IsWebSocket
 }
 
 // Subscribe subscribes to blobs in the given namespace via the celestia-node
