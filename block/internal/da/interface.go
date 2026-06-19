@@ -31,6 +31,11 @@ type Client interface {
 	// GetLatestDAHeight returns the latest height available on the DA layer.
 	GetLatestDAHeight(ctx context.Context) (uint64, error)
 
+	// SupportsSubscribe reports whether the underlying transport supports
+	// channel-based subscriptions (WebSocket). When false, callers must use
+	// polling-based retrieval via Retrieve instead.
+	SupportsSubscribe() bool
+
 	// Namespace accessors.
 	GetHeaderNamespace() []byte
 	GetDataNamespace() []byte

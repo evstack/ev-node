@@ -122,10 +122,15 @@ func (s *Subscriber) Start(ctx context.Context) error {
 
 	ctx, cancel := context.WithCancel(ctx)
 	s.cancel = cancel
-	s.wg.Add(2)
 	s.lifecycleMu.Unlock()
 
-	go s.followLoop(ctx)
+	if s.client.SupportsSubscribe() {
+		s.wg.Add(2)
+		go s.followLoop(ctx)
+	} else {
+		s.wg.Add(2)
+		go s.pollLoop(ctx)
+	}
 	go s.catchupLoop(ctx)
 
 	return nil
@@ -165,6 +170,68 @@ func (s *Subscriber) signalCatchup() {
 	case s.catchupSignal <- struct{}{}:
 	default:
 	}
+}
+
+// pollLoop periodically queries the latest DA height and triggers
+// catchup when new heights are available. The catchup loop fetches blobs
+// via Retrieve (which uses GetAll) so each height is fetched exactly once.
+// Periodically checks whether the underlying transport has been upgraded
+// to WebSocket and switches to followLoop when that happens.
+func (s *Subscriber) pollLoop(ctx context.Context) {
+	defer s.wg.Done()
+
+	s.logger.Info().Msg("starting poll loop")
+	defer s.logger.Info().Msg("poll loop stopped")
+
+	// Do an immediate poll on startup so we don't wait for the first tick.
+	s.pollDAHeight(ctx)
+
+	ticker := time.NewTicker(s.daBlockTime)
+	defer ticker.Stop()
+
+	for {
+		// If the transport has been upgraded to WS in the background,
+		// switch to the subscription-based follow loop.
+		if s.client.SupportsSubscribe() {
+			s.logger.Info().Msg("WebSocket available, switching from poll to follow loop")
+			s.wg.Add(1)
+			go s.followLoop(ctx)
+			return
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.pollDAHeight(ctx)
+		}
+	}
+}
+
+// pollDAHeight queries GetLatestDAHeight and signals catchup when a new
+// height is observed. The actual blob retrieval is done by catchupLoop.
+func (s *Subscriber) pollDAHeight(ctx context.Context) {
+	height, err := s.client.GetLatestDAHeight(ctx)
+	if err != nil {
+		if ctx.Err() != nil {
+			return
+		}
+		s.logger.Warn().Err(err).Msg("poll: failed to get latest DA height")
+		return
+	}
+
+	cur := s.highestSeenDAHeight.Load()
+	if height <= cur {
+		return
+	}
+
+	s.seenSubscriptionEvent.Store(true)
+	s.logger.Debug().
+		Uint64("new_da_height", height).
+		Uint64("current_highest_seen", cur).
+		Msg("poll: observed new DA height")
+
+	s.updateHighest(height)
 }
 
 // followLoop subscribes to DA blob events and keeps highestSeenDAHeight up to date.
