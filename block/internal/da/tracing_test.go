@@ -74,6 +74,7 @@ func (m *mockFullClient) GetHeaderNamespace() []byte                          { 
 func (m *mockFullClient) GetDataNamespace() []byte                            { return []byte{0x02} }
 func (m *mockFullClient) GetForcedInclusionNamespace() []byte                 { return []byte{0x03} }
 func (m *mockFullClient) HasForcedInclusionNamespace() bool                   { return true }
+func (m *mockFullClient) SupportsSubscribe() bool                             { return true }
 
 // setup a tracer provider + span recorder
 func setupDATrace(t *testing.T, inner FullClient) (FullClient, *tracetest.SpanRecorder) {

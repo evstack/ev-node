@@ -7,7 +7,7 @@ package mocks
 import (
 	"context"
 
-	"github.com/evstack/ev-node/pkg/da/types"
+	da "github.com/evstack/ev-node/pkg/da/types"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -551,6 +551,50 @@ func (_c *MockClient_Submit_Call) Return(resultSubmit da.ResultSubmit) *MockClie
 }
 
 func (_c *MockClient_Submit_Call) RunAndReturn(run func(ctx context.Context, data [][]byte, gasPrice float64, namespace []byte, options []byte) da.ResultSubmit) *MockClient_Submit_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SupportsSubscribe provides a mock function for the type MockClient
+func (_mock *MockClient) SupportsSubscribe() bool {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for SupportsSubscribe")
+	}
+
+	var r0 bool
+	if returnFunc, ok := ret.Get(0).(func() bool); ok {
+		r0 = returnFunc()
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	return r0
+}
+
+// MockClient_SupportsSubscribe_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SupportsSubscribe'
+type MockClient_SupportsSubscribe_Call struct {
+	*mock.Call
+}
+
+// SupportsSubscribe is a helper method to define mock.On call
+func (_e *MockClient_Expecter) SupportsSubscribe() *MockClient_SupportsSubscribe_Call {
+	return &MockClient_SupportsSubscribe_Call{Call: _e.mock.On("SupportsSubscribe")}
+}
+
+func (_c *MockClient_SupportsSubscribe_Call) Run(run func()) *MockClient_SupportsSubscribe_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockClient_SupportsSubscribe_Call) Return(b bool) *MockClient_SupportsSubscribe_Call {
+	_c.Call.Return(b)
+	return _c
+}
+
+func (_c *MockClient_SupportsSubscribe_Call) RunAndReturn(run func() bool) *MockClient_SupportsSubscribe_Call {
 	_c.Call.Return(run)
 	return _c
 }
