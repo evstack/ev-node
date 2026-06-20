@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1781702676748,
+  "lastUpdate": 1781992059813,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -46,6 +46,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 173728,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "julien@rbrt.fr",
+            "name": "julienrbrt",
+            "username": "julienrbrt"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "7e6ea1e56e1a83e03f4e36faba7d13caf6acd140",
+          "message": "fix(da): fix polling fallback when ws not available (#3361)\n\n* fix(da): fix polling fallback when ws not available\n\n* feedback\n\n* fix race\n\n* update mocks\n\n* fix ctx",
+          "timestamp": "2026-06-20T21:27:12Z",
+          "tree_id": "89acebd7aeff680377d4355cae8a11009ea3692e",
+          "url": "https://github.com/evstack/ev-node/commit/7e6ea1e56e1a83e03f4e36faba7d13caf6acd140"
+        },
+        "date": 1781992054765,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 894110666,
+            "unit": "ns/op\t29337200 B/op\t  152728 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 894110666,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 29337200,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 152728,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
