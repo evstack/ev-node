@@ -105,7 +105,7 @@ func NewWSClient(ctx context.Context, logger zerolog.Logger, addr, token string,
 		client.IsWebSocket.Store(false)
 
 		// Retry WS in the background so transient outages don't force a permanent downgrade.
-		retryCtx, retryCancel := context.WithCancel(context.Background())
+		retryCtx, retryCancel := context.WithCancel(ctx)
 		client.retryCancel = retryCancel
 		go client.retryWSLoop(retryCtx, logger, addr, token, authHeaderName)
 
