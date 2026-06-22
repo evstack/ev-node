@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1781992062501,
+  "lastUpdate": 1782118153016,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -94,6 +94,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 152728,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "haoshengzhen@outlook.com",
+            "name": "haoshengzhen",
+            "username": "haoshengzhen"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "37c20d58a3a607db860f82361fa21a29f52926f6",
+          "message": "fix: reject unsupported net-info output formats (#3360)\n\n* fix: reject unsupported net-info output formats\n\nSigned-off-by: haoshengzhen <haoshengzhen@outlook.com>\n\n* fix: reject unsupported net-info output formats\n\nSigned-off-by: haoshengzhen <haoshengzhen@outlook.com>\n\n---------\n\nSigned-off-by: haoshengzhen <haoshengzhen@outlook.com>\nCo-authored-by: julienrbrt <julien@rbrt.fr>",
+          "timestamp": "2026-06-22T10:47:44+02:00",
+          "tree_id": "aa5c2192b0c116e2985730957be1b665894bbd16",
+          "url": "https://github.com/evstack/ev-node/commit/37c20d58a3a607db860f82361fa21a29f52926f6"
+        },
+        "date": 1782118148801,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 908490012,
+            "unit": "ns/op\t31622140 B/op\t  175568 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 908490012,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 31622140,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 175568,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
