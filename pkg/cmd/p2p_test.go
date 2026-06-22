@@ -199,3 +199,33 @@ func TestNetInfoCmd_NoPeers(t *testing.T) {
 
 	mockP2P.AssertExpectations(t)
 }
+
+func TestNetInfoCmd_InvalidOutputFormat(t *testing.T) {
+	require := require.New(t)
+
+	tempDir, err := os.MkdirTemp("", "evolve-test-home-invalid-output-*")
+	require.NoError(err)
+	defer os.RemoveAll(tempDir)
+
+	rpcAddr := "127.0.0.1:1"
+	v := viper.New()
+	v.Set(config.FlagRPCAddress, rpcAddr)
+	v.Set(config.FlagRootDir, tempDir)
+
+	rootCmd := &cobra.Command{Use: "root"}
+	rootCmd.PersistentFlags().String(config.FlagRootDir, tempDir, "Root directory for config and data")
+	rootCmd.PersistentFlags().String(config.FlagRPCAddress, rpcAddr, "RPC listen address")
+
+	err = v.BindPFlag(config.FlagRootDir, rootCmd.PersistentFlags().Lookup(config.FlagRootDir))
+	require.NoError(err)
+	err = v.BindPFlag(config.FlagRPCAddress, rootCmd.PersistentFlags().Lookup(config.FlagRPCAddress))
+	require.NoError(err)
+
+	NetInfoCmd.SetContext(context.WithValue(context.Background(), viperKey, v))
+	rootCmd.AddCommand(NetInfoCmd)
+
+	output, err := executeCommandC(rootCmd, "net-info", "--evnode.rpc.address="+rpcAddr, "--output", "yaml")
+
+	require.Error(err, "Command should reject unsupported output format: %s", output)
+	require.Contains(err.Error(), `unsupported output format "yaml"`)
+}
