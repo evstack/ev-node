@@ -98,7 +98,7 @@ func executeTransactions(t *testing.T, executor coreexecutor.Executor, ctx conte
 	timestamp := time.Now()
 	newStateRoot, err := executor.ExecuteTxs(ctx, txs, blockHeight, timestamp, stateRoot)
 	require.NoError(t, err)
-	return newStateRoot
+	return newStateRoot.UpdatedStateRoot
 }
 
 func finalizeExecution(t *testing.T, executor coreexecutor.Executor, ctx context.Context) {

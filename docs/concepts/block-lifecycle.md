@@ -655,7 +655,7 @@ The components communicate through well-defined interfaces:
 
 ## Metrics
 
-The block components expose Prometheus metrics for monitoring block production, DA submission/retrieval, sync progress, and errors. See the [Metrics guide](/guides/metrics) for configuration and available metric names.
+The block components expose Prometheus metrics for monitoring block production, DA submission/retrieval, sync progress, and errors. See the [Metrics guide](../guides/metrics.md) for configuration and available metric names.
 
 ## Implementation
 
@@ -682,13 +682,13 @@ See [tutorial] for running a multi-node network with both aggregator and non-agg
 
 [5] [Tutorial][tutorial]
 
-[6] [Header and Data Separation ADR](../../adr/adr-014-header-and-data-separation.md)
+[6] [Header and Data Separation ADR](../adr/adr-014-header-and-data-separation.md)
 
-[7] [Evolve Minimal Header](../../adr/adr-015-rollkit-minimal-header.md)
+[7] [Evolve Minimal Header](../adr/adr-015-rollkit-minimal-header.md)
 
 [8] [Data Availability](./data-availability.md)
 
-[9] [Lazy Aggregation with DA Layer Consistency ADR](../../adr/adr-021-lazy-aggregation.md)
+[9] [Lazy Aggregation with DA Layer Consistency ADR](../adr/adr-021-lazy-aggregation.md)
 
 [defaultBlockTime]: https://github.com/evstack/ev-node/blob/main/pkg/config/defaults.go#L50
 [defaultDABlockTime]: https://github.com/evstack/ev-node/blob/main/pkg/config/defaults.go#L59

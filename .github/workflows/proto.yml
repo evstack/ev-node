@@ -15,3 +15,17 @@ jobs:
       - uses: bufbuild/buf-action@v1
         with:
           format: false
+          breaking: false
+      - name: Check protobuf breaking changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+        run: |
+          if [ -z "$BASE_SHA" ] || [[ "$BASE_SHA" =~ ^0+$ ]]; then
+            echo "No base SHA available for buf breaking check"
+            exit 0
+          fi
+
+          buf breaking proto \
+            --limit-to-input-files \
+            --error-format github-actions \
+            --against "https://github.com/${{ github.repository }}.git#format=git,commit=${BASE_SHA}"

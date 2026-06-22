@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 
 	libshare "github.com/celestiaorg/go-square/v3/share"
 	"github.com/filecoin-project/go-jsonrpc"
@@ -13,15 +16,30 @@ import (
 
 // Client dials the celestia-node RPC "blob" and "header" namespaces.
 type Client struct {
-	Blob   BlobAPI
-	Header HeaderAPI
-	closer jsonrpc.ClientCloser
+	Blob        BlobAPI
+	Header      HeaderAPI
+	IsWebSocket atomic.Bool
+
+	mu          sync.Mutex
+	closer      jsonrpc.ClientCloser
+	retryCancel context.CancelFunc // stops the background WS retry loop
 }
 
-// Close closes the underlying JSON-RPC connection.
+// Close closes the underlying JSON-RPC connection and stops any
+// background WebSocket retry loop.
 func (c *Client) Close() {
-	if c != nil && c.closer != nil {
-		c.closer()
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	if c.retryCancel != nil {
+		c.retryCancel()
+		c.retryCancel = nil
+	}
+	closer := c.closer
+	c.mu.Unlock()
+	if closer != nil {
+		closer()
 	}
 }
 
@@ -72,16 +90,86 @@ func NewClient(ctx context.Context, addr, token string, authHeaderName string) (
 // NewWSClient connects to the DA RPC endpoint over WebSocket.
 // Automatically converts http:// to ws:// (and https:// to wss://).
 // Supports channel-based subscriptions (e.g. Subscribe).
-// Note: WebSocket connections are eager — they connect at creation time
-// if the initial WS dial fails, falls back to HTTP polling for the entire session.
+// WebSocket connections are eager — they connect at creation time.
+// If the initial WS dial fails, it falls back to HTTP polling and spawns a
+// background goroutine that periodically retries the WS connection. When
+// the WS endpoint becomes reachable, the transport is transparently upgraded.
 func NewWSClient(ctx context.Context, logger zerolog.Logger, addr, token string, authHeaderName string) (*Client, error) {
 	client, err := NewClient(ctx, httpToWS(addr), token, authHeaderName)
 	if err != nil {
 		logger.Warn().Err(err).Msg("DA websocket connection failed, falling back to DA polling")
-		return NewClient(ctx, addr, token, authHeaderName)
+		client, err = NewClient(ctx, addr, token, authHeaderName)
+		if err != nil {
+			return nil, err
+		}
+		client.IsWebSocket.Store(false)
+
+		// Retry WS in the background so transient outages don't force a permanent downgrade.
+		retryCtx, retryCancel := context.WithCancel(ctx)
+		client.retryCancel = retryCancel
+		go client.retryWSLoop(retryCtx, logger, addr, token, authHeaderName)
+
+		return client, nil
 	}
 
+	client.IsWebSocket.Store(true)
 	return client, nil
+}
+
+const wsRetryInterval = 30 * time.Second
+
+// retryWSLoop periodically attempts to re-establish a WebSocket connection.
+// When successful, it swaps the transport in-place and exits.
+func (c *Client) retryWSLoop(ctx context.Context, logger zerolog.Logger, addr, token, authHeaderName string) {
+	ticker := time.NewTicker(wsRetryInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if c.tryUpgradeWS(ctx, logger, addr, token, authHeaderName) {
+				return
+			}
+		}
+	}
+}
+
+// tryUpgradeWS attempts to open a WS connection and, if successful, swaps
+// the transport internals so subsequent calls use WebSocket. Returns true
+// when the upgrade succeeds (or the client is already on WS).
+func (c *Client) tryUpgradeWS(ctx context.Context, logger zerolog.Logger, addr, token, authHeaderName string) bool {
+	wsClient, err := NewClient(ctx, httpToWS(addr), token, authHeaderName)
+	if err != nil {
+		return false
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Another goroutine may have already upgraded.
+	if c.IsWebSocket.Load() {
+		wsClient.Close()
+		return true
+	}
+
+	// Swap function pointers from the new WS client into the active client.
+	c.Blob.Internal = wsClient.Blob.Internal
+	c.Header.Internal = wsClient.Header.Internal
+
+	// Close the old HTTP connections and wire the new closer.
+	oldCloser := c.closer
+	c.closer = func() {
+		wsClient.closer()
+		if oldCloser != nil {
+			oldCloser()
+		}
+	}
+
+	c.IsWebSocket.Store(true)
+	logger.Info().Msg("DA websocket connection restored, switching back from HTTP polling")
+	return true
 }
 
 // BlobAPI mirrors celestia-node's blob module (nodebuilder/blob/blob.go).

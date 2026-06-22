@@ -58,7 +58,7 @@ Check out our tutorials on our [website][docs].
 
 ## Onboarding with Claude Code
 
-Use [Claude Code](https://claude.ai/code) to explore the codebase:
+Use [Claude Code](https://code.claude.com/docs/en/overview) to explore the codebase:
 
 ```bash
 cd ev-node && claude

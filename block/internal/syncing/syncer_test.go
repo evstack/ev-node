@@ -116,6 +116,7 @@ func makeSignedHeaderBytes(
 func setupMockDAClient(tb testing.TB) (da.Client, chan datypes.SubscriptionEvent) {
 	mockClient := testmocks.NewMockClient(tb)
 	eventCh := make(chan datypes.SubscriptionEvent, 1)
+	mockClient.EXPECT().SupportsSubscribe().Return(true).Maybe()
 	mockClient.EXPECT().Subscribe(mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(eventCh), nil).Maybe()
 	return mockClient, eventCh
 }
@@ -146,7 +147,7 @@ func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 	addr, pub, signer := buildSyncTestSigner(t)
 
 	cfg := config.DefaultConfig()
-	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second)}
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), nil).Once()
 
@@ -189,6 +190,372 @@ func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 	_, header = makeSignedHeaderBytes(t, gen.ChainID, 2, addr, pub, signer, nil, nil, nil)
 	err = s.ValidateBlock(t.Context(), s.getLastState(), data, header)
 	require.Error(t, err)
+}
+
+func TestSyncer_ValidateBlock_UsesStateNextProposer(t *testing.T) {
+	addr, _, _ := buildSyncTestSigner(t)
+	badAddr, badPub, badSigner := buildSyncTestSigner(t)
+
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second)}
+	data := makeData(gen.ChainID, 1, 1)
+	_, header := makeSignedHeaderBytes(t, gen.ChainID, 1, badAddr, badPub, badSigner, []byte("app0"), data, nil)
+
+	s := &Syncer{logger: zerolog.Nop()}
+	state := types.State{
+		ChainID:             gen.ChainID,
+		InitialHeight:       gen.InitialHeight,
+		LastBlockHeight:     gen.InitialHeight - 1,
+		LastBlockTime:       gen.StartTime,
+		AppHash:             []byte("app0"),
+		NextProposerAddress: addr,
+	}
+
+	err := s.ValidateBlock(t.Context(), state, data, header)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unexpected proposer")
+}
+
+func TestSyncer_ExpectedProposerForHeight_OnlyNextHeight(t *testing.T) {
+	addr, _, _ := buildSyncTestSigner(t)
+	s := &Syncer{lastState: &atomic.Pointer[types.State]{}}
+	s.SetLastState(types.State{
+		LastBlockHeight:     4,
+		NextProposerAddress: addr,
+	})
+
+	got, ok := s.expectedProposerForHeight(5)
+	require.True(t, ok)
+	require.Equal(t, addr, got)
+
+	_, ok = s.expectedProposerForHeight(6)
+	require.False(t, ok)
+}
+
+func TestSyncer_TrySyncNextBlock_ClassifiesExternalValidationFailures(t *testing.T) {
+	expectedAddr, expectedPub, expectedSigner := buildSyncTestSigner(t)
+	wrongAddr, wrongPub, wrongSigner := buildSyncTestSigner(t)
+
+	now := time.Now()
+	baseState := types.State{
+		ChainID:             "tchain",
+		InitialHeight:       1,
+		LastBlockHeight:     1,
+		LastBlockTime:       now,
+		LastHeaderHash:      []byte("last-header-hash"),
+		AppHash:             []byte("app0"),
+		NextProposerAddress: expectedAddr,
+	}
+
+	makeSyncer := func(tb testing.TB) *Syncer {
+		tb.Helper()
+		ds := dssync.MutexWrap(datastore.NewMapDatastore())
+		st := store.New(ds)
+		cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+		require.NoError(tb, err)
+
+		return &Syncer{
+			cache:   cm,
+			logger:  zerolog.Nop(),
+			options: common.DefaultBlockOptions(),
+		}
+	}
+
+	makeEvent := func(tb testing.TB, chainID string, proposer []byte, pub crypto.PubKey, signer signerpkg.Signer, appHash []byte, data *types.Data) common.DAHeightEvent {
+		tb.Helper()
+		_, header := makeSignedHeaderBytes(tb, chainID, 2, proposer, pub, signer, appHash, data, baseState.LastHeaderHash)
+		return common.DAHeightEvent{
+			Header: header,
+			Data:   data,
+			Source: common.SourceDA,
+		}
+	}
+
+	tests := map[string]struct {
+		event       func(testing.TB) common.DAHeightEvent
+		wantState   bool
+		wantInvalid bool
+	}{
+		"wrong proposer with bad app hash is an invalid external block": {
+			event: func(tb testing.TB) common.DAHeightEvent {
+				data := makeData(baseState.ChainID, 2, 1)
+				data.Metadata.Time = uint64(now.Add(time.Second).UnixNano())
+				return makeEvent(tb, baseState.ChainID, wrongAddr, wrongPub, wrongSigner, []byte("forged-app"), data)
+			},
+			wantInvalid: true,
+		},
+		"wrong chain ID is an invalid external block": {
+			event: func(tb testing.TB) common.DAHeightEvent {
+				data := makeData("other-chain", 2, 1)
+				data.Metadata.Time = uint64(now.Add(time.Second).UnixNano())
+				return makeEvent(tb, "other-chain", expectedAddr, expectedPub, expectedSigner, baseState.AppHash, data)
+			},
+			wantInvalid: true,
+		},
+		"data hash mismatch is an invalid external block": {
+			event: func(tb testing.TB) common.DAHeightEvent {
+				headerData := makeData(baseState.ChainID, 2, 1)
+				headerData.Metadata.Time = uint64(now.Add(time.Second).UnixNano())
+				event := makeEvent(tb, baseState.ChainID, expectedAddr, expectedPub, expectedSigner, baseState.AppHash, headerData)
+				event.Data = makeData(baseState.ChainID, 2, 2)
+				event.Data.Metadata.Time = headerData.Metadata.Time
+				return event
+			},
+			wantInvalid: true,
+		},
+		"header data metadata mismatch is an invalid external block": {
+			event: func(tb testing.TB) common.DAHeightEvent {
+				headerData := makeData(baseState.ChainID, 2, 1)
+				headerData.Metadata.Time = uint64(now.Add(time.Second).UnixNano())
+				event := makeEvent(tb, baseState.ChainID, expectedAddr, expectedPub, expectedSigner, baseState.AppHash, headerData)
+				event.Data = &types.Data{
+					Metadata: &types.Metadata{
+						ChainID: baseState.ChainID,
+						Height:  3,
+						Time:    headerData.Metadata.Time,
+					},
+					Txs: headerData.Txs,
+				}
+				return event
+			},
+			wantInvalid: true,
+		},
+		"expected proposer with bad app hash is invalid state": {
+			event: func(tb testing.TB) common.DAHeightEvent {
+				data := makeData(baseState.ChainID, 2, 1)
+				data.Metadata.Time = uint64(now.Add(time.Second).UnixNano())
+				return makeEvent(tb, baseState.ChainID, expectedAddr, expectedPub, expectedSigner, []byte("wrong-app"), data)
+			},
+			wantState: true,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			event := tc.event(t)
+			err := makeSyncer(t).trySyncNextBlockWithState(t.Context(), &event, baseState)
+			require.Error(t, err)
+			assert.Equal(t, tc.wantInvalid, errors.Is(err, errInvalidBlock), "invalid block classification")
+			assert.Equal(t, tc.wantState, errors.Is(err, errInvalidState), "invalid state classification")
+		})
+	}
+}
+
+func TestSyncer_ValidateBlock_RejectsSignerAddressNotDerivedFromPubKey(t *testing.T) {
+	expectedAddr, _, _ := buildSyncTestSigner(t)
+	_, attackerPub, attackerSigner := buildSyncTestSigner(t)
+
+	now := time.Now()
+	state := types.State{
+		ChainID:             "tchain",
+		InitialHeight:       1,
+		LastBlockHeight:     1,
+		LastBlockTime:       now,
+		LastHeaderHash:      []byte("last-header-hash"),
+		AppHash:             []byte("app0"),
+		NextProposerAddress: expectedAddr,
+	}
+
+	data := makeData(state.ChainID, 2, 1)
+	data.Metadata.Time = uint64(now.Add(time.Second).UnixNano())
+	_, header := makeSignedHeaderBytes(t, state.ChainID, 2, expectedAddr, attackerPub, attackerSigner, state.AppHash, data, state.LastHeaderHash)
+
+	s := &Syncer{
+		logger:  zerolog.Nop(),
+		options: common.DefaultBlockOptions(),
+	}
+
+	err := s.ValidateBlock(t.Context(), state, data, header)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "signer address")
+}
+
+func TestSyncer_ValidateBlock_ClassifiesFault(t *testing.T) {
+	expectedAddr, expectedPub, expectedSigner := buildSyncTestSigner(t)
+	wrongAddr, wrongPub, wrongSigner := buildSyncTestSigner(t)
+
+	now := time.Now()
+	baseState := types.State{
+		ChainID:             "tchain",
+		InitialHeight:       1,
+		LastBlockHeight:     1,
+		LastBlockTime:       now,
+		LastHeaderHash:      []byte("last-header-hash"),
+		AppHash:             []byte("app0"),
+		NextProposerAddress: expectedAddr,
+	}
+
+	makeHeader := func(tb testing.TB, chainID string, proposer []byte, pub crypto.PubKey, signer signerpkg.Signer, appHash []byte, data *types.Data) *types.SignedHeader {
+		tb.Helper()
+		_, header := makeSignedHeaderBytes(tb, chainID, 2, proposer, pub, signer, appHash, data, baseState.LastHeaderHash)
+		return header
+	}
+
+	tests := map[string]struct {
+		setup     func(testing.TB) (*types.SignedHeader, *types.Data)
+		wantFault ValidationFault
+	}{
+		"wrong proposer -> header fault": {
+			setup: func(tb testing.TB) (*types.SignedHeader, *types.Data) {
+				data := makeData(baseState.ChainID, 2, 1)
+				data.Metadata.Time = uint64(now.Add(time.Second).UnixNano())
+				return makeHeader(tb, baseState.ChainID, wrongAddr, wrongPub, wrongSigner, baseState.AppHash, data), data
+			},
+			wantFault: FaultHeader,
+		},
+		"wrong chain id -> header fault": {
+			setup: func(tb testing.TB) (*types.SignedHeader, *types.Data) {
+				data := makeData("other-chain", 2, 1)
+				data.Metadata.Time = uint64(now.Add(time.Second).UnixNano())
+				return makeHeader(tb, "other-chain", expectedAddr, expectedPub, expectedSigner, baseState.AppHash, data), data
+			},
+			wantFault: FaultHeader,
+		},
+		"data hash mismatch -> data fault": {
+			setup: func(tb testing.TB) (*types.SignedHeader, *types.Data) {
+				headerData := makeData(baseState.ChainID, 2, 1)
+				headerData.Metadata.Time = uint64(now.Add(time.Second).UnixNano())
+				header := makeHeader(tb, baseState.ChainID, expectedAddr, expectedPub, expectedSigner, baseState.AppHash, headerData)
+				attached := makeData(baseState.ChainID, 2, 2)
+				attached.Metadata.Time = headerData.Metadata.Time
+				return header, attached
+			},
+			wantFault: FaultData,
+		},
+		"header data metadata mismatch -> data fault": {
+			setup: func(tb testing.TB) (*types.SignedHeader, *types.Data) {
+				headerData := makeData(baseState.ChainID, 2, 1)
+				headerData.Metadata.Time = uint64(now.Add(time.Second).UnixNano())
+				header := makeHeader(tb, baseState.ChainID, expectedAddr, expectedPub, expectedSigner, baseState.AppHash, headerData)
+				attached := &types.Data{
+					Metadata: &types.Metadata{
+						ChainID: baseState.ChainID,
+						Height:  3,
+						Time:    headerData.Metadata.Time,
+					},
+					Txs: headerData.Txs,
+				}
+				return header, attached
+			},
+			wantFault: FaultData,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			header, data := tc.setup(t)
+			s := &Syncer{logger: zerolog.Nop(), options: common.DefaultBlockOptions()}
+			err := s.ValidateBlock(t.Context(), baseState, data, header)
+			require.Error(t, err)
+
+			var vErr *BlockValidationError
+			require.ErrorAs(t, err, &vErr, "expected *BlockValidationError")
+			assert.Equal(t, tc.wantFault, vErr.Fault, "fault classification")
+		})
+	}
+}
+
+func TestSyncer_TrySyncNextBlock_SelectiveCacheCleanup(t *testing.T) {
+	expectedAddr, expectedPub, expectedSigner := buildSyncTestSigner(t)
+	wrongAddr, wrongPub, wrongSigner := buildSyncTestSigner(t)
+
+	now := time.Now()
+	baseState := types.State{
+		ChainID:             "tchain",
+		InitialHeight:       1,
+		LastBlockHeight:     1,
+		LastBlockTime:       now,
+		LastHeaderHash:      []byte("last-header-hash"),
+		AppHash:             []byte("app0"),
+		NextProposerAddress: expectedAddr,
+	}
+
+	makeSyncer := func(tb testing.TB) (*Syncer, cache.Manager) {
+		tb.Helper()
+		ds := dssync.MutexWrap(datastore.NewMapDatastore())
+		st := store.New(ds)
+		cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+		require.NoError(tb, err)
+		return &Syncer{cache: cm, logger: zerolog.Nop(), options: common.DefaultBlockOptions()}, cm
+	}
+
+	tests := map[string]struct {
+		event             func(testing.TB) common.DAHeightEvent
+		wantHeaderInCache bool
+		wantDataInCache   bool
+	}{
+		"header fault keeps data in cache": {
+			event: func(tb testing.TB) common.DAHeightEvent {
+				data := makeData(baseState.ChainID, 2, 1)
+				data.Metadata.Time = uint64(now.Add(time.Second).UnixNano())
+				_, header := makeSignedHeaderBytes(tb, baseState.ChainID, 2, wrongAddr, wrongPub, wrongSigner, baseState.AppHash, data, baseState.LastHeaderHash)
+				return common.DAHeightEvent{Header: header, Data: data, Source: common.SourceDA}
+			},
+			wantHeaderInCache: false,
+			wantDataInCache:   true,
+		},
+		"data fault keeps header in cache": {
+			event: func(tb testing.TB) common.DAHeightEvent {
+				headerData := makeData(baseState.ChainID, 2, 1)
+				headerData.Metadata.Time = uint64(now.Add(time.Second).UnixNano())
+				_, header := makeSignedHeaderBytes(tb, baseState.ChainID, 2, expectedAddr, expectedPub, expectedSigner, baseState.AppHash, headerData, baseState.LastHeaderHash)
+				attached := makeData(baseState.ChainID, 2, 2)
+				attached.Metadata.Time = headerData.Metadata.Time
+				return common.DAHeightEvent{Header: header, Data: attached, Source: common.SourceDA}
+			},
+			wantHeaderInCache: true,
+			wantDataInCache:   false,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			s, cm := makeSyncer(t)
+			event := tc.event(t)
+			headerHash := event.Header.Hash().String()
+			dataHash := event.Data.DACommitment().String()
+
+			// Seed the cache so we can observe what gets removed.
+			cm.SetHeaderDAIncluded(headerHash, 1, event.Header.Height())
+			cm.SetDataDAIncluded(dataHash, 1, event.Header.Height())
+
+			err := s.trySyncNextBlockWithState(t.Context(), &event, baseState)
+			require.Error(t, err)
+
+			_, headerStillIncluded := cm.GetHeaderDAIncludedByHash(headerHash)
+			_, dataStillIncluded := cm.GetDataDAIncludedByHash(dataHash)
+			assert.Equal(t, tc.wantHeaderInCache, headerStillIncluded, "header cache presence")
+			assert.Equal(t, tc.wantDataInCache, dataStillIncluded, "data cache presence")
+		})
+	}
+}
+
+func TestSyncer_ApplyBlockPersistsExecutionNextProposer(t *testing.T) {
+	addr, _, _ := buildSyncTestSigner(t)
+	execNext := []byte("execution-next-proposer")
+
+	mockExec := testmocks.NewMockExecutor(t)
+	data := makeData("tchain", 1, 1)
+	header := types.Header{
+		BaseHeader:      types.BaseHeader{ChainID: "tchain", Height: 1, Time: uint64(time.Now().UnixNano())},
+		ProposerAddress: addr,
+	}
+	currentState := types.State{AppHash: []byte("app0"), NextProposerAddress: addr}
+
+	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.Anything, currentState.AppHash).
+		Return(execution.ExecuteResult{
+			UpdatedStateRoot:    []byte("app1"),
+			NextProposerAddress: execNext,
+		}, nil).Once()
+
+	s := &Syncer{
+		exec:   mockExec,
+		ctx:    t.Context(),
+		logger: zerolog.Nop(),
+	}
+
+	newState, err := s.ApplyBlock(t.Context(), header, data, currentState)
+	require.NoError(t, err)
+	require.Equal(t, execNext, newState.NextProposerAddress)
 }
 
 func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
@@ -235,21 +602,80 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 	lastState := s.getLastState()
 	data := makeData(gen.ChainID, 1, 0)
 	_, hdr := makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, lastState.AppHash, data, nil)
+	daRetriever := &daRetriever{pendingData: map[uint64]*types.Data{1: data}}
+	s.daRetriever = daRetriever
 
 	// Expect ExecuteTxs call for height 1
 	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.Anything, lastState.AppHash).
 		Return([]byte("app1"), nil).Once()
 
-	evt := common.DAHeightEvent{Header: hdr, Data: data, DaHeight: 1}
+	evt := common.DAHeightEvent{Header: hdr, Data: data, Source: common.SourceDA, DaHeight: 1}
 	s.processHeightEvent(t.Context(), &evt)
 
 	requireEmptyChan(t, errChan)
+	require.NotContains(t, daRetriever.pendingData, uint64(1), "accepted DA data should be removed from the retriever pending data")
 	h, err := st.Height(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, uint64(1), h)
 	st1, err := st.GetState(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, uint64(1), st1.LastBlockHeight)
+}
+
+func TestProcessHeightEvent_UnexpectedProposerFromDAIsNotCriticalStateError(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	require.NoError(t, err)
+
+	expectedAddr, _, _ := buildSyncTestSigner(t)
+	wrongAddr, wrongPub, wrongSigner := buildSyncTestSigner(t)
+
+	cfg := config.DefaultConfig()
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: expectedAddr}
+
+	mockExec := testmocks.NewMockExecutor(t)
+	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), nil).Once()
+
+	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
+	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
+	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
+	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
+
+	errChan := make(chan error, 1)
+	s := NewSyncer(
+		st,
+		mockExec,
+		nil,
+		cm,
+		common.NopMetrics(),
+		cfg,
+		gen,
+		mockHeaderStore,
+		mockDataStore,
+		zerolog.Nop(),
+		common.DefaultBlockOptions(),
+		errChan,
+		nil,
+	)
+
+	require.NoError(t, s.initializeState())
+	s.ctx = t.Context()
+
+	lastState := s.getLastState()
+	data := makeData(gen.ChainID, 1, 0)
+	_, hdr := makeSignedHeaderBytes(t, gen.ChainID, 1, wrongAddr, wrongPub, wrongSigner, lastState.AppHash, data, nil)
+
+	evt := common.DAHeightEvent{Header: hdr, Data: data, Source: common.SourceDA, DaHeight: 1}
+	s.processHeightEvent(t.Context(), &evt)
+
+	requireEmptyChan(t, errChan)
+	assert.False(t, s.hasCriticalError.Load(), "unexpected proposer from DA should be treated as an invalid external block")
+
+	h, err := st.Height(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, uint64(0), h)
 }
 
 func TestSequentialBlockSync(t *testing.T) {
@@ -772,6 +1198,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 	eventCh <- datypes.SubscriptionEvent{Height: myFutureDAHeight}
 	syncerInst1.startSyncWorkers(ctx)
 	syncerInst1.wg.Wait()
+	follower1.Stop()
 	requireEmptyChan(t, errorCh)
 
 	t.Log("sync workers on instance1 completed")
@@ -936,7 +1363,7 @@ func TestSyncer_executeTxsWithRetry(t *testing.T) {
 
 				if tt.expectSuccess {
 					require.NoError(t, err)
-					assert.Equal(t, tt.expectHash, result)
+					assert.Equal(t, tt.expectHash, result.UpdatedStateRoot)
 				} else {
 					require.Error(t, err)
 					if tt.expectError != "" {

@@ -118,6 +118,15 @@ func newFullNode(
 	// Initialize raft node if enabled (for both aggregator and sync nodes)
 	var leaderElection leaderElection
 	switch {
+	case nodeConfig.Node.Promotable && !nodeConfig.Raft.Enable:
+		if signer == nil {
+			return nil, fmt.Errorf("promotable mode requires a signer")
+		}
+		localProposer, err := signer.GetAddress()
+		if err != nil {
+			return nil, fmt.Errorf("get promotable signer address: %w", err)
+		}
+		leaderElection = newDynamicProposerElection(logger, localProposer, genesis.ProposerAddress, evstore, leaderFactory, followerFactory, 300*time.Millisecond)
 	case nodeConfig.Node.Aggregator && nodeConfig.Raft.Enable:
 		leaderElection = raftpkg.NewDynamicLeaderElection(logger, leaderFactory, followerFactory, raftNode)
 	case nodeConfig.Node.Aggregator && !nodeConfig.Raft.Enable:

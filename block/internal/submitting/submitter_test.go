@@ -429,7 +429,7 @@ func (f *fakeDASubmitter) SubmitHeaders(ctx context.Context, _ []*types.SignedHe
 	return nil
 }
 
-func (f *fakeDASubmitter) SubmitData(ctx context.Context, _ []*types.SignedData, _ [][]byte, _ cache.Manager, _ signer.Signer, _ genesis.Genesis) error {
+func (f *fakeDASubmitter) SubmitData(ctx context.Context, _ []*types.SignedData, _ [][]byte, _ cache.Manager, _ signer.Signer) error {
 	select {
 	case f.chData <- struct{}{}:
 	default:

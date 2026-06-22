@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
@@ -40,8 +41,9 @@ func setupTestEthRPCTracing(t *testing.T, mockClient EthRPCClient) (EthRPCClient
 
 // mockEthRPCClient is a simple mock for testing
 type mockEthRPCClient struct {
-	headerByNumberFn func(ctx context.Context, number *big.Int) (*types.Header, error)
-	getTxsFn         func(ctx context.Context) ([]string, error)
+	headerByNumberFn  func(ctx context.Context, number *big.Int) (*types.Header, error)
+	getTxsFn          func(ctx context.Context) ([]string, error)
+	getNextProposerFn func(ctx context.Context, number *big.Int) (common.Hash, error)
 }
 
 func (m *mockEthRPCClient) HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error) {
@@ -56,6 +58,13 @@ func (m *mockEthRPCClient) GetTxs(ctx context.Context) ([]string, error) {
 		return m.getTxsFn(ctx)
 	}
 	return nil, nil
+}
+
+func (m *mockEthRPCClient) GetNextProposer(ctx context.Context, number *big.Int) (common.Hash, error) {
+	if m.getNextProposerFn != nil {
+		return m.getNextProposerFn(ctx, number)
+	}
+	return common.Hash{}, nil
 }
 
 func TestTracedEthRPCClient_HeaderByNumber_Success(t *testing.T) {

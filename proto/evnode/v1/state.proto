@@ -16,6 +16,7 @@ message State {
   uint64 da_height = 6;
   bytes app_hash = 8;
   bytes last_header_hash = 9;
+  bytes next_proposer_address = 10;
 
   reserved 7;
 }

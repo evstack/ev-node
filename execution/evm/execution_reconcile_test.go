@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/beacon/engine"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
@@ -122,4 +123,8 @@ func (mockReconcileEthRPCClient) HeaderByNumber(_ context.Context, _ *big.Int) (
 
 func (mockReconcileEthRPCClient) GetTxs(_ context.Context) ([]string, error) {
 	return nil, errors.New("unexpected GetTxs call")
+}
+
+func (mockReconcileEthRPCClient) GetNextProposer(_ context.Context, _ *big.Int) (common.Hash, error) {
+	return common.Hash{}, errors.New("unexpected GetNextProposer call")
 }

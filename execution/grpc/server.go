@@ -112,7 +112,7 @@ func (s *Server) ExecuteTxs(
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid tx_batch: %w", err))
 	}
 
-	updatedStateRoot, err := s.executor.ExecuteTxs(
+	result, err := s.executor.ExecuteTxs(
 		ctx,
 		txs,
 		req.Msg.BlockHeight,
@@ -124,7 +124,8 @@ func (s *Server) ExecuteTxs(
 	}
 
 	return connect.NewResponse(&pb.ExecuteTxsResponse{
-		UpdatedStateRoot: updatedStateRoot,
+		UpdatedStateRoot:    result.UpdatedStateRoot,
+		NextProposerAddress: result.NextProposerAddress,
 	}), nil
 }
 

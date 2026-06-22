@@ -85,6 +85,8 @@ func (m *mockDA) HasForcedInclusionNamespace() bool {
 	return true
 }
 
+func (m *mockDA) SupportsSubscribe() bool { return true }
+
 func (m *mockDA) GetLatestDAHeight(_ context.Context) (uint64, error) {
 	return 0, nil
 }

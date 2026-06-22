@@ -108,7 +108,8 @@ func StartNode(
 	// Validate and load pkgsigner first (before attempting DA connection, which may fail
 	// eagerly over WebSocket if no DA server is running).
 	var signer pkgsigner.Signer
-	if nodeConfig.Node.Aggregator && !nodeConfig.Node.BasedSequencer {
+	needsSigner := nodeConfig.Node.Aggregator || nodeConfig.Node.Promotable
+	if needsSigner && !nodeConfig.Node.BasedSequencer {
 		passphrase := ""
 		if nodeConfig.Signer.SignerType == "file" {
 			passphraseFile, err := cmd.Flags().GetString(rollconf.FlagSignerPassphraseFile)

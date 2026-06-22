@@ -19,6 +19,7 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
+	coreexec "github.com/evstack/ev-node/core/execution"
 	coreseq "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
@@ -68,6 +69,41 @@ func TestProduceBlock_EmptyBatch_SetsEmptyDataHash(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 0, len(data.Txs))
 	assert.EqualValues(t, common.DataHashForEmptyTxs, sh.DataHash)
+
+	state, err := fx.MemStore.GetState(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, fx.Exec.genesis.ProposerAddress, state.NextProposerAddress)
+}
+
+func TestProduceBlock_PersistsExecutionNextProposer(t *testing.T) {
+	fx := setupTestExecutor(t, 1000)
+	defer fx.Cancel()
+
+	nextAddr, _, _ := buildTestSigner(t)
+
+	fx.MockSeq.EXPECT().GetNextBatch(mock.Anything, mock.AnythingOfType("sequencer.GetNextBatchRequest")).
+		RunAndReturn(func(ctx context.Context, req coreseq.GetNextBatchRequest) (*coreseq.GetNextBatchResponse, error) {
+			return &coreseq.GetNextBatchResponse{Batch: &coreseq.Batch{Transactions: nil}, Timestamp: time.Now()}, nil
+		}).Once()
+
+	fx.MockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.AnythingOfType("time.Time"), fx.InitStateRoot).
+		Return(coreexec.ExecuteResult{
+			UpdatedStateRoot:    []byte("new_root"),
+			NextProposerAddress: nextAddr,
+		}, nil).Once()
+
+	fx.MockSeq.EXPECT().GetDAHeight().Return(uint64(0)).Once()
+
+	require.NoError(t, fx.Exec.ProduceBlock(fx.Exec.ctx))
+
+	header, data, err := fx.MemStore.GetBlockData(context.Background(), 1)
+	require.NoError(t, err)
+	require.NoError(t, header.ValidateBasicWithData(data))
+
+	state, err := fx.MemStore.GetState(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, nextAddr, state.NextProposerAddress)
+	assert.Equal(t, header.Hash(), state.LastHeaderHash)
 }
 
 func TestProduceBlock_OutputPassesValidation(t *testing.T) {
@@ -120,6 +156,61 @@ func TestPendingLimit_SkipsProduction(t *testing.T) {
 	h2, err := fx.MemStore.Height(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, h1, h2, "height should not change when production is skipped")
+}
+
+func TestProduceBlock_RetriesFailedAckBeforeNextBlock(t *testing.T) {
+	fx := setupTestExecutor(t, 1000)
+	defer fx.Cancel()
+
+	var ackCalls int
+	fx.Exec.onBatchCommitted = func(ctx context.Context) error {
+		ackCalls++
+		if ackCalls <= 2 {
+			return assert.AnError
+		}
+		return nil
+	}
+
+	fx.MockSeq.EXPECT().GetNextBatch(mock.Anything, mock.AnythingOfType("sequencer.GetNextBatchRequest")).
+		RunAndReturn(func(ctx context.Context, req coreseq.GetNextBatchRequest) (*coreseq.GetNextBatchResponse, error) {
+			return &coreseq.GetNextBatchResponse{Batch: &coreseq.Batch{Transactions: nil}, Timestamp: time.Now()}, nil
+		}).Once()
+	fx.MockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.AnythingOfType("time.Time"), fx.InitStateRoot).
+		Return([]byte("root1"), nil).Once()
+	fx.MockSeq.EXPECT().GetDAHeight().Return(uint64(0)).Once()
+
+	// block 1 commits, but the post-commit ack fails (non-fatal)
+	require.NoError(t, fx.Exec.ProduceBlock(fx.Exec.ctx))
+	assert.Equal(t, 1, ackCalls)
+	assert.True(t, fx.Exec.pendingBatchAck.Load())
+
+	// the pending ack is retried before draining a new batch; if the retry
+	// fails again block production aborts without calling GetNextBatch
+	err := fx.Exec.ProduceBlock(fx.Exec.ctx)
+	require.Error(t, err)
+	assert.Equal(t, 2, ackCalls)
+	assert.True(t, fx.Exec.pendingBatchAck.Load())
+
+	h, err := fx.MemStore.Height(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, uint64(1), h, "no block should be produced while the ack retry fails")
+
+	// once the retry succeeds production resumes: retry ack + post-commit ack
+	fx.MockSeq.EXPECT().GetNextBatch(mock.Anything, mock.AnythingOfType("sequencer.GetNextBatchRequest")).
+		RunAndReturn(func(ctx context.Context, req coreseq.GetNextBatchRequest) (*coreseq.GetNextBatchResponse, error) {
+			return &coreseq.GetNextBatchResponse{Batch: &coreseq.Batch{Transactions: nil}, Timestamp: time.Now()}, nil
+		}).Once()
+	fx.MockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(2), mock.AnythingOfType("time.Time"), []byte("root1")).
+		Return([]byte("root2"), nil).Once()
+	fx.MockSeq.EXPECT().GetDAHeight().Return(uint64(0)).Once()
+
+	require.NoError(t, fx.Exec.ProduceBlock(fx.Exec.ctx))
+	assert.Equal(t, 4, ackCalls)
+	assert.False(t, fx.Exec.pendingBatchAck.Load())
+
+	h, err = fx.MemStore.Height(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, uint64(2), h)
 }
 
 func TestExecutor_executeTxsWithRetry(t *testing.T) {
@@ -220,7 +311,7 @@ func TestExecutor_executeTxsWithRetry(t *testing.T) {
 
 				if tt.expectSuccess {
 					require.NoError(t, err)
-					assert.Equal(t, tt.expectHash, result)
+					assert.Equal(t, tt.expectHash, result.UpdatedStateRoot)
 				} else {
 					require.Error(t, err)
 					if tt.expectError != "" {

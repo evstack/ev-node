@@ -105,7 +105,7 @@ func TestDASubmitter_SubmitHeadersAndData_MarksInclusionAndUpdatesLastSubmitted(
 
 	dataList, marshalledData, err := cm.GetPendingData(context.Background())
 	require.NoError(t, err)
-	require.NoError(t, daSubmitter.SubmitData(context.Background(), dataList, marshalledData, cm, n, gen))
+	require.NoError(t, daSubmitter.SubmitData(context.Background(), dataList, marshalledData, cm, n))
 
 	// After submission, inclusion markers should be set
 	_, ok := cm.GetHeaderDAIncludedByHeight(1)

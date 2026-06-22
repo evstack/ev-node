@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Reject unsupported `net-info --output` formats instead of falling back to text output [#3360](https://github.com/evstack/ev-node/pull/3360).
+
+## v1.1.4
+
+### Fixed
+
+- DA client falls back to HTTP polling with `Retrieve` when the WebSocket connection fails, instead of trying to use the WS-only `Subscribe` over HTTP. A background goroutine retries WS every 30s so transient outages don't force a permanent downgrade [#3361](https://github.com/evstack/ev-node/pull/3361)
+
+## v1.1.3
+
+### Fixed
+
+- Drain the pending tx queue in merged batches with a durable WAL-backed ack, fixing severe queue backlog under heavy tx load. Tx dedup moved from the reaper cache into the sequencer queue [#3351](https://github.com/evstack/ev-node/pull/3351)
+
 ## v1.1.2
 
 ### Changes

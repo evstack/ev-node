@@ -19,8 +19,10 @@ import (
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/test/mocks"
 	"github.com/evstack/ev-node/test/testda"
+	"github.com/evstack/ev-node/types"
 )
 
 // MockFullDAClient combines MockClient and MockVerifier to implement FullDAClient
@@ -48,6 +50,7 @@ func setupForcedInclusionMockDA(t *testing.T, mockDA *MockFullDAClient, latestDA
 	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	mockDA.MockClient.On("SupportsSubscribe").Return(true).Maybe()
 	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 	mockDA.MockClient.On("GetLatestDAHeight", mock.Anything).Return(latestDAHeight, nil).Maybe()
 
@@ -623,6 +626,9 @@ func TestSequencer_GetNextBatch_AlwaysCheckPendingForcedInclusion(t *testing.T) 
 	assert.Equal(t, uint64(1), seq.checkpoint.TxIndex, "TxIndex should be 1 (consumed first forced tx)")
 	assert.Equal(t, 2, len(seq.cachedForcedInclusionTxs), "Cache should still contain all original txs")
 
+	// ack the first batch so drained queue entries are committed
+	require.NoError(t, seq.AckBatch(ctx))
+
 	// Second call with larger maxBytes = 200
 	// Should process pending forced tx first
 	getReq2 := coresequencer.GetNextBatchRequest{
@@ -718,7 +724,7 @@ func TestSequencer_QueueLimit_Integration(t *testing.T) {
 		t.Error("expected nil response when submission fails")
 	}
 
-	// Test that getting a batch frees up space
+	// Test that getting a batch + acking frees up space
 	nextResp, err := seq.GetNextBatch(ctx, coresequencer.GetNextBatchRequest{Id: seq.Id})
 	if err != nil {
 		t.Fatalf("unexpected error getting next batch: %v", err)
@@ -726,6 +732,8 @@ func TestSequencer_QueueLimit_Integration(t *testing.T) {
 	if nextResp == nil || nextResp.Batch == nil {
 		t.Fatal("expected non-nil batch response")
 	}
+	// ack the drained batch to free queue capacity
+	require.NoError(t, seq.AckBatch(ctx))
 
 	// Now the third batch should succeed
 	resp3_retry, err := seq.SubmitBatchTxs(ctx, req3)
@@ -829,6 +837,8 @@ func TestSequencer_DAFailureAndQueueThrottling_Integration(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, nextResp)
 	require.NotNil(t, nextResp.Batch)
+	// ack the drained batch to free queue capacity
+	require.NoError(t, seq.AckBatch(ctx))
 
 	// Now we should be able to add the overflow batch
 	resp, err = seq.SubmitBatchTxs(ctx, overflowReq)
@@ -901,6 +911,7 @@ func TestSequencer_CheckpointPersistence_CrashRecovery(t *testing.T) {
 	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	mockDA.MockClient.On("SupportsSubscribe").Return(true).Maybe()
 	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	// DA head is at 101 — close to sequencer start (100), no catch-up needed.
@@ -1010,6 +1021,7 @@ func TestSequencer_GetNextBatch_EmptyDABatch_IncreasesDAHeight(t *testing.T) {
 	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	mockDA.MockClient.On("SupportsSubscribe").Return(true).Maybe()
 	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	// DA head is at 100 — same as sequencer start, no catch-up needed
@@ -1108,6 +1120,7 @@ func TestSequencer_GetNextBatch_WithGasFiltering(t *testing.T) {
 	mockDA.MockClient.On("GetBlobsAtHeight", mock.Anything, mock.Anything, mock.Anything).
 		Return(forcedTxs, nil).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	mockDA.MockClient.On("SupportsSubscribe").Return(true).Maybe()
 	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return([]byte("forced")).Maybe()
 	mockDA.MockClient.On("MaxBlobSize", mock.Anything).Return(uint64(1000000), nil).Maybe()
@@ -1215,6 +1228,7 @@ func TestSequencer_GetNextBatch_GasFilterError(t *testing.T) {
 
 	mockDA := newMockFullDAClient(t)
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	mockDA.MockClient.On("SupportsSubscribe").Return(true).Maybe()
 	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 	mockDA.MockClient.On("Retrieve", mock.Anything, mock.Anything, mock.Anything).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture},
@@ -1286,6 +1300,7 @@ func TestSequencer_CatchUp_DetectsOldEpoch(t *testing.T) {
 	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	mockDA.MockClient.On("SupportsSubscribe").Return(true).Maybe()
 	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	// DA head is at height 105 — sequencer starts at 100 with epoch size 1,
@@ -1360,6 +1375,7 @@ func TestSequencer_CatchUp_SkipsMempoolDuringCatchUp(t *testing.T) {
 	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	mockDA.MockClient.On("SupportsSubscribe").Return(true).Maybe()
 	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	// DA head is at 105 — sequencer starts at 100 with epoch size 1,
@@ -1456,6 +1472,7 @@ func TestSequencer_CatchUp_UsesDATimestamp(t *testing.T) {
 	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	mockDA.MockClient.On("SupportsSubscribe").Return(true).Maybe()
 	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	// DA head is at 105 — multiple epochs ahead, triggers catch-up
@@ -1519,6 +1536,7 @@ func TestSequencer_CatchUp_ExitsCatchUpAtDAHead(t *testing.T) {
 	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	mockDA.MockClient.On("SupportsSubscribe").Return(true).Maybe()
 	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	// DA head is at 105 — multiple epochs ahead, triggers catch-up
@@ -1728,6 +1746,7 @@ func TestSequencer_CatchUp_MultiEpochReplay(t *testing.T) {
 	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	mockDA.MockClient.On("SupportsSubscribe").Return(true).Maybe()
 	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	// DA head is at 106 — sequencer starts at 100 with epoch size 1,
@@ -1883,6 +1902,7 @@ func TestSequencer_CatchUp_CheckpointAdvancesDuringCatchUp(t *testing.T) {
 	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	mockDA.MockClient.On("SupportsSubscribe").Return(true).Maybe()
 	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	// DA head is at 105 — multiple epochs ahead, triggers catch-up
@@ -1982,6 +2002,7 @@ func TestSequencer_CatchUp_MonotonicTimestamps(t *testing.T) {
 	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	mockDA.MockClient.On("SupportsSubscribe").Return(true).Maybe()
 	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	// DA head is far ahead — triggers catch-up
@@ -2112,6 +2133,7 @@ func TestSequencer_CatchUp_MonotonicTimestamps_EmptyEpoch(t *testing.T) {
 	mockDA.MockClient.On("GetDataNamespace").Return([]byte("data")).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return(forcedInclusionNS).Maybe()
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	mockDA.MockClient.On("SupportsSubscribe").Return(true).Maybe()
 	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 
 	mockDA.MockClient.On("GetLatestDAHeight", mock.Anything).Return(uint64(110), nil).Once()
@@ -2192,6 +2214,7 @@ func TestSequencer_GetNextBatch_GasFilteringPreservesUnprocessedTxs(t *testing.T
 
 	mockDA := newMockFullDAClient(t)
 	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	mockDA.MockClient.On("SupportsSubscribe").Return(true).Maybe()
 	mockDA.MockClient.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(make(chan datypes.SubscriptionEvent)), nil).Maybe()
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return([]byte("forced")).Maybe()
 	mockDA.MockClient.On("MaxBlobSize", mock.Anything).Return(uint64(1000000), nil).Maybe()
@@ -2301,4 +2324,36 @@ func TestSequencer_GetNextBatch_GasFilteringPreservesUnprocessedTxs(t *testing.T
 	assert.True(t, txFound[string(tx1)], "tx1 should have been processed (was gas-limited, retried later)")
 	assert.True(t, txFound[string(tx2)], "tx2 should have been processed (must not be lost)")
 	assert.True(t, txFound[string(tx3)], "tx3 should have been processed (must not be lost)")
+}
+
+func TestSequencer_ReconcileQueueWithLastBlock_CrashRecovery(t *testing.T) {
+	ctx := context.Background()
+	db := ds.NewMapDatastore()
+
+	// commit a block at height 1 containing two txs
+	header, data := types.GetRandomBlock(1, 2, "test")
+	evStore := store.New(store.NewEvNodeKVStore(db))
+	batch, err := evStore.NewBatch(ctx)
+	require.NoError(t, err)
+	require.NoError(t, batch.SaveBlockData(header, data, &header.Signature))
+	require.NoError(t, batch.SetHeight(1))
+	require.NoError(t, batch.Commit())
+
+	committed1 := []byte(data.Txs[0])
+	committed2 := []byte(data.Txs[1])
+	pending := []byte("tx-still-pending")
+
+	// simulate a crash between block commit and queue ack: WAL still holds
+	// the committed txs alongside a tx that was never included
+	queue := NewBatchQueue(db, "batches", 0, zerolog.Nop())
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{committed1, committed2}}))
+	require.NoError(t, queue.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{pending}}))
+
+	// restart: NewSequencer loads the queue and reconciles against the last block
+	seq := newTestSequencer(t, db, newDummyDA(100_000_000))
+
+	drained, err := seq.queue.Drain(ctx, 0)
+	require.NoError(t, err)
+	require.Len(t, drained.Transactions, 1, "committed txs should have been dropped on reconcile")
+	assert.Equal(t, pending, drained.Transactions[0])
 }

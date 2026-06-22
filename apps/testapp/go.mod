@@ -2,10 +2,13 @@ module github.com/evstack/ev-node/apps/testapp
 
 go 1.25.8
 
-replace github.com/evstack/ev-node => ../../.
+replace (
+	github.com/evstack/ev-node => ../../.
+	github.com/evstack/ev-node/core => ../../core
+)
 
 require (
-	github.com/evstack/ev-node v1.1.2
+	github.com/evstack/ev-node v1.1.3
 	github.com/evstack/ev-node/core v1.0.0
 	github.com/ipfs/go-datastore v0.9.1
 	github.com/rs/zerolog v1.35.1
@@ -97,7 +100,7 @@ require (
 	github.com/ipld/go-ipld-prime v0.23.0 // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
 	github.com/jbenet/go-temp-err-catcher v0.1.0 // indirect
-	github.com/klauspost/compress v1.18.0 // indirect
+	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/koron/go-ssdp v0.0.6 // indirect
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect

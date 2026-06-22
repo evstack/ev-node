@@ -4,6 +4,7 @@ import (
 	"context"
 	"math/big"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -79,6 +80,32 @@ func (t *tracedEthRPCClient) GetTxs(ctx context.Context) ([]string, error) {
 	span.SetAttributes(
 		attribute.Int("tx_count", len(result)),
 	)
+
+	return result, nil
+}
+
+func (t *tracedEthRPCClient) GetNextProposer(ctx context.Context, number *big.Int) (common.Hash, error) {
+	blockNumber := "latest"
+	if number != nil {
+		blockNumber = number.String()
+	}
+
+	ctx, span := t.tracer.Start(ctx, "Evolve.GetNextProposer",
+		trace.WithAttributes(
+			attribute.String("method", "evolve_getNextProposer"),
+			attribute.String("block_number", blockNumber),
+		),
+	)
+	defer span.End()
+
+	result, err := t.inner.GetNextProposer(ctx, number)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return common.Hash{}, err
+	}
+
+	span.SetAttributes(attribute.String("next_proposer", result.Hex()))
 
 	return result, nil
 }

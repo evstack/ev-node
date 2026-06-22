@@ -22,6 +22,7 @@ func TestDefaultConfig(t *testing.T) {
 
 	assert.Equal(t, "data", def.DBPath)
 	assert.Equal(t, false, def.Node.Aggregator)
+	assert.Equal(t, false, def.Node.Promotable)
 	assert.Equal(t, false, def.Node.Light)
 	assert.Equal(t, DefaultConfig().DA.Address, def.DA.Address)
 	assert.Equal(t, "", def.DA.AuthToken)
@@ -60,6 +61,7 @@ func TestAddFlags(t *testing.T) {
 
 		// Node flags
 		assertFlagValue(t, flags, FlagAggregator, DefaultConfig().Node.Aggregator)
+		assertFlagValue(t, flags, FlagPromotable, DefaultConfig().Node.Promotable)
 		assertFlagValue(t, flags, FlagBasedSequencer, DefaultConfig().Node.BasedSequencer)
 		assertFlagValue(t, flags, FlagLight, DefaultConfig().Node.Light)
 		assertFlagValue(t, flags, FlagBlockTime, DefaultConfig().Node.BlockTime.Duration)
@@ -148,7 +150,7 @@ func TestAddFlags(t *testing.T) {
 		assertFlagValue(t, flags, FlagPruningInterval, DefaultConfig().Pruning.Interval.Duration)
 
 		// Count the number of flags we're explicitly checking
-		expectedFlagCount := 82 // Update this number if you add more flag checks above
+		expectedFlagCount := 83 // Update this number if you add more flag checks above
 
 		// Get the actual number of flags (both regular and persistent)
 		actualFlagCount := 0
@@ -559,6 +561,67 @@ func TestBasedSequencerValidation(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 			}
+		})
+	}
+}
+
+func TestPromotableValidation(t *testing.T) {
+	tests := []struct {
+		name        string
+		aggregator  bool
+		promotable  bool
+		basedSeq    bool
+		light       bool
+		raft        bool
+		expectError string
+	}{
+		{
+			name:       "promotable full node should pass",
+			promotable: true,
+		},
+		{
+			name:       "promotable aggregator should pass",
+			aggregator: true,
+			promotable: true,
+		},
+		{
+			name:        "promotable with based sequencer should fail",
+			promotable:  true,
+			basedSeq:    true,
+			expectError: "promotable mode cannot be combined with based sequencer mode",
+		},
+		{
+			name:        "promotable with light node should fail",
+			promotable:  true,
+			light:       true,
+			expectError: "promotable mode cannot be combined with light node mode",
+		},
+		{
+			name:        "promotable with raft should fail",
+			promotable:  true,
+			raft:        true,
+			expectError: "promotable mode cannot be combined with Raft consensus",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.RootDir = t.TempDir()
+			cfg.Node.Aggregator = tt.aggregator
+			cfg.Node.Promotable = tt.promotable
+			cfg.Node.BasedSequencer = tt.basedSeq
+			cfg.Node.Light = tt.light
+			cfg.Raft.Enable = tt.raft
+
+			err := cfg.Validate()
+
+			if tt.expectError != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectError)
+				return
+			}
+			require.NoError(t, err)
 		})
 	}
 }

@@ -32,6 +32,7 @@ type Config struct {
 type client struct {
 	blobAPI            *blobrpc.BlobAPI
 	headerAPI          *blobrpc.HeaderAPI
+	da                 *blobrpc.Client // kept to read live IsWebSocket after transport upgrades
 	logger             zerolog.Logger
 	defaultTimeout     time.Duration
 	namespaceBz        []byte
@@ -131,6 +132,7 @@ func NewClient(cfg Config) FullClient {
 	return &client{
 		blobAPI:            &cfg.DA.Blob,
 		headerAPI:          &cfg.DA.Header,
+		da:                 cfg.DA,
 		logger:             cfg.Logger.With().Str("component", "da_client").Logger(),
 		defaultTimeout:     cfg.DefaultTimeout,
 		namespaceBz:        datypes.NamespaceFromString(cfg.Namespace).Bytes(),
@@ -483,6 +485,13 @@ func (c *client) GetForcedInclusionNamespace() []byte {
 // HasForcedInclusionNamespace reports whether forced inclusion namespace is configured.
 func (c *client) HasForcedInclusionNamespace() bool {
 	return c.hasForcedNamespace
+}
+
+// SupportsSubscribe reports whether the underlying transport supports
+// channel-based subscriptions (WebSocket). Reads the live IsWebSocket flag
+// from the jsonrpc client so transport upgrades are visible immediately.
+func (c *client) SupportsSubscribe() bool {
+	return c.da != nil && c.da.IsWebSocket.Load()
 }
 
 // Subscribe subscribes to blobs in the given namespace via the celestia-node
