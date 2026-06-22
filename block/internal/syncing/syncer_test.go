@@ -116,6 +116,7 @@ func makeSignedHeaderBytes(
 func setupMockDAClient(tb testing.TB) (da.Client, chan datypes.SubscriptionEvent) {
 	mockClient := testmocks.NewMockClient(tb)
 	eventCh := make(chan datypes.SubscriptionEvent, 1)
+	mockClient.EXPECT().SupportsSubscribe().Return(true).Maybe()
 	mockClient.EXPECT().Subscribe(mock.Anything, mock.Anything, mock.Anything).Return((<-chan datypes.SubscriptionEvent)(eventCh), nil).Maybe()
 	return mockClient, eventCh
 }
