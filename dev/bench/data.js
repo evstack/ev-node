@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782810871881,
+  "lastUpdate": 1782812536636,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -286,6 +286,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 150070,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "marko@baricevic.me",
+            "name": "Marko",
+            "username": "tac0turtle"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "9e400f97dfe398a07e7ad0c09e1ba1542d4f33a4",
+          "message": "chore(deps): bump rust deps (#3373)\n\n* bump\n\n* remove claude review",
+          "timestamp": "2026-06-30T09:21:49Z",
+          "tree_id": "ac51b4fe26499884b0a274b528c61e79cbf6f80e",
+          "url": "https://github.com/evstack/ev-node/commit/9e400f97dfe398a07e7ad0c09e1ba1542d4f33a4"
+        },
+        "date": 1782812532033,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 894897084,
+            "unit": "ns/op\t31839928 B/op\t  179132 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 894897084,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 31839928,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 179132,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
