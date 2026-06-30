@@ -24,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.0
       - name: set up go
-        uses: actions/setup-go@v6.4.0
+        uses: actions/setup-go@v6.5.0
         with:
           go-version-file: ./test/docker-e2e/go.mod
           cache-dependency-path: "**/go.sum"
@@ -44,7 +44,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.0
       - name: set up go
-        uses: actions/setup-go@v6.4.0
+        uses: actions/setup-go@v6.5.0
         with:
           go-version-file: ./test/docker-e2e/go.mod
           cache-dependency-path: "**/go.sum"
@@ -64,7 +64,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.0
       - name: set up go
-        uses: actions/setup-go@v6.4.0
+        uses: actions/setup-go@v6.5.0
         with:
           go-version-file: ./test/docker-e2e/go.mod
           cache-dependency-path: "**/go.sum"
