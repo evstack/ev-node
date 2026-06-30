@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782809032705,
+  "lastUpdate": 1782809034686,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -482,6 +482,102 @@ window.BENCHMARK_DATA = {
             "value": 55,
             "unit": "allocs/op",
             "extra": "28064 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "999c53e97c61dacad192b195f256a3e728e811b5",
+          "message": "build(deps): Bump actions/cache from 5 to 6 (#3370)\n\nBumps [actions/cache](https://github.com/actions/cache) from 5 to 6.\n- [Release notes](https://github.com/actions/cache/releases)\n- [Changelog](https://github.com/actions/cache/blob/main/RELEASES.md)\n- [Commits](https://github.com/actions/cache/compare/v5...v6)\n\n---\nupdated-dependencies:\n- dependency-name: actions/cache\n  dependency-version: '6'\n  dependency-type: direct:production\n  update-type: version-update:semver-major\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-06-30T10:36:45+02:00",
+          "tree_id": "21c496a4bac9220b92b761f53d48d2d53f213f3f",
+          "url": "https://github.com/evstack/ev-node/commit/999c53e97c61dacad192b195f256a3e728e811b5"
+        },
+        "date": 1782809034252,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 48104,
+            "unit": "ns/op\t   10437 B/op\t      55 allocs/op",
+            "extra": "25663 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 48104,
+            "unit": "ns/op",
+            "extra": "25663 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 10437,
+            "unit": "B/op",
+            "extra": "25663 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 55,
+            "unit": "allocs/op",
+            "extra": "25663 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 40500,
+            "unit": "ns/op\t    4930 B/op\t      51 allocs/op",
+            "extra": "30151 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 40500,
+            "unit": "ns/op",
+            "extra": "30151 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 4930,
+            "unit": "B/op",
+            "extra": "30151 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 51,
+            "unit": "allocs/op",
+            "extra": "30151 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 41248,
+            "unit": "ns/op\t    5146 B/op\t      55 allocs/op",
+            "extra": "29323 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 41248,
+            "unit": "ns/op",
+            "extra": "29323 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 5146,
+            "unit": "B/op",
+            "extra": "29323 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 55,
+            "unit": "allocs/op",
+            "extra": "29323 times\n4 procs"
           }
         ]
       }
