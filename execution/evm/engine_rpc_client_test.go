@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 
@@ -22,11 +23,11 @@ type jsonRPCRequest struct {
 	ID     json.RawMessage   `json:"id"`
 }
 
-// fakeEngineServer returns an httptest.Server that responds to engine_getPayloadV4
-// and engine_getPayloadV5 according to the provided handler. The handler receives
-// the method name and returns (result JSON, error code, error message).
+// fakeEngineServer returns an httptest.Server that responds according to the
+// provided handler. The handler receives the full JSON-RPC request and returns
+// (result JSON, error code, error message).
 // If errorCode is 0, a success response is sent.
-func fakeEngineServer(t *testing.T, handler func(method string) (resultJSON string, errCode int, errMsg string)) *httptest.Server {
+func fakeEngineServer(t *testing.T, handler func(req jsonRPCRequest) (resultJSON string, errCode int, errMsg string)) *httptest.Server {
 	t.Helper()
 
 	var mu sync.Mutex
@@ -41,7 +42,7 @@ func fakeEngineServer(t *testing.T, handler func(method string) (resultJSON stri
 			return
 		}
 
-		resultJSON, errCode, errMsg := handler(req.Method)
+		resultJSON, errCode, errMsg := handler(req)
 
 		w.Header().Set("Content-Type", "application/json")
 		if errCode != 0 {
@@ -86,6 +87,37 @@ const minimalPayloadEnvelopeJSON = `{
 	"shouldOverrideBuilder": false
 }`
 
+const (
+	validForkchoiceResponseJSON = `{
+		"payloadStatus": {
+			"status": "VALID",
+			"latestValidHash": null,
+			"validationError": null
+		},
+		"payloadId": "0x0000000000000001"
+	}`
+	validPayloadStatusJSON = `{
+		"status": "VALID",
+		"latestValidHash": null,
+		"validationError": null
+	}`
+	zeroHashHex = "0x0000000000000000000000000000000000000000000000000000000000000000"
+)
+
+func minimalAmsterdamPayloadEnvelopeJSON(t *testing.T) string {
+	t.Helper()
+	withAmsterdamFields := strings.Replace(
+		minimalPayloadEnvelopeJSON,
+		`"excessBlobGas": "0x0"`,
+		`"excessBlobGas": "0x0",
+		"slotNumber": "0x1",
+		"blockAccessList": ["0x1234"]`,
+		1,
+	)
+	require.NotEqual(t, minimalPayloadEnvelopeJSON, withAmsterdamFields)
+	return withAmsterdamFields
+}
+
 func dialTestServer(t *testing.T, serverURL string) *rpc.Client {
 	t.Helper()
 	client, err := rpc.Dial(serverURL)
@@ -97,12 +129,12 @@ func TestGetPayload_PragueChain_UsesV4(t *testing.T) {
 	var calledMethods []string
 	var mu sync.Mutex
 
-	srv := fakeEngineServer(t, func(method string) (string, int, string) {
+	srv := fakeEngineServer(t, func(req jsonRPCRequest) (string, int, string) {
 		mu.Lock()
-		calledMethods = append(calledMethods, method)
+		calledMethods = append(calledMethods, req.Method)
 		mu.Unlock()
 
-		if method == "engine_getPayloadV4" {
+		if req.Method == getPayloadV4Method {
 			return minimalPayloadEnvelopeJSON, 0, ""
 		}
 		return "", -38005, "Unsupported fork"
@@ -117,7 +149,7 @@ func TestGetPayload_PragueChain_UsesV4(t *testing.T) {
 	require.NoError(t, err)
 
 	mu.Lock()
-	assert.Equal(t, []string{"engine_getPayloadV4"}, calledMethods, "should call V4 only")
+	assert.Equal(t, []string{getPayloadV4Method}, calledMethods, "should call V4 only")
 	calledMethods = nil
 	mu.Unlock()
 
@@ -126,7 +158,7 @@ func TestGetPayload_PragueChain_UsesV4(t *testing.T) {
 	require.NoError(t, err)
 
 	mu.Lock()
-	assert.Equal(t, []string{"engine_getPayloadV4"}, calledMethods, "should still use V4")
+	assert.Equal(t, []string{getPayloadV4Method}, calledMethods, "should still use V4")
 	mu.Unlock()
 }
 
@@ -134,12 +166,12 @@ func TestGetPayload_OsakaChain_FallsBackToV5(t *testing.T) {
 	var calledMethods []string
 	var mu sync.Mutex
 
-	srv := fakeEngineServer(t, func(method string) (string, int, string) {
+	srv := fakeEngineServer(t, func(req jsonRPCRequest) (string, int, string) {
 		mu.Lock()
-		calledMethods = append(calledMethods, method)
+		calledMethods = append(calledMethods, req.Method)
 		mu.Unlock()
 
-		if method == "engine_getPayloadV5" {
+		if req.Method == getPayloadV5Method {
 			return minimalPayloadEnvelopeJSON, 0, ""
 		}
 		return "", -38005, "Unsupported fork"
@@ -154,7 +186,7 @@ func TestGetPayload_OsakaChain_FallsBackToV5(t *testing.T) {
 	require.NoError(t, err)
 
 	mu.Lock()
-	assert.Equal(t, []string{"engine_getPayloadV4", "engine_getPayloadV5"}, calledMethods,
+	assert.Equal(t, []string{getPayloadV4Method, getPayloadV5Method}, calledMethods,
 		"should try V4 then fall back to V5")
 	calledMethods = nil
 	mu.Unlock()
@@ -164,8 +196,45 @@ func TestGetPayload_OsakaChain_FallsBackToV5(t *testing.T) {
 	require.NoError(t, err)
 
 	mu.Lock()
-	assert.Equal(t, []string{"engine_getPayloadV5"}, calledMethods,
+	assert.Equal(t, []string{getPayloadV5Method}, calledMethods,
 		"should use cached V5 without trying V4")
+	mu.Unlock()
+}
+
+func TestGetPayload_AmsterdamChain_FallsBackToV6(t *testing.T) {
+	var calledMethods []string
+	var mu sync.Mutex
+
+	srv := fakeEngineServer(t, func(req jsonRPCRequest) (string, int, string) {
+		mu.Lock()
+		calledMethods = append(calledMethods, req.Method)
+		mu.Unlock()
+
+		if req.Method == getPayloadV6Method {
+			return minimalAmsterdamPayloadEnvelopeJSON(t), 0, ""
+		}
+		return "", -38005, "Unsupported fork"
+	})
+	defer srv.Close()
+
+	client := NewEngineRPCClient(dialTestServer(t, srv.URL))
+	ctx := context.Background()
+
+	_, err := client.GetPayload(ctx, engine.PayloadID{})
+	require.NoError(t, err)
+
+	mu.Lock()
+	assert.Equal(t, []string{getPayloadV4Method, getPayloadV5Method, getPayloadV6Method}, calledMethods,
+		"should try V4, V5, then fall back to V6")
+	calledMethods = nil
+	mu.Unlock()
+
+	_, err = client.GetPayload(ctx, engine.PayloadID{})
+	require.NoError(t, err)
+
+	mu.Lock()
+	assert.Equal(t, []string{getPayloadV6Method}, calledMethods,
+		"should use cached V6 without trying earlier versions")
 	mu.Unlock()
 }
 
@@ -174,21 +243,21 @@ func TestGetPayload_ForkUpgrade_SwitchesV4ToV5(t *testing.T) {
 	var calledMethods []string
 	osakaActive := false
 
-	srv := fakeEngineServer(t, func(method string) (string, int, string) {
+	srv := fakeEngineServer(t, func(req jsonRPCRequest) (string, int, string) {
 		mu.Lock()
-		calledMethods = append(calledMethods, method)
+		calledMethods = append(calledMethods, req.Method)
 		active := osakaActive
 		mu.Unlock()
 
 		if active {
 			// Post-Osaka: V5 works, V4 rejected
-			if method == "engine_getPayloadV5" {
+			if req.Method == getPayloadV5Method {
 				return minimalPayloadEnvelopeJSON, 0, ""
 			}
 			return "", -38005, "Unsupported fork"
 		}
 		// Pre-Osaka: V4 works, V5 rejected
-		if method == "engine_getPayloadV4" {
+		if req.Method == getPayloadV4Method {
 			return minimalPayloadEnvelopeJSON, 0, ""
 		}
 		return "", -38005, "Unsupported fork"
@@ -203,7 +272,7 @@ func TestGetPayload_ForkUpgrade_SwitchesV4ToV5(t *testing.T) {
 	require.NoError(t, err)
 
 	mu.Lock()
-	assert.Equal(t, []string{"engine_getPayloadV4"}, calledMethods, "pre-upgrade should call V4 only")
+	assert.Equal(t, []string{getPayloadV4Method}, calledMethods, "pre-upgrade should call V4 only")
 	calledMethods = nil
 	mu.Unlock()
 
@@ -217,7 +286,7 @@ func TestGetPayload_ForkUpgrade_SwitchesV4ToV5(t *testing.T) {
 	require.NoError(t, err)
 
 	mu.Lock()
-	assert.Equal(t, []string{"engine_getPayloadV4", "engine_getPayloadV5"}, calledMethods,
+	assert.Equal(t, []string{getPayloadV4Method, getPayloadV5Method}, calledMethods,
 		"first post-upgrade call should try V4 then fall back to V5")
 	calledMethods = nil
 	mu.Unlock()
@@ -227,13 +296,20 @@ func TestGetPayload_ForkUpgrade_SwitchesV4ToV5(t *testing.T) {
 	require.NoError(t, err)
 
 	mu.Lock()
-	assert.Equal(t, []string{"engine_getPayloadV5"}, calledMethods,
+	assert.Equal(t, []string{getPayloadV5Method}, calledMethods,
 		"subsequent calls should use cached V5 directly")
 	mu.Unlock()
 }
 
 func TestGetPayload_NonForkError_Propagated(t *testing.T) {
-	srv := fakeEngineServer(t, func(method string) (string, int, string) {
+	var calledMethods []string
+	var mu sync.Mutex
+
+	srv := fakeEngineServer(t, func(req jsonRPCRequest) (string, int, string) {
+		mu.Lock()
+		calledMethods = append(calledMethods, req.Method)
+		mu.Unlock()
+
 		// Return a different error (e.g., unknown payload)
 		return "", -38001, "Unknown payload"
 	})
@@ -245,6 +321,172 @@ func TestGetPayload_NonForkError_Propagated(t *testing.T) {
 	_, err := client.GetPayload(ctx, engine.PayloadID{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Unknown payload")
+
+	mu.Lock()
+	assert.Equal(t, []string{getPayloadV4Method}, calledMethods,
+		"non-fork errors should not fall back to alternate versions")
+	mu.Unlock()
+}
+
+func TestForkchoiceUpdated_AmsterdamAttributes_UsesV4AndPrefersGetPayloadV6(t *testing.T) {
+	var calledMethods []string
+	var mu sync.Mutex
+
+	srv := fakeEngineServer(t, func(req jsonRPCRequest) (string, int, string) {
+		mu.Lock()
+		calledMethods = append(calledMethods, req.Method)
+		mu.Unlock()
+
+		switch req.Method {
+		case forkchoiceUpdatedV3Method:
+			require.Len(t, req.Params, 2)
+			var attrs map[string]json.RawMessage
+			require.NoError(t, json.Unmarshal(req.Params[1], &attrs))
+			require.NotContains(t, attrs, "slotNumber")
+			return "", -38005, "Unsupported fork"
+		case forkchoiceUpdatedV4Method:
+			require.Len(t, req.Params, 2)
+			var attrs map[string]json.RawMessage
+			require.NoError(t, json.Unmarshal(req.Params[1], &attrs))
+			require.Contains(t, attrs, "slotNumber")
+			return validForkchoiceResponseJSON, 0, ""
+		case getPayloadV6Method:
+			return minimalAmsterdamPayloadEnvelopeJSON(t), 0, ""
+		default:
+			return "", -38005, "Unsupported fork"
+		}
+	})
+	defer srv.Close()
+
+	client := NewEngineRPCClient(dialTestServer(t, srv.URL))
+	ctx := context.Background()
+
+	_, err := client.ForkchoiceUpdated(ctx, engine.ForkchoiceStateV1{}, map[string]any{
+		"timestamp":  uint64(1),
+		"slotNumber": uint64(1),
+	})
+	require.NoError(t, err)
+
+	_, err = client.GetPayload(ctx, engine.PayloadID{})
+	require.NoError(t, err)
+
+	mu.Lock()
+	assert.Equal(t, []string{forkchoiceUpdatedV3Method, forkchoiceUpdatedV4Method, getPayloadV6Method}, calledMethods)
+	mu.Unlock()
+}
+
+func TestForkchoiceUpdated_PragueAttributes_UsesV3AndStripsSlotNumber(t *testing.T) {
+	var calledMethods []string
+	var mu sync.Mutex
+
+	srv := fakeEngineServer(t, func(req jsonRPCRequest) (string, int, string) {
+		mu.Lock()
+		calledMethods = append(calledMethods, req.Method)
+		mu.Unlock()
+
+		if req.Method != forkchoiceUpdatedV3Method {
+			return "", -38005, "Unsupported fork"
+		}
+		require.Len(t, req.Params, 2)
+		var attrs map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(req.Params[1], &attrs))
+		require.NotContains(t, attrs, "slotNumber")
+		return validForkchoiceResponseJSON, 0, ""
+	})
+	defer srv.Close()
+
+	client := NewEngineRPCClient(dialTestServer(t, srv.URL))
+	_, err := client.ForkchoiceUpdated(context.Background(), engine.ForkchoiceStateV1{}, map[string]any{
+		"timestamp":  uint64(1),
+		"slotNumber": uint64(1),
+	})
+	require.NoError(t, err)
+
+	mu.Lock()
+	assert.Equal(t, []string{forkchoiceUpdatedV3Method}, calledMethods)
+	mu.Unlock()
+}
+
+func TestNewPayload_PraguePayload_UsesV4(t *testing.T) {
+	var calledMethods []string
+	var mu sync.Mutex
+
+	srv := fakeEngineServer(t, func(req jsonRPCRequest) (string, int, string) {
+		mu.Lock()
+		calledMethods = append(calledMethods, req.Method)
+		mu.Unlock()
+
+		if req.Method != newPayloadV4Method {
+			return "", -38005, "Unsupported fork"
+		}
+
+		require.Len(t, req.Params, 4)
+		var payload map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(req.Params[0], &payload))
+		require.NotContains(t, payload, "blockAccessList")
+		return validPayloadStatusJSON, 0, ""
+	})
+	defer srv.Close()
+
+	var envelope EnginePayloadEnvelope
+	require.NoError(t, json.Unmarshal([]byte(minimalPayloadEnvelopeJSON), &envelope))
+
+	client := NewEngineRPCClient(dialTestServer(t, srv.URL))
+	_, err := client.NewPayload(context.Background(), &envelope, []string{}, zeroHashHex, envelope.Requests)
+	require.NoError(t, err)
+
+	mu.Lock()
+	assert.Equal(t, []string{newPayloadV4Method}, calledMethods)
+	mu.Unlock()
+}
+
+func TestNewPayload_AmsterdamPayload_UsesV5AndPreservesBlockAccessList(t *testing.T) {
+	var calledMethods []string
+	var mu sync.Mutex
+
+	srv := fakeEngineServer(t, func(req jsonRPCRequest) (string, int, string) {
+		mu.Lock()
+		calledMethods = append(calledMethods, req.Method)
+		mu.Unlock()
+
+		switch req.Method {
+		case forkchoiceUpdatedV3Method:
+			return "", -38005, "Unsupported fork"
+		case forkchoiceUpdatedV4Method:
+			return validForkchoiceResponseJSON, 0, ""
+		case getPayloadV6Method:
+			return minimalAmsterdamPayloadEnvelopeJSON(t), 0, ""
+		case newPayloadV5Method:
+			require.Len(t, req.Params, 4)
+			var payload map[string]json.RawMessage
+			require.NoError(t, json.Unmarshal(req.Params[0], &payload))
+			require.Contains(t, payload, "slotNumber")
+			require.Contains(t, payload, "blockAccessList")
+			require.JSONEq(t, `["0x1234"]`, string(payload["blockAccessList"]))
+			return validPayloadStatusJSON, 0, ""
+		default:
+			return "", -38005, "Unsupported fork"
+		}
+	})
+	defer srv.Close()
+
+	client := NewEngineRPCClient(dialTestServer(t, srv.URL))
+	ctx := context.Background()
+
+	_, err := client.ForkchoiceUpdated(ctx, engine.ForkchoiceStateV1{}, map[string]any{
+		"slotNumber": uint64(1),
+	})
+	require.NoError(t, err)
+
+	payload, err := client.GetPayload(ctx, engine.PayloadID{})
+	require.NoError(t, err)
+
+	_, err = client.NewPayload(ctx, payload, []string{}, zeroHashHex, payload.Requests)
+	require.NoError(t, err)
+
+	mu.Lock()
+	assert.Equal(t, []string{forkchoiceUpdatedV3Method, forkchoiceUpdatedV4Method, getPayloadV6Method, newPayloadV5Method}, calledMethods)
+	mu.Unlock()
 }
 
 func TestIsUnsupportedForkErr(t *testing.T) {

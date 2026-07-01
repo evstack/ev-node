@@ -16,6 +16,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -147,10 +148,10 @@ type EngineRPCClient interface {
 	ForkchoiceUpdated(ctx context.Context, state engine.ForkchoiceStateV1, args map[string]any) (*engine.ForkChoiceResponse, error)
 
 	// GetPayload retrieves a previously requested execution payload.
-	GetPayload(ctx context.Context, payloadID engine.PayloadID) (*engine.ExecutionPayloadEnvelope, error)
+	GetPayload(ctx context.Context, payloadID engine.PayloadID) (*EnginePayloadEnvelope, error)
 
 	// NewPayload submits a new execution payload for validation.
-	NewPayload(ctx context.Context, payload *engine.ExecutableData, blobHashes []string, parentBeaconBlockRoot string, executionRequests [][]byte) (*engine.PayloadStatusV1, error)
+	NewPayload(ctx context.Context, payload *EnginePayloadEnvelope, blobHashes []string, parentBeaconBlockRoot string, executionRequests [][]byte) (*engine.PayloadStatusV1, error)
 }
 
 // EthRPCClient abstracts Ethereum JSON-RPC calls for tracing and testing.
@@ -290,7 +291,7 @@ func (c *EngineClient) InitChain(ctx context.Context, genesisTime time.Time, ini
 			nil,
 		)
 		if err != nil {
-			return fmt.Errorf("engine_forkchoiceUpdatedV3 failed: %w", err)
+			return fmt.Errorf("forkchoice update failed: %w", err)
 		}
 
 		// Validate payload status
@@ -299,7 +300,7 @@ func (c *EngineClient) InitChain(ctx context.Context, genesisTime time.Time, ini
 				Str("status", forkchoiceResult.PayloadStatus.Status).
 				Str("latestValidHash", latestValidHashHex(forkchoiceResult.PayloadStatus.LatestValidHash)).
 				Interface("validationError", forkchoiceResult.PayloadStatus.ValidationError).
-				Msg("InitChain: engine_forkchoiceUpdatedV3 returned non-VALID status")
+				Msg("InitChain: forkchoice update returned non-VALID status")
 			return err
 		}
 
@@ -395,24 +396,12 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 	c.mu.Unlock()
 
 	// update forkchoice to get the next payload id
-	// Create evolve-compatible payloadtimestamp.Unix()
-	evPayloadAttrs := map[string]any{
-		// Standard Ethereum payload attributes (flattened) - using camelCase as expected by JSON
-		"timestamp":             timestamp.Unix(),
-		"prevRandao":            c.derivePrevRandao(blockHeight),
-		"suggestedFeeRecipient": c.feeRecipient,
-		"withdrawals":           []*types.Withdrawal{},
-		// V3 requires parentBeaconBlockRoot
-		"parentBeaconBlockRoot": common.Hash{}.Hex(), // Use zero hash for evolve
-		// evolve-specific fields
-		"transactions": txsPayload,
-		"gasLimit":     prevGasLimit, // Use camelCase to match JSON conventions
-	}
+	evPayloadAttrs := c.buildPayloadAttributes(txsPayload, blockHeight, timestamp, prevGasLimit)
 
 	c.logger.Debug().
 		Uint64("height", blockHeight).
 		Int("tx_count", len(txs)).
-		Msg("engine_forkchoiceUpdatedV3")
+		Msg("engine_forkchoiceUpdated")
 
 	// 3. Call forkchoice update to get PayloadID
 	var newPayloadID *engine.PayloadID
@@ -429,7 +418,7 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 				Str("latestValidHash", latestValidHashHex(forkchoiceResult.PayloadStatus.LatestValidHash)).
 				Interface("validationError", forkchoiceResult.PayloadStatus.ValidationError).
 				Uint64("blockHeight", blockHeight).
-				Msg("ExecuteTxs: engine_forkchoiceUpdatedV3 returned non-VALID status")
+				Msg("ExecuteTxs: forkchoice update returned non-VALID status")
 			return err
 		}
 
@@ -583,7 +572,7 @@ func (c *EngineClient) doForkchoiceUpdate(ctx context.Context, args engine.Forkc
 				Str("latestValidHash", latestValidHashHex(forkchoiceResult.PayloadStatus.LatestValidHash)).
 				Interface("validationError", forkchoiceResult.PayloadStatus.ValidationError).
 				Str("operation", operation).
-				Msg("forkchoiceUpdatedV3 returned non-VALID status")
+				Msg("forkchoice update returned non-VALID status")
 			return err
 		}
 		return nil
@@ -1023,12 +1012,13 @@ func (c *EngineClient) processPayload(ctx context.Context, payloadID engine.Payl
 	blockTimestamp := int64(payloadResult.ExecutionPayload.Timestamp)
 
 	// 2. Submit Payload (newPayload)
+	selectedNewPayloadMethod := newPayloadMethod(payloadResult)
 	err = retryWithBackoffOnPayloadStatus(ctx, func() error {
 		newPayloadResult, err := c.engineClient.NewPayload(ctx,
-			payloadResult.ExecutionPayload,
+			payloadResult,
 			[]string{},          // No blob hashes
 			common.Hash{}.Hex(), // Use zero hash for parentBeaconBlockRoot
-			[][]byte{},          // No execution requests
+			payloadResult.Requests,
 		)
 		if err != nil {
 			return fmt.Errorf("new payload submission failed: %w", err)
@@ -1036,11 +1026,12 @@ func (c *EngineClient) processPayload(ctx context.Context, payloadID engine.Payl
 
 		if err := validatePayloadStatus(*newPayloadResult); err != nil {
 			c.logger.Warn().
+				Str("method", selectedNewPayloadMethod).
 				Str("status", newPayloadResult.Status).
 				Str("latestValidHash", latestValidHashHex(newPayloadResult.LatestValidHash)).
 				Interface("validationError", newPayloadResult.ValidationError).
 				Uint64("blockHeight", blockHeight).
-				Msg("processPayload: engine_newPayloadV4 returned non-VALID status")
+				Msg("processPayload: new payload returned non-VALID status")
 			return err
 		}
 		return nil
@@ -1066,6 +1057,29 @@ func (c *EngineClient) processPayload(ctx context.Context, payloadID engine.Payl
 
 func (c *EngineClient) derivePrevRandao(blockHeight uint64) common.Hash {
 	return common.BigToHash(new(big.Int).SetUint64(blockHeight))
+}
+
+func (c *EngineClient) buildPayloadAttributes(txsPayload []string, blockHeight uint64, timestamp time.Time, prevGasLimit uint64) map[string]any {
+	attrs := map[string]any{
+		// Standard Ethereum payload attributes (flattened) - using camelCase as expected by JSON
+		"timestamp":             timestamp.Unix(),
+		"prevRandao":            c.derivePrevRandao(blockHeight),
+		"suggestedFeeRecipient": c.feeRecipient,
+		"withdrawals":           []*types.Withdrawal{},
+		"parentBeaconBlockRoot": common.Hash{}.Hex(), // Use zero hash for evolve
+		// evolve-specific fields
+		"transactions": txsPayload,
+		"gasLimit":     prevGasLimit,
+		// slotNumber is included as a local candidate for Amsterdam. The RPC
+		// client strips it from V3 requests and keeps it on V4 retries.
+		"slotNumber": hexutil.Uint64(c.deriveSlotNumber(blockHeight)),
+	}
+
+	return attrs
+}
+
+func (c *EngineClient) deriveSlotNumber(blockHeight uint64) uint64 {
+	return blockHeight
 }
 
 func (c *EngineClient) getBlockInfo(ctx context.Context, height uint64) (common.Hash, common.Hash, uint64, uint64, error) {
