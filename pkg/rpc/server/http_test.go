@@ -232,3 +232,71 @@ func TestHealthReady_aggregatorBlockDelay(t *testing.T) {
 		})
 	}
 }
+
+func TestHealthReady_nonAggregatorBlockDelay(t *testing.T) {
+	logger := zerolog.Nop()
+
+	type spec struct {
+		readinessWindowSeconds uint64
+		delay                  time.Duration
+		expStatusCode          int
+		expBody                string
+	}
+
+	specs := map[string]spec{
+		"within readiness window": {
+			readinessWindowSeconds: 10,
+			delay:                  5 * time.Second,
+			expStatusCode:          http.StatusOK,
+			expBody:                "READY\n",
+		},
+		"exceeds readiness window": {
+			readinessWindowSeconds: 10,
+			delay:                  15 * time.Second,
+			expStatusCode:          http.StatusServiceUnavailable,
+			expBody:                "UNREADY: node not executing blocks\n",
+		},
+		"zero readiness window falls back to default 15s": {
+			readinessWindowSeconds: 0,
+			delay:                  10 * time.Second,
+			expStatusCode:          http.StatusOK,
+			expBody:                "READY\n",
+		},
+	}
+
+	for name, tc := range specs {
+		t.Run(name, func(t *testing.T) {
+			mux := http.NewServeMux()
+
+			cfg := config.DefaultConfig()
+			cfg.Node.Aggregator = false
+			cfg.Node.ReadinessWindowSeconds = tc.readinessWindowSeconds
+
+			mockStore := mocks.NewMockStore(t)
+			state := types.State{
+				LastBlockHeight: 10,
+				LastBlockTime:   time.Now().Add(-tc.delay),
+			}
+			mockStore.On("GetState", mock.Anything).Return(state, nil)
+
+			bestKnownHeightProvider := func() uint64 { return state.LastBlockHeight }
+
+			RegisterCustomHTTPEndpoints(mux, mockStore, nil, cfg, bestKnownHeightProvider, logger, nil)
+
+			ts := httptest.NewServer(mux)
+			t.Cleanup(ts.Close)
+
+			req, err := http.NewRequest(http.MethodGet, ts.URL+"/health/ready", nil)
+			require.NoError(t, err)
+			resp, err := http.DefaultClient.Do(req) //nolint:gosec // ok to use default client in tests
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = resp.Body.Close() })
+
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+
+			assert.Equal(t, tc.expStatusCode, resp.StatusCode)
+			assert.Equal(t, tc.expBody, string(body))
+		})
+	}
+}
