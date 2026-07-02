@@ -240,7 +240,7 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, headers []*types.Signed
 			}
 			if err := s.headerDAHintAppender.AppendDAHint(ctx, res.Height, heights...); err != nil {
 				s.logger.Error().Err(err).Msg("failed to append da height hint in header p2p store")
-				// ignoring error here, since we don't want to block the block submission'
+				// ignoring error here, since we don't want to block the block submission
 			}
 			if l := len(submitted); l > 0 {
 				lastHeight := submitted[l-1].Height()
@@ -456,7 +456,7 @@ func (s *DASubmitter) SubmitData(ctx context.Context, unsignedDataList []*types.
 			}
 			if err := s.dataDAHintAppender.AppendDAHint(ctx, res.Height, heights...); err != nil {
 				s.logger.Error().Err(err).Msg("failed to append da height hint in data p2p store")
-				// ignoring error here, since we don't want to block the block submission'
+				// ignoring error here, since we don't want to block the block submission
 			}
 			if l := len(submitted); l > 0 {
 				lastHeight := submitted[l-1].Height()
