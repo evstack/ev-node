@@ -180,8 +180,8 @@ func (p *Pruner) calculateBatchSize() uint64 {
 }
 
 // pruneMetadata prunes old state and execution metadata entries based on the configured retention depth.
-// It does not prunes old blocks, as those are handled by the pruning logic.
-// Pruning old state does not lose history but limit the ability to recover (replay or rollback) to the last HEAD-N blocks, where N is the retention depth.
+// It does not prune old blocks, as those are handled by the pruning logic.
+// Pruning old state does not lose history but limits the ability to recover (replay or rollback) to the last HEAD-N blocks, where N is the retention depth.
 func (p *Pruner) pruneMetadata() error {
 	height, err := p.store.Height(p.ctx)
 	if err != nil {
