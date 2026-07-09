@@ -623,8 +623,8 @@ func TestSubmitter_IsHeightDAIncluded_AfterRestart(t *testing.T) {
 	require.NoError(t, st1.SetMetadata(ctx, store.DAIncludedHeightKey, daIncBz))
 
 	// ── Step 2: simulate restart ──────────────────────────────────────────────
-	// Build a fresh Manager on the SAME underlying datastore.  This exercises
-	// the RestoreFromStore → snapshot-decode path.  The DA retriever has NOT
+	// Build a fresh Manager on the SAME underlying datastore. This exercises
+	// the RestoreFromStore → snapshot-decode path. The DA retriever has NOT
 	// yet re-fired SetHeaderDAIncluded with the real hashes.
 	cm2, err := cache.NewManager(config.DefaultConfig(), st1, zerolog.Nop())
 	require.NoError(t, err)
