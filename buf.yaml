@@ -2,7 +2,6 @@ version: v2
 
 modules:
   - path: proto
-  - path: execution/grpc/proto
 lint:
   use:
     - COMMENTS

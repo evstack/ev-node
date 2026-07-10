@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **BREAKING:** Remove the obsolete `evgrpc` app and `execution/grpc` transport module.
+
 ### Fixed
 
 - Reject unsupported `net-info --output` formats instead of falling back to text output [#3360](https://github.com/evstack/ev-node/pull/3360).

@@ -69,4 +69,5 @@ Use ev-reth when you want:
 - [EVM Quickstart](/getting-started/evm/quickstart) — Get started
 - [Configuration](/ev-reth/configuration) — Chainspec and settings
 - [Engine API](/ev-reth/engine-api) — How ev-node communicates with ev-reth
+- [Storage Ownership](/ev-reth/storage-ownership) — Proposed storage split between ev-node and ev-reth
 - [JavaScript Client](/ev-reth/js-client) — Build and sponsor type `0x76` transactions
