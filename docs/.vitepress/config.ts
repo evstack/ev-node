@@ -351,6 +351,7 @@ function sidebarHome() {
         { text: "Overview", link: "/ev-reth/overview" },
         { text: "Configuration", link: "/ev-reth/configuration" },
         { text: "Engine API", link: "/ev-reth/engine-api" },
+        { text: "Storage Ownership", link: "/ev-reth/storage-ownership" },
         { text: "JavaScript Client", link: "/ev-reth/js-client" },
         {
           text: "Features",
