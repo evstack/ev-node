@@ -1978,7 +1978,7 @@ func TestSequencer_CatchUp_CheckpointAdvancesDuringCatchUp(t *testing.T) {
 func TestSequencer_CatchUp_MonotonicTimestamps(t *testing.T) {
 	// When a single DA epoch has more forced txs than fit in one block,
 	// catch-up must produce strictly monotonic timestamps across the
-	// resulting blocks.  The jitter scheme is:
+	// resulting blocks. The jitter scheme is:
 	//   epochStart     = daEndTime - totalEpochTxs * 1ms
 	//   blockTimestamp = epochStart + txIndexForTimestamp * 1ms
 	// where txIndexForTimestamp is the cumulative consumed-tx count
