@@ -5,7 +5,7 @@ go 1.25.8
 require (
 	cosmossdk.io/math v1.5.3
 	github.com/celestiaorg/tastora v0.20.0
-	github.com/ethereum/go-ethereum v1.17.3
+	github.com/ethereum/go-ethereum v1.17.4
 	github.com/evstack/ev-node/execution/evm v1.0.1
 	github.com/libp2p/go-libp2p v0.48.0
 	github.com/moby/moby/client v0.4.1
@@ -34,6 +34,7 @@ require (
 	github.com/evstack/ev-node v1.1.1 // indirect
 	github.com/evstack/ev-node/core v1.0.0 // indirect
 	github.com/ferranbt/fastssz v0.1.4 // indirect
+	github.com/fjl/jsonw v0.1.0 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/goccy/go-yaml v1.19.2 // indirect

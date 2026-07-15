@@ -9,7 +9,7 @@ replace (
 )
 
 require (
-	github.com/ethereum/go-ethereum v1.17.3
+	github.com/ethereum/go-ethereum v1.17.4
 	github.com/evstack/ev-node v1.1.3
 	github.com/evstack/ev-node/core v1.0.0
 	github.com/evstack/ev-node/execution/evm v1.0.1
@@ -78,6 +78,7 @@ require (
 	github.com/ferranbt/fastssz v0.1.4 // indirect
 	github.com/filecoin-project/go-clock v0.1.0 // indirect
 	github.com/filecoin-project/go-jsonrpc v0.10.1 // indirect
+	github.com/fjl/jsonw v0.1.0 // indirect
 	github.com/flynn/noise v1.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-kit/kit v0.13.0 // indirect
@@ -169,7 +170,7 @@ require (
 	github.com/pion/sctp v1.8.39 // indirect
 	github.com/pion/sdp/v3 v3.0.18 // indirect
 	github.com/pion/srtp/v3 v3.0.6 // indirect
-	github.com/pion/stun/v3 v3.1.1 // indirect
+	github.com/pion/stun/v3 v3.1.2 // indirect
 	github.com/pion/transport/v3 v3.0.7 // indirect
 	github.com/pion/transport/v4 v4.0.1 // indirect
 	github.com/pion/turn/v4 v4.0.2 // indirect
