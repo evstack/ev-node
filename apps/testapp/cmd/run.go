@@ -113,6 +113,10 @@ func createSequencer(
 	genesis genesis.Genesis,
 	executor execution.Executor,
 ) (coresequencer.Sequencer, error) {
+	if !nodeConfig.Node.Aggregator {
+		return nil, nil
+	}
+
 	if enabled, _ := cmd.Flags().GetBool(flagSoloSequencer); enabled {
 		if nodeConfig.Node.BasedSequencer {
 			return nil, fmt.Errorf("solo sequencer cannot be used with based")
@@ -121,7 +125,7 @@ func createSequencer(
 		return solo.NewSoloSequencer(logger, []byte(genesis.ChainID), executor), nil
 	}
 
-	blobClient, err := blobrpc.NewWSClient(ctx, logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
+	blobClient, err := blobrpc.NewWSClient(ctx, logger, nodeConfig.EffectiveDAAddress(), nodeConfig.DA.AuthToken, "")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create blob client: %w", err)
 	}

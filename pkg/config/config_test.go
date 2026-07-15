@@ -24,7 +24,8 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, false, def.Node.Aggregator)
 	assert.Equal(t, false, def.Node.Promotable)
 	assert.Equal(t, false, def.Node.Light)
-	assert.Equal(t, DefaultConfig().DA.Address, def.DA.Address)
+	assert.Empty(t, def.DA.Address)
+	assert.False(t, def.DAEnabled())
 	assert.Equal(t, "", def.DA.AuthToken)
 	assert.Equal(t, "", def.DA.SubmitOptions)
 	assert.NotEmpty(t, def.DA.Namespace)
@@ -40,6 +41,58 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, "127.0.0.1:7331", def.RPC.Address)
 	assert.Equal(t, PruningModeDisabled, def.Pruning.Mode)
 	assert.NoError(t, def.Validate())
+}
+
+func TestDAEnabled(t *testing.T) {
+	tests := []struct {
+		name            string
+		configure       func(*Config)
+		expectedEnabled bool
+		expectedAddress string
+	}{
+		{
+			name:            "follower without DA address",
+			expectedEnabled: false,
+			expectedAddress: "",
+		},
+		{
+			name: "follower with DA address",
+			configure: func(cfg *Config) {
+				cfg.DA.Address = "http://da.example:7980"
+			},
+			expectedEnabled: true,
+			expectedAddress: "http://da.example:7980",
+		},
+		{
+			name: "aggregator without DA address uses legacy default",
+			configure: func(cfg *Config) {
+				cfg.Node.Aggregator = true
+			},
+			expectedEnabled: true,
+			expectedAddress: DefaultAggregatorDAAddress,
+		},
+		{
+			name: "light node does not initialize DA",
+			configure: func(cfg *Config) {
+				cfg.Node.Light = true
+				cfg.DA.Address = "http://da.example:7980"
+			},
+			expectedEnabled: false,
+			expectedAddress: "http://da.example:7980",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := DefaultConfig()
+			if tt.configure != nil {
+				tt.configure(&cfg)
+			}
+
+			assert.Equal(t, tt.expectedEnabled, cfg.DAEnabled())
+			assert.Equal(t, tt.expectedAddress, cfg.EffectiveDAAddress())
+		})
+	}
 }
 
 func TestAddFlags(t *testing.T) {

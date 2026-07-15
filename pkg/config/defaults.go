@@ -16,6 +16,9 @@ const (
 	ConfigName = ConfigFileName + "." + ConfigExtension
 	// AppConfigDir is the directory name for the app configuration.
 	AppConfigDir = "config"
+	// DefaultAggregatorDAAddress preserves the legacy local DA endpoint for aggregators
+	// that do not explicitly configure one.
+	DefaultAggregatorDAAddress = "http://localhost:7980"
 )
 
 // DefaultRootDir returns the default root directory for evolve
@@ -74,7 +77,7 @@ func DefaultConfig() Config {
 			CatchupTimeout:           DurationWrapper{0},
 		},
 		DA: DAConfig{
-			Address:                  "http://localhost:7980",
+			Address:                  "",
 			BlockTime:                DurationWrapper{6 * time.Second},
 			MaxSubmitAttempts:        30,
 			RequestTimeout:           DurationWrapper{60 * time.Second},

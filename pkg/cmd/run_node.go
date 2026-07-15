@@ -150,12 +150,17 @@ func StartNode(
 		}
 	}
 
-	blobClient, err := blobrpc.NewWSClient(ctx, logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
-	if err != nil {
-		return fmt.Errorf("failed to create blob client: %w", err)
+	var daClient block.FullDAClient
+	if nodeConfig.DAEnabled() {
+		blobClient, err := blobrpc.NewWSClient(ctx, logger, nodeConfig.EffectiveDAAddress(), nodeConfig.DA.AuthToken, "")
+		if err != nil {
+			return fmt.Errorf("failed to create blob client: %w", err)
+		}
+		defer blobClient.Close()
+		daClient = block.NewDAClient(blobClient, nodeConfig, logger)
+	} else {
+		logger.Info().Msg("DA address is not configured; syncing through P2P only")
 	}
-	defer blobClient.Close()
-	daClient := block.NewDAClient(blobClient, nodeConfig, logger)
 
 	// sanity check for based sequencer
 	if nodeConfig.Node.BasedSequencer && genesis.DAStartHeight == 0 {

@@ -184,24 +184,27 @@ func NewSyncComponents(
 	}
 	pruner := pruner.New(logger, store, execPruner, config.Pruning, config.Node.BlockTime.Duration, config.DA.Address)
 
-	// Create submitter for sync nodes (no signer, only DA inclusion processing)
-	var daSubmitter submitting.DASubmitterAPI = submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger, headerDAHintAppender, dataDAHintAppender)
-	if config.Instrumentation.IsTracingEnabled() {
-		daSubmitter = submitting.WithTracingDASubmitter(daSubmitter)
+	var submitter *submitting.Submitter
+	if daClient != nil {
+		// Create submitter for DA-enabled sync nodes (no signer, only DA inclusion processing).
+		var daSubmitter submitting.DASubmitterAPI = submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger, headerDAHintAppender, dataDAHintAppender)
+		if config.Instrumentation.IsTracingEnabled() {
+			daSubmitter = submitting.WithTracingDASubmitter(daSubmitter)
+		}
+		submitter = submitting.NewSubmitter(
+			store,
+			exec,
+			cacheManager,
+			metrics,
+			config,
+			genesis,
+			daSubmitter,
+			nil, // No sequencer for sync nodes
+			nil, // No signer for sync nodes
+			logger,
+			errorCh,
+		)
 	}
-	submitter := submitting.NewSubmitter(
-		store,
-		exec,
-		cacheManager,
-		metrics,
-		config,
-		genesis,
-		daSubmitter,
-		nil, // No sequencer for sync nodes
-		nil, // No signer for sync nodes
-		logger,
-		errorCh,
-	)
 
 	return &Components{
 		Syncer:    syncer,

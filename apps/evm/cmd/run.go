@@ -59,13 +59,17 @@ var RunCmd = &cobra.Command{
 			return err
 		}
 
-		blobClient, err := blobrpc.NewWSClient(cmd.Context(), logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
-		if err != nil {
-			return fmt.Errorf("failed to create blob client: %w", err)
+		var daClient block.FullDAClient
+		if nodeConfig.DAEnabled() {
+			blobClient, err := blobrpc.NewWSClient(cmd.Context(), logger, nodeConfig.EffectiveDAAddress(), nodeConfig.DA.AuthToken, "")
+			if err != nil {
+				return fmt.Errorf("failed to create blob client: %w", err)
+			}
+			defer blobClient.Close()
+			daClient = block.NewDAClient(blobClient, nodeConfig, logger)
+		} else {
+			logger.Info().Msg("DA address is not configured; syncing through P2P only")
 		}
-		defer blobClient.Close()
-
-		daClient := block.NewDAClient(blobClient, nodeConfig, logger)
 
 		headerNamespace := da.NamespaceFromString(nodeConfig.DA.GetNamespace())
 		dataNamespace := da.NamespaceFromString(nodeConfig.DA.GetDataNamespace())
@@ -100,6 +104,10 @@ var RunCmd = &cobra.Command{
 		}
 
 		if forceInclusionAddr != "" {
+			if daClient == nil {
+				return fmt.Errorf("force inclusion server requires a DA address")
+			}
+
 			ethURL, err := cmd.Flags().GetString(evm.FlagEvmEthURL)
 			if err != nil {
 				return fmt.Errorf("failed to get '%s' flag: %w", evm.FlagEvmEthURL, err)
