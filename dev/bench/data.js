@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784037053011,
+  "lastUpdate": 1784110148042,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -94,6 +94,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 180101,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "marko@baricevic.me",
+            "name": "Marko",
+            "username": "tac0turtle"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "67b2dbc72fd1f06f5917b0ca5343a219edbabc25",
+          "message": "chore: remove dead code (#3384)\n\nRemove code unreachable from any binary, test (including\nintegration-tagged tests), or known downstream consumer:\n\n- apps/evm/cmd/post_tx_cmd.go: PostTxCmd was added in #2888 but never\n  registered in the CLI; ev-abci carries its own copy\n- apps/evm/server: handleChainID was never routed; eth_chainId falls\n  through to the execution RPC proxy\n- apps/testapp/kv: HTTPServer.Stop is redundant, Start already shuts\n  down via context cancellation\n- node: MockTester has no users\n- pkg/da/types: SplitID duplicates pkg/da/jsonrpc.SplitID, which is\n  the copy in use\n- pkg/store: GetPrefixEntries has no callers\n\nCo-authored-by: Claude Fable 5 <noreply@anthropic.com>",
+          "timestamp": "2026-07-15T12:06:39+02:00",
+          "tree_id": "4424f46ce3916ebb62db2286a208395236552ba6",
+          "url": "https://github.com/evstack/ev-node/commit/67b2dbc72fd1f06f5917b0ca5343a219edbabc25"
+        },
+        "date": 1784110142731,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 895552670,
+            "unit": "ns/op\t30349140 B/op\t  164225 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 895552670,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 30349140,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 164225,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
