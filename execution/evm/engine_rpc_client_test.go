@@ -466,7 +466,7 @@ func TestNewPayload_AmsterdamPayload_UsesV5AndPreservesBlockAccessList(t *testin
 			require.NoError(t, json.Unmarshal(req.Params[0], &payload))
 			require.Contains(t, payload, "slotNumber")
 			require.Contains(t, payload, "blockAccessList")
-			require.JSONEq(t, `["0x1234"]`, string(payload["blockAccessList"]))
+			require.JSONEq(t, minimalBlockAccessListJSON, string(payload["blockAccessList"]))
 			return validPayloadStatusJSON, 0, ""
 		default:
 			return "", -38005, "Unsupported fork"
