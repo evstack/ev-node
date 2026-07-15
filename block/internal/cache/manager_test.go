@@ -136,7 +136,13 @@ func TestManager_SaveAndRestoreFromStore(t *testing.T) {
 
 	// Height 1 is finalized (DAIncludedHeight = 1): IsHeightDAIncluded returns true
 	// via the height comparison, so GetHeaderDAIncludedByHash is never consulted for it.
-	// The cache entry is not restored — this is correct and intentional.
+	// The cache entry is not restored — this is correct and intentional. Restoring it
+	// would leak a placeholder for the process lifetime (the inclusion loop never
+	// evicts below its watermark) and re-persist it on every subsequent save.
+	_, ok := m2.GetHeaderDAIncludedByHeight(1)
+	assert.False(t, ok, "finalized height 1 must not be restored from the snapshot")
+	_, ok = m2.GetDataDAIncludedByHeight(1)
+	assert.False(t, ok, "finalized height 1 must not be restored from the snapshot")
 
 	// Height 2 is in-flight: the window restore loads a placeholder entry keyed by
 	// height. The real content-hash entry is populated when the submitter re-processes

@@ -191,7 +191,14 @@ func decodeSnapshot(buf []byte) []snapshotEntry {
 // RestoreFromStore loads the in-flight snapshot with a single store read.
 // Each entry is installed as a height placeholder; real hashes replace them
 // once the DA retriever re-fires SetHeaderDAIncluded after startup.
-func (c *Cache) RestoreFromStore(ctx context.Context) error {
+//
+// Entries at or below finalizedHeight are already DA-included and finalized:
+// the snapshot on disk can predate the current DA-included height (it is only
+// written on graceful shutdown), and the inclusion loop never revisits heights
+// below its watermark, so installing them would leak placeholders for the
+// lifetime of the process and re-persist them on the next save. They are
+// skipped, contributing only to maxDAHeight.
+func (c *Cache) RestoreFromStore(ctx context.Context, finalizedHeight uint64) error {
 	if c.store == nil || c.storeKeyPrefix == "" {
 		return nil
 	}
@@ -208,10 +215,13 @@ func (c *Cache) RestoreFromStore(ctx context.Context) error {
 	defer c.mu.Unlock()
 
 	for _, e := range decodeSnapshot(buf) {
+		c.setMaxDAHeight(e.daHeight)
+		if e.blockHeight <= finalizedHeight {
+			continue
+		}
 		placeholder := HeightPlaceholderKey(c.storeKeyPrefix, e.blockHeight)
 		c.daIncluded[placeholder] = e.daHeight
 		c.hashByHeight[e.blockHeight] = placeholder
-		c.setMaxDAHeight(e.daHeight)
 	}
 
 	return nil
