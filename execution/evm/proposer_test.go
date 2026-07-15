@@ -121,10 +121,10 @@ func (proposerEngineRPCClient) ForkchoiceUpdated(context.Context, engine.Forkcho
 	}, nil
 }
 
-func (proposerEngineRPCClient) GetPayload(context.Context, engine.PayloadID) (*engine.ExecutionPayloadEnvelope, error) {
+func (proposerEngineRPCClient) GetPayload(context.Context, engine.PayloadID) (*EnginePayloadEnvelope, error) {
 	return nil, nil
 }
 
-func (proposerEngineRPCClient) NewPayload(context.Context, *engine.ExecutableData, []string, string, [][]byte) (*engine.PayloadStatusV1, error) {
+func (proposerEngineRPCClient) NewPayload(context.Context, *EnginePayloadEnvelope, []string, string, [][]byte) (*engine.PayloadStatusV1, error) {
 	return nil, nil
 }

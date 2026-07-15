@@ -20,7 +20,7 @@ Since the `PureEngineClient` relies on the Engine API, the genesis configuration
 1. The genesis file must include post-merge hardfork configurations
 2. `terminalTotalDifficulty` must be set to 0
 3. `terminalTotalDifficultyPassed` must be set to true
-4. Hardforks like `mergeNetsplitBlock`, `shanghaiTime`, `cancunTime` and `pragueTime` should be properly configured
+4. Hardforks like `mergeNetsplitBlock`, `shanghaiTime`, `cancunTime`, `pragueTime`, and optionally `amsterdamTime` should be properly configured
 
 Example of required genesis configuration:
 
@@ -43,18 +43,31 @@ Example of required genesis configuration:
     "terminalTotalDifficultyPassed": true,
     "shanghaiTime": 0,
     "cancunTime": 0,
-    "pragueTime": 0
+    "pragueTime": 0,
+    "amsterdamTime": 0
   }
 }
 ```
 
 Without these settings, the Engine API will not be available, and the `PureEngineClient` will not function correctly.
 
+### Engine API Versions
+
+ev-node uses fork-aware Engine API methods:
+
+- Prague payloads use `engine_forkchoiceUpdatedV3`, `engine_getPayloadV4`, and `engine_newPayloadV4`.
+- Osaka/Fusaka payloads fall forward from `engine_getPayloadV4` to `engine_getPayloadV5` on unsupported-fork responses.
+- Amsterdam payloads use `engine_forkchoiceUpdatedV4`, `engine_getPayloadV6`, and `engine_newPayloadV5`.
+
+ev-node auto-detects Engine API versions by retrying on unsupported-fork responses. For payload builds, it first tries `engine_forkchoiceUpdatedV3`; if the execution layer rejects that method for Amsterdam, ev-node retries `engine_forkchoiceUpdatedV4` with a deterministic `slotNumber` derived from rollup block height and caches V4 for future calls.
+
+Amsterdam adds `slotNumber` to payload attributes and `executionPayload.blockAccessList` to built payloads. ev-node does not compute the block access list; it preserves the raw `executionPayload` returned by ev-reth and submits that object unchanged to `engine_newPayloadV5`.
+
 ### PayloadID Storage
 
 The `PureEngineClient` maintains the `payloadID` between calls:
 
-1. During `InitChain`, a payload ID is obtained from the Engine API via `engine_forkchoiceUpdatedV3`
+1. During `InitChain`, the genesis forkchoice is acknowledged through the Engine API
 2. This payload ID is stored in the client instance as `c.payloadID`
 3. The stored payload ID is used in subsequent calls to `GetTxs` to retrieve the current execution payload
 4. After each `ExecuteTxs` call, a new payload ID is obtained and stored for the next block
@@ -66,7 +79,7 @@ The `PureEngineClient` implements a unique approach to transaction execution:
 1. In `GetTxs`, the entire execution payload is serialized to JSON and returned as the first transaction
 2. In `ExecuteTxs`, this first transaction is deserialized back into an execution payload
 3. The remaining transactions are added to the payload's transaction list
-4. The complete payload is then submitted to the execution client via `engine_newPayloadV4`
+4. The complete payload is then submitted to the execution client via the fork-appropriate `engine_newPayload` method
 
 This approach ensures that:
 

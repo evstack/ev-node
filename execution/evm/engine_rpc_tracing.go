@@ -29,7 +29,6 @@ func withTracingEngineRPCClient(inner EngineRPCClient) EngineRPCClient {
 func (t *tracedEngineRPCClient) ForkchoiceUpdated(ctx context.Context, state engine.ForkchoiceStateV1, args map[string]any) (*engine.ForkChoiceResponse, error) {
 	ctx, span := t.tracer.Start(ctx, "Engine.ForkchoiceUpdated",
 		trace.WithAttributes(
-			attribute.String("method", "engine_forkchoiceUpdatedV3"),
 			attribute.String("head_block_hash", state.HeadBlockHash.Hex()),
 			attribute.String("safe_block_hash", state.SafeBlockHash.Hex()),
 			attribute.String("finalized_block_hash", state.FinalizedBlockHash.Hex()),
@@ -38,6 +37,11 @@ func (t *tracedEngineRPCClient) ForkchoiceUpdated(ctx context.Context, state eng
 	defer span.End()
 
 	result, err := t.inner.ForkchoiceUpdated(ctx, state, args)
+
+	if m, ok := t.inner.(forkchoiceMethodGetter); ok {
+		span.SetAttributes(attribute.String("method", m.GetForkchoiceUpdatedMethod()))
+	}
+
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
@@ -63,13 +67,19 @@ func (t *tracedEngineRPCClient) ForkchoiceUpdated(ctx context.Context, state eng
 	return result, nil
 }
 
+// forkchoiceMethodGetter is implemented by engineRPCClient to expose the
+// resolved forkchoiceUpdated Engine API method name (V3 or V4) for tracing.
+type forkchoiceMethodGetter interface {
+	GetForkchoiceUpdatedMethod() string
+}
+
 // payloadMethodGetter is implemented by engineRPCClient to expose the resolved
-// GetPayload Engine API method name (V4 or V5) for tracing.
+// GetPayload Engine API method name (V4, V5, or V6) for tracing.
 type payloadMethodGetter interface {
 	GetPayloadMethod() string
 }
 
-func (t *tracedEngineRPCClient) GetPayload(ctx context.Context, payloadID engine.PayloadID) (*engine.ExecutionPayloadEnvelope, error) {
+func (t *tracedEngineRPCClient) GetPayload(ctx context.Context, payloadID engine.PayloadID) (*EnginePayloadEnvelope, error) {
 	ctx, span := t.tracer.Start(ctx, "Engine.GetPayload",
 		trace.WithAttributes(
 			attribute.String("payload_id", payloadID.String()),
@@ -101,15 +111,16 @@ func (t *tracedEngineRPCClient) GetPayload(ctx context.Context, payloadID engine
 	return result, nil
 }
 
-func (t *tracedEngineRPCClient) NewPayload(ctx context.Context, payload *engine.ExecutableData, blobHashes []string, parentBeaconBlockRoot string, executionRequests [][]byte) (*engine.PayloadStatusV1, error) {
+func (t *tracedEngineRPCClient) NewPayload(ctx context.Context, payload *EnginePayloadEnvelope, blobHashes []string, parentBeaconBlockRoot string, executionRequests [][]byte) (*engine.PayloadStatusV1, error) {
+	executionPayload := payload.ExecutionPayload
 	ctx, span := t.tracer.Start(ctx, "Engine.NewPayload",
 		trace.WithAttributes(
-			attribute.String("method", "engine_newPayloadV4"),
-			attribute.Int64("block_number", int64(payload.Number)),
-			attribute.String("block_hash", payload.BlockHash.Hex()),
-			attribute.String("parent_hash", payload.ParentHash.Hex()),
-			attribute.Int("tx_count", len(payload.Transactions)),
-			attribute.Int64("gas_used", int64(payload.GasUsed)),
+			attribute.String("method", newPayloadMethod(payload)),
+			attribute.Int64("block_number", int64(executionPayload.Number)),
+			attribute.String("block_hash", executionPayload.BlockHash.Hex()),
+			attribute.String("parent_hash", executionPayload.ParentHash.Hex()),
+			attribute.Int("tx_count", len(executionPayload.Transactions)),
+			attribute.Int64("gas_used", int64(executionPayload.GasUsed)),
 		),
 	)
 	defer span.End()
