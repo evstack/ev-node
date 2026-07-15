@@ -104,6 +104,10 @@ const (
 	zeroHashHex = "0x0000000000000000000000000000000000000000000000000000000000000000"
 )
 
+// minimalBlockAccessListJSON is a spec-shaped (EIP-7928) block access list with
+// a single account entry, as returned by engine_getPayloadV6.
+const minimalBlockAccessListJSON = `[{"address": "0x00000000000000000000000000000000000000aa"}]`
+
 func minimalAmsterdamPayloadEnvelopeJSON(t *testing.T) string {
 	t.Helper()
 	withAmsterdamFields := strings.Replace(
@@ -111,7 +115,7 @@ func minimalAmsterdamPayloadEnvelopeJSON(t *testing.T) string {
 		`"excessBlobGas": "0x0"`,
 		`"excessBlobGas": "0x0",
 		"slotNumber": "0x1",
-		"blockAccessList": ["0x1234"]`,
+		"blockAccessList": `+minimalBlockAccessListJSON,
 		1,
 	)
 	require.NotEqual(t, minimalPayloadEnvelopeJSON, withAmsterdamFields)
