@@ -104,9 +104,12 @@ const (
 	zeroHashHex = "0x0000000000000000000000000000000000000000000000000000000000000000"
 )
 
-// minimalBlockAccessListJSON is a spec-shaped (EIP-7928) block access list with
-// a single account entry, as returned by engine_getPayloadV6.
-const minimalBlockAccessListJSON = `[{"address": "0x00000000000000000000000000000000000000aa"}]`
+// minimalBlockAccessListJSON matches ev-reth's wire encoding of
+// executionPayload.blockAccessList in engine_getPayloadV6 responses: the
+// encoded access list as a hex string. go-ethereum instead models the field as
+// structured JSON objects; ev-node must accept either shape and pass it
+// through unchanged (see TestEnginePayloadEnvelope_StructuredBlockAccessList).
+const minimalBlockAccessListJSON = `"0x1234"`
 
 func minimalAmsterdamPayloadEnvelopeJSON(t *testing.T) string {
 	t.Helper()
@@ -526,6 +529,28 @@ func TestNewPayload_NilExecutionRequests_EncodedAsEmptyArray(t *testing.T) {
 	client := NewEngineRPCClient(dialTestServer(t, srv.URL))
 	_, err := client.NewPayload(context.Background(), &envelope, []string{}, zeroHashHex, nil)
 	require.NoError(t, err)
+}
+
+func TestEnginePayloadEnvelope_StructuredBlockAccessList(t *testing.T) {
+	structured := strings.Replace(
+		minimalAmsterdamPayloadEnvelopeJSON(t),
+		`"blockAccessList": `+minimalBlockAccessListJSON,
+		`"blockAccessList": [{"address": "0x00000000000000000000000000000000000000aa"}]`,
+		1,
+	)
+
+	var envelope EnginePayloadEnvelope
+	require.NoError(t, json.Unmarshal([]byte(structured), &envelope))
+	require.True(t, envelope.hasAmsterdamFields())
+
+	payload, err := envelope.executionPayloadParam()
+	require.NoError(t, err)
+	raw, ok := payload.(json.RawMessage)
+	require.True(t, ok)
+
+	var fields map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(raw, &fields))
+	require.JSONEq(t, `[{"address": "0x00000000000000000000000000000000000000aa"}]`, string(fields["blockAccessList"]))
 }
 
 func TestEnginePayloadEnvelope_MarshalJSON_UsesWireFieldNames(t *testing.T) {

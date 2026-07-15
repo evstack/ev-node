@@ -33,6 +33,12 @@ const (
 	forkCyclePragueTimestamp    = uint64(12)
 	forkCycleOsakaTimestamp     = uint64(24)
 	forkCycleAmsterdamTimestamp = uint64(36)
+
+	// defaultEvRethForkTag pins the ev-reth image built from
+	// https://github.com/evstack/ev-reth/pull/266 (reth 2.3), the first build
+	// with Amsterdam Engine API support. Replace with a release tag once that
+	// PR ships. EV_RETH_IMAGE_REPO/EV_RETH_TAG override this.
+	defaultEvRethForkTag = "pr-266"
 )
 
 // TestEngineAPIForkUpgradeCycleE2E drives ev-node's EngineClient against a real
@@ -41,8 +47,9 @@ const (
 // ev-node, so this verifies the V4 -> V5 -> V6 upgrade path instead of only
 // asserting that blocks are produced.
 //
-// The existing Tastora ev-reth image is used by default. Set EV_RETH_TAG, or set
-// EV_RETH_IMAGE_REPO with optional EV_RETH_TAG, to point at a local or registry image.
+// The ghcr.io/evstack/ev-reth image tagged defaultEvRethForkTag is used by
+// default. Set EV_RETH_TAG, or set EV_RETH_IMAGE_REPO with optional EV_RETH_TAG,
+// to point at a local or registry image.
 func TestEngineAPIForkUpgradeCycleE2E(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping due to short mode")
@@ -136,11 +143,12 @@ func withEngineForkTimes(t testing.TB, osakaTime, amsterdamTime uint64) reth.Gen
 func rethImageOptFromEnv() RethNodeOpt {
 	repo := strings.TrimSpace(os.Getenv("EV_RETH_IMAGE_REPO"))
 	tag := strings.TrimSpace(os.Getenv("EV_RETH_TAG"))
-	if repo == "" && tag == "" {
-		return nil
-	}
 	if tag == "" {
-		tag = "latest"
+		if repo == "" {
+			tag = defaultEvRethForkTag
+		} else {
+			tag = "latest"
+		}
 	}
 	return func(b *reth.NodeBuilder) {
 		if repo != "" {

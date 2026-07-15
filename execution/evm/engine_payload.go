@@ -45,15 +45,34 @@ func (e *EnginePayloadEnvelope) UnmarshalJSON(input []byte) error {
 		return errors.New("missing required field 'executionPayload' for EnginePayloadEnvelope")
 	}
 
-	var payload engine.ExecutableData
-	if err := json.Unmarshal(dec.ExecutionPayload, &payload); err != nil {
-		return err
-	}
 	var amsterdamProbe struct {
 		SlotNumber      json.RawMessage `json:"slotNumber"`
 		BlockAccessList json.RawMessage `json:"blockAccessList"`
 	}
 	if err := json.Unmarshal(dec.ExecutionPayload, &amsterdamProbe); err != nil {
+		return err
+	}
+
+	// Execution clients disagree on the blockAccessList JSON schema (reth
+	// encodes the raw access-list bytes as a hex string, go-ethereum uses
+	// structured objects). Strip the field before the typed decode so either
+	// shape is accepted; RawExecutionPayload keeps it for passthrough.
+	typedPayload := dec.ExecutionPayload
+	if amsterdamProbe.BlockAccessList != nil {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(dec.ExecutionPayload, &fields); err != nil {
+			return err
+		}
+		delete(fields, "blockAccessList")
+		sanitized, err := json.Marshal(fields)
+		if err != nil {
+			return err
+		}
+		typedPayload = sanitized
+	}
+
+	var payload engine.ExecutableData
+	if err := json.Unmarshal(typedPayload, &payload); err != nil {
 		return err
 	}
 	e.ExecutionPayload = &payload
