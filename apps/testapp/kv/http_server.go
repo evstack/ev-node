@@ -76,11 +76,6 @@ func (hs *HTTPServer) Start(ctx context.Context) error {
 	}
 }
 
-// Stop shuts down the HTTP server
-func (hs *HTTPServer) Stop() error {
-	return hs.server.Close()
-}
-
 // handleTx handles transaction submissions
 // POST /tx with raw binary data or text in request body
 // It is recommended to use transactions in the format "key=value" to be consistent

@@ -23,22 +23,6 @@ const (
 	Store
 )
 
-// MockTester is a mock testing.T
-type MockTester struct {
-}
-
-// Fail is used to fail the test
-func (m MockTester) Fail() {}
-
-// FailNow is used to fail the test immediately
-func (m MockTester) FailNow() {}
-
-// Logf is used to log a message to the test logger
-func (m MockTester) Logf(format string, args ...any) {}
-
-// Errorf is used to log an error to the test logger
-func (m MockTester) Errorf(format string, args ...any) {}
-
 func waitForFirstBlock(node Node, source Source) error {
 	return waitForAtLeastNBlocks(node, 1, source)
 }

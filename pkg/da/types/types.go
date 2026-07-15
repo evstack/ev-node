@@ -1,8 +1,6 @@
 package da
 
 import (
-	"encoding/binary"
-	"fmt"
 	"time"
 )
 
@@ -71,16 +69,6 @@ type BaseResult struct {
 	IDs [][]byte
 	// Timestamp is the timestamp of the posted data on Data Availability Layer.
 	Timestamp time.Time
-}
-
-// SplitID splits an ID into a height and a commitment.
-// if len(id) <= 8, it returns 0 and nil.
-func SplitID(id []byte) (uint64, []byte, error) {
-	if len(id) <= 8 {
-		return 0, nil, fmt.Errorf("invalid ID length: %d", len(id))
-	}
-	commitment := id[8:]
-	return binary.LittleEndian.Uint64(id[:8]), commitment, nil
 }
 
 // SubscriptionEvent is a namespace-agnostic signal that a blob was finalized at
