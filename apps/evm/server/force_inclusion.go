@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -173,19 +172,6 @@ func (s *ForceInclusionServer) handleJSONRPC(w http.ResponseWriter, r *http.Requ
 	default:
 		s.proxyToExecutionRPC(w, &req, body)
 	}
-}
-
-// handleChainID handles eth_chainId requests
-func (s *ForceInclusionServer) handleChainID(w http.ResponseWriter, req *JSONRPCRequest) {
-	// Convert chain ID string to integer
-	chainIDInt, err := strconv.ParseUint(s.genesis.ChainID, 10, 64)
-	if err != nil {
-		s.writeError(w, req.ID, InternalError, fmt.Sprintf("invalid chain ID: %v", err))
-		return
-	}
-	// Return the chain ID as a hex string prefixed with 0x
-	chainID := fmt.Sprintf("0x%x", chainIDInt)
-	s.writeSuccess(w, req.ID, chainID)
 }
 
 // proxyToExecutionRPC forwards unknown RPC methods to the execution RPC endpoint

@@ -26,8 +26,6 @@ build-all:
     @cd apps/testapp && go build -ldflags "{{ ldflags }}" -o {{ build_dir }}/testapp .
     @echo "--> Building evm"
     @cd apps/evm && go build -ldflags "{{ ldflags }}" -o {{ build_dir }}/evm .
-    @echo "--> Building grpc"
-    @cd apps/grpc && go build -ldflags "{{ ldflags }}" -o {{ build_dir }}/evgrpc .
     @echo "--> Building loadgen"
     @cd apps/loadgen && go build -ldflags "{{ ldflags }}" -o {{ build_dir }}/ev-loadgen .
     @echo "--> Building local-da"
@@ -49,14 +47,6 @@ build-evm:
     @mkdir -p {{ build_dir }}
     @cd apps/evm && go build -ldflags "{{ ldflags }}" -o {{ build_dir }}/evm .
     @echo "    Check the binary with: {{ build_dir }}/evm"
-
-# Build gRPC binary
-[group('build')]
-build-grpc:
-    @echo "--> Building gRPC"
-    @mkdir -p {{ build_dir }}
-    @cd apps/grpc && go build -ldflags "{{ ldflags }}" -o {{ build_dir }}/evgrpc .
-    @echo "    Check the binary with: {{ build_dir }}/evgrpc"
 
 # Build local-da binary
 [group('build')]

@@ -529,7 +529,7 @@ func TestHeaderStoreAdapter_ContextTimeout(t *testing.T) {
 	time.Sleep(1 * time.Millisecond) // Ensure context is expired
 
 	// Operations should still work with in-memory store
-	// but this tests the context is being passed through
+	// but this tests that the context is being passed through
 	h1, _ := types.GetRandomBlock(1, 1, "test-chain")
 	// Note: In-memory store doesn't actually check context, but this verifies
 	// the adapter passes the context through

@@ -243,10 +243,8 @@ func TestSequencer_GetNextBatch_NoLastBatch(t *testing.T) {
 		t.Fatalf("Failed to get next batch: %v", err)
 	}
 
-	// Ensure the time is approximately the same
-	if res.Timestamp.Day() != time.Now().Day() {
-		t.Fatalf("Expected timestamp day to be %d, got %d", time.Now().Day(), res.Timestamp.Day())
-	}
+	// Ensure the time is approximately the same.
+	require.WithinDuration(t, time.Now().UTC(), res.Timestamp, time.Second)
 
 	// Should return an empty batch
 	if len(res.Batch.Transactions) != 0 {
@@ -281,10 +279,8 @@ func TestSequencer_GetNextBatch_Success(t *testing.T) {
 		t.Fatalf("Failed to get next batch: %v", err)
 	}
 
-	// Ensure the time is approximately the same
-	if res.Timestamp.Day() != time.Now().Day() {
-		t.Fatalf("Expected timestamp day to be %d, got %d", time.Now().Day(), res.Timestamp.Day())
-	}
+	// Ensure the time is approximately the same.
+	require.WithinDuration(t, time.Now().UTC(), res.Timestamp, time.Second)
 
 	// Ensure that the transactions are present
 	if len(res.Batch.Transactions) != 2 {
@@ -1982,7 +1978,7 @@ func TestSequencer_CatchUp_CheckpointAdvancesDuringCatchUp(t *testing.T) {
 func TestSequencer_CatchUp_MonotonicTimestamps(t *testing.T) {
 	// When a single DA epoch has more forced txs than fit in one block,
 	// catch-up must produce strictly monotonic timestamps across the
-	// resulting blocks.  The jitter scheme is:
+	// resulting blocks. The jitter scheme is:
 	//   epochStart     = daEndTime - totalEpochTxs * 1ms
 	//   blockTimestamp = epochStart + txIndexForTimestamp * 1ms
 	// where txIndexForTimestamp is the cumulative consumed-tx count

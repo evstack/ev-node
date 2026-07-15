@@ -139,8 +139,8 @@ func TestManager_SaveAndRestoreFromStore(t *testing.T) {
 	// The cache entry is not restored — this is correct and intentional.
 
 	// Height 2 is in-flight: the window restore loads a placeholder entry keyed by
-	// height.  The real content-hash entry is populated when the submitter re-processes
-	// the block after restart.  Until then, DaHeight() must reflect the in-flight DA height.
+	// height. The real content-hash entry is populated when the submitter re-processes
+	// the block after restart. Until then, DaHeight() must reflect the in-flight DA height.
 	assert.Equal(t, uint64(101), m2.DaHeight(),
 		"DaHeight should reflect the highest in-flight DA height after restore")
 
@@ -306,7 +306,7 @@ func TestManager_DaHeightAfterCacheClear(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Write the finalized-tip metadata exactly as setNodeHeightToDAHeight does
-	// in production.  initDAHeightFromStore reads these keys to seed DaHeight()
+	// in production. initDAHeightFromStore reads these keys to seed DaHeight()
 	// after ClearCache (the snapshot is wiped, but these keys survive).
 	headerDABz := make([]byte, 8)
 	binary.LittleEndian.PutUint64(headerDABz, 150)
@@ -329,7 +329,7 @@ func TestManager_DaHeightAfterCacheClear(t *testing.T) {
 	require.NoError(t, err)
 
 	// DaHeight must reflect the finalized-tip DA height loaded from store
-	// metadata, not 0.  The syncer uses this to seed daRetrieverHeight so the
+	// metadata, not 0. The syncer uses this to seed daRetrieverHeight so the
 	// node does not re-scan DA from genesis after an operator-triggered clear.
 	assert.Equal(t, uint64(155), m.DaHeight(),
 		"DaHeight should be seeded from finalized-tip metadata even after ClearCache")
@@ -351,7 +351,7 @@ func TestManager_DaHeightFromStoreOnRestore(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Persist the finalized-tip HeightToDAHeight metadata exactly as
-	// setNodeHeightToDAHeight does in production.  These keys are the source
+	// setNodeHeightToDAHeight does in production. These keys are the source
 	// of truth that initDAHeightFromStore reads — they exist independently of
 	// the snapshot and survive across restarts and cache clears.
 	headerDABz := make([]byte, 8)
@@ -374,7 +374,7 @@ func TestManager_DaHeightFromStoreOnRestore(t *testing.T) {
 	require.NoError(t, err)
 
 	// DaHeight must reflect the highest DA height from the finalized-tip
-	// metadata, not 0.  Without initDAHeightFromStore this would be 0 because
+	// metadata, not 0. Without initDAHeightFromStore this would be 0 because
 	// there are no in-flight snapshot entries.
 	assert.Equal(t, uint64(205), m.DaHeight(),
 		"DaHeight should be seeded from finalized-tip HeightToDAHeight metadata on restore")

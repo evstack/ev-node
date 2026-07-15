@@ -105,7 +105,6 @@ Use the hierarchical tag format: `{app-path}/v{major}.{minor}.{patch}`
 
 - `apps/evm/v0.2.0` → Releases `apps/evm/`
 - `apps/testapp/v1.0.0` → Releases `apps/testapp/`
-- `apps/grpc/v2.1.3` → Releases `apps/grpc/`
 
 ### Automated Process
 

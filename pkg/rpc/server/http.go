@@ -78,8 +78,9 @@ func RegisterCustomHTTPEndpoints(mux *http.ServeMux, s store.Store, pm p2p.P2PRP
 	// 2. Block production/sync status:
 	//    - Confirms node state is accessible
 	//    - Verifies at least one block has been produced/synced
-	// 3. Aggregator-specific checks (for aggregator nodes only):
-	//    - Validates blocks are being produced at expected rate (within 5x block_time)
+	// 3. Block execution liveness:
+	//    - Aggregator nodes: validates blocks are being produced at expected rate (within 5x block_time)
+	//    - Non-aggregator nodes: validates a block has been executed within readiness_window_seconds
 	// 4. Sync status (for all nodes):
 	//    - Compares local height with best known network height
 	//    - Ensures node is not falling behind by more than readiness_max_blocks_behind
@@ -132,6 +133,16 @@ func RegisterCustomHTTPEndpoints(mux *http.ServeMux, s store.Store, pm p2p.P2PRP
 			timeSinceLastBlock := time.Since(state.LastBlockTime)
 			if timeSinceLastBlock > maxAllowedDelay {
 				http.Error(w, "UNREADY: aggregator not producing blocks at expected rate", http.StatusServiceUnavailable)
+				return
+			}
+		} else {
+			readinessWindowSeconds := cfg.Node.ReadinessWindowSeconds
+			if readinessWindowSeconds == 0 {
+				readinessWindowSeconds = 15 // fallback to default 15s window
+			}
+			maxAllowedDelay := time.Duration(readinessWindowSeconds) * time.Second
+			if time.Since(state.LastBlockTime) > maxAllowedDelay {
+				http.Error(w, "UNREADY: node not executing blocks", http.StatusServiceUnavailable)
 				return
 			}
 		}
