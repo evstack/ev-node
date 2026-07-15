@@ -151,7 +151,20 @@ func getGenesisHash(client *http.Client, ethURL string) (string, error) {
 }
 
 func waitForEngineForkchoice(client *http.Client, engineURL, authToken, genesisHash string) error {
-	body := fmt.Sprintf(`{"jsonrpc":"2.0","method":"engine_forkchoiceUpdatedV3","params":[{"headBlockHash":%q,"safeBlockHash":%q,"finalizedBlockHash":%q},null],"id":1}`, genesisHash, genesisHash, genesisHash)
+	methods := []string{"engine_forkchoiceUpdatedV3", "engine_forkchoiceUpdatedV4"}
+	var lastErr error
+	for _, method := range methods {
+		if err := waitForEngineForkchoiceMethod(client, engineURL, authToken, genesisHash, method); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+	}
+	return lastErr
+}
+
+func waitForEngineForkchoiceMethod(client *http.Client, engineURL, authToken, genesisHash, method string) error {
+	body := fmt.Sprintf(`{"jsonrpc":"2.0","method":%q,"params":[{"headBlockHash":%q,"safeBlockHash":%q,"finalizedBlockHash":%q},null],"id":1}`, method, genesisHash, genesisHash, genesisHash)
 	req, err := http.NewRequest("POST", engineURL, strings.NewReader(body))
 	if err != nil {
 		return err
@@ -181,7 +194,7 @@ func waitForEngineForkchoice(client *http.Client, engineURL, authToken, genesisH
 		return fmt.Errorf("decode engine forkchoice response: %w", err)
 	}
 	if rpcResp.Error != nil {
-		return fmt.Errorf("engine_forkchoiceUpdatedV3 failed: %s", rpcResp.Error.Message)
+		return fmt.Errorf("%s failed: %s", method, rpcResp.Error.Message)
 	}
 	if rpcResp.Result.PayloadStatus.Status != "VALID" {
 		return fmt.Errorf("engine forkchoice status %s", rpcResp.Result.PayloadStatus.Status)

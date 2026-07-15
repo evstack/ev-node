@@ -67,7 +67,7 @@ func TestReconcileExecutionAtHeight_StartedExecMeta(t *testing.T) {
 			}))
 
 			engineRPC := &mockReconcileEngineRPCClient{
-				payloads: map[engine.PayloadID]*engine.ExecutionPayloadEnvelope{
+				payloads: map[engine.PayloadID]*EnginePayloadEnvelope{
 					payloadID: {},
 				},
 			}
@@ -93,7 +93,7 @@ func TestReconcileExecutionAtHeight_StartedExecMeta(t *testing.T) {
 }
 
 type mockReconcileEngineRPCClient struct {
-	payloads        map[engine.PayloadID]*engine.ExecutionPayloadEnvelope
+	payloads        map[engine.PayloadID]*EnginePayloadEnvelope
 	getPayloadCalls int
 }
 
@@ -101,7 +101,7 @@ func (m *mockReconcileEngineRPCClient) ForkchoiceUpdated(_ context.Context, _ en
 	return nil, errors.New("unexpected ForkchoiceUpdated call")
 }
 
-func (m *mockReconcileEngineRPCClient) GetPayload(_ context.Context, payloadID engine.PayloadID) (*engine.ExecutionPayloadEnvelope, error) {
+func (m *mockReconcileEngineRPCClient) GetPayload(_ context.Context, payloadID engine.PayloadID) (*EnginePayloadEnvelope, error) {
 	m.getPayloadCalls++
 	payload, ok := m.payloads[payloadID]
 	if !ok {
@@ -111,7 +111,7 @@ func (m *mockReconcileEngineRPCClient) GetPayload(_ context.Context, payloadID e
 	return payload, nil
 }
 
-func (m *mockReconcileEngineRPCClient) NewPayload(_ context.Context, _ *engine.ExecutableData, _ []string, _ string, _ [][]byte) (*engine.PayloadStatusV1, error) {
+func (m *mockReconcileEngineRPCClient) NewPayload(_ context.Context, _ *EnginePayloadEnvelope, _ []string, _ string, _ [][]byte) (*engine.PayloadStatusV1, error) {
 	return nil, errors.New("unexpected NewPayload call")
 }
 
