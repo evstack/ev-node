@@ -489,6 +489,61 @@ func TestNewPayload_AmsterdamPayload_UsesV5AndPreservesBlockAccessList(t *testin
 	mu.Unlock()
 }
 
+func TestNewPayload_ExecutionRequests_EncodedAsHex(t *testing.T) {
+	srv := fakeEngineServer(t, func(req jsonRPCRequest) (string, int, string) {
+		require.Equal(t, newPayloadV4Method, req.Method)
+		require.Len(t, req.Params, 4)
+		require.JSONEq(t, `["0x1234", "0x01"]`, string(req.Params[3]))
+		return validPayloadStatusJSON, 0, ""
+	})
+	defer srv.Close()
+
+	var envelope EnginePayloadEnvelope
+	require.NoError(t, json.Unmarshal([]byte(minimalPayloadEnvelopeJSON), &envelope))
+
+	client := NewEngineRPCClient(dialTestServer(t, srv.URL))
+	_, err := client.NewPayload(context.Background(), &envelope, []string{}, zeroHashHex,
+		[][]byte{{0x12, 0x34}, {0x01}})
+	require.NoError(t, err)
+}
+
+func TestNewPayload_NilExecutionRequests_EncodedAsEmptyArray(t *testing.T) {
+	srv := fakeEngineServer(t, func(req jsonRPCRequest) (string, int, string) {
+		require.Equal(t, newPayloadV4Method, req.Method)
+		require.Len(t, req.Params, 4)
+		require.JSONEq(t, `[]`, string(req.Params[3]))
+		return validPayloadStatusJSON, 0, ""
+	})
+	defer srv.Close()
+
+	var envelope EnginePayloadEnvelope
+	require.NoError(t, json.Unmarshal([]byte(minimalPayloadEnvelopeJSON), &envelope))
+
+	client := NewEngineRPCClient(dialTestServer(t, srv.URL))
+	_, err := client.NewPayload(context.Background(), &envelope, []string{}, zeroHashHex, nil)
+	require.NoError(t, err)
+}
+
+func TestEnginePayloadEnvelope_MarshalJSON_UsesWireFieldNames(t *testing.T) {
+	var envelope EnginePayloadEnvelope
+	require.NoError(t, json.Unmarshal([]byte(minimalAmsterdamPayloadEnvelopeJSON(t)), &envelope))
+
+	encoded, err := json.Marshal(&envelope)
+	require.NoError(t, err)
+
+	var fields map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(encoded, &fields))
+	for _, key := range []string{"executionPayload", "blockValue", "blobsBundle", "executionRequests", "shouldOverrideBuilder"} {
+		require.Contains(t, fields, key)
+	}
+
+	// Round trip must preserve Amsterdam fields and version selection.
+	var decoded EnginePayloadEnvelope
+	require.NoError(t, json.Unmarshal(encoded, &decoded))
+	require.True(t, decoded.hasAmsterdamFields())
+	require.JSONEq(t, string(envelope.RawExecutionPayload), string(decoded.RawExecutionPayload))
+}
+
 func TestIsUnsupportedForkErr(t *testing.T) {
 	tests := []struct {
 		name     string

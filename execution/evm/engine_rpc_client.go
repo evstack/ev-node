@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/beacon/engine"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -71,6 +72,9 @@ func (e *engineRPCClient) ForkchoiceUpdated(ctx context.Context, state engine.Fo
 		method := version.forkchoiceUpdatedMethod()
 		methodArgs, err := forkchoiceArgsForMethod(args, method)
 		if err != nil {
+			if len(unsupportedMethods) > 0 {
+				return nil, fmt.Errorf("fallback after unsupported fork from %v: %w", unsupportedMethods, err)
+			}
 			return nil, err
 		}
 
@@ -146,8 +150,15 @@ func (e *engineRPCClient) NewPayload(ctx context.Context, payload *EnginePayload
 		return nil, err
 	}
 
+	// The Engine API encodes execution requests as hex strings. Raw [][]byte
+	// would JSON-encode as base64, and a nil slice as null instead of [].
+	requests := make([]hexutil.Bytes, len(executionRequests))
+	for i, request := range executionRequests {
+		requests[i] = request
+	}
+
 	var result engine.PayloadStatusV1
-	err = e.client.CallContext(ctx, &result, newPayloadMethod(payload), payloadParam, blobHashes, parentBeaconBlockRoot, executionRequests)
+	err = e.client.CallContext(ctx, &result, newPayloadMethod(payload), payloadParam, blobHashes, parentBeaconBlockRoot, requests)
 	if err != nil {
 		return nil, err
 	}

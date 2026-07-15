@@ -20,16 +20,21 @@ type EnginePayloadEnvelope struct {
 	Requests            [][]byte
 	Override            bool
 	Witness             *hexutil.Bytes
+
+	// rawHasAmsterdamFields caches whether RawExecutionPayload contains
+	// slotNumber or blockAccessList. Set during UnmarshalJSON so version
+	// selection does not re-parse the raw payload on every call.
+	rawHasAmsterdamFields bool
 }
 
 func (e *EnginePayloadEnvelope) UnmarshalJSON(input []byte) error {
 	type executionPayloadEnvelope struct {
-		ExecutionPayload json.RawMessage `json:"executionPayload"`
-		BlockValue       *hexutil.Big    `json:"blockValue"`
-		BlobsBundle      *engine.BlobsBundle
-		Requests         []hexutil.Bytes `json:"executionRequests"`
-		Override         *bool           `json:"shouldOverrideBuilder"`
-		Witness          *hexutil.Bytes  `json:"witness,omitempty"`
+		ExecutionPayload json.RawMessage     `json:"executionPayload"`
+		BlockValue       *hexutil.Big        `json:"blockValue"`
+		BlobsBundle      *engine.BlobsBundle `json:"blobsBundle"`
+		Requests         []hexutil.Bytes     `json:"executionRequests"`
+		Override         *bool               `json:"shouldOverrideBuilder"`
+		Witness          *hexutil.Bytes      `json:"witness,omitempty"`
 	}
 
 	var dec executionPayloadEnvelope
@@ -44,8 +49,16 @@ func (e *EnginePayloadEnvelope) UnmarshalJSON(input []byte) error {
 	if err := json.Unmarshal(dec.ExecutionPayload, &payload); err != nil {
 		return err
 	}
+	var amsterdamProbe struct {
+		SlotNumber      json.RawMessage `json:"slotNumber"`
+		BlockAccessList json.RawMessage `json:"blockAccessList"`
+	}
+	if err := json.Unmarshal(dec.ExecutionPayload, &amsterdamProbe); err != nil {
+		return err
+	}
 	e.ExecutionPayload = &payload
 	e.RawExecutionPayload = append(e.RawExecutionPayload[:0], dec.ExecutionPayload...)
+	e.rawHasAmsterdamFields = amsterdamProbe.SlotNumber != nil || amsterdamProbe.BlockAccessList != nil
 
 	if dec.BlockValue == nil {
 		return errors.New("missing required field 'blockValue' for EnginePayloadEnvelope")
@@ -68,12 +81,12 @@ func (e *EnginePayloadEnvelope) UnmarshalJSON(input []byte) error {
 
 func (e EnginePayloadEnvelope) MarshalJSON() ([]byte, error) {
 	type executionPayloadEnvelope struct {
-		ExecutionPayload json.RawMessage `json:"executionPayload"`
-		BlockValue       *hexutil.Big    `json:"blockValue"`
-		BlobsBundle      *engine.BlobsBundle
-		Requests         []hexutil.Bytes `json:"executionRequests"`
-		Override         bool            `json:"shouldOverrideBuilder"`
-		Witness          *hexutil.Bytes  `json:"witness,omitempty"`
+		ExecutionPayload json.RawMessage     `json:"executionPayload"`
+		BlockValue       *hexutil.Big        `json:"blockValue"`
+		BlobsBundle      *engine.BlobsBundle `json:"blobsBundle"`
+		Requests         []hexutil.Bytes     `json:"executionRequests"`
+		Override         bool                `json:"shouldOverrideBuilder"`
+		Witness          *hexutil.Bytes      `json:"witness,omitempty"`
 	}
 
 	executionPayload, err := e.executionPayloadJSON()
@@ -115,7 +128,7 @@ func (e *EnginePayloadEnvelope) executionPayloadJSON() (json.RawMessage, error) 
 		return nil, errors.New("nil EnginePayloadEnvelope")
 	}
 	if len(e.RawExecutionPayload) > 0 {
-		return json.RawMessage(e.RawExecutionPayload), nil
+		return e.RawExecutionPayload, nil
 	}
 	if e.ExecutionPayload == nil {
 		return nil, errors.New("nil execution payload")
@@ -134,18 +147,5 @@ func (e *EnginePayloadEnvelope) hasAmsterdamFields() bool {
 	if e.ExecutionPayload != nil && e.ExecutionPayload.SlotNumber != nil {
 		return true
 	}
-	return rawExecutionPayloadHasField(e.RawExecutionPayload, "slotNumber") ||
-		rawExecutionPayloadHasField(e.RawExecutionPayload, "blockAccessList")
-}
-
-func rawExecutionPayloadHasField(payload json.RawMessage, field string) bool {
-	if len(payload) == 0 {
-		return false
-	}
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(payload, &fields); err != nil {
-		return false
-	}
-	_, ok := fields[field]
-	return ok
+	return e.rawHasAmsterdamFields
 }

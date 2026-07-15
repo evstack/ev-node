@@ -177,6 +177,19 @@ Validate and execute a payload.
 }
 ```
 
+## Amsterdam Enablement Checklist
+
+Before setting `amsterdamTime` in an ev-reth chainspec, verify:
+
+- [ ] ev-node can call `engine_forkchoiceUpdatedV4`.
+- [ ] ev-node sends `slotNumber` in Amsterdam payload attributes.
+- [ ] ev-node can call `engine_getPayloadV6`.
+- [ ] ev-node preserves `executionPayload.blockAccessList`.
+- [ ] ev-node can call `engine_newPayloadV5`.
+- [ ] Tracing and logs report the selected Engine API version.
+- [ ] Unit tests cover V4/V5/V6 version selection and `blockAccessList` passthrough.
+- [ ] E2E tests pass against an Amsterdam-enabled ev-reth chainspec.
+
 ## Status Codes
 
 | Status | Meaning |

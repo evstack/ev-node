@@ -1078,6 +1078,11 @@ func (c *EngineClient) buildPayloadAttributes(txsPayload []string, blockHeight u
 	return attrs
 }
 
+// deriveSlotNumber returns the slotNumber payload attribute required by
+// engine_forkchoiceUpdatedV4 (Amsterdam). ev-node has no beacon slots, so the
+// rollup block height serves as the deterministic slot number. This is a wire
+// contract with ev-reth's Amsterdam chainspec handling and must not change
+// once the fork is enabled on a live chain.
 func (c *EngineClient) deriveSlotNumber(blockHeight uint64) uint64 {
 	return blockHeight
 }

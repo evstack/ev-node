@@ -99,9 +99,9 @@ func TestEngineAPIForkUpgradeCycleE2E(t *testing.T) {
 
 	for _, step := range steps {
 		t.Run(step.name, func(t *testing.T) {
-			nextStateRoot, err := executionClient.ExecuteTxs(ctx, nil, step.height, time.Unix(int64(step.timestamp), 0), stateRoot)
+			result, err := executionClient.ExecuteTxs(ctx, nil, step.height, time.Unix(int64(step.timestamp), 0), stateRoot)
 			require.NoError(t, err)
-			stateRoot = nextStateRoot
+			stateRoot = result.UpdatedStateRoot
 		})
 	}
 
