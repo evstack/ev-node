@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784211948467,
+  "lastUpdate": 1784214157534,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -46,6 +46,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 184375,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "marko@baricevic.me",
+            "name": "Marko",
+            "username": "tac0turtle"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "f59b3319fb810251e15e9b48895a51fe07024a64",
+          "message": "fix(evm): don't create single sequencer for non-aggregator nodes (#3389)\n\n* fix(evm): don't create single sequencer for non-aggregator nodes\n\nP2P-only followers (no DA address) crashed on startup with a nil\npointer dereference: the EVM app's createSequencer unconditionally\nbuilt a single sequencer, whose forced-inclusion retriever calls\nGetForcedInclusionNamespace on the nil DA client.\n\nMirror the testapp guard from #3386 by skipping sequencer creation\nfor non-aggregators, and fail fast in single.NewSequencer when the\nDA client is nil so future regressions surface as a clean error\ninstead of a SIGSEGV.\n\nCo-Authored-By: Claude Fable 5 <noreply@anthropic.com>\n\n* fix: keep sequencer for promotable followers and require DA for promotable mode\n\nPromotable nodes start as followers but can be promoted to proposer at\nruntime, which hands the sequencer to the aggregator components. The\nnon-aggregator guard (added to testapp in #3386 and mirrored here for\nthe EVM app) would leave promotable nodes with a nil sequencer and\nbreak promotion. Create the sequencer for promotable nodes too, and\nrequire a DA address for promotable mode at config validation, same as\naggregator mode.\n\nCo-Authored-By: Claude Fable 5 <noreply@anthropic.com>\n\n---------\n\nCo-authored-by: Claude Fable 5 <noreply@anthropic.com>",
+          "timestamp": "2026-07-16T16:58:33+02:00",
+          "tree_id": "e9d0191939e837d5f1aae26c5321368d8c0719e7",
+          "url": "https://github.com/evstack/ev-node/commit/f59b3319fb810251e15e9b48895a51fe07024a64"
+        },
+        "date": 1784214151382,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 898275188,
+            "unit": "ns/op\t32362640 B/op\t  184457 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 898275188,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 32362640,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 184457,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
