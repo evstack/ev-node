@@ -33,7 +33,7 @@ var RunCmd = &cobra.Command{
 	Aliases: []string{"node", "run"},
 	Short:   "Run the testapp node",
 	RunE: func(command *cobra.Command, args []string) error {
-		nodeConfig, err := cmd.ParseConfig(command)
+		nodeConfig, err := cmd.ParseStartConfig(command)
 		if err != nil {
 			return err
 		}

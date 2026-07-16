@@ -38,6 +38,16 @@ func ParseConfig(cmd *cobra.Command) (rollconf.Config, error) {
 	if err := nodeConfig.Validate(); err != nil {
 		return rollconf.Config{}, fmt.Errorf("failed to validate node config: %w", err)
 	}
+
+	return nodeConfig, nil
+}
+
+// ParseStartConfig loads and validates configuration required to start a node.
+func ParseStartConfig(cmd *cobra.Command) (rollconf.Config, error) {
+	nodeConfig, err := ParseConfig(cmd)
+	if err != nil {
+		return rollconf.Config{}, err
+	}
 	if nodeConfig.Node.Aggregator && nodeConfig.GetDAAddress() == "" {
 		return rollconf.Config{}, fmt.Errorf("DA address is required when aggregator mode is enabled")
 	}

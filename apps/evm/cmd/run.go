@@ -40,7 +40,7 @@ var RunCmd = &cobra.Command{
 	Aliases: []string{"node", "run"},
 	Short:   "Run the evolve node with EVM execution client",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		nodeConfig, err := rollcmd.ParseConfig(cmd)
+		nodeConfig, err := rollcmd.ParseStartConfig(cmd)
 		if err != nil {
 			return err
 		}

@@ -174,7 +174,7 @@ func TestAggregatorFlagInvariants(t *testing.T) {
 	}
 }
 
-func TestParseConfig_AggregatorRequiresDAAddress(t *testing.T) {
+func TestParseStartConfig_AggregatorRequiresDAAddress(t *testing.T) {
 	executor, sequencer, keyProvider, nodeKey, ds, stopDAHeightTicker := createTestComponents(context.Background(), t)
 	defer stopDAHeightTicker()
 
@@ -185,6 +185,9 @@ func TestParseConfig_AggregatorRequiresDAAddress(t *testing.T) {
 	require.NoError(t, cmd.ParseFlags([]string{"start", "--rollkit.node.aggregator"}))
 
 	_, err := ParseConfig(cmd)
+	require.NoError(t, err)
+
+	_, err = ParseStartConfig(cmd)
 	require.EqualError(t, err, "DA address is required when aggregator mode is enabled")
 }
 
