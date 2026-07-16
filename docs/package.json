@@ -18,5 +18,10 @@
   "dependencies": {
     "vitepress-openapi": "^0.1.19"
   },
+  "resolutions": {
+    "esbuild": "^0.25.0",
+    "lodash-es": "^4.18.0",
+    "vite": "^6.4.3"
+  },
   "type": "module"
 }
