@@ -294,13 +294,22 @@ func (m *implementation) SaveToStore() error {
 // RestoreFromStore loads the in-flight snapshot (O(1)) then seeds maxDAHeight
 // from the finalized-tip HeightToDAHeight metadata so DaHeight() is correct
 // even when the snapshot is empty (all blocks finalized).
+// Snapshot entries at or below the persisted DA-included height are dropped:
+// the snapshot may predate the watermark (it is only written on graceful
+// shutdown) and the inclusion loop never evicts below it.
 func (m *implementation) RestoreFromStore() error {
 	ctx := context.Background()
 
-	if err := m.headerCache.RestoreFromStore(ctx); err != nil {
+	daIncludedHeight, _, err := getMetadataUint64(ctx, m.store, store.DAIncludedHeightKey)
+	if err != nil {
+		m.logger.Warn().Err(err).Msg("failed to read DA included height, restoring cache unfiltered")
+		daIncludedHeight = 0
+	}
+
+	if err := m.headerCache.RestoreFromStore(ctx, daIncludedHeight); err != nil {
 		return fmt.Errorf("failed to restore header cache from store: %w", err)
 	}
-	if err := m.dataCache.RestoreFromStore(ctx); err != nil {
+	if err := m.dataCache.RestoreFromStore(ctx, daIncludedHeight); err != nil {
 		return fmt.Errorf("failed to restore data cache from store: %w", err)
 	}
 

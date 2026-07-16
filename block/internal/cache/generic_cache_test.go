@@ -57,7 +57,7 @@ func TestCache_RestoreFromStore_EmptyChain(t *testing.T) {
 	st := testMemStore(t)
 
 	c := NewCache(st, "hdr/")
-	require.NoError(t, c.RestoreFromStore(context.Background()))
+	require.NoError(t, c.RestoreFromStore(context.Background(), 0))
 
 	assert.Equal(t, 0, c.daIncludedLen(), "no entries expected on empty chain")
 	assert.Equal(t, uint64(0), c.daHeight())
@@ -75,7 +75,7 @@ func TestCache_RestoreFromStore_FullyFinalized(t *testing.T) {
 	writeSnapshot(t, st, "hdr/", nil)
 
 	c := NewCache(st, "hdr/")
-	require.NoError(t, c.RestoreFromStore(ctx))
+	require.NoError(t, c.RestoreFromStore(ctx, 0))
 
 	assert.Equal(t, 0, c.daIncludedLen(), "no in-flight entries expected")
 	assert.Equal(t, uint64(0), c.daHeight(), "no in-flight entries means daHeight is 0")
@@ -93,7 +93,7 @@ func TestCache_RestoreFromStore_InFlightWindow(t *testing.T) {
 	})
 
 	c := NewCache(st, "hdr/")
-	require.NoError(t, c.RestoreFromStore(ctx))
+	require.NoError(t, c.RestoreFromStore(ctx, 0))
 
 	assert.Equal(t, 2, c.daIncludedLen(), "exactly the in-flight snapshot entries should be loaded")
 	assert.Equal(t, uint64(14), c.daHeight(), "maxDAHeight should reflect the highest in-flight DA height")
@@ -118,7 +118,7 @@ func TestCache_RestoreFromStore_SingleEntry(t *testing.T) {
 	})
 
 	c := NewCache(st, "hdr/")
-	require.NoError(t, c.RestoreFromStore(ctx))
+	require.NoError(t, c.RestoreFromStore(ctx, 0))
 
 	assert.Equal(t, 1, c.daIncludedLen(), "one entry should be in-flight")
 	assert.Equal(t, uint64(20), c.daHeight())
@@ -131,7 +131,7 @@ func TestCache_RestoreFromStore_SingleEntry(t *testing.T) {
 
 func TestCache_RestoreFromStore_NilStore(t *testing.T) {
 	c := NewCache(nil, "")
-	require.NoError(t, c.RestoreFromStore(context.Background()))
+	require.NoError(t, c.RestoreFromStore(context.Background(), 0))
 	assert.Equal(t, 0, c.daIncludedLen())
 }
 
@@ -147,7 +147,7 @@ func TestCache_RestoreFromStore_PlaceholderOverwrittenByRealHash(t *testing.T) {
 	})
 
 	c := NewCache(st, "hdr/")
-	require.NoError(t, c.RestoreFromStore(ctx))
+	require.NoError(t, c.RestoreFromStore(ctx, 0))
 
 	assert.Equal(t, 1, c.daIncludedLen(), "one placeholder for height 3")
 
@@ -176,7 +176,7 @@ func TestCache_RestoreFromStore_RoundTrip(t *testing.T) {
 	require.NoError(t, c1.SaveToStore(ctx))
 
 	c2 := NewCache(st, "rt/")
-	require.NoError(t, c2.RestoreFromStore(ctx))
+	require.NoError(t, c2.RestoreFromStore(ctx, 0))
 
 	assert.Equal(t, 2, c2.daIncludedLen(), "only non-deleted entries should be restored")
 	assert.Equal(t, uint64(30), c2.daHeight())
@@ -187,6 +187,42 @@ func TestCache_RestoreFromStore_RoundTrip(t *testing.T) {
 	assert.False(t, ok, "height 2 was removed, should not exist")
 	_, ok = c2.getDAIncludedByHeight(3)
 	assert.True(t, ok, "height 3 placeholder should exist")
+}
+
+// TestCache_RestoreFromStore_SkipsFinalizedEntries verifies that snapshot
+// entries at or below the finalized height are not installed as placeholders
+// (a stale snapshot from a previous graceful shutdown can contain heights the
+// inclusion loop has already advanced past), while maxDAHeight still accounts
+// for them.
+func TestCache_RestoreFromStore_SkipsFinalizedEntries(t *testing.T) {
+	st := testMemStore(t)
+	ctx := context.Background()
+
+	writeSnapshot(t, st, "hdr/", []snapshotEntry{
+		{blockHeight: 3, daHeight: 10},
+		{blockHeight: 4, daHeight: 11},
+		{blockHeight: 5, daHeight: 12},
+	})
+
+	c := NewCache(st, "hdr/")
+	require.NoError(t, c.RestoreFromStore(ctx, 4))
+
+	assert.Equal(t, 1, c.daIncludedLen(), "only entries above the finalized height should be installed")
+	assert.Equal(t, uint64(12), c.daHeight(), "maxDAHeight should include skipped entries")
+
+	_, ok := c.getDAIncludedByHeight(3)
+	assert.False(t, ok, "height 3 is finalized, must not be restored")
+	_, ok = c.getDAIncludedByHeight(4)
+	assert.False(t, ok, "height 4 is finalized, must not be restored")
+	daH, ok := c.getDAIncludedByHeight(5)
+	require.True(t, ok, "height 5 is in-flight, must be restored")
+	assert.Equal(t, uint64(12), daH)
+
+	// A fully-stale snapshot restores nothing but still seeds maxDAHeight.
+	c2 := NewCache(st, "hdr/")
+	require.NoError(t, c2.RestoreFromStore(ctx, 10))
+	assert.Equal(t, 0, c2.daIncludedLen(), "all entries finalized, nothing restored")
+	assert.Equal(t, uint64(12), c2.daHeight())
 }
 
 // ---------------------------------------------------------------------------
@@ -306,7 +342,7 @@ func TestCache_NoPlaceholderLeakAfterRefire(t *testing.T) {
 	require.NoError(t, c1.SaveToStore(ctx))
 
 	c2 := NewCache(st, "pfx/")
-	require.NoError(t, c2.RestoreFromStore(ctx))
+	require.NoError(t, c2.RestoreFromStore(ctx, 0))
 
 	placeholder := HeightPlaceholderKey("pfx/", 3)
 	_, placeholderPresent := c2.getDAIncluded(placeholder)
@@ -344,7 +380,7 @@ func TestCache_RestartIdempotent(t *testing.T) {
 
 	for restart := 1; restart <= 3; restart++ {
 		cR := NewCache(st, "pfx/")
-		require.NoError(t, cR.RestoreFromStore(ctx), "restart %d: RestoreFromStore", restart)
+		require.NoError(t, cR.RestoreFromStore(ctx, 0), "restart %d: RestoreFromStore", restart)
 
 		assert.Equal(t, 1, cR.daIncludedLen(), "restart %d: one placeholder entry", restart)
 		assert.Equal(t, daH, cR.daHeight(), "restart %d: daHeight correct", restart)

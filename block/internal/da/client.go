@@ -497,8 +497,8 @@ func (c *client) SupportsSubscribe() bool {
 // Subscribe subscribes to blobs in the given namespace via the celestia-node
 // Subscribe API. It returns a channel that emits a SubscriptionEvent for every
 // DA block containing a matching blob. The channel is closed when ctx is
-// cancelled. The caller must drain the channel after cancellation to avoid
-// goroutine leaks.
+// cancelled; the underlying jsonrpc subscription channel is drained on exit so
+// its delivery goroutine is never left blocked on send.
 // Timestamps are included from the header if available (celestia-node v0.29.1+§), otherwise
 // fetched via a separate call when includeTimestamp is true. Be aware that fetching timestamps
 // separately is an additional call to the celestia node for each event.
@@ -516,6 +516,13 @@ func (c *client) Subscribe(ctx context.Context, namespace []byte, includeTimesta
 	out := make(chan datypes.SubscriptionEvent, 16)
 	go func() {
 		defer close(out)
+		// The jsonrpc layer closes rawCh only after its pending send is
+		// consumed and the ctx cancellation is processed. Drain it on exit
+		// so the delivery goroutine is not leaked on reconnect.
+		defer func() {
+			for range rawCh { //nolint:revive // draining until producer closes the channel
+			}
+		}()
 		for {
 			select {
 			case <-ctx.Done():
