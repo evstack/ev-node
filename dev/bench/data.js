@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784197899368,
+  "lastUpdate": 1784199268778,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -46,6 +46,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 178075,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "marko@baricevic.me",
+            "name": "Marko",
+            "username": "tac0turtle"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "b4b895b47afa4795155c0782f529d49f197c0d55",
+          "message": "fix(cache,da): drop finalized snapshot entries on restore and drain DA subscription channel (#3385)\n\nTwo memory fixes for long-running nodes:\n\nCache restore: the DA-inclusion snapshot is only written on graceful\nshutdown, so after a crash (e.g. OOM kill) the restored snapshot can\ncontain heights already below the persisted DA-included watermark. The\ninclusion loop never evicts below its watermark, so those placeholder\nentries leaked for the process lifetime and were re-persisted on every\nsubsequent save, growing the snapshot monotonically across crash/restart\ncycles. RestoreFromStore now skips entries at or below the persisted\nDAIncludedHeight; skipped entries still seed maxDAHeight so DaHeight()\nis unchanged.\n\nDA subscription: the Subscribe wrapper goroutine exited on ctx\ncancellation without draining the underlying jsonrpc channel, leaving\nthe go-jsonrpc delivery goroutine blocked on send — it never observed\nthe cancellation and never closed its channel, leaking one goroutine\nper watchdog reconnect. The wrapper now drains the raw channel on exit.\n\nCo-authored-by: Claude Fable 5 <noreply@anthropic.com>",
+          "timestamp": "2026-07-16T12:52:54+02:00",
+          "tree_id": "8b332b599d1cbc3e55726e5c45ccdbb116e2d612",
+          "url": "https://github.com/evstack/ev-node/commit/b4b895b47afa4795155c0782f529d49f197c0d55"
+        },
+        "date": 1784199262994,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 898301478,
+            "unit": "ns/op\t32316624 B/op\t  184691 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 898301478,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 32316624,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 184691,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
