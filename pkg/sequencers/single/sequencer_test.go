@@ -114,6 +114,13 @@ func newTestSequencer(t *testing.T, db ds.Batching, daClient block.FullDAClient)
 	return seq
 }
 
+func TestNewSequencer_NilDAClient(t *testing.T) {
+	mockExec := createDefaultMockExecutor(t)
+	seq, err := NewSequencer(zerolog.Nop(), ds.NewMapDatastore(), nil, config.DefaultConfig(), []byte("test"), 1000, genesis.Genesis{}, mockExec)
+	require.Error(t, err)
+	require.Nil(t, seq)
+}
+
 func TestSequencer_SubmitBatchTxs(t *testing.T) {
 	dummyDA := newDummyDA(100_000_000)
 	db := ds.NewMapDatastore()

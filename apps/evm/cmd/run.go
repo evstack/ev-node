@@ -160,6 +160,10 @@ func createSequencer(
 	daClient block.FullDAClient,
 	executor execution.Executor,
 ) (coresequencer.Sequencer, error) {
+	if !nodeConfig.Node.Aggregator {
+		return nil, nil
+	}
+
 	if nodeConfig.Node.BasedSequencer {
 		// Based sequencer mode - fetch transactions only from DA
 		if !nodeConfig.Node.Aggregator {
