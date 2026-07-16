@@ -136,9 +136,9 @@ func (s State) AssertValidSequence(header *SignedHeader) error {
 		return fmt.Errorf("%w - got: %v, last: %v", ErrInvalidBlockTime, headerTime, s.LastBlockTime)
 	}
 
-	// Trick to support the switch from a base sequencer to a normal syncing node.
-	// Based sequencers do not sign ehaders, meaning the last header hash will be different from the
-	// newly derived header hash when a base sequencer have switched to a syncing node
+	// Trick to support the switch from a based sequencer to a normal syncing node.
+	// Based sequencers do not sign headers, meaning the last header hash will be different from the
+	// newly derived header hash when a based sequencer has switched to a syncing node.
 	if !bytes.Equal(header.LastHeaderHash, s.LastHeaderHash) {
 		if lastHeaderHashErrCount == 1 {
 			return fmt.Errorf("%w - got: %x, want: %x", ErrInvalidLastHeaderHash, header.LastHeaderHash, s.LastHeaderHash)
