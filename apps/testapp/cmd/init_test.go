@@ -47,7 +47,7 @@ func TestInitCommand(t *testing.T) {
 	require.NoError(t, os.WriteFile(passphraseFile, []byte("test"), 0600))
 
 	// Set home flag to the test directory
-	cmd.SetArgs([]string{"init", "--home", dir, "--evnode.node.aggregator", "--evnode.signer.passphrase_file", passphraseFile})
+	cmd.SetArgs([]string{"init", "--home", dir, "--evnode.node.aggregator", "--evnode.da.address", "http://localhost:7980", "--evnode.signer.passphrase_file", passphraseFile})
 
 	// Execute the command
 	err = cmd.Execute()

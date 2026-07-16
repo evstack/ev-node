@@ -42,6 +42,19 @@ func ParseConfig(cmd *cobra.Command) (rollconf.Config, error) {
 	return nodeConfig, nil
 }
 
+// ParseStartConfig loads and validates configuration required to start a node.
+func ParseStartConfig(cmd *cobra.Command) (rollconf.Config, error) {
+	nodeConfig, err := ParseConfig(cmd)
+	if err != nil {
+		return rollconf.Config{}, err
+	}
+	if nodeConfig.Node.Aggregator && nodeConfig.GetDAAddress() == "" {
+		return rollconf.Config{}, fmt.Errorf("DA address is required when aggregator mode is enabled")
+	}
+
+	return nodeConfig, nil
+}
+
 // SetupLogger configures and returns a logger based on the provided configuration.
 // It applies the following settings from the config:
 //   - Log format (text or JSON)
@@ -150,12 +163,17 @@ func StartNode(
 		}
 	}
 
-	blobClient, err := blobrpc.NewWSClient(ctx, logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
-	if err != nil {
-		return fmt.Errorf("failed to create blob client: %w", err)
+	var daClient block.FullDAClient
+	if nodeConfig.DAEnabled() {
+		blobClient, err := blobrpc.NewWSClient(ctx, logger, nodeConfig.GetDAAddress(), nodeConfig.DA.AuthToken, "")
+		if err != nil {
+			return fmt.Errorf("failed to create blob client: %w", err)
+		}
+		defer blobClient.Close()
+		daClient = block.NewDAClient(blobClient, nodeConfig, logger)
+	} else {
+		logger.Info().Msg("DA address is not configured; syncing through P2P only")
 	}
-	defer blobClient.Close()
-	daClient := block.NewDAClient(blobClient, nodeConfig, logger)
 
 	// sanity check for based sequencer
 	if nodeConfig.Node.BasedSequencer && genesis.DAStartHeight == 0 {

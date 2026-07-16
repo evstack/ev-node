@@ -132,6 +132,39 @@ func TestNewSyncComponents_Creation(t *testing.T) {
 	assert.Nil(t, components.Executor) // Sync nodes don't have executors
 }
 
+func TestNewSyncComponents_WithoutDA(t *testing.T) {
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	memStore := store.New(ds)
+
+	cfg := config.DefaultConfig()
+	gen := genesis.Genesis{
+		ChainID:         "test-chain",
+		InitialHeight:   1,
+		StartTime:       time.Now(),
+		ProposerAddress: []byte("test-proposer"),
+	}
+
+	components, err := NewSyncComponents(
+		cfg,
+		gen,
+		memStore,
+		testmocks.NewMockExecutor(t),
+		nil,
+		extmocks.NewMockStore[*types.P2PSignedHeader](t),
+		extmocks.NewMockStore[*types.P2PData](t),
+		noopDAHintAppender{},
+		noopDAHintAppender{},
+		zerolog.Nop(),
+		NopMetrics(),
+		DefaultBlockOptions(),
+		nil,
+	)
+
+	require.NoError(t, err)
+	assert.NotNil(t, components.Syncer)
+	assert.Nil(t, components.Submitter)
+}
+
 func TestNewAggregatorComponents_Creation(t *testing.T) {
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 	memStore := store.New(ds)
