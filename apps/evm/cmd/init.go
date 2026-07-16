@@ -34,9 +34,6 @@ func InitCmd() *cobra.Command {
 			// we use load in order to parse all the flags
 			cfg, _ := rollconf.Load(cmd)
 			cfg.Node.Aggregator = aggregator
-			if cfg.Node.Aggregator && cfg.DA.Address == "" {
-				cfg.DA.Address = cfg.EffectiveDAAddress()
-			}
 			if err := cfg.Validate(); err != nil {
 				return fmt.Errorf("error validating config: %w", err)
 			}

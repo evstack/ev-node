@@ -147,6 +147,7 @@ func TestAggregatorFlagInvariants(t *testing.T) {
 	validValues := []bool{false, true, true}
 
 	for i, flags := range flagVariants {
+		flags = append(flags, "--rollkit.da.address", "http://da.example:7980")
 		args := append([]string{"start"}, flags...)
 
 		executor, sequencer, keyProvider, nodeKey, ds, stopDAHeightTicker := createTestComponents(context.Background(), t)
@@ -235,7 +236,7 @@ func TestDefaultAggregatorValue(t *testing.T) {
 			// Create a new command without specifying any flags
 			var args []string
 			if tc.expected {
-				args = []string{"start", "--rollkit.node.aggregator"}
+				args = []string{"start", "--rollkit.node.aggregator", "--rollkit.da.address", "http://da.example:7980"}
 			} else {
 				args = []string{"start", "--rollkit.node.aggregator=false"}
 			}

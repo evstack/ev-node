@@ -16,9 +16,6 @@ const (
 	ConfigName = ConfigFileName + "." + ConfigExtension
 	// AppConfigDir is the directory name for the app configuration.
 	AppConfigDir = "config"
-	// DefaultAggregatorDAAddress preserves the legacy local DA endpoint for aggregators
-	// that do not explicitly configure one.
-	DefaultAggregatorDAAddress = "http://localhost:7980"
 )
 
 // DefaultRootDir returns the default root directory for evolve

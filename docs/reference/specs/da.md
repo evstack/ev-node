@@ -6,7 +6,7 @@ Evolve provides a generic [data availability interface][da-interface] for modula
 
 `Client` can connect via JSON-RPC transports using Evolve's [jsonrpc][jsonrpc] implementations. The connection can be configured using the following cli flags:
 
-* `--rollkit.da.address`: URL address of the DA service (default: empty for P2P-only followers; aggregators fall back to `http://localhost:7980`)
+* `--rollkit.da.address`: URL address of the DA service (default: empty for P2P-only followers; required for aggregators)
 * `--rollkit.da.auth_token`: authentication token of the DA service
 * `--rollkit.da.namespace`: namespace to use when submitting blobs to the DA service (deprecated)
 * `--rollkit.da.header_namespace`: namespace to use when submitting headers to the DA service

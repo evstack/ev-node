@@ -64,12 +64,12 @@ func TestDAEnabled(t *testing.T) {
 			expectedAddress: "http://da.example:7980",
 		},
 		{
-			name: "aggregator without DA address uses legacy default",
+			name: "aggregator without DA address does not initialize DA",
 			configure: func(cfg *Config) {
 				cfg.Node.Aggregator = true
 			},
-			expectedEnabled: true,
-			expectedAddress: DefaultAggregatorDAAddress,
+			expectedEnabled: false,
+			expectedAddress: "",
 		},
 		{
 			name: "light node does not initialize DA",
@@ -90,9 +90,18 @@ func TestDAEnabled(t *testing.T) {
 			}
 
 			assert.Equal(t, tt.expectedEnabled, cfg.DAEnabled())
-			assert.Equal(t, tt.expectedAddress, cfg.EffectiveDAAddress())
+			assert.Equal(t, tt.expectedAddress, cfg.DA.Address)
 		})
 	}
+}
+
+func TestConfigValidate_AggregatorRequiresDAAddress(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.RootDir = t.TempDir()
+	cfg.Node.Aggregator = true
+
+	err := cfg.Validate()
+	require.EqualError(t, err, "DA address is required when aggregator mode is enabled")
 }
 
 func TestAddFlags(t *testing.T) {
@@ -605,6 +614,9 @@ func TestBasedSequencerValidation(t *testing.T) {
 			cfg.RootDir = t.TempDir()
 			cfg.Node.Aggregator = tt.aggregator
 			cfg.Node.BasedSequencer = tt.basedSeq
+			if tt.aggregator {
+				cfg.DA.Address = "http://da.example:7980"
+			}
 
 			err := cfg.Validate()
 
@@ -666,6 +678,9 @@ func TestPromotableValidation(t *testing.T) {
 			cfg.Node.BasedSequencer = tt.basedSeq
 			cfg.Node.Light = tt.light
 			cfg.Raft.Enable = tt.raft
+			if tt.aggregator {
+				cfg.DA.Address = "http://da.example:7980"
+			}
 
 			err := cfg.Validate()
 

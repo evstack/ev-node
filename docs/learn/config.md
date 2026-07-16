@@ -472,7 +472,7 @@ da:
 ### DA Service Address
 
 **Description:**
-The network address (host:port) of the Data Availability layer service. A full follower with this value unset syncs exclusively through P2P and does not create a DA client. Aggregators retain the legacy `http://localhost:7980` fallback when this value is unset.
+The network address (host:port) of the Data Availability layer service. A full follower with this value unset syncs exclusively through P2P and does not create a DA client. Aggregators must configure this value.
 
 **YAML:**
 
