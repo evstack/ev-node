@@ -147,6 +147,7 @@ func TestAggregatorFlagInvariants(t *testing.T) {
 	validValues := []bool{false, true, true}
 
 	for i, flags := range flagVariants {
+		flags = append(flags, "--rollkit.da.address", "http://da.example:7980")
 		args := append([]string{"start"}, flags...)
 
 		executor, sequencer, keyProvider, nodeKey, ds, stopDAHeightTicker := createTestComponents(context.Background(), t)
@@ -171,6 +172,23 @@ func TestAggregatorFlagInvariants(t *testing.T) {
 			t.Errorf("Expected %v, got %v", validValues[i], nodeConfig.Node.Aggregator)
 		}
 	}
+}
+
+func TestParseStartConfig_AggregatorRequiresDAAddress(t *testing.T) {
+	executor, sequencer, keyProvider, nodeKey, ds, stopDAHeightTicker := createTestComponents(context.Background(), t)
+	defer stopDAHeightTicker()
+
+	nodeConfig := rollconf.DefaultConfig()
+	nodeConfig.RootDir = t.TempDir()
+
+	cmd := newRunNodeCmd(t.Context(), executor, sequencer, keyProvider, nodeKey, ds, nodeConfig)
+	require.NoError(t, cmd.ParseFlags([]string{"start", "--rollkit.node.aggregator"}))
+
+	_, err := ParseConfig(cmd)
+	require.NoError(t, err)
+
+	_, err = ParseStartConfig(cmd)
+	require.EqualError(t, err, "DA address is required when aggregator mode is enabled")
 }
 
 func TestPromotableFlagInvariants(t *testing.T) {
@@ -235,7 +253,7 @@ func TestDefaultAggregatorValue(t *testing.T) {
 			// Create a new command without specifying any flags
 			var args []string
 			if tc.expected {
-				args = []string{"start", "--rollkit.node.aggregator"}
+				args = []string{"start", "--rollkit.node.aggregator", "--rollkit.da.address", "http://da.example:7980"}
 			} else {
 				args = []string{"start", "--rollkit.node.aggregator=false"}
 			}

@@ -21,6 +21,8 @@ import (
 
 var binaryPath string
 
+const localDAAddress = "http://localhost:7980"
+
 func init() {
 	flag.StringVar(&binaryPath, "binary", "testapp", "testapp binary")
 }
@@ -72,6 +74,7 @@ func TestBasic(t *testing.T) {
 		"--evnode.signer.passphrase_file="+passphraseFile,
 		"--evnode.node.block_time=5ms",
 		"--evnode.da.block_time=15ms",
+		"--evnode.da.address="+localDAAddress,
 		fmt.Sprintf("--kv-endpoint=127.0.0.1:%d", kvPort),
 	)
 
@@ -174,6 +177,7 @@ func TestNodeRestartPersistence(t *testing.T) {
 		"--evnode.signer.passphrase_file="+passphraseFile,
 		"--evnode.node.block_time=5ms",
 		"--evnode.da.block_time=15ms",
+		"--evnode.da.address="+localDAAddress,
 		fmt.Sprintf("--kv-endpoint=127.0.0.1:%d", kvPort),
 	)
 	sut.AwaitNodeUp(t, "http://127.0.0.1:7331", 2*time.Second)
@@ -214,6 +218,7 @@ func TestNodeRestartPersistence(t *testing.T) {
 		"--evnode.signer.passphrase_file="+passphraseFile,
 		"--evnode.node.block_time=5ms",
 		"--evnode.da.block_time=15ms",
+		"--evnode.da.address="+localDAAddress,
 		fmt.Sprintf("--kv-endpoint=127.0.0.1:%d", kvPort),
 	)
 	sut.AwaitNodeUp(t, "http://127.0.0.1:7331", 2*time.Second)

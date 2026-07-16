@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Allow full followers without a DA endpoint to sync through P2P only, and reject aggregator startup without an explicit DA endpoint.
 - Reject unsupported `net-info --output` formats instead of falling back to text output [#3360](https://github.com/evstack/ev-node/pull/3360).
 
 ## v1.1.4

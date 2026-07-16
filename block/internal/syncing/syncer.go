@@ -181,16 +181,18 @@ func (s *Syncer) Start(ctx context.Context) (err error) {
 		return fmt.Errorf("failed to initialize syncer state: %w", err)
 	}
 
-	// Initialize handlers
-	daRetriever := NewDARetriever(s.daClient, s.cache, s.genesis, s.logger)
-	daRetriever.setExpectedProposerProvider(s.expectedProposerForHeight)
-	s.daRetriever = daRetriever
-	if s.config.Instrumentation.IsTracingEnabled() {
-		s.daRetriever = WithTracingDARetriever(s.daRetriever)
-	}
+	if s.daClient != nil {
+		// Initialize DA-specific handlers only when DA is configured.
+		daRetriever := NewDARetriever(s.daClient, s.cache, s.genesis, s.logger)
+		daRetriever.setExpectedProposerProvider(s.expectedProposerForHeight)
+		s.daRetriever = daRetriever
+		if s.config.Instrumentation.IsTracingEnabled() {
+			s.daRetriever = WithTracingDARetriever(s.daRetriever)
+		}
 
-	s.fiRetriever = da.NewForcedInclusionRetriever(s.daClient, s.logger, s.config.DA.BlockTime.Duration, s.config.Instrumentation.IsTracingEnabled(), s.genesis.DAStartHeight, s.genesis.DAEpochForcedInclusion)
-	s.fiRetriever.Start(ctx)
+		s.fiRetriever = da.NewForcedInclusionRetriever(s.daClient, s.logger, s.config.DA.BlockTime.Duration, s.config.Instrumentation.IsTracingEnabled(), s.genesis.DAStartHeight, s.genesis.DAEpochForcedInclusion)
+		s.fiRetriever.Start(ctx)
+	}
 	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.cache, s.genesis, s.logger)
 
 	currentHeight, initErr := s.store.Height(ctx)
@@ -213,19 +215,21 @@ func (s *Syncer) Start(ctx context.Context) (err error) {
 	// Start main processing loop
 	s.wg.Go(func() { s.processLoop(ctx) })
 
-	// Start the DA follower (subscribe + catchup) and other workers
-	s.daFollower = NewDAFollower(DAFollowerConfig{
-		Client:        s.daClient,
-		Retriever:     s.daRetriever,
-		Logger:        s.logger,
-		EventSink:     s,
-		Namespace:     s.daClient.GetHeaderNamespace(),
-		DataNamespace: s.daClient.GetDataNamespace(),
-		StartDAHeight: s.daRetrieverHeight.Load(),
-		DABlockTime:   s.config.DA.BlockTime.Duration,
-	})
-	if err = s.daFollower.Start(ctx); err != nil {
-		return fmt.Errorf("failed to start DA follower: %w", err)
+	if s.daClient != nil {
+		// Start the DA follower (subscribe + catchup) when DA is configured.
+		s.daFollower = NewDAFollower(DAFollowerConfig{
+			Client:        s.daClient,
+			Retriever:     s.daRetriever,
+			Logger:        s.logger,
+			EventSink:     s,
+			Namespace:     s.daClient.GetHeaderNamespace(),
+			DataNamespace: s.daClient.GetDataNamespace(),
+			StartDAHeight: s.daRetrieverHeight.Load(),
+			DABlockTime:   s.config.DA.BlockTime.Duration,
+		})
+		if err = s.daFollower.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start DA follower: %w", err)
+		}
 	}
 
 	s.startSyncWorkers(ctx)
@@ -602,7 +606,7 @@ func (s *Syncer) processHeightEvent(ctx context.Context, event *common.DAHeightE
 
 	// If this is a P2P event with a DA height hint, trigger targeted DA retrieval
 	// This allows us to fetch the block directly from the specified DA height instead of sequential scanning
-	if event.Source == common.SourceP2P {
+	if event.Source == common.SourceP2P && s.daFollower != nil {
 		var daHeightHints []uint64
 		switch {
 		case event.DaHeightHints == [2]uint64{0, 0}:

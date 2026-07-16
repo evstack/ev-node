@@ -270,6 +270,17 @@ type DAConfig struct {
 	BatchMinItems      uint64          `mapstructure:"batch_min_items" yaml:"batch_min_items" comment:"Minimum number of items (headers or data) to accumulate before considering submission. Helps avoid submitting single items when more are expected soon. Default: 1."`
 }
 
+// DAEnabled reports whether this node should initialize a DA client. Full
+// followers without a DA address sync exclusively through P2P.
+func (c Config) DAEnabled() bool {
+	return !c.Node.Light && c.GetDAAddress() != ""
+}
+
+// GetDAAddress returns the configured DA address without surrounding whitespace.
+func (c Config) GetDAAddress() string {
+	return strings.TrimSpace(c.DA.Address)
+}
+
 // GetNamespace returns the namespace for header submissions.
 func (d *DAConfig) GetNamespace() string {
 	return d.Namespace

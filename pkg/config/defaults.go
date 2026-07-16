@@ -74,7 +74,7 @@ func DefaultConfig() Config {
 			CatchupTimeout:           DurationWrapper{0},
 		},
 		DA: DAConfig{
-			Address:                  "http://localhost:7980",
+			Address:                  "",
 			BlockTime:                DurationWrapper{6 * time.Second},
 			MaxSubmitAttempts:        30,
 			RequestTimeout:           DurationWrapper{60 * time.Second},

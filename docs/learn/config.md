@@ -472,7 +472,7 @@ da:
 ### DA Service Address
 
 **Description:**
-The network address (host:port) of the Data Availability layer service. Evolve connects to this endpoint to submit and retrieve block data.
+The network address (host:port) of the Data Availability layer service. A full follower with this value unset syncs exclusively through P2P and does not create a DA client. Aggregators must configure this value before startup.
 
 **YAML:**
 
@@ -484,7 +484,7 @@ da:
 **Command-line Flag:**
 `--evnode.da.address <string>`
 _Example:_ `--evnode.da.address 192.168.1.100:26659`
-_Default:_ `"http://localhost:7980"`
+_Default:_ `""` (empty; P2P-only follower)
 _Constant:_ `FlagDAAddress`
 
 ### DA Authentication Token
