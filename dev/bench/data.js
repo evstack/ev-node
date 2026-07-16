@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784199268778,
+  "lastUpdate": 1784199271584,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -194,6 +194,102 @@ window.BENCHMARK_DATA = {
             "value": 55,
             "unit": "allocs/op",
             "extra": "27115 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "marko@baricevic.me",
+            "name": "Marko",
+            "username": "tac0turtle"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "b4b895b47afa4795155c0782f529d49f197c0d55",
+          "message": "fix(cache,da): drop finalized snapshot entries on restore and drain DA subscription channel (#3385)\n\nTwo memory fixes for long-running nodes:\n\nCache restore: the DA-inclusion snapshot is only written on graceful\nshutdown, so after a crash (e.g. OOM kill) the restored snapshot can\ncontain heights already below the persisted DA-included watermark. The\ninclusion loop never evicts below its watermark, so those placeholder\nentries leaked for the process lifetime and were re-persisted on every\nsubsequent save, growing the snapshot monotonically across crash/restart\ncycles. RestoreFromStore now skips entries at or below the persisted\nDAIncludedHeight; skipped entries still seed maxDAHeight so DaHeight()\nis unchanged.\n\nDA subscription: the Subscribe wrapper goroutine exited on ctx\ncancellation without draining the underlying jsonrpc channel, leaving\nthe go-jsonrpc delivery goroutine blocked on send — it never observed\nthe cancellation and never closed its channel, leaking one goroutine\nper watchdog reconnect. The wrapper now drains the raw channel on exit.\n\nCo-authored-by: Claude Fable 5 <noreply@anthropic.com>",
+          "timestamp": "2026-07-16T12:52:54+02:00",
+          "tree_id": "8b332b599d1cbc3e55726e5c45ccdbb116e2d612",
+          "url": "https://github.com/evstack/ev-node/commit/b4b895b47afa4795155c0782f529d49f197c0d55"
+        },
+        "date": 1784199270599,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 37483,
+            "unit": "ns/op\t    4864 B/op\t      51 allocs/op",
+            "extra": "32730 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 37483,
+            "unit": "ns/op",
+            "extra": "32730 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 4864,
+            "unit": "B/op",
+            "extra": "32730 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 51,
+            "unit": "allocs/op",
+            "extra": "32730 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 37747,
+            "unit": "ns/op\t    5067 B/op\t      55 allocs/op",
+            "extra": "32275 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 37747,
+            "unit": "ns/op",
+            "extra": "32275 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 5067,
+            "unit": "B/op",
+            "extra": "32275 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 55,
+            "unit": "allocs/op",
+            "extra": "32275 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 44233,
+            "unit": "ns/op\t   10383 B/op\t      55 allocs/op",
+            "extra": "27153 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 44233,
+            "unit": "ns/op",
+            "extra": "27153 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 10383,
+            "unit": "B/op",
+            "extra": "27153 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 55,
+            "unit": "allocs/op",
+            "extra": "27153 times\n4 procs"
           }
         ]
       }
