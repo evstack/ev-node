@@ -61,7 +61,7 @@ var RunCmd = &cobra.Command{
 
 		var daClient block.FullDAClient
 		if nodeConfig.DAEnabled() {
-			blobClient, err := blobrpc.NewWSClient(cmd.Context(), logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
+			blobClient, err := blobrpc.NewWSClient(cmd.Context(), logger, nodeConfig.GetDAAddress(), nodeConfig.DA.AuthToken, "")
 			if err != nil {
 				return fmt.Errorf("failed to create blob client: %w", err)
 			}

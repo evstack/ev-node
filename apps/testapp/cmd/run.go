@@ -125,7 +125,7 @@ func createSequencer(
 		return solo.NewSoloSequencer(logger, []byte(genesis.ChainID), executor), nil
 	}
 
-	blobClient, err := blobrpc.NewWSClient(ctx, logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
+	blobClient, err := blobrpc.NewWSClient(ctx, logger, nodeConfig.GetDAAddress(), nodeConfig.DA.AuthToken, "")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create blob client: %w", err)
 	}

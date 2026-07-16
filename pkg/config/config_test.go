@@ -64,6 +64,14 @@ func TestDAEnabled(t *testing.T) {
 			expectedAddress: "http://da.example:7980",
 		},
 		{
+			name: "follower with whitespace around DA address",
+			configure: func(cfg *Config) {
+				cfg.DA.Address = "  http://da.example:7980\n"
+			},
+			expectedEnabled: true,
+			expectedAddress: "http://da.example:7980",
+		},
+		{
 			name: "aggregator without DA address does not initialize DA",
 			configure: func(cfg *Config) {
 				cfg.Node.Aggregator = true
@@ -90,18 +98,17 @@ func TestDAEnabled(t *testing.T) {
 			}
 
 			assert.Equal(t, tt.expectedEnabled, cfg.DAEnabled())
-			assert.Equal(t, tt.expectedAddress, cfg.DA.Address)
+			assert.Equal(t, tt.expectedAddress, cfg.GetDAAddress())
 		})
 	}
 }
 
-func TestConfigValidate_AggregatorRequiresDAAddress(t *testing.T) {
+func TestConfigValidate_AggregatorCanBeInitializedWithoutDAAddress(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.RootDir = t.TempDir()
 	cfg.Node.Aggregator = true
 
-	err := cfg.Validate()
-	require.EqualError(t, err, "DA address is required when aggregator mode is enabled")
+	require.NoError(t, cfg.Validate())
 }
 
 func TestAddFlags(t *testing.T) {

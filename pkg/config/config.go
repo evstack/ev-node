@@ -273,7 +273,12 @@ type DAConfig struct {
 // DAEnabled reports whether this node should initialize a DA client. Full
 // followers without a DA address sync exclusively through P2P.
 func (c Config) DAEnabled() bool {
-	return !c.Node.Light && strings.TrimSpace(c.DA.Address) != ""
+	return !c.Node.Light && c.GetDAAddress() != ""
+}
+
+// GetDAAddress returns the configured DA address without surrounding whitespace.
+func (c Config) GetDAAddress() string {
+	return strings.TrimSpace(c.DA.Address)
 }
 
 // GetNamespace returns the namespace for header submissions.
@@ -509,10 +514,6 @@ func (c *Config) Validate() error {
 
 	if c.Node.Promotable && c.Node.Light {
 		return fmt.Errorf("promotable mode cannot be combined with light node mode")
-	}
-
-	if c.Node.Aggregator && strings.TrimSpace(c.DA.Address) == "" {
-		return fmt.Errorf("DA address is required when aggregator mode is enabled")
 	}
 
 	// Promotable mode and Raft both control leader/follower role switching.

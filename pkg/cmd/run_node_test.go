@@ -174,6 +174,20 @@ func TestAggregatorFlagInvariants(t *testing.T) {
 	}
 }
 
+func TestParseConfig_AggregatorRequiresDAAddress(t *testing.T) {
+	executor, sequencer, keyProvider, nodeKey, ds, stopDAHeightTicker := createTestComponents(context.Background(), t)
+	defer stopDAHeightTicker()
+
+	nodeConfig := rollconf.DefaultConfig()
+	nodeConfig.RootDir = t.TempDir()
+
+	cmd := newRunNodeCmd(t.Context(), executor, sequencer, keyProvider, nodeKey, ds, nodeConfig)
+	require.NoError(t, cmd.ParseFlags([]string{"start", "--rollkit.node.aggregator"}))
+
+	_, err := ParseConfig(cmd)
+	require.EqualError(t, err, "DA address is required when aggregator mode is enabled")
+}
+
 func TestPromotableFlagInvariants(t *testing.T) {
 	flagVariants := [][]string{{
 		"--rollkit.node.promotable=false",

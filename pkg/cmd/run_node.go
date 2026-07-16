@@ -38,6 +38,9 @@ func ParseConfig(cmd *cobra.Command) (rollconf.Config, error) {
 	if err := nodeConfig.Validate(); err != nil {
 		return rollconf.Config{}, fmt.Errorf("failed to validate node config: %w", err)
 	}
+	if nodeConfig.Node.Aggregator && nodeConfig.GetDAAddress() == "" {
+		return rollconf.Config{}, fmt.Errorf("DA address is required when aggregator mode is enabled")
+	}
 
 	return nodeConfig, nil
 }
@@ -152,7 +155,7 @@ func StartNode(
 
 	var daClient block.FullDAClient
 	if nodeConfig.DAEnabled() {
-		blobClient, err := blobrpc.NewWSClient(ctx, logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
+		blobClient, err := blobrpc.NewWSClient(ctx, logger, nodeConfig.GetDAAddress(), nodeConfig.DA.AuthToken, "")
 		if err != nil {
 			return fmt.Errorf("failed to create blob client: %w", err)
 		}
