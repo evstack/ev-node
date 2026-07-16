@@ -78,6 +78,10 @@ func NewSequencer(
 	genesis genesis.Genesis,
 	executor execution.Executor,
 ) (*Sequencer, error) {
+	if daClient == nil {
+		return nil, errors.New("single sequencer requires a DA client")
+	}
+
 	s := &Sequencer{
 		db:               db,
 		logger:           logger,

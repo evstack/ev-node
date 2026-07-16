@@ -48,8 +48,8 @@ func ParseStartConfig(cmd *cobra.Command) (rollconf.Config, error) {
 	if err != nil {
 		return rollconf.Config{}, err
 	}
-	if nodeConfig.Node.Aggregator && nodeConfig.GetDAAddress() == "" {
-		return rollconf.Config{}, fmt.Errorf("DA address is required when aggregator mode is enabled")
+	if (nodeConfig.Node.Aggregator || nodeConfig.Node.Promotable) && nodeConfig.GetDAAddress() == "" {
+		return rollconf.Config{}, fmt.Errorf("DA address is required when aggregator or promotable mode is enabled")
 	}
 
 	return nodeConfig, nil

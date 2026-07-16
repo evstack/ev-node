@@ -160,6 +160,12 @@ func createSequencer(
 	daClient block.FullDAClient,
 	executor execution.Executor,
 ) (coresequencer.Sequencer, error) {
+	// Only aggregators and promotable nodes need a sequencer; promotable
+	// followers must have one ready before they are promoted to proposer.
+	if !nodeConfig.Node.Aggregator && !nodeConfig.Node.Promotable {
+		return nil, nil
+	}
+
 	if nodeConfig.Node.BasedSequencer {
 		// Based sequencer mode - fetch transactions only from DA
 		if !nodeConfig.Node.Aggregator {

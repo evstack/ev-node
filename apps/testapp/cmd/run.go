@@ -113,7 +113,9 @@ func createSequencer(
 	genesis genesis.Genesis,
 	executor execution.Executor,
 ) (coresequencer.Sequencer, error) {
-	if !nodeConfig.Node.Aggregator {
+	// Only aggregators and promotable nodes need a sequencer; promotable
+	// followers must have one ready before they are promoted to proposer.
+	if !nodeConfig.Node.Aggregator && !nodeConfig.Node.Promotable {
 		return nil, nil
 	}
 

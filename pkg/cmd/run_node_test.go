@@ -175,20 +175,22 @@ func TestAggregatorFlagInvariants(t *testing.T) {
 }
 
 func TestParseStartConfig_AggregatorRequiresDAAddress(t *testing.T) {
-	executor, sequencer, keyProvider, nodeKey, ds, stopDAHeightTicker := createTestComponents(context.Background(), t)
-	defer stopDAHeightTicker()
+	for _, flag := range []string{"--rollkit.node.aggregator", "--rollkit.node.promotable"} {
+		executor, sequencer, keyProvider, nodeKey, ds, stopDAHeightTicker := createTestComponents(context.Background(), t)
+		defer stopDAHeightTicker()
 
-	nodeConfig := rollconf.DefaultConfig()
-	nodeConfig.RootDir = t.TempDir()
+		nodeConfig := rollconf.DefaultConfig()
+		nodeConfig.RootDir = t.TempDir()
 
-	cmd := newRunNodeCmd(t.Context(), executor, sequencer, keyProvider, nodeKey, ds, nodeConfig)
-	require.NoError(t, cmd.ParseFlags([]string{"start", "--rollkit.node.aggregator"}))
+		cmd := newRunNodeCmd(t.Context(), executor, sequencer, keyProvider, nodeKey, ds, nodeConfig)
+		require.NoError(t, cmd.ParseFlags([]string{"start", flag}))
 
-	_, err := ParseConfig(cmd)
-	require.NoError(t, err)
+		_, err := ParseConfig(cmd)
+		require.NoError(t, err)
 
-	_, err = ParseStartConfig(cmd)
-	require.EqualError(t, err, "DA address is required when aggregator mode is enabled")
+		_, err = ParseStartConfig(cmd)
+		require.EqualError(t, err, "DA address is required when aggregator or promotable mode is enabled")
+	}
 }
 
 func TestPromotableFlagInvariants(t *testing.T) {
