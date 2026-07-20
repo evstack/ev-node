@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784547214050,
+  "lastUpdate": 1784547216255,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -626,6 +626,102 @@ window.BENCHMARK_DATA = {
             "value": 55,
             "unit": "allocs/op",
             "extra": "25141 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "marko@baricevic.me",
+            "name": "Marko",
+            "username": "tac0turtle"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "b516561238542d78abe5484fd00b9d205b50ed62",
+          "message": "chore: prep execution/evm v1.1.0 (#3392)\n\n* chore: prep execution/evm v1.1.0\n\nDrop the local replace directives and pin the published upstreams:\nev-node v1.2.1 and core v1.1.0. This is the release-ready go.mod for\ntagging execution/evm/v1.1.0 (new minor: reth 2.3 / Amsterdam fork\nprep landed here since v1.0.1).\n\nCo-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>\n\n* deps\n\n---------\n\nCo-authored-by: Claude Opus 4.8 <noreply@anthropic.com>",
+          "timestamp": "2026-07-20T13:29:30+02:00",
+          "tree_id": "33f84b011c7ca7e086a8084025376c027e5f1198",
+          "url": "https://github.com/evstack/ev-node/commit/b516561238542d78abe5484fd00b9d205b50ed62"
+        },
+        "date": 1784547215611,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 41291,
+            "unit": "ns/op\t    4950 B/op\t      51 allocs/op",
+            "extra": "29461 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 41291,
+            "unit": "ns/op",
+            "extra": "29461 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 4950,
+            "unit": "B/op",
+            "extra": "29461 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 51,
+            "unit": "allocs/op",
+            "extra": "29461 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 41933,
+            "unit": "ns/op\t    5160 B/op\t      55 allocs/op",
+            "extra": "28857 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 41933,
+            "unit": "ns/op",
+            "extra": "28857 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 5160,
+            "unit": "B/op",
+            "extra": "28857 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 55,
+            "unit": "allocs/op",
+            "extra": "28857 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 48627,
+            "unit": "ns/op\t   10456 B/op\t      55 allocs/op",
+            "extra": "25072 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 48627,
+            "unit": "ns/op",
+            "extra": "25072 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 10456,
+            "unit": "B/op",
+            "extra": "25072 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 55,
+            "unit": "allocs/op",
+            "extra": "25072 times\n4 procs"
           }
         ]
       }
