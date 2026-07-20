@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784535340592,
+  "lastUpdate": 1784535342615,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -338,6 +338,102 @@ window.BENCHMARK_DATA = {
             "value": 55,
             "unit": "allocs/op",
             "extra": "33966 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "marko@baricevic.me",
+            "name": "Marko",
+            "username": "tac0turtle"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "0e9c60fb7444ce9f6e110ce007f19b3342eb714a",
+          "message": "chore: prep v1.2.0 (#3390)\n\nStamp the Unreleased section as v1.2.0. Adds the two features that had\nlanded on main without changelog entries (proposer key rotation #3282,\nAmsterdam fork prep #3352) and two missing fixes (#3376, #3389).\n\nThe minor bump reflects the breaking core Executor change (ExecuteTxs now\nreturns ExecuteResult) and proposer key rotation state/header validation.\n\nCo-authored-by: Claude Opus 4.8 <noreply@anthropic.com>",
+          "timestamp": "2026-07-20T10:14:22+02:00",
+          "tree_id": "0d76faa51c49fa7b40dc04d9f4b95f8938862144",
+          "url": "https://github.com/evstack/ev-node/commit/0e9c60fb7444ce9f6e110ce007f19b3342eb714a"
+        },
+        "date": 1784535342127,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 36606,
+            "unit": "ns/op\t    4861 B/op\t      51 allocs/op",
+            "extra": "32862 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 36606,
+            "unit": "ns/op",
+            "extra": "32862 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 4861,
+            "unit": "B/op",
+            "extra": "32862 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 51,
+            "unit": "allocs/op",
+            "extra": "32862 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 37302,
+            "unit": "ns/op\t    5059 B/op\t      55 allocs/op",
+            "extra": "32637 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 37302,
+            "unit": "ns/op",
+            "extra": "32637 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 5059,
+            "unit": "B/op",
+            "extra": "32637 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 55,
+            "unit": "allocs/op",
+            "extra": "32637 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 43511,
+            "unit": "ns/op\t   10353 B/op\t      55 allocs/op",
+            "extra": "28069 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 43511,
+            "unit": "ns/op",
+            "extra": "28069 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 10353,
+            "unit": "B/op",
+            "extra": "28069 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 55,
+            "unit": "allocs/op",
+            "extra": "28069 times\n4 procs"
           }
         ]
       }
