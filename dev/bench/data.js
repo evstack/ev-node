@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784549388353,
+  "lastUpdate": 1784549575888,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -286,6 +286,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 185005,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "marko@baricevic.me",
+            "name": "Marko",
+            "username": "tac0turtle"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "f9f4fc6eeb3c72ce2d9bfc3e9dec01605b6f3a53",
+          "message": "chore: changelog v1.2.1 (#3394)\n\n* chore: changelog v1.2.1\n\nRename the v1.2.0 section to v1.2.1 with a note that v1.2.0 was\nsuperseded (it was tagged before core/v1.1.0 existed and required an\nunavailable core version). The GitHub Release workflow reads\nCHANGELOG.md by version, so the release tag needs a matching section.\n\nCo-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>\n\n* Apply suggestion from @tac0turtle\n\n---------\n\nCo-authored-by: Claude Opus 4.8 <noreply@anthropic.com>",
+          "timestamp": "2026-07-20T14:10:54+02:00",
+          "tree_id": "b15a5135c33475a118bd44f5284e6a807a6c0157",
+          "url": "https://github.com/evstack/ev-node/commit/f9f4fc6eeb3c72ce2d9bfc3e9dec01605b6f3a53"
+        },
+        "date": 1784549570688,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 940243638,
+            "unit": "ns/op\t35020976 B/op\t  205757 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 940243638,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 35020976,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 205757,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
