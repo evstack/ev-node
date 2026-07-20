@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784549575888,
+  "lastUpdate": 1784549578588,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -914,6 +914,102 @@ window.BENCHMARK_DATA = {
             "value": 55,
             "unit": "allocs/op",
             "extra": "27580 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "marko@baricevic.me",
+            "name": "Marko",
+            "username": "tac0turtle"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "f9f4fc6eeb3c72ce2d9bfc3e9dec01605b6f3a53",
+          "message": "chore: changelog v1.2.1 (#3394)\n\n* chore: changelog v1.2.1\n\nRename the v1.2.0 section to v1.2.1 with a note that v1.2.0 was\nsuperseded (it was tagged before core/v1.1.0 existed and required an\nunavailable core version). The GitHub Release workflow reads\nCHANGELOG.md by version, so the release tag needs a matching section.\n\nCo-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>\n\n* Apply suggestion from @tac0turtle\n\n---------\n\nCo-authored-by: Claude Opus 4.8 <noreply@anthropic.com>",
+          "timestamp": "2026-07-20T14:10:54+02:00",
+          "tree_id": "b15a5135c33475a118bd44f5284e6a807a6c0157",
+          "url": "https://github.com/evstack/ev-node/commit/f9f4fc6eeb3c72ce2d9bfc3e9dec01605b6f3a53"
+        },
+        "date": 1784549577694,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 30840,
+            "unit": "ns/op\t    4731 B/op\t      51 allocs/op",
+            "extra": "39603 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 30840,
+            "unit": "ns/op",
+            "extra": "39603 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 4731,
+            "unit": "B/op",
+            "extra": "39603 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 51,
+            "unit": "allocs/op",
+            "extra": "39603 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 31339,
+            "unit": "ns/op\t    4940 B/op\t      55 allocs/op",
+            "extra": "38601 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 31339,
+            "unit": "ns/op",
+            "extra": "38601 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 4940,
+            "unit": "B/op",
+            "extra": "38601 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 55,
+            "unit": "allocs/op",
+            "extra": "38601 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 36999,
+            "unit": "ns/op\t   10205 B/op\t      55 allocs/op",
+            "extra": "33626 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 36999,
+            "unit": "ns/op",
+            "extra": "33626 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 10205,
+            "unit": "B/op",
+            "extra": "33626 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 55,
+            "unit": "allocs/op",
+            "extra": "33626 times\n4 procs"
           }
         ]
       }
