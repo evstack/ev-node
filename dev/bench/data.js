@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784214160329,
+  "lastUpdate": 1784535340592,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -94,6 +94,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 184457,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "marko@baricevic.me",
+            "name": "Marko",
+            "username": "tac0turtle"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "0e9c60fb7444ce9f6e110ce007f19b3342eb714a",
+          "message": "chore: prep v1.2.0 (#3390)\n\nStamp the Unreleased section as v1.2.0. Adds the two features that had\nlanded on main without changelog entries (proposer key rotation #3282,\nAmsterdam fork prep #3352) and two missing fixes (#3376, #3389).\n\nThe minor bump reflects the breaking core Executor change (ExecuteTxs now\nreturns ExecuteResult) and proposer key rotation state/header validation.\n\nCo-authored-by: Claude Opus 4.8 <noreply@anthropic.com>",
+          "timestamp": "2026-07-20T10:14:22+02:00",
+          "tree_id": "0d76faa51c49fa7b40dc04d9f4b95f8938862144",
+          "url": "https://github.com/evstack/ev-node/commit/0e9c60fb7444ce9f6e110ce007f19b3342eb714a"
+        },
+        "date": 1784535335727,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 902941505,
+            "unit": "ns/op\t32488048 B/op\t  184838 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 902941505,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 32488048,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 184838,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
