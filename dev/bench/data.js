@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784549386026,
+  "lastUpdate": 1784549388353,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -770,6 +770,102 @@ window.BENCHMARK_DATA = {
             "value": 55,
             "unit": "allocs/op",
             "extra": "25072 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "marko@baricevic.me",
+            "name": "Marko",
+            "username": "tac0turtle"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "8dc161925ee0fabde8f0719f0af39725cd443c46",
+          "message": "chore: prep apps v1.2.1 (#3393)\n\nDrop the local replace directives from apps/evm and apps/testapp and pin\nthe published upstreams:\n- apps/evm:     ev-node v1.2.1, core v1.1.0, execution/evm v1.1.0\n- apps/testapp: ev-node v1.2.1, core v1.1.0\n\nRelease-ready go.mod for tagging apps/evm/v1.2.1 and apps/testapp/v1.2.1.\nLocal cross-module dev is handled by go.work.\n\nCo-authored-by: Claude Opus 4.8 <noreply@anthropic.com>",
+          "timestamp": "2026-07-20T14:08:16+02:00",
+          "tree_id": "ae4bd2f2b969b4e081037da58a885423a3e41422",
+          "url": "https://github.com/evstack/ev-node/commit/8dc161925ee0fabde8f0719f0af39725cd443c46"
+        },
+        "date": 1784549387920,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 37934,
+            "unit": "ns/op\t    4886 B/op\t      51 allocs/op",
+            "extra": "31850 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 37934,
+            "unit": "ns/op",
+            "extra": "31850 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 4886,
+            "unit": "B/op",
+            "extra": "31850 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 51,
+            "unit": "allocs/op",
+            "extra": "31850 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 38017,
+            "unit": "ns/op\t    5073 B/op\t      55 allocs/op",
+            "extra": "32050 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 38017,
+            "unit": "ns/op",
+            "extra": "32050 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 5073,
+            "unit": "B/op",
+            "extra": "32050 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 55,
+            "unit": "allocs/op",
+            "extra": "32050 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 44500,
+            "unit": "ns/op\t   10369 B/op\t      55 allocs/op",
+            "extra": "27580 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 44500,
+            "unit": "ns/op",
+            "extra": "27580 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 10369,
+            "unit": "B/op",
+            "extra": "27580 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 55,
+            "unit": "allocs/op",
+            "extra": "27580 times\n4 procs"
           }
         ]
       }
