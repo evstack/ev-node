@@ -79,7 +79,7 @@ require (
 	github.com/emicklei/dot v1.6.2 // indirect
 	github.com/ethereum/c-kzg-4844/v2 v2.1.6 // indirect
 	github.com/evstack/ev-node v1.1.2 // indirect
-	github.com/evstack/ev-node/core v1.0.0 // indirect
+	github.com/evstack/ev-node/core v1.1.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/ferranbt/fastssz v0.1.4 // indirect
 	github.com/fjl/jsonw v0.1.0 // indirect
