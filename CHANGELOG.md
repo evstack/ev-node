@@ -9,14 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## v1.2.0
+
+### Added
+
+- **BREAKING:** Proposer key rotation. State now tracks `NextProposerAddress`, and signed headers validate signer identity (the signer address must derive from the included public key), allowing the aggregator signing key to be rotated across blocks [#3282](https://github.com/evstack/ev-node/pull/3282)
+- Prepare for the Amsterdam fork: update ev-reth to reth 2.3 and add engine-API fork upgrade handling [#3352](https://github.com/evstack/ev-node/pull/3352)
+
 ### Removed
 
-- **BREAKING:** Remove the obsolete `evgrpc` app and `execution/grpc` transport module.
+- **BREAKING:** Remove the obsolete `evgrpc` app and `execution/grpc` transport module [#3380](https://github.com/evstack/ev-node/pull/3380).
 
 ### Fixed
 
-- Allow full followers without a DA endpoint to sync through P2P only, and reject aggregator startup without an explicit DA endpoint.
+- Allow full followers without a DA endpoint to sync through P2P only, and reject aggregator startup without an explicit DA endpoint [#3386](https://github.com/evstack/ev-node/pull/3386).
 - Reject unsupported `net-info --output` formats instead of falling back to text output [#3360](https://github.com/evstack/ev-node/pull/3360).
+- Report readiness correctly for non-aggregator nodes [#3376](https://github.com/evstack/ev-node/pull/3376).
+- Don't create a single sequencer for non-aggregator nodes [#3389](https://github.com/evstack/ev-node/pull/3389).
 
 ## v1.1.4
 
