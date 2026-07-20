@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784537729507,
+  "lastUpdate": 1784547214050,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -190,6 +190,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 165045,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "marko@baricevic.me",
+            "name": "Marko",
+            "username": "tac0turtle"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "b516561238542d78abe5484fd00b9d205b50ed62",
+          "message": "chore: prep execution/evm v1.1.0 (#3392)\n\n* chore: prep execution/evm v1.1.0\n\nDrop the local replace directives and pin the published upstreams:\nev-node v1.2.1 and core v1.1.0. This is the release-ready go.mod for\ntagging execution/evm/v1.1.0 (new minor: reth 2.3 / Amsterdam fork\nprep landed here since v1.0.1).\n\nCo-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>\n\n* deps\n\n---------\n\nCo-authored-by: Claude Opus 4.8 <noreply@anthropic.com>",
+          "timestamp": "2026-07-20T13:29:30+02:00",
+          "tree_id": "33f84b011c7ca7e086a8084025376c027e5f1198",
+          "url": "https://github.com/evstack/ev-node/commit/b516561238542d78abe5484fd00b9d205b50ed62"
+        },
+        "date": 1784547209366,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 919159437,
+            "unit": "ns/op\t30457540 B/op\t  160395 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 919159437,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 30457540,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 160395,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
