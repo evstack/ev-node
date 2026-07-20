@@ -9,7 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## v1.2.0
+## v1.2.1
+
+> Supersedes v1.2.0, which was tagged before `core/v1.1.0` was published and
+> therefore required an unavailable `core` version — unusable by consumers.
+> The contents below shipped in v1.2.1.
 
 ### Added
 
