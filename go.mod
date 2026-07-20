@@ -17,7 +17,7 @@ require (
 	github.com/celestiaorg/go-square/v3 v3.0.2
 	github.com/celestiaorg/nmt v0.24.3
 	github.com/celestiaorg/utils v0.1.0
-	github.com/evstack/ev-node/core v1.0.0
+	github.com/evstack/ev-node/core v1.1.0
 	github.com/filecoin-project/go-jsonrpc v0.10.1
 	github.com/go-kit/kit v0.13.0
 	github.com/go-viper/mapstructure/v2 v2.5.0
