@@ -2,13 +2,8 @@ module github.com/evstack/ev-node/apps/testapp
 
 go 1.25.8
 
-replace (
-	github.com/evstack/ev-node => ../../.
-	github.com/evstack/ev-node/core => ../../core
-)
-
 require (
-	github.com/evstack/ev-node v1.1.3
+	github.com/evstack/ev-node v1.2.1
 	github.com/evstack/ev-node/core v1.1.0
 	github.com/ipfs/go-datastore v0.9.1
 	github.com/rs/zerolog v1.35.1
