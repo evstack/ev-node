@@ -9,7 +9,7 @@ replace (
 
 require (
 	github.com/evstack/ev-node v1.1.3
-	github.com/evstack/ev-node/core v1.0.0
+	github.com/evstack/ev-node/core v1.1.0
 	github.com/ipfs/go-datastore v0.9.1
 	github.com/rs/zerolog v1.35.1
 	github.com/spf13/cobra v1.10.2

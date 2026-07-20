@@ -11,7 +11,7 @@ replace (
 require (
 	github.com/ethereum/go-ethereum v1.17.4
 	github.com/evstack/ev-node v1.1.3
-	github.com/evstack/ev-node/core v1.0.0
+	github.com/evstack/ev-node/core v1.1.0
 	github.com/evstack/ev-node/execution/evm v1.0.1
 	github.com/ipfs/go-datastore v0.9.1
 	github.com/rs/zerolog v1.35.1
