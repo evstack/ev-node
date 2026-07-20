@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784537726906,
+  "lastUpdate": 1784537729507,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -482,6 +482,102 @@ window.BENCHMARK_DATA = {
             "value": 55,
             "unit": "allocs/op",
             "extra": "28069 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "marko@baricevic.me",
+            "name": "Marko",
+            "username": "tac0turtle"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "3c4a45238874b147eaf32a3aa0e59ad615b529ce",
+          "message": "chore: require core v1.1.0 (#3391)\n\n* chore: require core v1.1.0\n\nBump the root module's core requirement from v1.0.0 to the freshly\nreleased core/v1.1.0, which carries the breaking Executor change\n(ExecuteTxs now returns ExecuteResult). The code has depended on this\nAPI since #3282 but go.mod still required v1.0.0, building only via the\nlocal `replace => ./core`. External consumers ignore that replace, so\nthis must be v1.1.0 for a working release.\n\nPrerequisite for tagging v1.2.1 (v1.2.0 shipped with the stale v1.0.0\nrequirement and is superseded).\n\nCo-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>\n\n* chore: drop core replace from root go.mod\n\nRemove `replace github.com/evstack/ev-node/core => ./core` so the\npublished module resolves core v1.1.0 from the proxy with a proper\ngo.sum checksum, instead of relying on a local path that consumers\nignore. Local cross-module dev is handled by go.work (go.work.example\nalready `use`s ./core).\n\nCo-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>\n\n* updates deps\n\n---------\n\nCo-authored-by: Claude Opus 4.8 <noreply@anthropic.com>",
+          "timestamp": "2026-07-20T10:51:45+02:00",
+          "tree_id": "7b8e033678081435e83a0b36050fa3ff242be67c",
+          "url": "https://github.com/evstack/ev-node/commit/3c4a45238874b147eaf32a3aa0e59ad615b529ce"
+        },
+        "date": 1784537728643,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 40011,
+            "unit": "ns/op\t    4931 B/op\t      51 allocs/op",
+            "extra": "30105 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 40011,
+            "unit": "ns/op",
+            "extra": "30105 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 4931,
+            "unit": "B/op",
+            "extra": "30105 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 51,
+            "unit": "allocs/op",
+            "extra": "30105 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 40780,
+            "unit": "ns/op\t    5133 B/op\t      55 allocs/op",
+            "extra": "29768 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 40780,
+            "unit": "ns/op",
+            "extra": "29768 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 5133,
+            "unit": "B/op",
+            "extra": "29768 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 55,
+            "unit": "allocs/op",
+            "extra": "29768 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 48517,
+            "unit": "ns/op\t   10458 B/op\t      55 allocs/op",
+            "extra": "25141 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 48517,
+            "unit": "ns/op",
+            "extra": "25141 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 10458,
+            "unit": "B/op",
+            "extra": "25141 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 55,
+            "unit": "allocs/op",
+            "extra": "25141 times\n4 procs"
           }
         ]
       }
