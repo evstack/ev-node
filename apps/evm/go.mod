@@ -2,17 +2,11 @@ module github.com/evstack/ev-node/apps/evm
 
 go 1.25.8
 
-replace (
-	github.com/evstack/ev-node => ../../
-	github.com/evstack/ev-node/core => ../../core
-	github.com/evstack/ev-node/execution/evm => ../../execution/evm
-)
-
 require (
 	github.com/ethereum/go-ethereum v1.17.4
 	github.com/evstack/ev-node v1.2.1
 	github.com/evstack/ev-node/core v1.1.0
-	github.com/evstack/ev-node/execution/evm v1.0.1
+	github.com/evstack/ev-node/execution/evm v1.1.0
 	github.com/ipfs/go-datastore v0.9.1
 	github.com/rs/zerolog v1.35.1
 	github.com/spf13/cobra v1.10.2
