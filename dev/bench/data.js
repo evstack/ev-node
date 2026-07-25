@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784962591878,
+  "lastUpdate": 1784962593898,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -1058,6 +1058,102 @@ window.BENCHMARK_DATA = {
             "value": 55,
             "unit": "allocs/op",
             "extra": "33626 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "ec029e07396730a48e7debb82e4aed1ad3ed3a49",
+          "message": "build(deps): Bump google.golang.org/grpc from 1.81.1 to 1.82.1 in /execution/evm (#3402)\n\n* build(deps): Bump google.golang.org/grpc in /execution/evm\n\nBumps [google.golang.org/grpc](https://github.com/grpc/grpc-go) from 1.81.1 to 1.82.1.\n- [Release notes](https://github.com/grpc/grpc-go/releases)\n- [Commits](https://github.com/grpc/grpc-go/compare/v1.81.1...v1.82.1)\n\n---\nupdated-dependencies:\n- dependency-name: google.golang.org/grpc\n  dependency-version: 1.82.1\n  dependency-type: indirect\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\n\n* chore: run just deps after Dependabot update\n\n* update all deps\n\n---------\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\nCo-authored-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>\nCo-authored-by: tac0turtle <marko@baricevic.me>",
+          "timestamp": "2026-07-25T08:53:25+02:00",
+          "tree_id": "c3061e11c58a060aa786cf965b00e82e5332b8cb",
+          "url": "https://github.com/evstack/ev-node/commit/ec029e07396730a48e7debb82e4aed1ad3ed3a49"
+        },
+        "date": 1784962593363,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 22093,
+            "unit": "ns/op\t    4958 B/op\t      51 allocs/op",
+            "extra": "58374 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 22093,
+            "unit": "ns/op",
+            "extra": "58374 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 4958,
+            "unit": "B/op",
+            "extra": "58374 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 51,
+            "unit": "allocs/op",
+            "extra": "58374 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 21838,
+            "unit": "ns/op\t    5170 B/op\t      55 allocs/op",
+            "extra": "57091 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 21838,
+            "unit": "ns/op",
+            "extra": "57091 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 5170,
+            "unit": "B/op",
+            "extra": "57091 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 55,
+            "unit": "allocs/op",
+            "extra": "57091 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 25896,
+            "unit": "ns/op\t   10467 B/op\t      55 allocs/op",
+            "extra": "49054 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 25896,
+            "unit": "ns/op",
+            "extra": "49054 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 10467,
+            "unit": "B/op",
+            "extra": "49054 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 55,
+            "unit": "allocs/op",
+            "extra": "49054 times\n4 procs"
           }
         ]
       }
