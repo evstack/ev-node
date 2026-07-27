@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## v1.2.2
+
+### Changed
+
+- Update Go dependencies, including gRPC and QUIC transport packages.
+
+### Fixed
+
+- Skip DA cache restoration for P2P-only full followers, allowing them to restart without a configured DA endpoint [#3408](https://github.com/evstack/ev-node/pull/3408).
+
 ## v1.2.1
 
 
