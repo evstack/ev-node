@@ -228,12 +228,12 @@ github.com/ethereum/go-bigmodexpfix v0.0.0-20250911101455-f9e208c548ab h1:rvv6MJ
 github.com/ethereum/go-bigmodexpfix v0.0.0-20250911101455-f9e208c548ab/go.mod h1:IuLm4IsPipXKF7CW5Lzf68PIbZ5yl7FFd74l/E0o9A8=
 github.com/ethereum/go-ethereum v1.17.4 h1:uA4q+qiLp7QImBsjdRbINu8iX6OEVmj4DPc5/E5Fsxc=
 github.com/ethereum/go-ethereum v1.17.4/go.mod h1:qMdgwqqRAen+aT8P7KKQKi0Qt6RzG4cfejVAbCpJgqA=
-github.com/evstack/ev-node v1.2.1 h1:67u22AZFbFDkv/N6hyzx7eGtoS1RD7pOj4AsQqA4+pc=
-github.com/evstack/ev-node v1.2.1/go.mod h1:OG0eQEvqB6w0p70L9wIVboLDPiSRfr359dd5eKKJslg=
+github.com/evstack/ev-node v1.2.2 h1:WCjqjVmtmgl7ICqr5Y4l1zHA2LT6qvaWTzDCkqc6m58=
+github.com/evstack/ev-node v1.2.2/go.mod h1:b2gsYIaYZES/rKTnMxcpvTVNwCZvbDnhf9iFO1haWas=
 github.com/evstack/ev-node/core v1.1.0 h1:Sa7uU5yuNF7YUyLBHPThD6Jt8/jacM1epRLATrdvKRE=
 github.com/evstack/ev-node/core v1.1.0/go.mod h1:n2w/LhYQTPsi48m6lMj16YiIqsaQw6gxwjyJvR+B3sY=
-github.com/evstack/ev-node/execution/evm v1.1.0 h1:YKJktOwCI1mlyAZEJvOw8N6I9VUo/3W9yi7mtOb0ElE=
-github.com/evstack/ev-node/execution/evm v1.1.0/go.mod h1:3uG4HGdRjI1fqI4c9tvMOljfWFQ6w1rqNDRu+JEmgTo=
+github.com/evstack/ev-node/execution/evm v1.1.1 h1:erBo0do2Ipw/kyHeoHdjkTpNT6/dGgbxyZZsZlCw0r0=
+github.com/evstack/ev-node/execution/evm v1.1.1/go.mod h1:HqDZ41tn1LiG35F3QrDF7f73Ge3zZiJOXFMzPeW0+so=
 github.com/fatih/color v1.7.0/go.mod h1:Zm6kSWBoL9eyXnKyktHP6abPY2pDugNf5KwzbycvMj4=
 github.com/fatih/color v1.13.0/go.mod h1:kLAiJbzzSOZDVNGyDpeOxJ47H46qBXwg5ILebYFFOfk=
 github.com/fatih/color v1.18.0 h1:S8gINlzdQ840/4pfAwic/ZE0djQEH3wM94VfqLTZcOM=
