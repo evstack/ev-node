@@ -150,7 +150,11 @@ func NewSyncComponents(
 	blockOpts BlockOptions,
 	raftNode common.RaftNode,
 ) (*Components, error) {
-	cacheManager, err := cache.NewManager(config, store, logger)
+	newCacheManager := cache.NewManager
+	if daClient == nil {
+		newCacheManager = cache.NewManagerWithoutDAInclusionRestore
+	}
+	cacheManager, err := newCacheManager(config, store, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cache manager: %w", err)
 	}
