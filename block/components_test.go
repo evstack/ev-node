@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/evstack/ev-node/block/internal/cache"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
@@ -163,6 +164,62 @@ func TestNewSyncComponents_WithoutDA(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, components.Syncer)
 	assert.Nil(t, components.Submitter)
+}
+
+func TestNewSyncComponents_WithoutDADoesNotRestoreDAInclusionCache(t *testing.T) {
+	daConfig := config.DefaultConfig()
+	daConfig.DA.Address = "ws://da.example.invalid"
+	require.True(t, daConfig.DAEnabled())
+
+	rootDir := t.TempDir()
+	database, err := store.NewDefaultKVStore(rootDir, "data", "ev-node")
+	require.NoError(t, err)
+	diskStore := store.New(store.NewEvNodeKVStore(database))
+
+	previousDAManager, err := cache.NewManager(daConfig, diskStore, zerolog.Nop())
+	require.NoError(t, err)
+	previousDAManager.SetHeaderDAIncluded("persisted-da-header", 9001, 42)
+	previousDAManager.SetDataDAIncluded("persisted-da-data", 9001, 42)
+	require.NoError(t, previousDAManager.SaveToStore())
+	require.NoError(t, diskStore.Close())
+
+	reopenedDatabase, err := store.NewDefaultKVStore(rootDir, "data", "ev-node")
+	require.NoError(t, err)
+	reopenedStore := store.New(store.NewEvNodeKVStore(reopenedDatabase))
+	t.Cleanup(func() {
+		require.NoError(t, reopenedStore.Close())
+	})
+
+	p2pConfig := config.DefaultConfig()
+	require.False(t, p2pConfig.DAEnabled())
+
+	components, err := NewSyncComponents(
+		p2pConfig,
+		genesis.Genesis{
+			ChainID:         "da-to-p2p-repro",
+			InitialHeight:   1,
+			StartTime:       time.Now(),
+			ProposerAddress: []byte("test-proposer"),
+		},
+		reopenedStore,
+		testmocks.NewMockExecutor(t),
+		nil,
+		extmocks.NewMockStore[*types.P2PSignedHeader](t),
+		extmocks.NewMockStore[*types.P2PData](t),
+		noopDAHintAppender{},
+		noopDAHintAppender{},
+		zerolog.Nop(),
+		NopMetrics(),
+		DefaultBlockOptions(),
+		nil,
+	)
+	require.NoError(t, err)
+	require.Nil(t, components.Submitter)
+
+	_, headerLoaded := components.Cache.GetHeaderDAIncludedByHeight(42)
+	_, dataLoaded := components.Cache.GetDataDAIncludedByHeight(42)
+	require.False(t, headerLoaded, "P2P-only startup must not restore persisted DA header state")
+	require.False(t, dataLoaded, "P2P-only startup must not restore persisted DA data state")
 }
 
 func TestNewAggregatorComponents_Creation(t *testing.T) {
