@@ -93,6 +93,15 @@ type implementation struct {
 
 // NewManager creates a new Manager, restoring or clearing persisted state as configured.
 func NewManager(cfg config.Config, st store.Store, logger zerolog.Logger) (Manager, error) {
+	return newManager(cfg, st, logger, true)
+}
+
+// NewManagerWithoutDAInclusionRestore creates a Manager without restoring persisted DA inclusion state.
+func NewManagerWithoutDAInclusionRestore(cfg config.Config, st store.Store, logger zerolog.Logger) (Manager, error) {
+	return newManager(cfg, st, logger, false)
+}
+
+func newManager(cfg config.Config, st store.Store, logger zerolog.Logger, restoreDAInclusion bool) (Manager, error) {
 	headerCache := NewCache(st, HeaderDAIncludedPrefix)
 	dataCache := NewCache(st, DataDAIncludedPrefix)
 
@@ -121,7 +130,7 @@ func NewManager(cfg config.Config, st store.Store, logger zerolog.Logger) (Manag
 		if err := impl.ClearFromStore(); err != nil {
 			logger.Warn().Err(err).Msg("failed to clear cache from disk, starting with empty cache")
 		}
-	} else {
+	} else if restoreDAInclusion {
 		// Restore existing cache from store
 		if err := impl.RestoreFromStore(); err != nil {
 			logger.Warn().Err(err).Msg("failed to load cache from disk, starting with empty cache")
