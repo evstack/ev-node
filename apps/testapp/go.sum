@@ -188,8 +188,8 @@ github.com/envoyproxy/go-control-plane/envoy v1.37.0/go.mod h1:DReE9MMrmecPy+YvQ
 github.com/envoyproxy/protoc-gen-validate v0.1.0/go.mod h1:iSmxcyjqTsJpI2R4NaDN7+kN2VEUnK/pcBlmesArF7c=
 github.com/envoyproxy/protoc-gen-validate v1.3.3 h1:MVQghNeW+LZcmXe7SY1V36Z+WFMDjpqGAGacLe2T0ds=
 github.com/envoyproxy/protoc-gen-validate v1.3.3/go.mod h1:TsndJ/ngyIdQRhMcVVGDDHINPLWB7C82oDArY51KfB0=
-github.com/evstack/ev-node v1.2.1 h1:67u22AZFbFDkv/N6hyzx7eGtoS1RD7pOj4AsQqA4+pc=
-github.com/evstack/ev-node v1.2.1/go.mod h1:OG0eQEvqB6w0p70L9wIVboLDPiSRfr359dd5eKKJslg=
+github.com/evstack/ev-node v1.2.2 h1:WCjqjVmtmgl7ICqr5Y4l1zHA2LT6qvaWTzDCkqc6m58=
+github.com/evstack/ev-node v1.2.2/go.mod h1:b2gsYIaYZES/rKTnMxcpvTVNwCZvbDnhf9iFO1haWas=
 github.com/evstack/ev-node/core v1.1.0 h1:Sa7uU5yuNF7YUyLBHPThD6Jt8/jacM1epRLATrdvKRE=
 github.com/evstack/ev-node/core v1.1.0/go.mod h1:n2w/LhYQTPsi48m6lMj16YiIqsaQw6gxwjyJvR+B3sY=
 github.com/fatih/color v1.7.0/go.mod h1:Zm6kSWBoL9eyXnKyktHP6abPY2pDugNf5KwzbycvMj4=
