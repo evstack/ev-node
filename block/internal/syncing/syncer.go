@@ -589,6 +589,7 @@ func (s *Syncer) processHeightEvent(ctx context.Context, event *common.DAHeightE
 
 	// Skip if already processed
 	if height <= currentHeight || s.cache.IsHeaderSeen(headerHash) {
+		s.removePendingDAData(event)
 		s.logger.Debug().
 			Uint64("height", height).
 			Str("source", string(event.Source)).
@@ -844,13 +845,19 @@ func (s *Syncer) trySyncNextBlockWithState(ctx context.Context, event *common.DA
 		s.p2pHandler.SetProcessedHeight(newState.LastBlockHeight)
 	}
 
-	if event.Source == common.SourceDA {
-		if cleaner, ok := s.daRetriever.(pendingDataCleaner); ok {
-			cleaner.removePendingData(nextHeight)
-		}
-	}
+	s.removePendingDAData(event)
 
 	return nil
+}
+
+func (s *Syncer) removePendingDAData(event *common.DAHeightEvent) {
+	if event.Source != common.SourceDA {
+		return
+	}
+
+	if cleaner, ok := s.daRetriever.(pendingDataCleaner); ok {
+		cleaner.removePendingData(event.Header.Height())
+	}
 }
 
 // ApplyBlock applies a block to get the new state

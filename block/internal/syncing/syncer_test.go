@@ -622,6 +622,51 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 	assert.Equal(t, uint64(1), st1.LastBlockHeight)
 }
 
+func TestProcessHeightEvent_AlreadyProcessedDADataDoesNotAccumulate(t *testing.T) {
+	const alreadyProcessedBlocks = 8
+
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+
+	batch, err := st.NewBatch(t.Context())
+	require.NoError(t, err)
+	require.NoError(t, batch.SetHeight(alreadyProcessedBlocks))
+	require.NoError(t, batch.Commit())
+
+	addr, pub, signer := buildSyncTestSigner(t)
+	gen := genesis.Genesis{
+		ChainID:         "tchain",
+		InitialHeight:   1,
+		StartTime:       time.Now().Add(-time.Second),
+		ProposerAddress: addr,
+	}
+	daRetriever := newTestDARetriever(t, nil, config.DefaultConfig(), gen)
+	s := &Syncer{
+		store:       st,
+		daRetriever: daRetriever,
+		logger:      zerolog.Nop(),
+	}
+
+	futureHeight := uint64(alreadyProcessedBlocks + 1)
+	futureDataBin, _ := makeSignedDataBytes(t, gen.ChainID, futureHeight, addr, pub, signer, 8)
+	require.Empty(t, daRetriever.processBlobs(t.Context(), [][]byte{futureDataBin}, futureHeight))
+	require.Contains(t, daRetriever.pendingData, futureHeight)
+
+	for height := uint64(1); height <= alreadyProcessedBlocks; height++ {
+		dataBin, data := makeSignedDataBytes(t, gen.ChainID, height, addr, pub, signer, 8)
+		headerBin, _ := makeSignedHeaderBytes(t, gen.ChainID, height, addr, pub, signer, nil, &data.Data, nil)
+
+		events := daRetriever.processBlobs(t.Context(), [][]byte{headerBin, dataBin}, height)
+		require.Len(t, events, 1)
+
+		s.processHeightEvent(t.Context(), &events[0])
+		require.NotContains(t, daRetriever.pendingData, height, "processed DA data must be removed immediately")
+	}
+
+	require.Len(t, daRetriever.pendingData, 1)
+	require.Contains(t, daRetriever.pendingData, futureHeight, "DA data above the current height must remain pending")
+}
+
 func TestProcessHeightEvent_UnexpectedProposerFromDAIsNotCriticalStateError(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
