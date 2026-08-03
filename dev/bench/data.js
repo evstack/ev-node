@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1785759459003,
+  "lastUpdate": 1785761883473,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -334,6 +334,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 175410,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "marko@baricevic.me",
+            "name": "Marko",
+            "username": "tac0turtle"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "c27a9fde898d6f38bcaeec39607d72489d62d1c9",
+          "message": "build(deps): consolidate dependency updates (#3420)",
+          "timestamp": "2026-08-03T14:53:53+02:00",
+          "tree_id": "e7cf32889988a9799c773a8929f56b73999f752b",
+          "url": "https://github.com/evstack/ev-node/commit/c27a9fde898d6f38bcaeec39607d72489d62d1c9"
+        },
+        "date": 1785761878856,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 907995006,
+            "unit": "ns/op\t31328088 B/op\t  169930 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 907995006,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 31328088,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 169930,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
