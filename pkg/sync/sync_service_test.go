@@ -5,9 +5,14 @@ import (
 	cryptoRand "crypto/rand"
 	"math/rand"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	goheader "github.com/celestiaorg/go-header"
+	"github.com/celestiaorg/go-header/headertest"
+	goheaderlocal "github.com/celestiaorg/go-header/local"
+	goheadersync "github.com/celestiaorg/go-header/sync"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p/core/crypto"
@@ -25,6 +30,87 @@ import (
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
 )
+
+type countingP2PDataGetter struct {
+	goheader.Getter[*types.P2PData]
+	getByHeightCalls atomic.Uint64
+	rangeCalls       atomic.Uint64
+}
+
+func (g *countingP2PDataGetter) GetByHeight(ctx context.Context, height uint64) (*types.P2PData, error) {
+	g.getByHeightCalls.Add(1)
+	return g.Getter.GetByHeight(ctx, height)
+}
+
+func (g *countingP2PDataGetter) GetRangeByHeight(
+	ctx context.Context,
+	from *types.P2PData,
+	to uint64,
+) ([]*types.P2PData, error) {
+	g.rangeCalls.Add(1)
+	return g.Getter.GetRangeByHeight(ctx, from, to)
+}
+
+type verifierCapturingP2PDataSubscriber struct {
+	*headertest.Subscriber[*types.P2PData]
+	verifier func(context.Context, *types.P2PData) error
+}
+
+func (s *verifierCapturingP2PDataSubscriber) SetVerifier(
+	verifier func(context.Context, *types.P2PData) error,
+) error {
+	s.verifier = verifier
+	return nil
+}
+
+func TestDataSyncerDistantHeadUsesRangeSync(t *testing.T) {
+	const targetHeight uint64 = 64
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	chain := make([]*types.P2PData, 0, targetHeight)
+	blockTime := time.Now().Add(-time.Duration(targetHeight) * time.Millisecond)
+	var previousHash types.Hash
+	for height := uint64(1); height <= targetHeight; height++ {
+		_, data := types.GetRandomBlock(height, 1, "data-sync-catchup")
+		data.Metadata.Time = uint64(blockTime.Add(time.Duration(height) * time.Millisecond).UnixNano())
+		data.LastDataHash = previousHash
+		previousHash = data.Hash()
+		chain = append(chain, &types.P2PData{Data: data})
+	}
+
+	remoteStore := &headertest.Store[*types.P2PData]{Headers: make(map[uint64]*types.P2PData)}
+	require.NoError(t, remoteStore.Append(ctx, chain...))
+	localStore := &headertest.Store[*types.P2PData]{Headers: make(map[uint64]*types.P2PData)}
+	require.NoError(t, localStore.Append(ctx, chain[0]))
+
+	getter := &countingP2PDataGetter{Getter: goheaderlocal.NewExchange(remoteStore)}
+	subscriber := &verifierCapturingP2PDataSubscriber{
+		Subscriber: &headertest.Subscriber[*types.P2PData]{},
+	}
+	syncer, err := goheadersync.NewSyncer(
+		getter,
+		localStore,
+		subscriber,
+		goheadersync.WithBlockTime(time.Second),
+	)
+	require.NoError(t, err)
+	require.NoError(t, syncer.Start(ctx))
+	t.Cleanup(func() { _ = syncer.Stop(context.Background()) })
+
+	getter.getByHeightCalls.Store(0)
+	getter.rangeCalls.Store(0)
+	require.NoError(t, subscriber.verifier(ctx, chain[targetHeight-1]))
+	require.LessOrEqual(t, getter.getByHeightCalls.Load(), uint64(1),
+		"validating a distant head must not fetch intermediate blocks one by one")
+
+	require.Eventually(t, func() bool {
+		return syncer.State().ToHeight == targetHeight && localStore.Height() == targetHeight
+	}, time.Second, time.Millisecond)
+	require.Equal(t, targetHeight, localStore.Height())
+	require.Positive(t, getter.rangeCalls.Load())
+}
 
 func TestHeaderSyncServiceStartForPublishingWithPeers(t *testing.T) {
 	mainKV := sync.MutexWrap(datastore.NewMapDatastore())
