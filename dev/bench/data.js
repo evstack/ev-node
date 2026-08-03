@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1785489957171,
+  "lastUpdate": 1785759456602,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -286,6 +286,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 184288,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jgimeno@gmail.com",
+            "name": "Jonathan Gimeno",
+            "username": "jgimeno"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "036b8d472fb801cbedff2d0fb79eacdd62b38955",
+          "message": "fix: support maximum block size in P2P sync (#3419)",
+          "timestamp": "2026-08-03T14:13:52+02:00",
+          "tree_id": "1e8ac562e77963344d15ea1bd10cdca847e2829c",
+          "url": "https://github.com/evstack/ev-node/commit/036b8d472fb801cbedff2d0fb79eacdd62b38955"
+        },
+        "date": 1785759451742,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 913535016,
+            "unit": "ns/op\t31755348 B/op\t  175410 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 913535016,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 31755348,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 175410,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
