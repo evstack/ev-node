@@ -109,8 +109,12 @@ func (p *P2PData) DAHint() uint64 {
 	return p.DAHeightHint
 }
 
-// Verify verifies against untrusted data.
+// Verify verifies the data hash linkage for adjacent data.
 func (p *P2PData) Verify(untrusted *P2PData) error {
+	if p.Height()+1 != untrusted.Height() {
+		return nil
+	}
+
 	return p.Data.Verify(untrusted.Data)
 }
 
