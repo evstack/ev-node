@@ -51,6 +51,28 @@ func (g *countingP2PDataGetter) GetRangeByHeight(
 	return g.Getter.GetRangeByHeight(ctx, from, to)
 }
 
+type signalingP2PDataStore struct {
+	goheader.Store[*types.P2PData]
+	targetHeight uint64
+	syncComplete chan struct{}
+	signaled     atomic.Bool
+}
+
+func (s *signalingP2PDataStore) Append(ctx context.Context, data ...*types.P2PData) error {
+	if err := s.Store.Append(ctx, data...); err != nil {
+		return err
+	}
+
+	for _, item := range data {
+		if item.Height() == s.targetHeight && s.signaled.CompareAndSwap(false, true) {
+			close(s.syncComplete)
+			break
+		}
+	}
+
+	return nil
+}
+
 type verifierCapturingP2PDataSubscriber struct {
 	*headertest.Subscriber[*types.P2PData]
 	verifier func(context.Context, *types.P2PData) error
@@ -82,7 +104,15 @@ func TestDataSyncerDistantHeadUsesRangeSync(t *testing.T) {
 
 	remoteStore := &headertest.Store[*types.P2PData]{Headers: make(map[uint64]*types.P2PData)}
 	require.NoError(t, remoteStore.Append(ctx, chain...))
-	localStore := &headertest.Store[*types.P2PData]{Headers: make(map[uint64]*types.P2PData)}
+	localKV := sync.MutexWrap(datastore.NewMapDatastore())
+	localStore := &signalingP2PDataStore{
+		Store: store.NewDataStoreAdapter(store.New(localKV), genesispkg.Genesis{
+			ChainID:       "data-sync-catchup",
+			InitialHeight: 1,
+		}),
+		targetHeight: targetHeight,
+		syncComplete: make(chan struct{}),
+	}
 	require.NoError(t, localStore.Append(ctx, chain[0]))
 
 	getter := &countingP2PDataGetter{Getter: goheaderlocal.NewExchange(remoteStore)}
@@ -102,13 +132,14 @@ func TestDataSyncerDistantHeadUsesRangeSync(t *testing.T) {
 	getter.getByHeightCalls.Store(0)
 	getter.rangeCalls.Store(0)
 	require.NoError(t, subscriber.verifier(ctx, chain[targetHeight-1]))
+
+	select {
+	case <-localStore.syncComplete:
+	case <-ctx.Done():
+		require.NoError(t, ctx.Err(), "waiting for data synchronization to complete")
+	}
 	require.LessOrEqual(t, getter.getByHeightCalls.Load(), uint64(1),
 		"validating a distant head must not fetch intermediate blocks one by one")
-
-	require.Eventually(t, func() bool {
-		return syncer.State().ToHeight == targetHeight && localStore.Height() == targetHeight
-	}, time.Second, time.Millisecond)
-	require.Equal(t, targetHeight, localStore.Height())
 	require.Positive(t, getter.rangeCalls.Load())
 }
 
