@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1785761885624,
+  "lastUpdate": 1785940550869,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -382,6 +382,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 169930,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jgimeno@gmail.com",
+            "name": "Jonathan Gimeno",
+            "username": "jgimeno"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "d47195a6b3e5e4fecb6bbaab1048c03845a93436",
+          "message": "fix(sync): sync distant P2P data heads by range (#3421)\n\n* fix(sync): sync distant P2P data heads by range\n\n* test(sync): make range sync regression race-safe",
+          "timestamp": "2026-08-05T16:32:05+02:00",
+          "tree_id": "3bbd01b20a3a50b3cb0be0bd1981dbd6391ed74c",
+          "url": "https://github.com/evstack/ev-node/commit/d47195a6b3e5e4fecb6bbaab1048c03845a93436"
+        },
+        "date": 1785940545580,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 865639414,
+            "unit": "ns/op\t28428768 B/op\t  148273 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 865639414,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 28428768,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 148273,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
