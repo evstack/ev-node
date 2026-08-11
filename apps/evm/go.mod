@@ -4,7 +4,7 @@ go 1.25.8
 
 require (
 	github.com/ethereum/go-ethereum v1.17.5
-	github.com/evstack/ev-node v1.2.2
+	github.com/evstack/ev-node v1.2.3
 	github.com/evstack/ev-node/core v1.1.0
 	github.com/evstack/ev-node/execution/evm v1.1.1
 	github.com/ipfs/go-datastore v0.9.2
@@ -235,5 +235,3 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
-
-replace github.com/evstack/ev-node => ../..
