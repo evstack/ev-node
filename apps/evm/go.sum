@@ -183,6 +183,8 @@ github.com/ethereum/go-bigmodexpfix v0.0.0-20250911101455-f9e208c548ab h1:rvv6MJ
 github.com/ethereum/go-bigmodexpfix v0.0.0-20250911101455-f9e208c548ab/go.mod h1:IuLm4IsPipXKF7CW5Lzf68PIbZ5yl7FFd74l/E0o9A8=
 github.com/ethereum/go-ethereum v1.17.5 h1:o9BIXs2Q/3cPHVxw49n+Zjn2i6rB9TOXatev46duOC4=
 github.com/ethereum/go-ethereum v1.17.5/go.mod h1:vz2YvG7RewA4sFHTgzLyW+WmFG1N4jfk/hgXQVhhn9c=
+github.com/evstack/ev-node v1.2.3 h1:yfUmHE43evpLHQu8pKvGoEVfIq2AbxYiRnXYcI7kYSA=
+github.com/evstack/ev-node v1.2.3/go.mod h1:OQLzVtHXYVH1RzHjuLClFYlYG2NJhZF1iFYIhN7z96g=
 github.com/evstack/ev-node/core v1.1.0 h1:Sa7uU5yuNF7YUyLBHPThD6Jt8/jacM1epRLATrdvKRE=
 github.com/evstack/ev-node/core v1.1.0/go.mod h1:n2w/LhYQTPsi48m6lMj16YiIqsaQw6gxwjyJvR+B3sY=
 github.com/evstack/ev-node/execution/evm v1.1.1 h1:erBo0do2Ipw/kyHeoHdjkTpNT6/dGgbxyZZsZlCw0r0=
