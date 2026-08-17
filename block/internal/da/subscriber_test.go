@@ -3,6 +3,8 @@ package da
 import (
 	"context"
 	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,6 +21,68 @@ type MockSubscriberHandler struct {
 	mock.Mock
 }
 
+type lifecycleTestClient struct {
+	Client
+
+	subscribeCalls atomic.Int32
+	entered        [2]chan struct{}
+	canceled       [2]chan struct{}
+	release        [2]chan struct{}
+	releaseOnce    [2]sync.Once
+}
+
+func newLifecycleTestClient() *lifecycleTestClient {
+	client := &lifecycleTestClient{}
+	for i := range 2 {
+		client.entered[i] = make(chan struct{})
+		client.canceled[i] = make(chan struct{})
+		client.release[i] = make(chan struct{})
+	}
+	return client
+}
+
+func (c *lifecycleTestClient) SupportsSubscribe() bool {
+	return true
+}
+
+func (c *lifecycleTestClient) Subscribe(
+	ctx context.Context,
+	_ []byte,
+	_ bool,
+) (<-chan datypes.SubscriptionEvent, error) {
+	generation := int(c.subscribeCalls.Add(1) - 1)
+	close(c.entered[generation])
+	<-ctx.Done()
+	close(c.canceled[generation])
+	<-c.release[generation]
+	return nil, ctx.Err()
+}
+
+func (c *lifecycleTestClient) releaseGeneration(generation int) {
+	c.releaseOnce[generation].Do(func() {
+		close(c.release[generation])
+	})
+}
+
+type lifecycleTestHandler struct{}
+
+func (lifecycleTestHandler) HandleEvent(context.Context, datypes.SubscriptionEvent, bool) error {
+	return nil
+}
+
+func (lifecycleTestHandler) HandleCatchup(context.Context, uint64) error {
+	return nil
+}
+
+func waitForLifecycleSignal(t *testing.T, signal <-chan struct{}, description string) {
+	t.Helper()
+	select {
+	case <-signal:
+	case <-time.After(time.Second):
+		t.Fatalf("timed out waiting for %s", description)
+	}
+}
+
 func (m *MockSubscriberHandler) HandleEvent(ctx context.Context, ev datypes.SubscriptionEvent, isInline bool) error {
 	args := m.Called(ctx, ev, isInline)
 	return args.Error(0)
@@ -27,6 +91,94 @@ func (m *MockSubscriberHandler) HandleEvent(ctx context.Context, ev datypes.Subs
 func (m *MockSubscriberHandler) HandleCatchup(ctx context.Context, height uint64) error {
 	args := m.Called(ctx, height)
 	return args.Error(0)
+}
+
+func TestSubscriber_LifecycleSerializesStartAndStop(t *testing.T) {
+	client := newLifecycleTestClient()
+	t.Cleanup(func() {
+		client.releaseGeneration(0)
+		client.releaseGeneration(1)
+	})
+
+	sub := NewSubscriber(SubscriberConfig{
+		Client:      client,
+		Logger:      zerolog.Nop(),
+		Handler:     lifecycleTestHandler{},
+		Namespaces:  [][]byte{[]byte("ns")},
+		DABlockTime: time.Hour,
+	})
+
+	if err := sub.Start(t.Context()); err != nil {
+		t.Fatalf("start first generation: %v", err)
+	}
+	waitForLifecycleSignal(t, client.entered[0], "first generation to start")
+
+	stopDone := make(chan struct{})
+	go func() {
+		sub.Stop()
+		close(stopDone)
+	}()
+	waitForLifecycleSignal(t, client.canceled[0], "first generation cancellation")
+
+	restartDone := make(chan error, 1)
+	go func() {
+		restartDone <- sub.Start(t.Context())
+	}()
+	select {
+	case err := <-restartDone:
+		if err != nil {
+			t.Fatalf("start while stopping: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Start did not return while the previous generation was stopping")
+	}
+	select {
+	case <-client.entered[1]:
+		t.Fatal("Start launched a second generation while the first generation was stopping")
+	default:
+	}
+	select {
+	case <-stopDone:
+		t.Fatal("Stop returned before the first generation exited")
+	default:
+	}
+
+	concurrentStopDone := make(chan struct{})
+	go func() {
+		sub.Stop()
+		close(concurrentStopDone)
+	}()
+	select {
+	case <-concurrentStopDone:
+		t.Fatal("concurrent Stop returned before the first generation exited")
+	default:
+	}
+
+	client.releaseGeneration(0)
+	waitForLifecycleSignal(t, stopDone, "first Stop to return")
+	waitForLifecycleSignal(t, concurrentStopDone, "concurrent Stop to return")
+
+	if err := sub.Start(t.Context()); err != nil {
+		t.Fatalf("restart subscriber: %v", err)
+	}
+	waitForLifecycleSignal(t, client.entered[1], "second generation to start")
+
+	secondStopDone := make(chan struct{})
+	go func() {
+		sub.Stop()
+		close(secondStopDone)
+	}()
+	waitForLifecycleSignal(t, client.canceled[1], "second generation cancellation")
+	select {
+	case <-secondStopDone:
+		t.Fatal("Stop returned before the second generation exited")
+	default:
+	}
+	client.releaseGeneration(1)
+	waitForLifecycleSignal(t, secondStopDone, "second Stop to return")
+
+	// Stopping an already stopped subscriber remains safe.
+	sub.Stop()
 }
 
 func TestSubscriber_RunCatchup(t *testing.T) {

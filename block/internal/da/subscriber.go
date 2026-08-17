@@ -41,6 +41,14 @@ type SubscriberConfig struct {
 	StartHeight uint64 // initial localDAHeight
 }
 
+type subscriberLifecycleState uint8
+
+const (
+	subscriberStopped subscriberLifecycleState = iota
+	subscriberRunning
+	subscriberStopping
+)
+
 // Subscriber is a shared DA subscription primitive that encapsulates the
 // follow/catchup lifecycle. It subscribes to one or more DA namespaces,
 // tracks the highest seen DA height, and drives sequential catchup via
@@ -81,7 +89,9 @@ type Subscriber struct {
 
 	// lifecycle
 	lifecycleMu sync.Mutex
+	state       subscriberLifecycleState
 	cancel      context.CancelFunc
+	stopDone    chan struct{}
 	wg          sync.WaitGroup
 }
 
@@ -115,16 +125,16 @@ func (s *Subscriber) Start(ctx context.Context) error {
 	}
 
 	s.lifecycleMu.Lock()
-	if s.cancel != nil {
-		s.lifecycleMu.Unlock()
+	defer s.lifecycleMu.Unlock()
+	if s.state != subscriberStopped {
 		return nil
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
-	s.cancel = cancel
-	s.lifecycleMu.Unlock()
-
 	s.wg.Add(2)
+	s.state = subscriberRunning
+	s.cancel = cancel
+	s.stopDone = make(chan struct{})
 	if s.client.SupportsSubscribe() {
 		go s.followLoop(ctx)
 	} else {
@@ -138,14 +148,31 @@ func (s *Subscriber) Start(ctx context.Context) error {
 // Stop gracefully stops the background goroutines.
 func (s *Subscriber) Stop() {
 	s.lifecycleMu.Lock()
+	switch s.state {
+	case subscriberStopped:
+		s.lifecycleMu.Unlock()
+		return
+	case subscriberStopping:
+		stopDone := s.stopDone
+		s.lifecycleMu.Unlock()
+		<-stopDone
+		return
+	}
+
+	s.state = subscriberStopping
 	cancel := s.cancel
-	s.cancel = nil
+	stopDone := s.stopDone
 	s.lifecycleMu.Unlock()
 
-	if cancel != nil {
-		cancel()
-	}
+	cancel()
 	s.wg.Wait()
+
+	s.lifecycleMu.Lock()
+	s.state = subscriberStopped
+	s.cancel = nil
+	s.stopDone = nil
+	close(stopDone)
+	s.lifecycleMu.Unlock()
 }
 
 // LocalDAHeight returns the current local DA height.
