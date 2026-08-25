@@ -78,7 +78,6 @@ func runScheduler(parent context.Context, cfg startConfig) error {
 
 	var wg sync.WaitGroup
 	runWorkload := func(label, matrixPath string, txCount int) {
-		defer wg.Done()
 		log.Printf("==> %s workload starting (%d tx)", label, txCount)
 		if err := runner.ExecuteMatrixWithOverridesFromFile(ctx, matrixPath, api, txCount); err != nil {
 			log.Printf("%s workload error: %v", label, err)
@@ -86,8 +85,7 @@ func runScheduler(parent context.Context, cfg startConfig) error {
 	}
 
 	// fire regular immediately
-	wg.Add(1)
-	go runWorkload("regular", cfg.regularMatrix, regularTxPerRun)
+	wg.Go(func() { runWorkload("regular", cfg.regularMatrix, regularTxPerRun) })
 
 	ticker := time.NewTicker(cfg.interval)
 	defer ticker.Stop()
@@ -112,12 +110,10 @@ func runScheduler(parent context.Context, cfg startConfig) error {
 			return nil
 
 		case <-ticker.C:
-			wg.Add(1)
-			go runWorkload("regular", cfg.regularMatrix, regularTxPerRun)
+			wg.Go(func() { runWorkload("regular", cfg.regularMatrix, regularTxPerRun) })
 
 		case <-burstTimer.C:
-			wg.Add(1)
-			go runWorkload("burst", cfg.burstMatrix, cfg.burstTxCount)
+			wg.Go(func() { runWorkload("burst", cfg.burstMatrix, cfg.burstTxCount) })
 			burstsRemaining--
 			burstTimer = nextBurstTimer(burstsRemaining, time.Until(nextReset))
 
