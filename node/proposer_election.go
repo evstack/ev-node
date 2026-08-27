@@ -100,16 +100,14 @@ func (d *dynamicProposerElection) Run(ctx context.Context) error {
 		workerCtx, cancel := context.WithCancel(ctx)
 		workerCancel = cancel
 		currentRole = role
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			if err := runnable.Run(workerCtx); err != nil && !errors.Is(err, context.Canceled) {
 				select {
 				case errCh <- fmt.Errorf("%s worker exited unexpectedly: %w", name, err):
 				default:
 				}
 			}
-		}()
+		})
 		return nil
 	}
 

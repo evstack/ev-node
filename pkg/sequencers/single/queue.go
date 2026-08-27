@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -320,9 +321,9 @@ func (bq *BatchQueue) rollbackInFlightLocked(ctx context.Context) {
 
 	if bq.head >= len(bq.inFlight) {
 		// enough head slots — fill them directly
-		for i := len(bq.inFlight) - 1; i >= 0; i-- {
+		for _, v := range slices.Backward(bq.inFlight) {
 			bq.head--
-			bq.queue[bq.head] = bq.inFlight[i]
+			bq.queue[bq.head] = v
 		}
 	} else {
 		// not enough head slots — single bulk prepend O(n)
