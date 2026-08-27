@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787846290231,
+  "lastUpdate": 1787846309649,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -718,6 +718,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 163224,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "marko@baricevic.me",
+            "name": "tac0turtle",
+            "username": "tac0turtle"
+          },
+          "committer": {
+            "email": "marko@baricevic.me",
+            "name": "tac0turtle",
+            "username": "tac0turtle"
+          },
+          "distinct": true,
+          "id": "670af4e6de6a14fb52c5d4c18a590b64e5d53cb2",
+          "message": "go fix",
+          "timestamp": "2026-08-27T17:53:36+02:00",
+          "tree_id": "2fca6c52d255442c61b920aade3744f7dde9e67c",
+          "url": "https://github.com/evstack/ev-node/commit/670af4e6de6a14fb52c5d4c18a590b64e5d53cb2"
+        },
+        "date": 1787846301979,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 916410866,
+            "unit": "ns/op\t16173756 B/op\t  197965 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 916410866,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 16173756,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 197965,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
