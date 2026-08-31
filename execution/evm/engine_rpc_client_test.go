@@ -573,6 +573,29 @@ func TestEnginePayloadEnvelope_MarshalJSON_UsesWireFieldNames(t *testing.T) {
 	require.JSONEq(t, string(envelope.RawExecutionPayload), string(decoded.RawExecutionPayload))
 }
 
+func TestEnginePayloadEnvelope_UnmarshalClearsOmittedFields(t *testing.T) {
+	withOptionals := strings.ReplaceAll(minimalPayloadEnvelopeJSON,
+		`"executionRequests": []`, `"executionRequests": ["0x01"]`)
+	withOptionals = strings.ReplaceAll(withOptionals,
+		`"shouldOverrideBuilder": false`, `"shouldOverrideBuilder": true`)
+
+	var envelope EnginePayloadEnvelope
+	require.NoError(t, json.Unmarshal([]byte(withOptionals), &envelope))
+	require.NotEmpty(t, envelope.Requests)
+	require.True(t, envelope.Override)
+
+	var withoutOptionals map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal([]byte(minimalPayloadEnvelopeJSON), &withoutOptionals))
+	delete(withoutOptionals, "executionRequests")
+	delete(withoutOptionals, "shouldOverrideBuilder")
+	encoded, err := json.Marshal(withoutOptionals)
+	require.NoError(t, err)
+
+	require.NoError(t, json.Unmarshal(encoded, &envelope))
+	require.Nil(t, envelope.Requests)
+	require.False(t, envelope.Override)
+}
+
 func TestIsUnsupportedForkErr(t *testing.T) {
 	tests := []struct {
 		name     string
