@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788174711906,
+  "lastUpdate": 1788175766257,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -910,6 +910,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 172855,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "elonfliter@outlook.com",
+            "name": "elonfliter",
+            "username": "elonfliter"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "8768ca2d1a9726d0a80d04976ea9db4940db6f88",
+          "message": "fix(execution): clear omitted payload envelope optionals (#3439)\n\nSigned-off-by: elonfliter <elonfliter@outlook.com>\nCo-authored-by: Marko <marko@baricevic.me>",
+          "timestamp": "2026-08-31T11:06:37Z",
+          "tree_id": "3f7499013ac2660fd0f2ea46b9b95c4492d49b53",
+          "url": "https://github.com/evstack/ev-node/commit/8768ca2d1a9726d0a80d04976ea9db4940db6f88"
+        },
+        "date": 1788175761594,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 899381505,
+            "unit": "ns/op\t15078732 B/op\t  182612 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 899381505,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 15078732,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 182612,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
