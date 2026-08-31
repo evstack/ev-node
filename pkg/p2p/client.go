@@ -371,7 +371,7 @@ func (c *Client) setupDHT(ctx context.Context) error {
 	}
 
 	var err error
-	c.dht, err = dht.New(ctx, c.host, dht.Mode(dht.ModeServer), dht.BootstrapPeers(peers...))
+	c.dht, err = dht.New(c.host, dht.Mode(dht.ModeServer), dht.BootstrapPeers(peers...))
 	if err != nil {
 		return fmt.Errorf("failed to create DHT: %w", err)
 	}

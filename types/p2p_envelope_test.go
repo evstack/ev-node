@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	goheader "github.com/celestiaorg/go-header"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -40,6 +41,28 @@ func TestP2PEnvelope_MarshalUnmarshal(t *testing.T) {
 	assert.Equal(t, envelope.Data.ChainID(), newEnvelope.Data.ChainID())
 	assert.Equal(t, envelope.LastDataHash, newEnvelope.LastDataHash)
 	assert.Equal(t, envelope.Txs, newEnvelope.Txs)
+}
+
+func TestP2PDataVerifyAdjacentHeads(t *testing.T) {
+	now := time.Now()
+	_, trustedData := GetRandomBlock(10, 1, "test-chain")
+	trustedData.Metadata.Time = uint64(now.UnixNano())
+
+	_, validData := GetRandomBlock(11, 1, "test-chain")
+	validData.Metadata.Time = uint64(now.Add(time.Second).UnixNano())
+	validData.LastDataHash = trustedData.Hash()
+	require.NoError(t, goheader.Verify(
+		&P2PData{Data: trustedData},
+		&P2PData{Data: validData},
+	))
+
+	_, invalidData := GetRandomBlock(11, 1, "test-chain")
+	invalidData.Metadata.Time = uint64(now.Add(time.Second).UnixNano())
+	invalidData.LastDataHash = bytes.Repeat([]byte{0x1}, 32)
+	require.Error(t, goheader.Verify(
+		&P2PData{Data: trustedData},
+		&P2PData{Data: invalidData},
+	))
 }
 
 func TestP2PSignedHeader_MarshalUnmarshal(t *testing.T) {

@@ -12,11 +12,11 @@ jobs:
     name: Build All ev-node Binaries
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
       - name: set up go
         uses: actions/setup-go@v6.5.0
         with:
-          go-version-file: ./go.mod
+          go-version: "1.27.0"
           cache-dependency-path: "**/go.sum"
       - name: Install just
         uses: extractions/setup-just@v4
@@ -27,10 +27,10 @@ jobs:
     name: Go Mod Tidy Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
       - uses: actions/setup-go@v6.5.0
         with:
-          go-version-file: ./go.mod
+          go-version: "1.27.0"
           cache-dependency-path: "**/go.sum"
       - uses: extractions/setup-just@v4
       - run: just deps
@@ -44,11 +44,11 @@ jobs:
       contents: read
       packages: read
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
       - name: set up go
         uses: actions/setup-go@v6.5.0
         with:
-          go-version-file: ./go.mod
+          go-version: "1.27.0"
           cache-dependency-path: "**/go.sum"
       - name: Install just
         uses: extractions/setup-just@v4
@@ -64,11 +64,11 @@ jobs:
     name: Run Integration Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
       - name: set up go
         uses: actions/setup-go@v6.5.0
         with:
-          go-version-file: ./go.mod
+          go-version: "1.27.0"
           cache-dependency-path: "**/go.sum"
       - name: Install just
         uses: extractions/setup-just@v4
@@ -88,11 +88,11 @@ jobs:
       contents: read
       packages: read
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
       - name: set up go
         uses: actions/setup-go@v6.5.0
         with:
-          go-version-file: ./go.mod
+          go-version: "1.27.0"
           cache-dependency-path: "**/go.sum"
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -115,11 +115,11 @@ jobs:
     needs: build_all-apps
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
       - name: set up go
         uses: actions/setup-go@v6.5.0
         with:
-          go-version-file: ./go.mod
+          go-version: "1.27.0"
           cache-dependency-path: "**/go.sum"
       - name: Install just
         uses: extractions/setup-just@v4
@@ -133,7 +133,7 @@ jobs:
     permissions:
       actions: read
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
       - name: Download unit test coverage report
         uses: actions/download-artifact@v8.0.1
         with:

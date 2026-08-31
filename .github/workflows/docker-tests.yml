@@ -22,11 +22,11 @@ jobs:
     name: Docker E2E Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
       - name: set up go
         uses: actions/setup-go@v6.5.0
         with:
-          go-version-file: ./test/docker-e2e/go.mod
+          go-version: "1.27.0"
           cache-dependency-path: "**/go.sum"
       - name: Install just
         uses: extractions/setup-just@v4
@@ -42,11 +42,11 @@ jobs:
       contents: read
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
       - name: set up go
         uses: actions/setup-go@v6.5.0
         with:
-          go-version-file: ./test/docker-e2e/go.mod
+          go-version: "1.27.0"
           cache-dependency-path: "**/go.sum"
       - name: Install just
         uses: extractions/setup-just@v4
@@ -62,11 +62,11 @@ jobs:
       contents: read
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
       - name: set up go
         uses: actions/setup-go@v6.5.0
         with:
-          go-version-file: ./test/docker-e2e/go.mod
+          go-version: "1.27.0"
           cache-dependency-path: "**/go.sum"
       - name: Install just
         uses: extractions/setup-just@v4

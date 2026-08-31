@@ -28,7 +28,7 @@ import (
 	"github.com/evstack/ev-node/pkg/telemetry"
 )
 
-// ParseConfig is an helpers that loads the node configuration and validates it.
+// ParseConfig is a helper that loads the node configuration and validates it.
 func ParseConfig(cmd *cobra.Command) (rollconf.Config, error) {
 	nodeConfig, err := rollconf.Load(cmd)
 	if err != nil {

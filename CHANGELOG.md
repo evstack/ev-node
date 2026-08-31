@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## v1.2.3
+
+### Changed
+
+- Consolidate Go dependency updates across modules [#3420](https://github.com/evstack/ev-node/pull/3420).
+
+### Fixed
+
+- Support P2P synchronization of blocks up to the configured maximum block size [#3419](https://github.com/evstack/ev-node/pull/3419).
+- Clean pending DA data after a height has already been processed, preventing stale pending data from accumulating [#3413](https://github.com/evstack/ev-node/pull/3413).
+- Synchronize distant P2P data heads with a range request instead of fetching intermediate blocks one at a time [#3421](https://github.com/evstack/ev-node/pull/3421).
+
 ## v1.2.2
 
 ### Changed
