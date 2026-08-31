@@ -81,7 +81,7 @@ func generateSignedTransaction(b *testing.B, nonce uint64, gasLimit uint64) []by
 func generateTransactionBatch(b *testing.B, count int, gasLimit uint64) [][]byte {
 	b.Helper()
 	txs := make([][]byte, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		txs[i] = generateSignedTransaction(b, uint64(i), gasLimit)
 	}
 	return txs
@@ -92,7 +92,7 @@ func generateTransactionBatch(b *testing.B, count int, gasLimit uint64) [][]byte
 func generateMixedTransactionBatch(b *testing.B, count int, gasLimit uint64, includeInvalid bool) [][]byte {
 	b.Helper()
 	txs := make([][]byte, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		if includeInvalid && i%10 == 0 {
 			// Every 10th transaction is invalid (random garbage)
 			txs[i] = make([]byte, 100)

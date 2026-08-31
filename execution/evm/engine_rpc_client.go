@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/beacon/engine"
@@ -238,9 +239,7 @@ func forkchoiceArgsForMethod(args map[string]any, method string) (map[string]any
 
 func cloneMap(args map[string]any) map[string]any {
 	cloned := make(map[string]any, len(args))
-	for key, value := range args {
-		cloned[key] = value
-	}
+	maps.Copy(cloned, args)
 	return cloned
 }
 

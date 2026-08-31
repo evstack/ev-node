@@ -113,17 +113,17 @@ func (s *ForceInclusionServer) Stop(ctx context.Context) error {
 // JSONRPCRequest represents a JSON-RPC 2.0 request
 type JSONRPCRequest struct {
 	JSONRPC string          `json:"jsonrpc"`
-	ID      interface{}     `json:"id"`
+	ID      any             `json:"id"`
 	Method  string          `json:"method"`
 	Params  json.RawMessage `json:"params"`
 }
 
 // JSONRPCResponse represents a JSON-RPC 2.0 response
 type JSONRPCResponse struct {
-	JSONRPC string      `json:"jsonrpc"`
-	ID      interface{} `json:"id"`
-	Result  interface{} `json:"result,omitempty"`
-	Error   *RPCError   `json:"error,omitempty"`
+	JSONRPC string    `json:"jsonrpc"`
+	ID      any       `json:"id"`
+	Result  any       `json:"result,omitempty"`
+	Error   *RPCError `json:"error,omitempty"`
 }
 
 // RPCError represents a JSON-RPC error
@@ -298,7 +298,7 @@ func (s *ForceInclusionServer) decodeHexTx(hexStr string) ([]byte, error) {
 }
 
 // writeSuccess writes a successful JSON-RPC response
-func (s *ForceInclusionServer) writeSuccess(w http.ResponseWriter, id interface{}, result interface{}) {
+func (s *ForceInclusionServer) writeSuccess(w http.ResponseWriter, id any, result any) {
 	resp := JSONRPCResponse{
 		JSONRPC: "2.0",
 		ID:      id,
@@ -308,7 +308,7 @@ func (s *ForceInclusionServer) writeSuccess(w http.ResponseWriter, id interface{
 }
 
 // writeError writes an error JSON-RPC response
-func (s *ForceInclusionServer) writeError(w http.ResponseWriter, id interface{}, code int, message string) {
+func (s *ForceInclusionServer) writeError(w http.ResponseWriter, id any, code int, message string) {
 	resp := JSONRPCResponse{
 		JSONRPC: "2.0",
 		ID:      id,
