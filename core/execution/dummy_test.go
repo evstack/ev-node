@@ -242,7 +242,7 @@ func TestConcurrentOperations(t *testing.T) {
 	wg.Add(numOps * 3) // For InjectTx, GetTxs, and GetStateRoot operations
 
 	// Test concurrent InjectTx operations
-	for i := 0; i < numOps; i++ {
+	for i := range numOps {
 		go func(i int) {
 			defer wg.Done()
 			tx := []byte(string(rune(i)))
@@ -251,7 +251,7 @@ func TestConcurrentOperations(t *testing.T) {
 	}
 
 	// Test concurrent GetTxs operations
-	for i := 0; i < numOps; i++ {
+	for range numOps {
 		go func() {
 			defer wg.Done()
 			_, err := executor.GetTxs(ctx)
@@ -262,7 +262,7 @@ func TestConcurrentOperations(t *testing.T) {
 	}
 
 	// Test concurrent GetStateRoot operations
-	for i := 0; i < numOps; i++ {
+	for range numOps {
 		go func() {
 			defer wg.Done()
 			_ = executor.GetStateRoot()

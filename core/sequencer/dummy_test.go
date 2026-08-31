@@ -151,9 +151,9 @@ func TestDummySequencer_Concurrency(t *testing.T) {
 	// Create a wait group to wait for all goroutines to finish
 	done := make(chan struct{})
 	errors := make(chan error, numGoroutines*numOperationsPerGoroutine)
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		go func(routineID int) {
-			for j := 0; j < numOperationsPerGoroutine; j++ {
+			for j := range numOperationsPerGoroutine {
 				// Create a unique ID for this operation
 				ID := []byte(fmt.Sprintf("-%d-%d", routineID, j))
 
@@ -195,7 +195,7 @@ func TestDummySequencer_Concurrency(t *testing.T) {
 	}
 
 	// Wait for all goroutines to finish
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		<-done
 	}
 

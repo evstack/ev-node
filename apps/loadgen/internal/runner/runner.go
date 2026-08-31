@@ -85,10 +85,7 @@ func executeMatrix(ctx context.Context, m matrix.Matrix, api spamoor.Client, opt
 		}
 
 		if opts.totalTxTarget > 0 {
-			countPerSpammer := opts.totalTxTarget / entry.NumSpammers
-			if countPerSpammer < 1 {
-				countPerSpammer = 1
-			}
+			countPerSpammer := max(opts.totalTxTarget/entry.NumSpammers, 1)
 			entry.Env[matrix.EnvCountPerSpammer] = fmt.Sprintf("%d", countPerSpammer)
 			entry.CountPerSpammer = countPerSpammer
 		}
