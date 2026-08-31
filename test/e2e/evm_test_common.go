@@ -15,6 +15,7 @@
 package e2e
 
 import (
+	"cmp"
 	"context"
 	"flag"
 	"fmt"
@@ -23,7 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -904,8 +905,8 @@ func PrintTraceReport(t testing.TB, label string, spans []TraceSpan) {
 	for name := range m {
 		names = append(names, name)
 	}
-	sort.Slice(names, func(i, j int) bool {
-		return m[names[i]].Total > m[names[j]].Total
+	slices.SortFunc(names, func(a, b string) int {
+		return cmp.Compare(m[b].Total, m[a].Total)
 	})
 
 	var overallTotal time.Duration

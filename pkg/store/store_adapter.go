@@ -445,13 +445,13 @@ func (a *StoreAdapter[H]) Get(ctx context.Context, hash header.Hash) (H, error) 
 	// First try the store
 	item, err := a.getter.GetByHash(ctx, hash)
 	if err == nil {
-		a.applyDAHint(item)
+		a.applyDAHint(ctx, item)
 		return item, nil
 	}
 
 	// Check pending items using hash index for O(1) lookup
 	if pendingItem, ok := a.pending.getByHash(hash); ok {
-		a.applyDAHint(pendingItem)
+		a.applyDAHint(ctx, pendingItem)
 		return pendingItem, nil
 	}
 
@@ -485,13 +485,13 @@ func (a *StoreAdapter[H]) getByHeightNoWait(ctx context.Context, height uint64) 
 	// First try the store
 	item, err := a.getter.GetByHeight(ctx, height)
 	if err == nil {
-		a.applyDAHint(item)
+		a.applyDAHint(ctx, item)
 		return item, nil
 	}
 
 	// Check pending items
 	if pendingItem, ok := a.pending.get(height); ok {
-		a.applyDAHint(pendingItem)
+		a.applyDAHint(ctx, pendingItem)
 		return pendingItem, nil
 	}
 
@@ -499,7 +499,7 @@ func (a *StoreAdapter[H]) getByHeightNoWait(ctx context.Context, height uint64) 
 }
 
 // applyDAHint sets the DA hint on the item from cache or disk.
-func (a *StoreAdapter[H]) applyDAHint(item H) {
+func (a *StoreAdapter[H]) applyDAHint(ctx context.Context, item H) {
 	if item.IsZero() {
 		return
 	}
@@ -513,7 +513,7 @@ func (a *StoreAdapter[H]) applyDAHint(item H) {
 	}
 
 	// Try to load from disk
-	if diskHint, err := a.getter.GetDAHint(context.Background(), height); err == nil && diskHint > 0 {
+	if diskHint, err := a.getter.GetDAHint(ctx, height); err == nil && diskHint > 0 {
 		a.pending.setDAHint(height, diskHint)
 		item.SetDAHint(diskHint)
 	}
