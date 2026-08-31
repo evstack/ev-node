@@ -85,15 +85,14 @@ func (e *EnginePayloadEnvelope) UnmarshalJSON(input []byte) error {
 	e.BlockValue = (*big.Int)(dec.BlockValue)
 	e.BlobsBundle = dec.BlobsBundle
 
+	e.Requests = nil
 	if dec.Requests != nil {
 		e.Requests = make([][]byte, len(dec.Requests))
 		for i, request := range dec.Requests {
 			e.Requests[i] = request
 		}
 	}
-	if dec.Override != nil {
-		e.Override = *dec.Override
-	}
+	e.Override = dec.Override != nil && *dec.Override
 	e.Witness = dec.Witness
 	return nil
 }
