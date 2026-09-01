@@ -15,7 +15,11 @@ import (
 	goheadersync "github.com/celestiaorg/go-header/sync"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/p2p/net/conngater"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/rs/zerolog"
@@ -76,6 +80,98 @@ func (s *signalingP2PDataStore) Append(ctx context.Context, data ...*types.P2PDa
 type verifierCapturingP2PDataSubscriber struct {
 	*headertest.Subscriber[*types.P2PData]
 	verifier func(context.Context, *types.P2PData) error
+}
+
+type peerListP2PClient struct {
+	peerIDs []peer.ID
+}
+
+func (c peerListP2PClient) PubSub() *pubsub.PubSub                           { return nil }
+func (c peerListP2PClient) Info() (string, string, string, error)            { return "", "", "", nil }
+func (c peerListP2PClient) Host() host.Host                                  { return nil }
+func (c peerListP2PClient) ConnectionGater() *conngater.BasicConnectionGater { return nil }
+func (c peerListP2PClient) PeerIDs() []peer.ID                               { return c.peerIDs }
+
+func TestCatchupAggregatorIncludesConfiguredPeerIDs(t *testing.T) {
+	configuredKey, _, err := crypto.GenerateEd25519Key(cryptoRand.Reader)
+	require.NoError(t, err)
+	configuredID, err := peer.IDFromPrivateKey(configuredKey)
+	require.NoError(t, err)
+
+	conf := config.DefaultConfig()
+	conf.Node.Aggregator = true
+	conf.Node.CatchupTimeout = config.DurationWrapper{Duration: time.Second}
+	conf.P2P.Peers = "/ip4/127.0.0.1/tcp/7676/p2p/" + configuredID.String()
+
+	svc := &SyncService[*types.P2PData]{
+		conf:   conf,
+		p2p:    peerListP2PClient{},
+		logger: zerolog.Nop(),
+	}
+	require.Equal(t, []peer.ID{configuredID}, svc.getPeerIDs())
+}
+
+func TestKeepRetryingP2PInit(t *testing.T) {
+	configuredKey, _, err := crypto.GenerateEd25519Key(cryptoRand.Reader)
+	require.NoError(t, err)
+	configuredID, err := peer.IDFromPrivateKey(configuredKey)
+	require.NoError(t, err)
+	peerAddr := "/ip4/127.0.0.1/tcp/7676/p2p/" + configuredID.String()
+
+	tests := []struct {
+		name   string
+		mutate func(*config.Config)
+		want   bool
+	}{
+		{
+			name: "catchup aggregator with peers",
+			mutate: func(conf *config.Config) {
+				conf.Node.Aggregator = true
+				conf.Node.CatchupTimeout = config.DurationWrapper{Duration: time.Minute}
+				conf.P2P.Peers = peerAddr
+			},
+			want: true,
+		},
+		{
+			name: "catchup disabled",
+			mutate: func(conf *config.Config) {
+				conf.Node.Aggregator = true
+				conf.P2P.Peers = peerAddr
+			},
+		},
+		{
+			name: "no configured peers",
+			mutate: func(conf *config.Config) {
+				conf.Node.Aggregator = true
+				conf.Node.CatchupTimeout = config.DurationWrapper{Duration: time.Minute}
+			},
+		},
+		{
+			name: "full node with catchup config",
+			mutate: func(conf *config.Config) {
+				conf.Node.CatchupTimeout = config.DurationWrapper{Duration: time.Minute}
+				conf.P2P.Peers = peerAddr
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			conf := config.DefaultConfig()
+			tt.mutate(&conf)
+			svc := &SyncService[*types.P2PData]{conf: conf}
+			require.Equal(t, tt.want, svc.keepRetryingP2PInit())
+		})
+	}
+}
+
+func TestContinueP2PInitIfNeededNoopsWithoutCatchupRequirement(t *testing.T) {
+	svc := &SyncService[*types.P2PData]{
+		conf:   config.DefaultConfig(),
+		logger: zerolog.Nop(),
+	}
+	// Would panic in retryInitFromP2P if a goroutine were started with a nil store.
+	svc.continueP2PInitIfNeeded(t.Context(), []peer.ID{"12D3KooWCatchupPeer"})
 }
 
 func (s *verifierCapturingP2PDataSubscriber) SetVerifier(
@@ -211,6 +307,7 @@ func TestHeaderSyncServiceStartForPublishingWithPeers(t *testing.T) {
 
 	require.NoError(t, svc.WriteToStoreAndBroadcast(ctx, &types.P2PSignedHeader{SignedHeader: signedHeader}))
 	require.True(t, svc.storeInitialized.Load())
+	require.False(t, svc.P2PInitialized(), "publishing must not count as P2P initialization")
 }
 
 func TestHeaderSyncServiceRestart(t *testing.T) {

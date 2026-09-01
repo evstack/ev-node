@@ -338,7 +338,7 @@ _Constant:_ `FlagScrapeInterval`
 ### Catchup Timeout
 
 **Description:**
-When set to a non-zero duration, the aggregator syncs from DA and P2P before producing blocks. The value specifies how long to wait for P2P catchup after DA sync completes. Requires aggregator mode. Mutually exclusive with Raft consensus.
+When set to a non-zero duration, the aggregator recovers before producing blocks. If `p2p.peers` is configured, both header and data sync must initialize from P2P and the node must reach the highest observed P2P height; failure to establish continuity before this timeout is fatal. With no configured peers, recovery waits for the DA head and does not apply a P2P deadline. The default `0` disables recovery catchup. Requires aggregator mode. Mutually exclusive with Raft consensus.
 
 **YAML:**
 

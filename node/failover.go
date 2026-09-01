@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -39,8 +40,11 @@ type failoverState struct {
 	// catchup fields — used when the aggregator needs to sync before producing
 	catchupEnabled bool
 	catchupTimeout time.Duration
+	p2pRecovery    bool
 	daBlockTime    time.Duration
 	store          store.Store
+
+	catchupStatusFn func(context.Context) (catchupStatus, error)
 }
 
 func newSyncMode(
@@ -182,6 +186,7 @@ func setupFailoverState(
 		store:             rktStore,
 		catchupEnabled:    catchupEnabled,
 		catchupTimeout:    nodeConfig.Node.CatchupTimeout.Duration,
+		p2pRecovery:       strings.TrimSpace(nodeConfig.P2P.Peers) != "",
 		daBlockTime:       nodeConfig.DA.BlockTime.Duration,
 	}, nil
 }
@@ -293,10 +298,10 @@ func (f *failoverState) Run(pCtx context.Context) (multiErr error) {
 	return wg.Wait()
 }
 
-// runCatchupPhase starts the catchup syncer, waits until DA head is reached and P2P
-// is caught up, then stops the syncer so the executor can take over.
+// runCatchupPhase starts the catchup syncer, waits until the configured recovery
+// sources are caught up, then stops the syncer so the executor can take over.
 func (f *failoverState) runCatchupPhase(ctx context.Context) error {
-	f.logger.Info().Msg("catchup: syncing from DA and P2P before producing blocks")
+	f.logger.Info().Msg("catchup: syncing from configured recovery sources before producing blocks")
 
 	if err := f.bc.Syncer.Start(ctx); err != nil {
 		return fmt.Errorf("catchup syncer start: %w", err)
@@ -315,7 +320,64 @@ func (f *failoverState) runCatchupPhase(ctx context.Context) error {
 	return nil
 }
 
-// waitForCatchup polls DA and P2P catchup status until both sources indicate the node is caught up.
+type catchupStatus struct {
+	storeHeight    uint64
+	headerHeight   uint64
+	dataHeight     uint64
+	headerP2PReady bool
+	dataP2PReady   bool
+	daCaughtUp     bool
+	pendingEvents  int
+}
+
+func (s catchupStatus) ready(p2pRecovery bool) bool {
+	if !s.daCaughtUp || s.pendingEvents != 0 {
+		return false
+	}
+	if !p2pRecovery {
+		return true
+	}
+	return s.p2pReady()
+}
+
+func (s catchupStatus) p2pReady() bool {
+	return s.headerP2PReady && s.dataP2PReady &&
+		s.storeHeight >= max(s.headerHeight, s.dataHeight)
+}
+
+func (s catchupStatus) continuityTimeoutError(timeout time.Duration) error {
+	return fmt.Errorf(
+		"P2P recovery timed out after %s before continuity was established (store height %d, header height %d, data height %d, header P2P ready %t, data P2P ready %t, DA caught up %t, pending events %d)",
+		timeout, s.storeHeight, s.headerHeight, s.dataHeight,
+		s.headerP2PReady, s.dataP2PReady, s.daCaughtUp, s.pendingEvents,
+	)
+}
+
+func (f *failoverState) catchupStatus(ctx context.Context) (catchupStatus, error) {
+	if f.catchupStatusFn != nil {
+		return f.catchupStatusFn(ctx)
+	}
+
+	storeHeight, err := f.store.Height(ctx)
+	if err != nil {
+		return catchupStatus{}, err
+	}
+	status := catchupStatus{
+		storeHeight:    storeHeight,
+		headerHeight:   f.headerSyncService.Store().Height(),
+		dataHeight:     f.dataSyncService.Store().Height(),
+		headerP2PReady: f.headerSyncService.P2PInitialized(),
+		dataP2PReady:   f.dataSyncService.P2PInitialized(),
+	}
+	if f.bc.Syncer != nil {
+		status.daCaughtUp = f.bc.Syncer.HasReachedDAHead()
+		status.pendingEvents = f.bc.Syncer.PendingCount()
+	}
+	return status, nil
+}
+
+// waitForCatchup polls DA and, when peers are configured, P2P catchup status
+// until all required sources indicate the node is caught up.
 func (f *failoverState) waitForCatchup(ctx context.Context) (bool, error) {
 	pollInterval := f.daBlockTime
 	if pollInterval <= 0 {
@@ -326,46 +388,41 @@ func (f *failoverState) waitForCatchup(ctx context.Context) (bool, error) {
 	defer ticker.Stop()
 
 	var timeoutCh <-chan time.Time
-	if f.catchupTimeout > 0 {
+	if f.p2pRecovery && f.catchupTimeout > 0 {
 		f.logger.Debug().Dur("p2p_timeout", f.catchupTimeout).Msg("P2P catchup timeout configured")
 		timeoutCh = time.After(f.catchupTimeout)
 	} else {
-		f.logger.Debug().Msg("P2P catchup timeout disabled, relying on DA only")
+		f.logger.Debug().Msg("configured P2P recovery not required, relying on DA only")
 	}
-	ignoreP2P := false
 
 	for {
 		select {
 		case <-ctx.Done():
-			return false, nil
+			return false, ctx.Err()
 		case <-timeoutCh:
-			f.logger.Info().Msg("catchup: P2P timeout reached, ignoring P2P status")
-			ignoreP2P = true
-			timeoutCh = nil
+			status, err := f.catchupStatus(ctx)
+			if err != nil {
+				return false, fmt.Errorf("P2P recovery timed out after %s and failed to read recovery heights: %w", f.catchupTimeout, err)
+			}
+			if status.p2pReady() {
+				timeoutCh = nil
+				continue
+			}
+			return false, status.continuityTimeoutError(f.catchupTimeout)
 		case <-ticker.C:
-			daCaughtUp := f.bc.Syncer != nil && f.bc.Syncer.HasReachedDAHead()
-
-			storeHeight, err := f.store.Height(ctx)
+			status, err := f.catchupStatus(ctx)
 			if err != nil {
 				f.logger.Warn().Err(err).Msg("failed to get store height during catchup")
 				continue
 			}
-
-			maxP2PHeight := max(
-				f.headerSyncService.Store().Height(),
-				f.dataSyncService.Store().Height(),
-			)
-
-			p2pCaughtUp := ignoreP2P || (maxP2PHeight > 0 && storeHeight >= maxP2PHeight)
-			if !ignoreP2P && f.catchupTimeout == 0 && maxP2PHeight == 0 {
-				p2pCaughtUp = true
+			if f.p2pRecovery && status.p2pReady() {
+				timeoutCh = nil
 			}
-
-			pipelineDrained := f.bc.Syncer == nil || f.bc.Syncer.PendingCount() == 0
-			if daCaughtUp && p2pCaughtUp && pipelineDrained {
+			if status.ready(f.p2pRecovery) {
 				f.logger.Info().
-					Uint64("store_height", storeHeight).
-					Uint64("max_p2p_height", maxP2PHeight).
+					Uint64("store_height", status.storeHeight).
+					Uint64("header_height", status.headerHeight).
+					Uint64("data_height", status.dataHeight).
 					Msg("catchup: fully caught up")
 				return true, nil
 			}
