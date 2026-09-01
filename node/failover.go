@@ -44,7 +44,6 @@ type failoverState struct {
 	daBlockTime    time.Duration
 	store          store.Store
 
-	// catchupStatusFn is overridden by focused readiness tests.
 	catchupStatusFn func(context.Context) (catchupStatus, error)
 }
 
@@ -346,6 +345,14 @@ func (s catchupStatus) p2pReady() bool {
 		s.storeHeight >= max(s.headerHeight, s.dataHeight)
 }
 
+func (s catchupStatus) continuityTimeoutError(timeout time.Duration) error {
+	return fmt.Errorf(
+		"P2P recovery timed out after %s before continuity was established (store height %d, header height %d, data height %d, header P2P ready %t, data P2P ready %t, DA caught up %t, pending events %d)",
+		timeout, s.storeHeight, s.headerHeight, s.dataHeight,
+		s.headerP2PReady, s.dataP2PReady, s.daCaughtUp, s.pendingEvents,
+	)
+}
+
 func (f *failoverState) catchupStatus(ctx context.Context) (catchupStatus, error) {
 	if f.catchupStatusFn != nil {
 		return f.catchupStatusFn(ctx)
@@ -401,10 +408,7 @@ func (f *failoverState) waitForCatchup(ctx context.Context) (bool, error) {
 				timeoutCh = nil
 				continue
 			}
-			return false, fmt.Errorf(
-				"P2P recovery timed out after %s before continuity was established (store height %d, header height %d, data height %d)",
-				f.catchupTimeout, status.storeHeight, status.headerHeight, status.dataHeight,
-			)
+			return false, status.continuityTimeoutError(f.catchupTimeout)
 		case <-ticker.C:
 			status, err := f.catchupStatus(ctx)
 			if err != nil {

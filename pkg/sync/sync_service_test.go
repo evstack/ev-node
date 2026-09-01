@@ -111,6 +111,69 @@ func TestCatchupAggregatorIncludesConfiguredPeerIDs(t *testing.T) {
 	require.Equal(t, []peer.ID{configuredID}, svc.getPeerIDs())
 }
 
+func TestKeepRetryingP2PInit(t *testing.T) {
+	configuredKey, _, err := crypto.GenerateEd25519Key(cryptoRand.Reader)
+	require.NoError(t, err)
+	configuredID, err := peer.IDFromPrivateKey(configuredKey)
+	require.NoError(t, err)
+	peerAddr := "/ip4/127.0.0.1/tcp/7676/p2p/" + configuredID.String()
+
+	tests := []struct {
+		name   string
+		mutate func(*config.Config)
+		want   bool
+	}{
+		{
+			name: "catchup aggregator with peers",
+			mutate: func(conf *config.Config) {
+				conf.Node.Aggregator = true
+				conf.Node.CatchupTimeout = config.DurationWrapper{Duration: time.Minute}
+				conf.P2P.Peers = peerAddr
+			},
+			want: true,
+		},
+		{
+			name: "catchup disabled",
+			mutate: func(conf *config.Config) {
+				conf.Node.Aggregator = true
+				conf.P2P.Peers = peerAddr
+			},
+		},
+		{
+			name: "no configured peers",
+			mutate: func(conf *config.Config) {
+				conf.Node.Aggregator = true
+				conf.Node.CatchupTimeout = config.DurationWrapper{Duration: time.Minute}
+			},
+		},
+		{
+			name: "full node with catchup config",
+			mutate: func(conf *config.Config) {
+				conf.Node.CatchupTimeout = config.DurationWrapper{Duration: time.Minute}
+				conf.P2P.Peers = peerAddr
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			conf := config.DefaultConfig()
+			tt.mutate(&conf)
+			svc := &SyncService[*types.P2PData]{conf: conf}
+			require.Equal(t, tt.want, svc.keepRetryingP2PInit())
+		})
+	}
+}
+
+func TestContinueP2PInitIfNeededNoopsWithoutCatchupRequirement(t *testing.T) {
+	svc := &SyncService[*types.P2PData]{
+		conf:   config.DefaultConfig(),
+		logger: zerolog.Nop(),
+	}
+	// Would panic in retryInitFromP2P if a goroutine were started with a nil store.
+	svc.continueP2PInitIfNeeded(t.Context(), []peer.ID{"12D3KooWCatchupPeer"})
+}
+
 func (s *verifierCapturingP2PDataSubscriber) SetVerifier(
 	verifier func(context.Context, *types.P2PData) error,
 ) error {

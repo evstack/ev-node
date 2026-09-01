@@ -127,6 +127,28 @@ func TestWaitForCatchupP2PTimeoutFailsClosed(t *testing.T) {
 	require.ErrorContains(t, err, "store height 7")
 	require.ErrorContains(t, err, "header height 9")
 	require.ErrorContains(t, err, "data height 8")
+	require.ErrorContains(t, err, "header P2P ready false")
+	require.ErrorContains(t, err, "data P2P ready false")
+	require.ErrorContains(t, err, "DA caught up false")
+	require.ErrorContains(t, err, "pending events 0")
+}
+
+func TestCatchupStatusContinuityTimeoutErrorIncludesReadiness(t *testing.T) {
+	err := catchupStatus{
+		storeHeight:    1,
+		headerHeight:   2,
+		dataHeight:     3,
+		headerP2PReady: true,
+		daCaughtUp:     true,
+		pendingEvents:  4,
+	}.continuityTimeoutError(time.Second)
+	require.ErrorContains(t, err, "store height 1")
+	require.ErrorContains(t, err, "header height 2")
+	require.ErrorContains(t, err, "data height 3")
+	require.ErrorContains(t, err, "header P2P ready true")
+	require.ErrorContains(t, err, "data P2P ready false")
+	require.ErrorContains(t, err, "DA caught up true")
+	require.ErrorContains(t, err, "pending events 4")
 }
 
 func TestWaitForCatchupContextCancellation(t *testing.T) {

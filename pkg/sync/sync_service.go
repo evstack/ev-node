@@ -29,6 +29,10 @@ type syncType string
 const (
 	headerSync syncType = "headerSync"
 	dataSync   syncType = "dataSync"
+
+	// p2pInitTimeout is how long non-recovery startup waits for a peer to serve
+	// genesis before deferring store initialization to DA or the first produced block.
+	p2pInitTimeout = 30 * time.Second
 )
 
 // HeaderSyncService is the P2P Sync Service for headers.
@@ -214,6 +218,7 @@ func (syncService *SyncService[H]) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to start subscriber: %w", err)
 	}
 
+	syncService.continueP2PInitIfNeeded(ctx, peerIDs)
 	return nil
 }
 
@@ -370,6 +375,28 @@ func (s *SyncService[H]) Height() uint64 {
 	return s.store.Height()
 }
 
+// keepRetryingP2PInit is true when catchup recovery requires P2P continuity,
+// so Start must not abandon initialization after p2pInitTimeout.
+func (syncService *SyncService[H]) keepRetryingP2PInit() bool {
+	return syncService.conf.Node.Aggregator &&
+		syncService.conf.Node.CatchupTimeout.Duration > 0 &&
+		strings.TrimSpace(syncService.conf.P2P.Peers) != ""
+}
+
+// continueP2PInitIfNeeded keeps trying P2P initialization after the subscriber is
+// up so P2PInitialized can still become true during catchup.
+func (syncService *SyncService[H]) continueP2PInitIfNeeded(ctx context.Context, peerIDs []peer.ID) {
+	if !syncService.keepRetryingP2PInit() || syncService.P2PInitialized() || len(peerIDs) == 0 {
+		return
+	}
+
+	go func() {
+		if err := syncService.retryInitFromP2P(ctx, 0); err != nil && ctx.Err() == nil {
+			syncService.logger.Warn().Err(err).Msg("background P2P initialization stopped")
+		}
+	}()
+}
+
 // initFromP2PWithRetry initializes the syncer from P2P with a retry mechanism.
 // It inspects the local store to determine the first height to request:
 //   - when the store already contains items, it reuses the latest height as the starting point;
@@ -379,66 +406,85 @@ func (syncService *SyncService[H]) initFromP2PWithRetry(ctx context.Context, pee
 		return nil
 	}
 
-	tryInit := func(ctx context.Context) (bool, error) {
-		var (
-			trusted       H
-			err           error
-			heightToQuery uint64
-		)
-
-		head, headErr := syncService.store.Head(ctx)
-		switch {
-		case errors.Is(headErr, header.ErrNotFound), errors.Is(headErr, header.ErrEmptyStore):
-			heightToQuery = syncService.genesis.InitialHeight
-		case headErr != nil:
-			return false, fmt.Errorf("failed to inspect local store head: %w", headErr)
-		default:
-			heightToQuery = head.Height()
+	if syncService.keepRetryingP2PInit() {
+		ok, err := syncService.tryInitFromP2P(ctx)
+		if ok {
+			return nil
 		}
-
-		if trusted, err = syncService.ex.GetByHeight(ctx, heightToQuery); err != nil {
-			return false, fmt.Errorf("failed to fetch height %d from peers: %w", heightToQuery, err)
+		if ctx.Err() != nil {
+			return ctx.Err()
 		}
-
-		if syncService.storeInitialized.CompareAndSwap(false, true) {
-			if _, err := syncService.initStore(ctx, trusted); err != nil {
-				syncService.storeInitialized.Store(false)
-				return false, fmt.Errorf("failed to initialize the store: %w", err)
-			}
-		}
-		if _, err := syncService.startSyncer(ctx); err != nil {
-			return false, err
-		}
-		syncService.p2pInitialized.Store(true)
-		return true, nil
+		syncService.logger.Info().Err(err).Msg("P2P initialization pending; continuing in background until context is canceled")
+		return nil
 	}
 
-	// Block with exponential backoff until initialization succeeds, the context is
-	// canceled, or the service timeout expires. The caller decides whether P2P
-	// initialization is mandatory before proceeding.
+	return syncService.retryInitFromP2P(ctx, p2pInitTimeout)
+}
+
+func (syncService *SyncService[H]) tryInitFromP2P(ctx context.Context) (bool, error) {
+	var (
+		trusted       H
+		err           error
+		heightToQuery uint64
+	)
+
+	head, headErr := syncService.store.Head(ctx)
+	switch {
+	case errors.Is(headErr, header.ErrNotFound), errors.Is(headErr, header.ErrEmptyStore):
+		heightToQuery = syncService.genesis.InitialHeight
+	case headErr != nil:
+		return false, fmt.Errorf("failed to inspect local store head: %w", headErr)
+	default:
+		heightToQuery = head.Height()
+	}
+
+	if trusted, err = syncService.ex.GetByHeight(ctx, heightToQuery); err != nil {
+		return false, fmt.Errorf("failed to fetch height %d from peers: %w", heightToQuery, err)
+	}
+
+	if syncService.storeInitialized.CompareAndSwap(false, true) {
+		if _, err := syncService.initStore(ctx, trusted); err != nil {
+			syncService.storeInitialized.Store(false)
+			return false, fmt.Errorf("failed to initialize the store: %w", err)
+		}
+	}
+	if _, err := syncService.startSyncer(ctx); err != nil {
+		return false, err
+	}
+	syncService.p2pInitialized.Store(true)
+	return true, nil
+}
+
+// retryInitFromP2P retries tryInitFromP2P with exponential backoff. A zero
+// giveUpAfter retries until ctx is canceled so catchup can still observe P2PInitialized.
+func (syncService *SyncService[H]) retryInitFromP2P(ctx context.Context, giveUpAfter time.Duration) error {
 	backoff := 1 * time.Second
 	maxBackoff := 10 * time.Second
 
-	p2pInitTimeout := 30 * time.Second
-	timeoutTimer := time.NewTimer(p2pInitTimeout)
-	defer timeoutTimer.Stop()
-	retryTimer := time.NewTimer(backoff)
-	defer retryTimer.Stop()
+	var timeoutCh <-chan time.Time
+	if giveUpAfter > 0 {
+		timeoutTimer := time.NewTimer(giveUpAfter)
+		defer timeoutTimer.Stop()
+		timeoutCh = timeoutTimer.C
+	}
 
 	for {
-		ok, err := tryInit(ctx)
+		ok, err := syncService.tryInitFromP2P(ctx)
 		if ok {
 			return nil
 		}
 
 		syncService.logger.Info().Err(err).Dur("retry_in", backoff).Msg("headers not yet available from peers, waiting to initialize header sync")
 
+		retryTimer := time.NewTimer(backoff)
 		select {
 		case <-ctx.Done():
+			retryTimer.Stop()
 			return ctx.Err()
-		case <-timeoutTimer.C:
+		case <-timeoutCh:
+			retryTimer.Stop()
 			syncService.logger.Warn().
-				Dur("timeout", p2pInitTimeout).
+				Dur("timeout", giveUpAfter).
 				Msg("P2P header sync initialization timed out")
 			return nil
 		case <-retryTimer.C:
@@ -447,7 +493,6 @@ func (syncService *SyncService[H]) initFromP2PWithRetry(ctx context.Context, pee
 		if backoff > maxBackoff {
 			backoff = maxBackoff
 		}
-		retryTimer.Reset(backoff)
 	}
 }
 
