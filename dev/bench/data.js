@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788252751438,
+  "lastUpdate": 1788253288573,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -1102,6 +1102,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 36032,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "7cf0c2a51dd538db737f98e89e473b344e1d6cb1",
+          "message": "build(deps): Bump hadolint/hadolint-action from 3.3.0 to 3.5.0 (#3440)\n\nBumps [hadolint/hadolint-action](https://github.com/hadolint/hadolint-action) from 3.3.0 to 3.5.0.\n- [Release notes](https://github.com/hadolint/hadolint-action/releases)\n- [Commits](https://github.com/hadolint/hadolint-action/compare/v3.3.0...v3.5.0)\n\n---\nupdated-dependencies:\n- dependency-name: hadolint/hadolint-action\n  dependency-version: 3.5.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-09-01T10:55:52+02:00",
+          "tree_id": "ec358180f7dfebbd31d63d19c6139c1ce839b882",
+          "url": "https://github.com/evstack/ev-node/commit/7cf0c2a51dd538db737f98e89e473b344e1d6cb1"
+        },
+        "date": 1788253284522,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 913174330,
+            "unit": "ns/op\t 4286840 B/op\t   36759 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 913174330,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 4286840,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 36759,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
