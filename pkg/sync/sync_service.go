@@ -67,6 +67,7 @@ type SyncService[H store.EntityWithDAHint[H]] struct {
 	topicSubscription header.Subscription[H]
 
 	storeInitialized atomic.Bool
+	p2pInitialized   atomic.Bool
 }
 
 // NewDataSyncService returns a new DataSyncService.
@@ -121,6 +122,13 @@ func newSyncService[H store.EntityWithDAHint[H]](
 // Store returns the store of the SyncService
 func (syncService *SyncService[H]) Store() header.Store[H] {
 	return syncService.store
+}
+
+// P2PInitialized reports whether the service successfully initialized its
+// store and syncer from a P2P peer during startup. Store initialization through
+// DA retrieval or block publishing does not satisfy this condition.
+func (syncService *SyncService[H]) P2PInitialized() bool {
+	return syncService.p2pInitialized.Load()
 }
 
 // WriteToStoreAndBroadcast broadcasts provided header or block to P2P network.
@@ -401,12 +409,13 @@ func (syncService *SyncService[H]) initFromP2PWithRetry(ctx context.Context, pee
 		if _, err := syncService.startSyncer(ctx); err != nil {
 			return false, err
 		}
+		syncService.p2pInitialized.Store(true)
 		return true, nil
 	}
 
-	// block with exponential backoff until initialization succeeds, context is canceled, or timeout.
-	// If timeout is reached, we return nil to allow startup to continue - DA sync will
-	// provide headers and WriteToStoreAndBroadcast will lazily initialize the store/syncer.
+	// Block with exponential backoff until initialization succeeds, the context is
+	// canceled, or the service timeout expires. The caller decides whether P2P
+	// initialization is mandatory before proceeding.
 	backoff := 1 * time.Second
 	maxBackoff := 10 * time.Second
 
@@ -430,7 +439,7 @@ func (syncService *SyncService[H]) initFromP2PWithRetry(ctx context.Context, pee
 		case <-timeoutTimer.C:
 			syncService.logger.Warn().
 				Dur("timeout", p2pInitTimeout).
-				Msg("P2P header sync initialization timed out, deferring to DA sync")
+				Msg("P2P header sync initialization timed out")
 			return nil
 		case <-retryTimer.C:
 		}
@@ -516,7 +525,7 @@ func (syncService *SyncService[H]) getNetworkID(network string) string {
 
 func (syncService *SyncService[H]) getPeerIDs() []peer.ID {
 	peerIDs := syncService.p2p.PeerIDs()
-	if !syncService.conf.Node.Aggregator {
+	if !syncService.conf.Node.Aggregator || syncService.conf.Node.CatchupTimeout.Duration > 0 {
 		peerIDs = append(peerIDs, getPeers(syncService.conf.P2P.Peers, syncService.logger)...)
 	}
 	return peerIDs

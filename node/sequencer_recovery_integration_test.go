@@ -3,7 +3,6 @@
 package node
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -196,27 +195,7 @@ func TestSequencerRecoveryFromP2P(t *testing.T) {
 		"recovery node should catch up via P2P and produce new blocks")
 	requireEmptyChan(t, errChan)
 
-	// If the recovery node synced from P2P (got the original blocks),
-	// verify the hashes match. If P2P didn't connect in time and the
-	// node produced its own chain, we skip the hash assertion since
-	// the recovery still succeeded (just without P2P data).
-	recHeight, err := recoveryNode.Store.Height(t.Context())
-	require.NoError(t, err)
-	if recHeight >= fnHeight {
-		allMatch := true
-		for h, expHash := range originalHashes {
-			header, _, err := recoveryNode.Store.GetBlockData(t.Context(), h)
-			if err != nil || !bytes.Equal(header.Hash(), expHash) {
-				allMatch = false
-				break
-			}
-		}
-		if allMatch {
-			t.Log("recovery node synced original blocks from P2P — all hashes verified")
-		} else {
-			t.Log("recovery node produced its own blocks (P2P sync was not completed in time)")
-		}
-	}
+	assertBlockHashesMatch(t, recoveryNode, originalHashes)
 
 	// Shutdown
 	recCancel()
