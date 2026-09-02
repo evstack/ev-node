@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -309,6 +310,97 @@ func TestPendingCache_ConcurrentAccess(t *testing.T) {
 
 	// Should not panic and should have some items remaining
 	assert.GreaterOrEqual(t, cache.len(), 0)
+}
+
+func TestHeightSubWaitCancellationRemovesWaiter(t *testing.T) {
+	t.Parallel()
+
+	hs := newHeightSub(1)
+	for range 100 {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		require.ErrorIs(t, hs.Wait(ctx, 1_000), context.Canceled)
+	}
+
+	hs.heightMu.Lock()
+	defer hs.heightMu.Unlock()
+	assert.Empty(t, hs.heightChs)
+}
+
+func TestHeightSubWaitCancellationPreservesOtherWaiters(t *testing.T) {
+	t.Parallel()
+
+	hs := newHeightSub(1)
+	ctx1, cancel1 := context.WithCancel(context.Background())
+	ctx2 := context.Background()
+	waitDone := make(chan error, 2)
+	go func() {
+		waitDone <- hs.Wait(ctx1, 1_000)
+	}()
+	go func() {
+		waitDone <- hs.Wait(ctx2, 1_000)
+	}()
+
+	require.Eventually(t, func() bool {
+		hs.heightMu.Lock()
+		defer hs.heightMu.Unlock()
+		return len(hs.heightChs[1_000]) == 2
+	}, time.Second, time.Millisecond)
+
+	cancel1()
+	require.Eventually(t, func() bool {
+		hs.heightMu.Lock()
+		defer hs.heightMu.Unlock()
+		return len(hs.heightChs[1_000]) == 1
+	}, time.Second, time.Millisecond)
+
+	hs.SetHeight(1_000)
+	results := []error{<-waitDone, <-waitDone}
+	assert.Contains(t, results, context.Canceled)
+	assert.Contains(t, results, nil)
+}
+
+func TestHeightSubWaitCancellationAndSetHeightConcurrent(t *testing.T) {
+	t.Parallel()
+
+	for range 100 {
+		hs := newHeightSub(1)
+		ctx, cancel := context.WithCancel(context.Background())
+		waitDone := make(chan error, 1)
+		go func() {
+			waitDone <- hs.Wait(ctx, 1_000)
+		}()
+
+		// Ensure the waiter is registered before racing cancellation and notification.
+		require.Eventually(t, func() bool {
+			hs.heightMu.Lock()
+			defer hs.heightMu.Unlock()
+			return len(hs.heightChs[1_000]) == 1
+		}, time.Second, time.Millisecond)
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			cancel()
+		}()
+		go func() {
+			defer wg.Done()
+			hs.SetHeight(1_000)
+		}()
+		wg.Wait()
+
+		err := <-waitDone
+		if err != nil {
+			assert.ErrorIs(t, err, context.Canceled)
+		}
+
+		cancel()
+		hs.heightMu.Lock()
+		assert.Empty(t, hs.heightChs)
+		hs.heightMu.Unlock()
+	}
 }
 
 // TestStoreAdapter_Backpressure tests that Append blocks when cache is full
