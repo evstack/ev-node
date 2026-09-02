@@ -104,7 +104,34 @@ func (hs *heightSub) Wait(ctx context.Context, height uint64) error {
 	case <-ch:
 		return nil
 	case <-ctx.Done():
+		hs.removeWaiter(height, ch)
 		return ctx.Err()
+	}
+}
+
+// removeWaiter unregisters a specific waiter from the requested height.
+func (hs *heightSub) removeWaiter(height uint64, target chan struct{}) {
+	hs.heightMu.Lock()
+	defer hs.heightMu.Unlock()
+
+	chs, ok := hs.heightChs[height]
+	if !ok {
+		return
+	}
+
+	for i, ch := range chs {
+		if ch != target {
+			continue
+		}
+		copy(chs[i:], chs[i+1:])
+		chs[len(chs)-1] = nil
+		chs = chs[:len(chs)-1]
+		if len(chs) == 0 {
+			delete(hs.heightChs, height)
+		} else {
+			hs.heightChs[height] = chs
+		}
+		return
 	}
 }
 
