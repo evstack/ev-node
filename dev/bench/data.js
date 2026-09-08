@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788854763089,
+  "lastUpdate": 1788854765461,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -194,6 +194,102 @@ window.BENCHMARK_DATA = {
             "value": 55,
             "unit": "allocs/op",
             "extra": "28250 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "luangucun@outlook.com",
+            "name": "luangucun",
+            "username": "luangucun"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": false,
+          "id": "8b13733cec7208a268192db65661781ae04eff1b",
+          "message": "fix(store): remove canceled height waiters (#3445)\n\nSigned-off-by: luangucun <luangucun@outlook.com>",
+          "timestamp": "2026-09-08T07:43:53Z",
+          "tree_id": "9eb61585a73abae4924f9913ed10b0ef102ab6ae",
+          "url": "https://github.com/evstack/ev-node/commit/8b13733cec7208a268192db65661781ae04eff1b"
+        },
+        "date": 1788854764819,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 33476,
+            "unit": "ns/op\t    4794 B/op\t      51 allocs/op",
+            "extra": "36056 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 33476,
+            "unit": "ns/op",
+            "extra": "36056 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 4794,
+            "unit": "B/op",
+            "extra": "36056 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 51,
+            "unit": "allocs/op",
+            "extra": "36056 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 33539,
+            "unit": "ns/op\t    4991 B/op\t      55 allocs/op",
+            "extra": "35811 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 33539,
+            "unit": "ns/op",
+            "extra": "35811 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 4991,
+            "unit": "B/op",
+            "extra": "35811 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 55,
+            "unit": "allocs/op",
+            "extra": "35811 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 40787,
+            "unit": "ns/op\t   10305 B/op\t      55 allocs/op",
+            "extra": "29676 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 40787,
+            "unit": "ns/op",
+            "extra": "29676 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 10305,
+            "unit": "B/op",
+            "extra": "29676 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 55,
+            "unit": "allocs/op",
+            "extra": "29676 times\n4 procs"
           }
         ]
       }
