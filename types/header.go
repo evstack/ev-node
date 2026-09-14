@@ -108,7 +108,7 @@ func (h *Header) Height() uint64 {
 	return h.BaseHeader.Height
 }
 
-// LastHeader returns last header hash of the header.
+// LastHeader returns the last header hash.
 func (h *Header) LastHeader() Hash {
 	return h.LastHeaderHash[:]
 }
@@ -151,7 +151,7 @@ var (
 )
 
 // LegacyHeaderFields captures the deprecated header fields that existed prior
-// to the header minimisation change. When populated, these values are re-used
+// to the header minimisation change. When populated, these values are reused
 // while constructing the protobuf payload so that legacy nodes can continue to
 // verify signatures and hashes.
 //

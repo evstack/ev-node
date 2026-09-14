@@ -2,7 +2,7 @@ package types
 
 import "unsafe"
 
-// Tx represents transaction.
+// Tx represents a transaction.
 type Tx []byte
 
 // Txs represents a slice of transactions.

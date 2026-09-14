@@ -35,6 +35,6 @@ Libp2p provides multiple ways to discover peers (DHT, mDNS, PubSub peer exchange
 2. Custom peer-exchange protocol.
    - pros: full flexibility of implementation
    - cons: need to create from scratch and test
-3. Re-use of existing peer discovery mechanism like `discv5`
+3. Reuse of existing peer discovery mechanism like `discv5`
    - pros: ready & battle-tested software
    - cons: use different network stack, requires lot of integration
