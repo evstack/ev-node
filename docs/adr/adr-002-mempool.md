@@ -4,7 +4,7 @@ For now, mempool implementation from lazyledger-core/Tendermint will be used.
 
 ## Pros
 
-* good integration with other re-used code (see ADR-001)
+* good integration with other reused code (see ADR-001)
 * well tested
 * glue code is not required
 * it will be updated in case of ABCI++ adoption
@@ -23,6 +23,6 @@ For now, mempool implementation from lazyledger-core/Tendermint will be used.
 * Implementation from scratch
   * time consuming
   * error prone
-* Re-using other mempool (Celo, Prysm, etc)
+* Reusing other mempool (Celo, Prysm, etc)
   * different API
   * potential licensing issues
