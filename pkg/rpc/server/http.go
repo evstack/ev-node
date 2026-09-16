@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"golang.org/x/net/http2"
 
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/p2p"
@@ -30,6 +29,9 @@ func ConfigureHTTPServer(s *http.Server) error {
 	if s.Protocols == nil {
 		s.Protocols = RPCServerProtocols()
 	}
+	if s.IdleTimeout == 0 {
+		s.IdleTimeout = 120 * time.Second
+	}
 	if s.HTTP2 == nil {
 		s.HTTP2 = &http.HTTP2Config{
 			MaxReadFrameSize:     1 << 24,
@@ -38,13 +40,7 @@ func ConfigureHTTPServer(s *http.Server) error {
 			PingTimeout:          15 * time.Second,
 		}
 	}
-	return http2.ConfigureServer(s, &http2.Server{
-		IdleTimeout:          120 * time.Second,
-		MaxReadFrameSize:     1 << 24,
-		MaxConcurrentStreams: 100,
-		ReadIdleTimeout:      30 * time.Second,
-		PingTimeout:          15 * time.Second,
-	})
+	return nil
 }
 
 // RegisterCustomHTTPEndpoints registers custom HTTP handlers on the mux.
