@@ -27,8 +27,8 @@ func TestConfigureHTTPServer(t *testing.T) {
 	assert.True(t, srv.Protocols.UnencryptedHTTP2())
 	require.NotNil(t, srv.HTTP2)
 	assert.Equal(t, 120*time.Second, srv.IdleTimeout)
-	assert.Equal(t, int32(1<<24), srv.HTTP2.MaxReadFrameSize)
-	assert.Equal(t, uint32(100), srv.HTTP2.MaxConcurrentStreams)
+	assert.Equal(t, 1<<24, srv.HTTP2.MaxReadFrameSize)
+	assert.Equal(t, 100, srv.HTTP2.MaxConcurrentStreams)
 	assert.Equal(t, 30*time.Second, srv.HTTP2.SendPingTimeout)
 	assert.Equal(t, 15*time.Second, srv.HTTP2.PingTimeout)
 }
