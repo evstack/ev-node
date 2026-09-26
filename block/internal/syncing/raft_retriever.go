@@ -14,10 +14,10 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-// raftStatePreProcessor is called before processing a raft block state
+// raftStatePreProcessor is called before processing a raft block state.
 type raftStatePreProcessor func(ctx context.Context, state *raft.RaftBlockState) error
 
-// raftRetriever retrieves raft blocks and feeds them into the eventProcessor
+// raftRetriever retrieves raft blocks and feeds them into the eventProcessor.
 type raftRetriever struct {
 	raftNode              common.RaftNode
 	wg                    sync.WaitGroup
@@ -30,7 +30,7 @@ type raftRetriever struct {
 	cancel context.CancelFunc
 }
 
-// newRaftRetriever constructor
+// newRaftRetriever is the constructor.
 func newRaftRetriever(
 	raftNode common.RaftNode,
 	genesis genesis.Genesis,
@@ -47,7 +47,7 @@ func newRaftRetriever(
 	}
 }
 
-// Start begins the syncing component
+// Start begins the syncing component.
 func (r *raftRetriever) Start(ctx context.Context) error {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
@@ -64,7 +64,7 @@ func (r *raftRetriever) Start(ctx context.Context) error {
 	return nil
 }
 
-// Stop gracefully shuts down the raft retriever
+// Stop gracefully shuts down the raft retriever.
 func (r *raftRetriever) Stop() {
 	r.mtx.Lock()
 	if r.cancel != nil {
@@ -77,7 +77,7 @@ func (r *raftRetriever) Stop() {
 	r.raftNode.SetApplyCallback(nil)
 }
 
-// raftApplyLoop processes blocks received from raft
+// raftApplyLoop processes blocks received from raft.
 func (r *raftRetriever) raftApplyLoop(ctx context.Context, applyCh <-chan raft.RaftApplyMsg) {
 	r.logger.Info().Msg("starting raft apply loop")
 	defer r.logger.Info().Msg("raft apply loop stopped")
@@ -94,7 +94,7 @@ func (r *raftRetriever) raftApplyLoop(ctx context.Context, applyCh <-chan raft.R
 	}
 }
 
-// consumeRaftBlock applies a block received from raft consensus
+// consumeRaftBlock applies a block received from raft consensus.
 func (r *raftRetriever) consumeRaftBlock(ctx context.Context, state *raft.RaftBlockState) error {
 	r.logger.Debug().
 		Uint64("height", state.Height).

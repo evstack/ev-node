@@ -60,7 +60,7 @@ func (s *stubRaftNode) recordedCallbacks() []chan<- raft.RaftApplyMsg {
 	return out
 }
 
-// helper to create a signer, pubkey and address for tests
+// buildSyncTestSigner is a helper to create a signer, pubkey and address for tests.
 func buildSyncTestSigner(tb testing.TB) (addr []byte, pub crypto.PubKey, signer signerpkg.Signer) {
 	tb.Helper()
 	priv, _, err := crypto.GenerateEd25519Key(crand.Reader)
@@ -74,7 +74,7 @@ func buildSyncTestSigner(tb testing.TB) (addr []byte, pub crypto.PubKey, signer 
 	return a, p, n
 }
 
-// makeSignedHeaderBytes builds a valid SignedHeader and returns its binary encoding and the object
+// makeSignedHeaderBytes builds a valid SignedHeader and returns its binary encoding and the object.
 func makeSignedHeaderBytes(
 	tb testing.TB,
 	chainID string,

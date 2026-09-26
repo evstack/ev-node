@@ -26,7 +26,7 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-// newTestDARetriever creates a DA retriever for testing with the given DA implementation
+// newTestDARetriever creates a DA retriever for testing with the given DA implementation.
 func newTestDARetriever(t *testing.T, mockClient *mocks.MockClient, cfg config.Config, gen genesis.Genesis) *daRetriever {
 	t.Helper()
 	if cfg.DA.Namespace == "" {
@@ -55,7 +55,7 @@ func newTestDARetriever(t *testing.T, mockClient *mocks.MockClient, cfg config.C
 	return NewDARetriever(mockClient, cm, gen, zerolog.Nop())
 }
 
-// makeSignedDataBytes builds SignedData containing the provided Data and returns its binary encoding
+// makeSignedDataBytes builds SignedData containing the provided Data and returns its binary encoding.
 func makeSignedDataBytes(t *testing.T, chainID string, height uint64, proposer []byte, pub crypto.PubKey, signer signerpkg.Signer, txs int) ([]byte, *types.SignedData) {
 	return makeSignedDataBytesWithTime(t, chainID, height, proposer, pub, signer, txs, uint64(time.Now().UnixNano()))
 }

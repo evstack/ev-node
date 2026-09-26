@@ -28,7 +28,7 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-// noopDAHintAppender is a no-op implementation of DAHintAppender for testing
+// noopDAHintAppender is a no-op implementation of DAHintAppender for testing.
 type noopDAHintAppender struct{}
 
 func (n noopDAHintAppender) AppendDAHint(ctx context.Context, daHeight uint64, heights ...uint64) error {

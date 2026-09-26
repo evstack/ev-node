@@ -14,7 +14,7 @@ import (
 // DummyExecutor
 //---------------------
 
-// DummyExecutor is a dummy implementation of the Executor interface for testing
+// DummyExecutor is a dummy implementation of Executor for testing.
 type DummyExecutor struct {
 	mu           sync.RWMutex // Add mutex for thread safety
 	stateRoot    []byte

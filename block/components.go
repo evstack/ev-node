@@ -27,7 +27,7 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-// Components represents the block-related components
+// Components represents the block-related components.
 type Components struct {
 	Executor  *executing.Executor
 	Pruner    *pruner.Pruner
@@ -41,7 +41,7 @@ type Components struct {
 }
 
 // Start starts all components and monitors for critical errors.
-// It is blocking and returns when the context is cancelled or an error occurs
+// It is blocking and returns when the context is cancelled or an error occurs.
 func (bc *Components) Start(ctx context.Context) error {
 	ctxWithCancel, cancel := context.WithCancel(ctx)
 
@@ -95,7 +95,7 @@ func (bc *Components) Start(ctx context.Context) error {
 	}
 }
 
-// Stop stops all components
+// Stop stops all components.
 func (bc *Components) Stop() error {
 	var errs error
 	if bc.Executor != nil {

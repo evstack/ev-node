@@ -12,7 +12,7 @@ import (
 
 var _ Sequencer = (*DummySequencer)(nil)
 
-// DummySequencer is a dummy implementation of the Sequencer interface for testing
+// DummySequencer is a dummy implementation of Sequencer for testing.
 type DummySequencer struct {
 	mu      sync.RWMutex
 	batches map[string][]*Batch
