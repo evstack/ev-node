@@ -105,7 +105,7 @@ var (
 	ErrSignatureEmpty = errors.New("signature is empty")
 )
 
-// Validate performs basic validation of a signed header for the aggregator node.
+// ValidateBasic performs basic validation of a signed header for the aggregator node.
 func (sh *SignedHeader) ValidateBasic() error {
 	if err := sh.Header.ValidateBasic(); err != nil {
 		return err
