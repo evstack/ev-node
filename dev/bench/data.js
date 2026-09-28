@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789553974767,
+  "lastUpdate": 1790579795602,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -142,6 +142,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 36699,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "colinaumaty@outlook.com",
+            "name": "colinaumaty",
+            "username": "colinaumaty"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "46b4a79ce3e8d0b6200fcdbdfb46ffa8bc585c02",
+          "message": "chore: minor improvement for docs (#3457)\n\nSigned-off-by: colinaumaty <colinaumaty@outlook.com>",
+          "timestamp": "2026-09-28T09:09:06+02:00",
+          "tree_id": "19969f42815728f8409603fbf0a933d8a2fc744d",
+          "url": "https://github.com/evstack/ev-node/commit/46b4a79ce3e8d0b6200fcdbdfb46ffa8bc585c02"
+        },
+        "date": 1790579790111,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 842903778,
+            "unit": "ns/op\t 3967520 B/op\t   33876 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 842903778,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 3967520,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 33876,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
