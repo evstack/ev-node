@@ -465,7 +465,7 @@ func (bq *BatchQueue) Load(ctx context.Context) error {
 	var legacyItems []queuedItem
 	for result := range results.Next() {
 		if result.Error != nil {
-			// a datastore read failure means the WAL cannot be trusted as
+			// A datastore read failure means the WAL cannot be trusted as
 			// loaded — fail startup rather than silently dropping txs.
 			return fmt.Errorf("failed to read WAL entry from datastore: %w", result.Error)
 		}

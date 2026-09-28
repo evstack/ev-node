@@ -214,7 +214,7 @@ func (t *tracedP2PServer) GetNetInfo(
 	return res, nil
 }
 
-// tracedConfigServer decorates a ConfigServiceHandler with OpenTelemetry spans.
+// tracedConfigServer decorates the config service handler with OpenTelemetry spans.
 type tracedConfigServer struct {
 	inner  v1connect.ConfigServiceHandler
 	tracer trace.Tracer

@@ -444,7 +444,7 @@ func TestDynamicLeaderElectionRun(t *testing.T) {
 	}
 }
 
-// Helper to quickly build a Config with very short timeouts for tests
+// testCfg is a helper to quickly build a Config with very short timeouts for tests.
 func testCfg() Config {
 	return Config{SendTimeout: 2 * time.Millisecond}
 }

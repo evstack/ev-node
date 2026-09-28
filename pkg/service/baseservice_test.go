@@ -10,7 +10,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// dummyService is a simple implementation of the Service interface for testing purposes.
+// dummyService is a simple implementation of Service for testing purposes.
 type dummyService struct {
 	*BaseService
 	runCalled bool
