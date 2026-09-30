@@ -18,7 +18,7 @@ type Genesis struct {
 	// DAStartHeight corresponds to the height at which the first DA header/data has been published.
 	// This value is meant to be updated after genesis and shared to all syncing nodes for speeding up syncing via DA.
 	DAStartHeight uint64 `json:"da_start_height"`
-	// DaEpochForcedInclusion corresponds to the amount of DA blocks are considered an epoch
+	// DaEpochForcedInclusion corresponds to the number of DA blocks that make up an epoch
 	// When forced inclusion is enabled, the epoch size determines at what frequency the forced included transactions are executed by the application.
 	DAEpochForcedInclusion uint64 `json:"da_epoch_forced_inclusion"`
 }
