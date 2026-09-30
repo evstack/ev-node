@@ -59,7 +59,7 @@ func testVerify(t *testing.T, trusted *SignedHeader, untrustedAdj *SignedHeader,
 			},
 		},
 		// 2. Test non-adjacent
-		// increments the BaseHeader.Height so it's headers are non-adjacent
+		// increments the BaseHeader.Height so its headers are non-adjacent
 		// Expect success
 		{
 			prepare: func() (*SignedHeader, bool) {
