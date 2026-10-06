@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/celestiaorg/go-header"
+	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block/internal/cache"
@@ -225,6 +227,7 @@ func (s *Syncer) Start(ctx context.Context) (err error) {
 			Namespace:     s.daClient.GetHeaderNamespace(),
 			DataNamespace: s.daClient.GetDataNamespace(),
 			StartDAHeight: s.daRetrieverHeight.Load(),
+			OnSkip:        s.recordSkippedDAHeight,
 			DABlockTime:   s.config.DA.BlockTime.Duration,
 		})
 		if err = s.daFollower.Start(ctx); err != nil {
@@ -317,6 +320,21 @@ func (s *Syncer) expectedProposerForHeight(height uint64) ([]byte, bool) {
 	return state.NextProposerAddress, true
 }
 
+// recordSkippedDAHeight saves skip progress synchronously before the follower
+// advances, without changing executed state or DA inclusion progress.
+func (s *Syncer) recordSkippedDAHeight(ctx context.Context, height uint64) error {
+	if height == math.MaxUint64 {
+		return errors.New("cannot skip maximum DA height")
+	}
+	bz := make([]byte, 8)
+	binary.LittleEndian.PutUint64(bz, height)
+	if err := s.store.BatchMetadata(ctx, []store.MetadataKV{{Key: store.LastSkippedDAHeightKey, Value: bz}}, nil); err != nil {
+		return err
+	}
+	s.daRetrieverHeight.Store(max(s.daRetrieverHeight.Load(), height+1))
+	return nil
+}
+
 // initializeState loads the current sync state
 func (s *Syncer) initializeState() error {
 	// Load state from store
@@ -394,6 +412,19 @@ func (s *Syncer) initializeState() error {
 	}
 	if s.headerStore != nil && s.headerStore.Height() > state.LastBlockHeight {
 		daHeight = max(daHeight, s.cache.DaHeight())
+	}
+
+	if skipped, err := s.store.GetMetadata(s.ctx, store.LastSkippedDAHeightKey); err == nil {
+		if len(skipped) != 8 {
+			return errors.New("invalid last skipped DA height metadata")
+		}
+		lastSkipped := binary.LittleEndian.Uint64(skipped)
+		if lastSkipped == math.MaxUint64 {
+			return errors.New("last skipped DA height cannot advance beyond maximum height")
+		}
+		daHeight = max(daHeight, lastSkipped+1)
+	} else if !errors.Is(err, ds.ErrNotFound) {
+		return fmt.Errorf("load last skipped DA height: %w", err)
 	}
 
 	// dev mode for da start height

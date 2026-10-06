@@ -19,6 +19,10 @@ const (
 	// DAIncludedHeightKey is the key used for persisting the da included height in store.
 	DAIncludedHeightKey = "d"
 
+	// LastSkippedDAHeightKey records the last DA fetch height abandoned after
+	// repeated failures. It is independent of DA inclusion and executed state.
+	LastSkippedDAHeightKey = "last-skipped-da-height"
+
 	// LastSubmittedHeaderHeightKey is the key used for persisting the last submitted header height in store.
 	LastSubmittedHeaderHeightKey = "last-submitted-header-height"
 
