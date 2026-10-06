@@ -161,8 +161,12 @@ func (r *daRetriever) validateBlobResponse(res datypes.ResultRetrieve, daHeight 
 	case datypes.StatusSuccess:
 		r.logger.Debug().Uint64("da_height", daHeight).Msg("successfully retrieved from DA")
 		return nil
+	case datypes.StatusContextDeadline:
+		return fmt.Errorf("DA retrieval failed: %w: %s", context.DeadlineExceeded, res.Message)
+	case datypes.StatusContextCanceled:
+		return fmt.Errorf("DA retrieval failed: %w: %s", context.Canceled, res.Message)
 	default:
-		return nil
+		return fmt.Errorf("DA retrieval failed: unexpected status %d: %s", res.Code, res.Message)
 	}
 }
 

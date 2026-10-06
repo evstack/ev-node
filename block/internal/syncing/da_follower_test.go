@@ -3,7 +3,9 @@ package syncing
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/common"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
+	testmocks "github.com/evstack/ev-node/test/mocks"
 )
 
 func TestDAFollower_HandleEvent(t *testing.T) {
@@ -250,4 +253,149 @@ func makeRange(start, end uint64) []uint64 {
 		out = append(out, v)
 	}
 	return out
+}
+
+func TestDAFollowerSkipsAfterTenFailedFetchesAndContinues(t *testing.T) {
+	retriever := NewMockDARetriever(t)
+	fetchErr := errors.New("historical DA height no longer available")
+	for _, h := range []uint64{100, 101} {
+		retriever.On("RetrieveFromDA", mock.Anything, h).Return(nil, fetchErr).Times(10)
+	}
+	retriever.On("RetrieveFromDA", mock.Anything, uint64(102)).Return([]common.DAHeightEvent(nil), nil).Once()
+	client := testmocks.NewMockClient(t)
+	client.On("SupportsSubscribe").Return(false)
+	client.On("GetLatestDAHeight", mock.Anything).Return(uint64(102), nil)
+	var lastSkipped atomic.Uint64
+	f := NewDAFollower(DAFollowerConfig{
+		Client: client, Retriever: retriever, Logger: zerolog.Nop(),
+		Namespace: []byte("ns"), StartDAHeight: 100, DABlockTime: time.Millisecond,
+		OnSkip: func(_ context.Context, height uint64) error {
+			lastSkipped.Store(height)
+			return nil
+		},
+	}).(*daFollower)
+	require.NoError(t, f.Start(t.Context()))
+	t.Cleanup(f.Stop)
+	require.Eventually(t, func() bool { return f.subscriber.LocalDAHeight() == 103 }, time.Second, time.Millisecond)
+	require.Equal(t, uint64(101), lastSkipped.Load())
+	// Stop before checking mocks so no background calls race with assertions.
+	f.Stop()
+	retriever.AssertExpectations(t)
+}
+
+func TestDAFollowerDoesNotSkipFutureCancellationOrDeliveryFailures(t *testing.T) {
+	for _, kind := range []string{"future", "cancellation", "delivery"} {
+		t.Run(kind, func(t *testing.T) {
+			ctx := t.Context()
+			retriever := NewMockDARetriever(t)
+			var expected error
+			var events []common.DAHeightEvent
+			var retrievalErr error
+			switch kind {
+			case "future":
+				expected = datypes.ErrHeightFromFuture
+				retrievalErr = expected
+			case "cancellation":
+				canceled, cancel := context.WithCancel(ctx)
+				cancel()
+				ctx = canceled
+				expected = context.Canceled
+				retrievalErr = expected
+			case "delivery":
+				expected = errors.New("event delivery failed")
+				events = []common.DAHeightEvent{{DaHeight: 100}}
+			}
+			retriever.On("RetrieveFromDA", mock.Anything, uint64(100)).Return(events, retrievalErr).Times(12)
+			f := &daFollower{retriever: retriever, logger: zerolog.Nop(),
+				eventSink: common.EventSinkFunc(func(context.Context, common.DAHeightEvent) error { return expected }),
+				onSkip: func(context.Context, uint64) error {
+					t.Fatal("height must not be skipped")
+					return nil
+				},
+			}
+			for range 12 {
+				require.ErrorIs(t, f.HandleCatchup(ctx, 100), expected)
+			}
+			require.Zero(t, f.fetchFailures)
+		})
+	}
+}
+
+func TestDAFollowerSkipWaitsForPersistence(t *testing.T) {
+	retriever := NewMockDARetriever(t)
+	fetchErr := errors.New("DA unavailable")
+	retriever.On("RetrieveFromDA", mock.Anything, uint64(100)).Return(nil, fetchErr).Times(11)
+	persistErr := errors.New("metadata write failed")
+	f := &daFollower{retriever: retriever, logger: zerolog.Nop(),
+		onSkip: func(context.Context, uint64) error { return persistErr },
+	}
+	for range 9 {
+		require.ErrorIs(t, f.HandleCatchup(t.Context(), 100), fetchErr)
+	}
+	require.ErrorIs(t, f.HandleCatchup(t.Context(), 100), persistErr)
+	f.onSkip = func(context.Context, uint64) error { return nil }
+	require.NoError(t, f.HandleCatchup(t.Context(), 100))
+}
+
+func TestDAFollowerResetsFetchFailuresAfterRecovery(t *testing.T) {
+	retriever := NewMockDARetriever(t)
+	fetchErr := errors.New("DA unavailable")
+	retriever.On("RetrieveFromDA", mock.Anything, uint64(100)).Return(nil, fetchErr).Times(9)
+	retriever.On("RetrieveFromDA", mock.Anything, uint64(100)).Return([]common.DAHeightEvent(nil), nil).Once()
+	retriever.On("RetrieveFromDA", mock.Anything, uint64(101)).Return(nil, fetchErr).Times(10)
+	var skipped []uint64
+	f := &daFollower{retriever: retriever, logger: zerolog.Nop(),
+		onSkip: func(_ context.Context, h uint64) error { skipped = append(skipped, h); return nil },
+	}
+	for range 9 {
+		require.ErrorIs(t, f.HandleCatchup(t.Context(), 100), fetchErr)
+	}
+	require.NoError(t, f.HandleCatchup(t.Context(), 100))
+	for range 9 {
+		require.ErrorIs(t, f.HandleCatchup(t.Context(), 101), fetchErr)
+	}
+	require.Empty(t, skipped)
+	require.NoError(t, f.HandleCatchup(t.Context(), 101))
+	require.Equal(t, []uint64{101}, skipped)
+}
+
+func TestDAFollowerPriorityFailuresDoNotPreventSequentialRetries(t *testing.T) {
+	retriever := NewMockDARetriever(t)
+	fetchErr := errors.New("DA unavailable")
+	retriever.On("RetrieveFromDA", mock.Anything, uint64(100)).Return(nil, fetchErr).Times(10)
+	retriever.On("RetrieveFromDA", mock.Anything, uint64(105)).Return(nil, fetchErr).Times(10)
+	var skipped []uint64
+	f := &daFollower{retriever: retriever, logger: zerolog.Nop(),
+		onSkip: func(_ context.Context, h uint64) error { skipped = append(skipped, h); return nil },
+	}
+	for attempt := range 10 {
+		// Repeated hints for the current and future heights must not starve
+		// sequential retrieval or cause a second fetch of the current height.
+		f.QueuePriorityHeight(100)
+		f.QueuePriorityHeight(105)
+		err := f.HandleCatchup(t.Context(), 100)
+		if attempt < 9 {
+			require.ErrorIs(t, err, fetchErr)
+		} else {
+			require.NoError(t, err)
+		}
+	}
+	require.Equal(t, []uint64{100}, skipped)
+}
+
+func TestDAFollowerDoesNotSkipBeyondObservedHeadDuringOutage(t *testing.T) {
+	retriever := NewMockDARetriever(t)
+	fetchErr := errors.New("DA transport unavailable")
+	retriever.On("RetrieveFromDA", mock.Anything, uint64(101)).Return(nil, fetchErr).Times(12)
+	f := NewDAFollower(DAFollowerConfig{
+		Retriever: retriever, Logger: zerolog.Nop(), Namespace: []byte("ns"), StartDAHeight: 100,
+		OnSkip: func(context.Context, uint64) error {
+			t.Fatal("must not skip beyond the observed DA head")
+			return nil
+		},
+	}).(*daFollower)
+	for range 12 {
+		require.ErrorIs(t, f.HandleCatchup(t.Context(), 101), fetchErr)
+	}
+	require.Equal(t, maxDAFetchAttempts, f.fetchFailures)
 }

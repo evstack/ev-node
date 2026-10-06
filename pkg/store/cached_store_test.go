@@ -400,3 +400,18 @@ func TestCachedStore_CoalescesSameKeyOps(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []byte("v2"), v, "last write (Set) should win over delete")
 }
+
+func TestCachedStoreInvalidateLargeRange(t *testing.T) {
+	cs, err := NewCachedStore(New(ds.NewMapDatastore()), WithHeaderCacheSize(3), WithBlockDataCacheSize(3))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, cs.Close()) })
+	// A sparse cache and a huge pruning range must not require walking every
+	// height, or overflow when invalidating through the maximum height.
+	for _, h := range []uint64{1, 1 << 60, ^uint64(0)} {
+		cs.headerCache.Add(h, &types.SignedHeader{})
+		cs.blockDataCache.Add(h, &blockDataEntry{})
+	}
+	cs.InvalidateRange(2, ^uint64(0))
+	require.Equal(t, []uint64{1}, cs.headerCache.Keys())
+	require.Equal(t, []uint64{1}, cs.blockDataCache.Keys())
+}

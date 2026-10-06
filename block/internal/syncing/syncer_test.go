@@ -4,6 +4,7 @@ import (
 	"context"
 	crand "crypto/rand"
 	"crypto/sha512"
+	"encoding/binary"
 	"errors"
 	"math"
 	"sync"
@@ -1457,6 +1458,8 @@ func TestSyncer_InitializeState_CallsReplayer(t *testing.T) {
 		nil,
 	)
 
+	mockStore.EXPECT().GetMetadata(mock.Anything, store.LastSkippedDAHeightKey).Return(nil, datastore.ErrNotFound)
+
 	// Mock Batch operations
 	mockBatch := testmocks.NewMockBatch(t)
 	mockBatch.Test(t)
@@ -2115,4 +2118,67 @@ func TestSyncer_Stop_DrainWorksWithoutCriticalError(t *testing.T) {
 		// Verify ExecuteTxs was actually called during drain
 		mockExec.AssertExpectations(t)
 	})
+}
+
+func TestSyncerRestartsPastSkippedDAHeight(t *testing.T) {
+	ctx := t.Context()
+	st := store.New(dssync.MutexWrap(datastore.NewMapDatastore()))
+	batch, err := st.NewBatch(ctx)
+	require.NoError(t, err)
+	state := types.State{ChainID: "test-chain", InitialHeight: 1, LastBlockHeight: 100, DAHeight: 20}
+	require.NoError(t, batch.SetHeight(100))
+	require.NoError(t, batch.UpdateState(state))
+	require.NoError(t, batch.Commit())
+	included := make([]byte, 8)
+	binary.LittleEndian.PutUint64(included, 20)
+	require.NoError(t, st.SetMetadata(ctx, store.DAIncludedHeightKey, included))
+
+	// Skip writes must be durable even through the asynchronous cache wrapper.
+	cached, err := store.NewCachedStore(st)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, cached.Close()) })
+	cfg := config.DefaultConfig()
+	gen := genesis.Genesis{ChainID: state.ChainID, InitialHeight: 1, DAStartHeight: 1}
+	exec := testmocks.NewMockHeightAwareExecutor(t)
+	exec.On("GetLatestHeight", mock.Anything).Return(uint64(100), nil)
+	newSyncer := func() *Syncer {
+		s := NewSyncer(cached, exec, nil, nil, common.NopMetrics(), cfg, gen, nil, nil,
+			zerolog.Nop(), common.DefaultBlockOptions(), nil, nil)
+		s.ctx = ctx
+		return s
+	}
+	s := newSyncer()
+	require.NoError(t, s.initializeState())
+	require.NoError(t, s.recordSkippedDAHeight(ctx, 50))
+	require.Equal(t, uint64(51), s.daRetrieverHeight.Load())
+	skipped, err := st.GetMetadata(ctx, store.LastSkippedDAHeightKey)
+	require.NoError(t, err)
+	require.Equal(t, uint64(50), binary.LittleEndian.Uint64(skipped))
+
+	restarted := newSyncer()
+	require.NoError(t, restarted.initializeState())
+	require.Equal(t, uint64(51), restarted.daRetrieverHeight.Load())
+	// Skip progress must not change the executed state's DA height or inclusion.
+	persisted, err := st.GetState(ctx)
+	require.NoError(t, err)
+	require.Equal(t, uint64(20), persisted.DAHeight)
+	persistedInclusion, err := st.GetMetadata(ctx, store.DAIncludedHeightKey)
+	require.NoError(t, err)
+	require.Equal(t, included, persistedInclusion)
+
+	// An explicit operator override can still select an earlier fetch height.
+	cfg.DA.StartHeight = 30
+	overridden := newSyncer()
+	require.NoError(t, overridden.initializeState())
+	require.Equal(t, uint64(30), overridden.daRetrieverHeight.Load())
+}
+
+func TestSyncerSkipPersistenceFailureDoesNotAdvance(t *testing.T) {
+	st := testmocks.NewMockStore(t)
+	writeErr := errors.New("metadata commit failed")
+	st.EXPECT().BatchMetadata(mock.Anything, mock.Anything, []string(nil)).Return(writeErr).Once()
+	s := &Syncer{store: st, daRetrieverHeight: &atomic.Uint64{}}
+	s.daRetrieverHeight.Store(100)
+	require.ErrorIs(t, s.recordSkippedDAHeight(t.Context(), 100), writeErr)
+	require.Equal(t, uint64(100), s.daRetrieverHeight.Load())
 }

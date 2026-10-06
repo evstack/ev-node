@@ -186,7 +186,7 @@ func NewSyncComponents(
 	if p, ok := exec.(coreexecutor.ExecPruner); ok {
 		execPruner = p
 	}
-	pruner := pruner.New(logger, store, execPruner, config.Pruning, config.Node.BlockTime.Duration, config.DA.Address)
+	pruner := pruner.New(logger, store, execPruner, config.Pruning, config.Node.BlockTime.Duration)
 
 	var submitter *submitting.Submitter
 	if daClient != nil {
@@ -278,7 +278,7 @@ func newAggregatorComponents(
 	if p, ok := exec.(coreexecutor.ExecPruner); ok {
 		execPruner = p
 	}
-	pruner := pruner.New(logger, store, execPruner, config.Pruning, config.Node.BlockTime.Duration, config.DA.Address)
+	pruner := pruner.New(logger, store, execPruner, config.Pruning, config.Node.BlockTime.Duration)
 
 	reaper, err := reaping.NewReaper(
 		exec,

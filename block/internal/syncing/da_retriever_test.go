@@ -469,3 +469,34 @@ func Test_isEmptyDataExpected(t *testing.T) {
 	h.DataHash = common.DataHashForEmptyTxs
 	assert.True(t, isEmptyDataExpected(h))
 }
+
+func TestDARetrieverRejectsFailedReadsInEitherNamespace(t *testing.T) {
+	for _, code := range []datypes.StatusCode{datypes.StatusUnknown, datypes.StatusContextDeadline, datypes.StatusContextCanceled} {
+		for _, failedNS := range []string{"test-ns", "test-data-ns"} {
+			t.Run(fmt.Sprintf("%d/%s", code, failedNS), func(t *testing.T) {
+				client := mocks.NewMockClient(t)
+				for _, ns := range []string{"test-ns", "test-data-ns"} {
+					result := datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound}}
+					if ns == failedNS {
+						result.Code = code
+					}
+					client.On("RetrieveBlobs", mock.Anything, uint64(42), []byte(ns)).Return(result).Once()
+				}
+				cfg := config.DefaultConfig()
+				cfg.DA.Namespace = "test-ns"
+				cfg.DA.DataNamespace = "test-data-ns"
+				r := newTestDARetriever(t, client, cfg, genesis.Genesis{})
+				events, err := r.RetrieveFromDA(t.Context(), 42)
+				require.Error(t, err)
+				require.NotErrorIs(t, err, datypes.ErrBlobNotFound)
+				require.Empty(t, events)
+				switch code {
+				case datypes.StatusContextDeadline:
+					require.ErrorIs(t, err, context.DeadlineExceeded)
+				case datypes.StatusContextCanceled:
+					require.ErrorIs(t, err, context.Canceled)
+				}
+			})
+		}
+	}
+}

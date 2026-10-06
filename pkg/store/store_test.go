@@ -1292,3 +1292,33 @@ func TestRollbackDAIncludedHeightGetMetadataError(t *testing.T) {
 	require.Contains(err.Error(), "failed to get DA included height")
 	require.Contains(err.Error(), "metadata retrieval failed")
 }
+
+func TestPruneBlocksMissingHeaderStillDeletesRemainingData(t *testing.T) {
+	ctx := t.Context()
+	kv := ds.NewMapDatastore()
+	s := New(kv)
+	header := &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{Height: 1}}}
+	data := &types.Data{}
+	sig := types.Signature{1}
+	batch, err := s.NewBatch(ctx)
+	require.NoError(t, err)
+	require.NoError(t, batch.SaveBlockData(header, data, &sig))
+	require.NoError(t, batch.Commit())
+	require.NoError(t, s.SetMetadata(ctx, GetHeightToDAHeightHeaderKey(1), encodeHeight(10)))
+	require.NoError(t, s.SetMetadata(ctx, GetHeightToDAHeightDataKey(1), encodeHeight(10)))
+	require.NoError(t, kv.Delete(ctx, ds.NewKey(getHeaderKey(1))))
+
+	require.NoError(t, s.PruneBlocks(ctx, 1))
+	for _, key := range []string{getDataKey(1), getSignatureKey(1),
+		GetMetaKey(GetHeightToDAHeightHeaderKey(1)), GetMetaKey(GetHeightToDAHeightDataKey(1))} {
+		_, err := kv.Get(ctx, ds.NewKey(key))
+		require.ErrorIs(t, err, ds.ErrNotFound, key)
+	}
+}
+
+func TestPruneBlocksRejectsMalformedCursor(t *testing.T) {
+	ctx := t.Context()
+	s := New(ds.NewMapDatastore())
+	require.NoError(t, s.SetMetadata(ctx, LastPrunedBlockHeightKey, []byte{1}))
+	require.Error(t, s.PruneBlocks(ctx, 5))
+}

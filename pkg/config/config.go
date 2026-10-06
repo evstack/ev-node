@@ -382,7 +382,7 @@ const (
 
 // PruningConfig contains all pruning configuration parameters
 type PruningConfig struct {
-	Mode       string          `mapstructure:"pruning_mode" yaml:"pruning_mode" comment:"Pruning mode for stored block data and block metadata. Options: 'all' (prune all but recent blocks and their metatadas), 'metadata' (prune all but recent blocks metadatas), 'disabled' (keep all blocks and blocks metadata). Default: 'disabled'."`
+	Mode       string          `mapstructure:"pruning_mode" yaml:"pruning_mode" comment:"Pruning mode for stored block data and block metadata. Options: 'all' (prune blocks and state snapshots beyond local retention, regardless of DA inclusion), 'metadata' (prune all but recent blocks metadatas), 'disabled' (keep all blocks and blocks metadata). Default: 'disabled'."`
 	KeepRecent uint64          `mapstructure:"pruning_keep_recent" yaml:"pruning_keep_recent" comment:"Number of most recent blocks/blocks metadata to retain when pruning is enabled. Must be > 0."`
 	Interval   DurationWrapper `mapstructure:"pruning_interval" yaml:"pruning_interval" comment:"Run pruning every N minutes. Examples: \"5m\", \"10m\", \"24h\"."`
 }
