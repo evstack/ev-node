@@ -208,9 +208,17 @@ func (cs *CachedStore) GetBlockData(ctx context.Context, height uint64) (*types.
 
 // InvalidateRange removes headers in the given range from the cache.
 func (cs *CachedStore) InvalidateRange(fromHeight, toHeight uint64) {
-	for h := fromHeight; h <= toHeight; h++ {
-		cs.headerCache.Remove(h)
-		cs.blockDataCache.Remove(h)
+	// Scan the bounded caches rather than the historical height range. Pruning
+	// repeatedly invalidates from height 1, which can be far behind the head.
+	for _, h := range cs.headerCache.Keys() {
+		if h >= fromHeight && h <= toHeight {
+			cs.headerCache.Remove(h)
+		}
+	}
+	for _, h := range cs.blockDataCache.Keys() {
+		if h >= fromHeight && h <= toHeight {
+			cs.blockDataCache.Remove(h)
+		}
 	}
 }
 

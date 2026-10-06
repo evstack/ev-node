@@ -348,7 +348,7 @@ func (s *DefaultStore) PruneBlocks(ctx context.Context, height uint64) error {
 		if !errors.Is(err, ds.ErrNotFound) {
 			return fmt.Errorf("failed to get last pruned height: %w", err)
 		}
-	} else if len(meta) == heightLength {
+	} else {
 		lastPruned, err = decodeHeight(meta)
 		if err != nil {
 			return fmt.Errorf("failed to decode last pruned height: %w", err)
@@ -361,14 +361,15 @@ func (s *DefaultStore) PruneBlocks(ctx context.Context, height uint64) error {
 	}
 
 	// Delete block data for heights in (lastPruned, height].
-	for h := lastPruned + 1; h <= height; h++ {
-		// Get header blob to compute the hash index key. If header is already
-		// missing (e.g. due to previous partial pruning), just skip this height.
+	for h := lastPruned; h < height; {
+		h++
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		// Get the header for the hash index, but delete the remaining data
+		// even if the header is already missing.
 		headerBlob, err := s.db.Get(ctx, ds.NewKey(getHeaderKey(h)))
-		if err != nil {
-			if errors.Is(err, ds.ErrNotFound) {
-				continue
-			}
+		if err != nil && !errors.Is(err, ds.ErrNotFound) {
 			return fmt.Errorf("failed to get header at height %d during pruning: %w", h, err)
 		}
 
@@ -402,9 +403,9 @@ func (s *DefaultStore) PruneBlocks(ctx context.Context, height uint64) error {
 			}
 		}
 
-		headerHash := sha256.Sum256(headerBlob)
-		if err := batch.Delete(ctx, ds.NewKey(getIndexKey(headerHash[:]))); err != nil {
-			if !errors.Is(err, ds.ErrNotFound) {
+		if headerBlob != nil {
+			headerHash := sha256.Sum256(headerBlob)
+			if err := batch.Delete(ctx, ds.NewKey(getIndexKey(headerHash[:]))); err != nil && !errors.Is(err, ds.ErrNotFound) {
 				return fmt.Errorf("failed to delete index for height %d during pruning: %w", h, err)
 			}
 		}
