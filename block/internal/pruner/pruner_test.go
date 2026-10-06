@@ -53,7 +53,7 @@ func TestPrunerPruneMetadata(t *testing.T) {
 		KeepRecent: 1,
 	}
 
-	pruner := New(zerolog.New(zerolog.NewTestWriter(t)), stateStore, execAdapter, cfg, 100*time.Millisecond, "") // Empty DA address
+	pruner := New(zerolog.New(zerolog.NewTestWriter(t)), stateStore, execAdapter, cfg, 100*time.Millisecond)
 	pruner.ctx = ctx
 	require.NoError(t, pruner.pruneMetadata())
 
@@ -93,14 +93,14 @@ func TestPrunerPruneBlocksWithoutDA(t *testing.T) {
 		execAdapter.existing[h] = struct{}{}
 	}
 
-	// Test with empty DA address (DA disabled) - should prune successfully
+	// Prune by local retention.
 	cfg := config.PruningConfig{
 		Mode:       config.PruningModeAll,
 		Interval:   config.DurationWrapper{Duration: 1 * time.Second},
 		KeepRecent: 10,
 	}
 
-	pruner := New(zerolog.New(zerolog.NewTestWriter(t)), stateStore, execAdapter, cfg, 100*time.Millisecond, "") // Empty DA address = DA disabled
+	pruner := New(zerolog.New(zerolog.NewTestWriter(t)), stateStore, execAdapter, cfg, 100*time.Millisecond)
 	pruner.ctx = ctx
 	require.NoError(t, pruner.pruneBlocks())
 
@@ -131,7 +131,7 @@ func TestPrunerPruneBlocksWithoutDA(t *testing.T) {
 	}
 }
 
-func TestPrunerPruneBlocksWithDAEnabled(t *testing.T) {
+func TestPrunerPruneBlocksWithoutDAInclusionMetadata(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
@@ -152,23 +152,35 @@ func TestPrunerPruneBlocksWithDAEnabled(t *testing.T) {
 		require.NoError(t, batch.Commit())
 	}
 
-	// Test with DA address provided (DA enabled) - should skip pruning when DA height is not available
+	// Missing DA inclusion metadata must not block local retention.
 	cfg := config.PruningConfig{
 		Mode:       config.PruningModeAll,
 		Interval:   config.DurationWrapper{Duration: 1 * time.Second},
 		KeepRecent: 10,
 	}
 
-	pruner := New(zerolog.New(zerolog.NewTestWriter(t)), stateStore, nil, cfg, 100*time.Millisecond, "localhost:1234") // DA enabled
+	pruner := New(zerolog.New(zerolog.NewTestWriter(t)), stateStore, nil, cfg, 100*time.Millisecond)
 	pruner.ctx = ctx
-	// Should return nil (skip pruning) since DA height is not available
+	// Process all batches until the local retention target is reached.
 	require.NoError(t, pruner.pruneBlocks())
 
-	// Verify no blocks were pruned (all blocks should still be retrievable)
-	for h := uint64(1); h <= 100; h++ {
-		_, _, err := stateStore.GetBlockData(ctx, h)
-		require.NoError(t, err, "expected block data at height %d to still exist (no pruning should have happened)", h)
+	for range 2 {
+		require.NoError(t, pruner.pruneBlocks())
 	}
+	for h := uint64(1); h <= 100; h++ {
+		_, _, blockErr := stateStore.GetBlockData(ctx, h)
+		_, stateErr := stateStore.GetStateAtHeight(ctx, h)
+		if h <= 90 {
+			require.ErrorIs(t, blockErr, ds.ErrNotFound)
+			require.ErrorIs(t, stateErr, ds.ErrNotFound)
+		} else {
+			require.NoError(t, blockErr)
+			require.NoError(t, stateErr)
+		}
+	}
+	state, err := stateStore.GetState(ctx)
+	require.NoError(t, err)
+	require.Equal(t, uint64(100), state.LastBlockHeight)
 }
 
 // recordingStore verifies the batch boundaries without allocating thousands of blocks.
@@ -200,7 +212,7 @@ func TestPrunerCatchupUsesBoundedBatches(t *testing.T) {
 	p := New(zerolog.Nop(), st, nil, config.PruningConfig{
 		Mode: config.PruningModeAll, KeepRecent: 10,
 		Interval: config.DurationWrapper{Duration: 15 * time.Minute},
-	}, 100*time.Millisecond, "")
+	}, 100*time.Millisecond)
 	p.ctx = ctx
 	require.NoError(t, p.pruneBlocks())
 	require.Equal(t, []uint64{10000, 20000, 30000, 36000}, st.blockBatches)
@@ -232,7 +244,7 @@ func TestPrunerRecoversSnapshotsAfterBlockOnlyPruning(t *testing.T) {
 			p := New(zerolog.Nop(), st, nil, config.PruningConfig{
 				Mode: mode, KeepRecent: 1,
 				Interval: config.DurationWrapper{Duration: time.Second},
-			}, 100*time.Millisecond, "")
+			}, 100*time.Millisecond)
 			p.ctx = ctx
 			if mode == config.PruningModeAll {
 				require.NoError(t, p.pruneBlocks())
@@ -272,7 +284,7 @@ func TestPrunerRetriesExecutionFailure(t *testing.T) {
 	exec := &failingExecPruner{err: errors.New("execution pruning failed")}
 	cfg := config.PruningConfig{Mode: config.PruningModeAll, KeepRecent: 1,
 		Interval: config.DurationWrapper{Duration: time.Second}}
-	p := New(zerolog.Nop(), st, exec, cfg, 100*time.Millisecond, "")
+	p := New(zerolog.Nop(), st, exec, cfg, 100*time.Millisecond)
 	p.ctx = ctx
 	require.ErrorIs(t, p.pruneBlocks(), exec.err)
 	_, err = st.GetMetadata(ctx, store.LastPrunedStateHeightKey)
@@ -280,14 +292,14 @@ func TestPrunerRetriesExecutionFailure(t *testing.T) {
 
 	// A restarted pruner must retry execution despite the advanced block cursor.
 	exec.err = nil
-	p = New(zerolog.Nop(), st, exec, cfg, 100*time.Millisecond, "")
+	p = New(zerolog.Nop(), st, exec, cfg, 100*time.Millisecond)
 	p.ctx = ctx
 	require.NoError(t, p.pruneBlocks())
 	require.Equal(t, []uint64{4, 4}, exec.calls)
 	require.Equal(t, []uint64{4}, st.blockBatches)
 }
 
-func TestPrunerRespectsDAInclusionBoundary(t *testing.T) {
+func TestPrunerPrunesBeyondStalledDAInclusion(t *testing.T) {
 	ctx := t.Context()
 	st := &recordingStore{Store: store.New(dssync.MutexWrap(ds.NewMapDatastore()))}
 	batch, err := st.NewBatch(ctx)
@@ -300,9 +312,16 @@ func TestPrunerRespectsDAInclusionBoundary(t *testing.T) {
 	p := New(zerolog.Nop(), st, nil, config.PruningConfig{
 		Mode: config.PruningModeAll, KeepRecent: 10,
 		Interval: config.DurationWrapper{Duration: time.Second},
-	}, 100*time.Millisecond, "da")
+	}, 100*time.Millisecond)
 	p.ctx = ctx
 	require.NoError(t, p.pruneBlocks())
-	require.Equal(t, []uint64{10}, st.blockBatches)
-	require.Equal(t, uint64(10), st.states[len(st.states)-1])
+	require.Equal(t, []uint64{40}, st.blockBatches)
+	require.NoError(t, p.pruneBlocks())
+	require.NoError(t, p.pruneBlocks())
+	require.Equal(t, []uint64{40, 80, 90}, st.blockBatches)
+	require.Len(t, st.states, 90)
+	// Inclusion progress stays at 20; pruning does not pretend DA recovered.
+	included, err := st.GetMetadata(ctx, store.DAIncludedHeightKey)
+	require.NoError(t, err)
+	require.Equal(t, uint64(20), binary.LittleEndian.Uint64(included))
 }
