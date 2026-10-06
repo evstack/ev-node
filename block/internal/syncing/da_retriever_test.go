@@ -490,9 +490,10 @@ func TestDARetrieverRejectsFailedReadsInEitherNamespace(t *testing.T) {
 				require.Error(t, err)
 				require.NotErrorIs(t, err, datypes.ErrBlobNotFound)
 				require.Empty(t, events)
-				if code == datypes.StatusContextDeadline {
+				switch code {
+				case datypes.StatusContextDeadline:
 					require.ErrorIs(t, err, context.DeadlineExceeded)
-				} else if code == datypes.StatusContextCanceled {
+				case datypes.StatusContextCanceled:
 					require.ErrorIs(t, err, context.Canceled)
 				}
 			})
