@@ -9,12 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## v1.3.0
+
 ### Added
 
-- Client-side signed blob submission via the new `da/celestia` module: with `da.tx_signer.enabled`, `testapp` and `evm` sign PayForBlobs locally and broadcast them over consensus gRPC (`x-token` auth), so they can submit through DA endpoints that cannot sign, such as da-proxy. Off by default. `block.NewDAClient` and `pkg/cmd.StartNode` accept options (`block.WithSubmitter`) to inject a submitter; existing callers are unaffected.
+- Client-side signed blob submission via the new `da/celestia` module: with `da.tx_signer.enabled`, `testapp` and `evm` sign PayForBlobs locally and broadcast them over consensus gRPC (`x-token` auth), so they can submit through DA endpoints that cannot sign, such as da-proxy. Off by default. `block.NewDAClient` and `pkg/cmd.StartNode` accept options (`block.WithSubmitter`) to inject a submitter; existing callers are unaffected [#3483](https://github.com/evstack/ev-node/pull/3483).
+
+### Changed
+
+- Update Go dependencies across modules and build/test CI with Go 1.27 [#3433](https://github.com/evstack/ev-node/pull/3433), [#3435](https://github.com/evstack/ev-node/pull/3435), [#3447](https://github.com/evstack/ev-node/pull/3447), [#3451](https://github.com/evstack/ev-node/pull/3451), [#3464](https://github.com/evstack/ev-node/pull/3464).
 
 ### Fixed
 
+- Serialize DA subscriber lifecycle transitions to prevent concurrent starts and stops [#3430](https://github.com/evstack/ev-node/pull/3430).
+- Clear omitted optional fields when decoding a reused execution payload envelope [#3439](https://github.com/evstack/ev-node/pull/3439).
+- Fail closed during sequencer recovery when synchronization cannot establish a safe state [#3443](https://github.com/evstack/ev-node/pull/3443).
+- Remove canceled store height waiters [#3445](https://github.com/evstack/ev-node/pull/3445).
+- Preserve close errors when copying files [#3458](https://github.com/evstack/ev-node/pull/3458).
 - Prune per-height state snapshots in `all` pruning mode, keep the state needed to replay the oldest retained block, and stop pruning from falling behind when more than 10k blocks are produced per interval [#3469](https://github.com/evstack/ev-node/pull/3469).
 - Do not halt the node when `SetFinal` fails while the DA-included height lags the head; the EVM client skips finalizing historical blocks the execution layer no longer serves, and the submitter retries on the next tick [#3473](https://github.com/evstack/ev-node/pull/3473).
 
@@ -41,7 +52,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Skip DA cache restoration for P2P-only full followers, allowing them to restart without a configured DA endpoint [#3408](https://github.com/evstack/ev-node/pull/3408).
 
 ## v1.2.1
-
 
 ### Added
 
