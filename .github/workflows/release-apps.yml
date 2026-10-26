@@ -2,7 +2,7 @@ name: Apps release
 on:
   push:
     tags:
-      - "**/v*.*.*" # Matches tags like apps/evm/single/v0.2.0, apps/testapp/v0.4.0, etc.
+      - "apps/**/v*.*.*" # Match app module tags, excluding root and library module tags.
   workflow_dispatch:
     inputs:
       tag:
