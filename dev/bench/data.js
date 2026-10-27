@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1793115164324,
+  "lastUpdate": 1793115168733,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -338,6 +338,102 @@ window.BENCHMARK_DATA = {
             "value": 55,
             "unit": "allocs/op",
             "extra": "28030 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "damiannolan@gmail.com",
+            "name": "Damian Nolan",
+            "username": "damiannolan"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": false,
+          "id": "28d2714c95ceb45c859726e256ea77b45a7d2445",
+          "message": "fix(syncing): reject DA signed data without metadata (#3500)\n\n* fix(syncing): reject DA signed data without metadata\n\ntryDecodeData used Data accessors (DACommitment, Height) that dereference\nMetadata, but a decoded blob may carry nil Metadata. Guard for it after\nsignature validation and skip the blob instead of dereferencing.\n\nAdds a regression test for a validly-signed blob with no metadata.\n\n* fix(syncing): drop redundant embedded field from selector\n\nstaticcheck QF1008: SignedData embeds Data, so signedData.Metadata is enough.",
+          "timestamp": "2026-10-27T14:56:35Z",
+          "tree_id": "6cad280209a103fcd630153ba3caeb8ad9e9652d",
+          "url": "https://github.com/evstack/ev-node/commit/28d2714c95ceb45c859726e256ea77b45a7d2445"
+        },
+        "date": 1793115167737,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 36538,
+            "unit": "ns/op\t    4871 B/op\t      51 allocs/op",
+            "extra": "32476 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 36538,
+            "unit": "ns/op",
+            "extra": "32476 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 4871,
+            "unit": "B/op",
+            "extra": "32476 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 51,
+            "unit": "allocs/op",
+            "extra": "32476 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 37001,
+            "unit": "ns/op\t    5071 B/op\t      55 allocs/op",
+            "extra": "32142 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 37001,
+            "unit": "ns/op",
+            "extra": "32142 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 5071,
+            "unit": "B/op",
+            "extra": "32142 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 55,
+            "unit": "allocs/op",
+            "extra": "32142 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 43575,
+            "unit": "ns/op\t   10371 B/op\t      55 allocs/op",
+            "extra": "27519 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 43575,
+            "unit": "ns/op",
+            "extra": "27519 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 10371,
+            "unit": "B/op",
+            "extra": "27519 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 55,
+            "unit": "allocs/op",
+            "extra": "27519 times\n4 procs"
           }
         ]
       }
