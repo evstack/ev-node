@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1793008624533,
+  "lastUpdate": 1793115164324,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -94,6 +94,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 38401,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "damiannolan@gmail.com",
+            "name": "Damian Nolan",
+            "username": "damiannolan"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": false,
+          "id": "28d2714c95ceb45c859726e256ea77b45a7d2445",
+          "message": "fix(syncing): reject DA signed data without metadata (#3500)\n\n* fix(syncing): reject DA signed data without metadata\n\ntryDecodeData used Data accessors (DACommitment, Height) that dereference\nMetadata, but a decoded blob may carry nil Metadata. Guard for it after\nsignature validation and skip the blob instead of dereferencing.\n\nAdds a regression test for a validly-signed blob with no metadata.\n\n* fix(syncing): drop redundant embedded field from selector\n\nstaticcheck QF1008: SignedData embeds Data, so signedData.Metadata is enough.",
+          "timestamp": "2026-10-27T14:56:35Z",
+          "tree_id": "6cad280209a103fcd630153ba3caeb8ad9e9652d",
+          "url": "https://github.com/evstack/ev-node/commit/28d2714c95ceb45c859726e256ea77b45a7d2445"
+        },
+        "date": 1793115158080,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 913952682,
+            "unit": "ns/op\t 4274044 B/op\t   36725 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 913952682,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 4274044,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 36725,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
