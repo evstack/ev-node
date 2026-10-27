@@ -230,6 +230,26 @@ func TestDARetriever_tryDecodeData_InvalidSignature(t *testing.T) {
 	assert.Nil(t, r.tryDecodeData(db, 55))
 }
 
+func TestDARetriever_tryDecodeData_NilMetadata(t *testing.T) {
+	addr, pub, signer := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+	r := newTestDARetriever(t, nil, config.DefaultConfig(), gen)
+
+	// A validly-signed blob whose Data carries no metadata must be rejected,
+	// not dereferenced: the accessors below (DACommitment, Height) assume
+	// Metadata is set.
+	d := &types.Data{Txs: types.Txs{types.Tx([]byte{0x01})}}
+	payload, err := d.MarshalBinary()
+	require.NoError(t, err)
+	sig, err := signer.Sign(t.Context(), payload)
+	require.NoError(t, err)
+	sd := &types.SignedData{Data: *d, Signature: sig, Signer: types.Signer{PubKey: pub, Address: addr}}
+	db, err := sd.MarshalBinary()
+	require.NoError(t, err)
+
+	assert.Nil(t, r.tryDecodeData(db, 99))
+}
+
 func TestDARetriever_validateBlobResponse(t *testing.T) {
 	r := &daRetriever{logger: zerolog.Nop()}
 	// StatusSuccess -> nil
