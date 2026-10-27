@@ -395,7 +395,7 @@ func (r *daRetriever) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
 
 	// Reject data without metadata before using accessors (DACommitment,
 	// Height) that assume it is present.
-	if signedData.Data.Metadata == nil {
+	if signedData.Metadata == nil {
 		r.logger.Debug().Msg("invalid signed data: missing metadata")
 		return nil
 	}
