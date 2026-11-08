@@ -109,6 +109,9 @@ func TestLoadGenesis_FileNotFound(t *testing.T) {
 	_, err := LoadGenesis("nonexistent.json")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "genesis file not found")
+	assert.ErrorIs(t, err, os.ErrNotExist)
+	var pathErr *os.PathError
+	assert.ErrorAs(t, err, &pathErr)
 }
 
 func TestLoadGenesis_InvalidJSON(t *testing.T) {
