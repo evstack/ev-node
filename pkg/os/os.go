@@ -98,9 +98,12 @@ func CopyFile(src, dst string) (err error) {
 	if info.IsDir() {
 		return errors.New("cannot read from directories")
 	}
+	if dstInfo, statErr := os.Stat(dst); statErr == nil && os.SameFile(info, dstInfo) {
+		return errors.New("source and destination are the same file")
+	}
 
-	// create new file, truncate if exists and apply same permissions as the original one
-	dstfile, err := os.OpenFile(dst, os.O_RDWR|os.O_CREATE|os.O_TRUNC, info.Mode().Perm()) //nolint:gosec
+	// Open without truncating so we can check the opened file's identity first.
+	dstfile, err := os.OpenFile(dst, os.O_RDWR|os.O_CREATE, info.Mode().Perm()) //nolint:gosec
 	if err != nil {
 		return err
 	}
@@ -113,6 +116,17 @@ func CopyFile(src, dst string) (err error) {
 			}
 		}
 	}()
+
+	dstInfo, err := dstfile.Stat()
+	if err != nil {
+		return err
+	}
+	if os.SameFile(info, dstInfo) {
+		return errors.New("source and destination are the same file")
+	}
+	if err := dstfile.Truncate(0); err != nil {
+		return err
+	}
 
 	_, err = io.Copy(dstfile, srcfile)
 	return err

@@ -167,6 +167,39 @@ func TestMustReadFile(t *testing.T) {
 	}
 }
 
+func TestCopyFileRejectsSameFile(t *testing.T) {
+	for _, name := range []string{"same path", "hard link", "symbolic link"} {
+		t.Run(name, func(t *testing.T) {
+			src := filepath.Join(t.TempDir(), "source")
+			content := []byte("must survive a failed copy")
+			if err := os.WriteFile(src, content, 0600); err != nil {
+				t.Fatal(err)
+			}
+			dst := src
+			if name != "same path" {
+				dst = src + ".link"
+				link := os.Link
+				if name == "symbolic link" {
+					link = os.Symlink
+				}
+				if err := link(src, dst); err != nil {
+					t.Skipf("link is unavailable: %v", err)
+				}
+			}
+			if err := CopyFile(src, dst); err == nil {
+				t.Fatal("expected copying a file onto itself to fail")
+			}
+			got, err := os.ReadFile(src)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != string(content) {
+				t.Fatalf("source content changed: got %q, want %q", got, content)
+			}
+		})
+	}
+}
+
 func TestMustWriteFile(t *testing.T) {
 	tempDir := t.TempDir()
 	testFile := filepath.Join(tempDir, "test.txt")
