@@ -120,6 +120,8 @@ const (
 	FlagP2PBlockedPeers = FlagPrefixEvnode + "p2p.blocked_peers"
 	// FlagP2PAllowedPeers is a flag for specifying the P2P allowed peers
 	FlagP2PAllowedPeers = FlagPrefixEvnode + "p2p.allowed_peers"
+	// FlagP2PAnnounceAddresses is a flag for specifying the P2P addresses advertised to peers
+	FlagP2PAnnounceAddresses = FlagPrefixEvnode + "p2p.announce_addresses"
 	// FlagP2PDisableConnectionGater disables the P2P connection gater (no-op mode).
 	// Enabled by default; set to false to activate peer filtering when experiencing P2P flooding.
 	FlagP2PDisableConnectionGater = FlagPrefixEvnode + "p2p.disable_connection_gater"
@@ -398,6 +400,7 @@ type P2PConfig struct {
 	Peers                  string `mapstructure:"peers" yaml:"peers" comment:"Comma-separated list of peers to connect to"`
 	BlockedPeers           string `mapstructure:"blocked_peers" yaml:"blocked_peers" comment:"Comma-separated list of peer IDs to block from connecting"`
 	AllowedPeers           string `mapstructure:"allowed_peers" yaml:"allowed_peers" comment:"Comma-separated list of peer IDs to allow connections from"`
+	AnnounceAddresses      string `mapstructure:"announce_addresses" yaml:"announce_addresses" comment:"Comma-separated list of multiaddrs advertised to peers instead of the listen addresses (e.g. /ip4/203.0.113.10/tcp/7676). Use when running behind NAT or in a container."`
 	DisableConnectionGater bool   `mapstructure:"disable_connection_gater" yaml:"disable_connection_gater" comment:"Disable the P2P connection gater (no-op mode). Set to false to enforce peer filtering when experiencing P2P flooding."`
 }
 
@@ -730,6 +733,7 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().String(FlagP2PPeers, def.P2P.Peers, "Comma separated list of seed nodes to connect to")
 	cmd.Flags().String(FlagP2PBlockedPeers, def.P2P.BlockedPeers, "Comma separated list of nodes to ignore")
 	cmd.Flags().String(FlagP2PAllowedPeers, def.P2P.AllowedPeers, "Comma separated list of nodes to whitelist")
+	cmd.Flags().String(FlagP2PAnnounceAddresses, def.P2P.AnnounceAddresses, "Comma separated list of multiaddrs advertised to peers instead of the listen addresses, e.g. /ip4/<public-ip>/tcp/7676")
 	cmd.Flags().Bool(FlagP2PDisableConnectionGater, def.P2P.DisableConnectionGater, "Disable P2P connection gater (no-op mode); set to false to enforce peer filtering when experiencing P2P flooding")
 
 	// RPC configuration flags

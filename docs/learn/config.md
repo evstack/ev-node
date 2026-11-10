@@ -906,6 +906,26 @@ _Example:_ `--evnode.p2p.allowed_peers 12D3KooY...,12D3KooZ...`
 _Default:_ `""` (empty, allow all unless blocked)
 _Constant:_ `FlagP2PAllowedPeers`
 
+### P2P Announce Addresses
+
+**Description:**
+A comma-separated list of multiaddrs advertised to other peers (via identify, the DHT and peer discovery) instead of the addresses detected from the local network interfaces. Use this when the node runs behind NAT or in a container without host networking; otherwise it advertises loopback or Docker bridge addresses that remote peers cannot reach. When set, only these addresses are advertised. The port should be the externally reachable (published) port.
+
+**YAML:**
+
+```yaml
+p2p:
+  announce_addresses: "/ip4/203.0.113.10/tcp/7676"
+```
+
+**Command-line Flag:**
+`--evnode.p2p.announce_addresses <string>`
+_Example:_ `--evnode.p2p.announce_addresses /ip4/203.0.113.10/tcp/7676,/dns4/node.example.com/tcp/7676`
+_Default:_ `""` (empty, advertise the listen addresses)
+_Constant:_ `FlagP2PAnnounceAddresses`
+
+For example, a container started with `-p 7676:7676` on a host with public IP `203.0.113.10` should set `--evnode.p2p.announce_addresses /ip4/203.0.113.10/tcp/7676`.
+
 ## RPC Configuration (`rpc`)
 
 Settings for the Remote Procedure Call (RPC) server, which allows clients and applications to interact with the Evolve node.
