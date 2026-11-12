@@ -61,7 +61,7 @@ type MetadataKV struct {
 }
 
 type Metadata interface {
-	// SetMetadata saves arbitrary value in the store.
+	// SetMetadata saves an arbitrary value in the store.
 	//
 	// This method enables evolve to safely persist any information.
 	SetMetadata(ctx context.Context, key string, value []byte) error
@@ -94,12 +94,12 @@ type Reader interface {
 	// GetStateAtHeight returns state saved at given height, or error if it's not found in Store.
 	GetStateAtHeight(ctx context.Context, height uint64) (types.State, error)
 
-	// GetMetadata returns values stored for given key with SetMetadata.
+	// GetMetadata returns the value stored for the given key by SetMetadata.
 	GetMetadata(ctx context.Context, key string) ([]byte, error)
 }
 
 type Rollback interface {
-	// Rollback deletes x height from the ev-node store.
+	// Rollback rolls back block data until the given height from the ev-node store.
 	// Aggregator is used to determine if the rollback is performed on the aggregator node.
 	Rollback(ctx context.Context, height uint64, aggregator bool) error
 }
