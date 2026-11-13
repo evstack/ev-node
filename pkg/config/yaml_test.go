@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -70,4 +72,62 @@ func TestYamlConfigOperations(t *testing.T) {
 			tc.validate(t, &cfg)
 		})
 	}
+}
+
+// TestSaveAsYamlNestedComments ensures that SaveAsYaml emits field comments for
+// deeply nested config sections. Regression test: comments for sections nested
+// three or more levels deep (e.g. signer.kms.*) and for pointer-to-struct
+// sections (e.g. instrumentation) were previously dropped because the comment
+// path lost its parent prefix and pointer fields were never traversed.
+func TestSaveAsYamlNestedComments(t *testing.T) {
+	dir := t.TempDir()
+	cfg := DefaultConfig()
+	cfg.RootDir = dir
+
+	require.NoError(t, cfg.SaveAsYaml())
+
+	data, err := os.ReadFile(cfg.ConfigPath())
+	require.NoError(t, err)
+	yaml := string(data)
+
+	// Each entry: the comment text and the yaml key it must sit directly above.
+	cases := []struct {
+		comment string
+		key     string
+	}{
+		// pointer-to-struct section (instrumentation)
+		{"Enable Prometheus metrics", "prometheus:"},
+		// signer.kms (nested three levels deep)
+		{"KMS provider for signer type 'kms' (aws, gcp)", "provider:"},
+		// signer.kms.aws (nested four levels deep)
+		{"AWS KMS Key ID or ARN", "key_id:"},
+		// da.tx_signer (nested three levels deep)
+		{"Sign blob submissions locally and broadcast them over consensus gRPC instead of calling blob.Submit on the DA node.", "enabled:"},
+	}
+
+	for _, tc := range cases {
+		require.Contains(t, yaml, tc.comment, "missing comment %q in generated config", tc.comment)
+		require.True(t, commentPrecedesKey(yaml, tc.comment, tc.key),
+			"comment %q is not placed directly above key %q", tc.comment, tc.key)
+	}
+}
+
+// commentPrecedesKey reports whether a line containing the comment text is
+// immediately followed (ignoring blank lines) by a line whose first token is
+// the given yaml key.
+func commentPrecedesKey(yaml, comment, key string) bool {
+	lines := strings.Split(yaml, "\n")
+	for i, line := range lines {
+		if !strings.Contains(line, comment) {
+			continue
+		}
+		for j := i + 1; j < len(lines); j++ {
+			trimmed := strings.TrimSpace(lines[j])
+			if trimmed == "" {
+				continue
+			}
+			return strings.HasPrefix(trimmed, key)
+		}
+	}
+	return false
 }
