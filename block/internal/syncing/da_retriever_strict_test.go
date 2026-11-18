@@ -72,26 +72,26 @@ func TestDARetriever_StrictEnvelopeMode_Switch(t *testing.T) {
 	// A. Initial State: StrictMode is false. Legacy blob should be accepted.
 	assert.False(t, r.strictMode)
 
-	decodedLegacy := r.tryDecodeHeader(legacyBlob, 100)
+	decodedLegacy, _ := r.tryDecodeHeader(legacyBlob)
 	require.NotNil(t, decodedLegacy)
 	assert.Equal(t, uint64(1), decodedLegacy.Height())
 
 	// StrictMode should still be false because it was a legacy blob
 	assert.False(t, r.strictMode)
 
-	// B. Receiving Envelope: Should be accepted and Switch StrictMode to true.
-	decodedEnvelope := r.tryDecodeHeader(envelopeBlob, 101)
-	require.NotNil(t, decodedEnvelope)
-	assert.Equal(t, uint64(2), decodedEnvelope.Height())
+	// B. Receiving Envelope: once authenticated it switches StrictMode to true.
+	events := r.processBlobs(t.Context(), [][]byte{envelopeBlob}, 101)
+	require.Len(t, events, 1)
+	assert.Equal(t, uint64(2), events[0].Header.Height())
 
 	assert.True(t, r.strictMode, "retriever should have switched to strict mode")
 
 	// C. Receiving Legacy again: Should be REJECTED now.
 	// We reuse the same legacyBlob (or a new one, doesn't matter, structure is legacy).
-	decodedLegacyAgain := r.tryDecodeHeader(legacyBlob, 102)
+	decodedLegacyAgain, _ := r.tryDecodeHeader(legacyBlob)
 	assert.Nil(t, decodedLegacyAgain, "legacy blob should be rejected in strict mode")
 
 	// D. Receiving Envelope again: Should still be accepted.
-	decodedEnvelopeAgain := r.tryDecodeHeader(envelopeBlob, 103)
+	decodedEnvelopeAgain, _ := r.tryDecodeHeader(envelopeBlob)
 	require.NotNil(t, decodedEnvelopeAgain)
 }

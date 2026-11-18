@@ -34,6 +34,25 @@ type pendingDataCleaner interface {
 
 type expectedProposerProvider func(height uint64) ([]byte, bool)
 
+// syncedHeaderProvider returns the stored header for a height the node has
+// already synced. synced is false for heights above the node's height. The
+// header is nil when the height is synced but no longer stored.
+type syncedHeaderProvider func(height uint64) (header *types.SignedHeader, synced bool, err error)
+
+type pendingHeader struct {
+	header   *types.SignedHeader
+	daHeight uint64
+	// envelope is set when the DA envelope signature verified against the header's signer key.
+	envelope bool
+}
+
+type pendingData struct {
+	data     *types.Data
+	hash     types.Hash
+	signer   []byte
+	daHeight uint64
+}
+
 // daRetriever handles DA retrieval operations for syncing
 type daRetriever struct {
 	client  da.Client
@@ -41,15 +60,21 @@ type daRetriever struct {
 	genesis genesis.Genesis
 	logger  zerolog.Logger
 
-	expectedProposer expectedProposerProvider
+	expectedProposer  expectedProposerProvider
+	syncedHeader      syncedHeaderProvider
+	signatureProvider types.SyncNodeSignatureBytesProvider
 
 	mu sync.Mutex
-	// transient cache, only full event need to be passed to the syncer
-	// on restart, will be refetch as da height is updated by syncer
-	pendingHeaders map[uint64]*types.SignedHeader
-	pendingData    map[uint64]*types.Data
+	// Anyone can post to the DA namespaces, so every decoded blob is only a
+	// candidate: it is not marked DA included and does not displace another
+	// blob until it is authenticated. Candidates for future heights are kept
+	// without a cap; growing them costs one paid blob per entry, and a cap
+	// would let an outsider crowd out the header of a newly rotated proposer.
+	// Transient: rebuilt from DA on restart.
+	pendingHeaders map[uint64][]pendingHeader
+	pendingData    map[uint64][]pendingData
 
-	// strictMode indicates if the node has seen a valid DAHeaderEnvelope
+	// strictMode indicates if the node has seen an authenticated DAHeaderEnvelope
 	// and should now reject all legacy/unsigned headers.
 	strictMode bool
 }
@@ -66,14 +91,22 @@ func NewDARetriever(
 		cache:          cache,
 		genesis:        genesis,
 		logger:         logger.With().Str("component", "da_retriever").Logger(),
-		pendingHeaders: make(map[uint64]*types.SignedHeader),
-		pendingData:    make(map[uint64]*types.Data),
+		pendingHeaders: make(map[uint64][]pendingHeader),
+		pendingData:    make(map[uint64][]pendingData),
 		strictMode:     false,
 	}
 }
 
 func (r *daRetriever) setExpectedProposerProvider(provider expectedProposerProvider) {
 	r.expectedProposer = provider
+}
+
+func (r *daRetriever) setSyncedHeaderProvider(provider syncedHeaderProvider) {
+	r.syncedHeader = provider
+}
+
+func (r *daRetriever) setSignatureProvider(provider types.SyncNodeSignatureBytesProvider) {
+	r.signatureProvider = provider
 }
 
 // RetrieveFromDA retrieves blocks from the specified DA height and returns height events
@@ -177,72 +210,23 @@ func (r *daRetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// Decode all blobs
 	for _, bz := range blobs {
 		if len(bz) == 0 {
 			continue
 		}
 
-		if header := r.tryDecodeHeader(bz, daHeight); header != nil {
-			if existing, ok := r.pendingHeaders[header.Height()]; ok {
-				if r.shouldReplacePendingHeader(existing, header) {
-					r.cache.RemoveHeaderDAIncluded(existing.Hash().String())
-					r.pendingHeaders[header.Height()] = header
-					r.logger.Debug().Uint64("height", header.Height()).Uint64("da_height", daHeight).Msg("replaced pending header with expected proposer header")
-					continue
-				}
-
-				r.cache.RemoveHeaderDAIncluded(header.Hash().String())
-				r.logger.Debug().Uint64("height", header.Height()).Uint64("da_height", daHeight).Msg("header blob already exists for height, discarding")
-				continue
-			}
-
-			r.pendingHeaders[header.Height()] = header
+		if header, envelope := r.tryDecodeHeader(bz); header != nil {
+			r.addPendingHeader(pendingHeader{header: header, daHeight: daHeight, envelope: envelope})
 			continue
 		}
 
-		if data := r.tryDecodeData(bz, daHeight); data != nil {
-			if _, ok := r.pendingData[data.Height()]; ok {
-				// a (malicious) node may have re-published valid data to another da height (should never happen)
-				// we can already discard it, only the first one is valid
-				r.logger.Debug().Uint64("height", data.Height()).Uint64("da_height", daHeight).Msg("data blob already exists for height, discarding")
-				continue
-			}
-
-			r.pendingData[data.Height()] = data
+		if data, signer := r.tryDecodeData(bz); data != nil {
+			r.addPendingData(pendingData{data: data, hash: data.Hash(), signer: signer, daHeight: daHeight})
 		}
 	}
 
-	events := make([]common.DAHeightEvent, 0, len(r.pendingHeaders))
-
-	// Match headers with data and create events
-	for height, header := range r.pendingHeaders {
-		data := r.pendingData[height]
-
-		// Handle empty data case
-		if data == nil {
-			if isEmptyDataExpected(header) {
-				data = createEmptyDataForHeader(ctx, header)
-				delete(r.pendingHeaders, height)
-			} else {
-				// keep header in pending headers until data lands
-				r.logger.Debug().Uint64("height", height).Msg("header found but no matching data")
-				continue
-			}
-		} else {
-			delete(r.pendingHeaders, height)
-		}
-
-		// Create height event
-		event := common.DAHeightEvent{
-			Header:   header,
-			Data:     data,
-			DaHeight: daHeight,
-			Source:   common.SourceDA,
-		}
-
-		events = append(events, event)
-	}
+	events := r.settleSyncedHeights(ctx, daHeight)
+	events = append(events, r.matchPending(ctx, daHeight)...)
 
 	if len(events) > 0 {
 		startHeight := events[0].Header.Height()
@@ -262,16 +246,240 @@ func (r *daRetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 	return events
 }
 
-func (r *daRetriever) shouldReplacePendingHeader(existing, candidate *types.SignedHeader) bool {
-	if r.expectedProposer == nil {
-		return false
+func (r *daRetriever) addPendingHeader(candidate pendingHeader) {
+	height := candidate.header.Height()
+	for _, existing := range r.pendingHeaders[height] {
+		if existing.envelope == candidate.envelope && sameSignedHeader(existing.header, candidate.header) {
+			return
+		}
+	}
+	r.pendingHeaders[height] = append(r.pendingHeaders[height], candidate)
+}
+
+func (r *daRetriever) addPendingData(candidate pendingData) {
+	height := candidate.data.Height()
+	for _, existing := range r.pendingData[height] {
+		if bytes.Equal(existing.hash, candidate.hash) && bytes.Equal(existing.signer, candidate.signer) {
+			return
+		}
+	}
+	r.pendingData[height] = append(r.pendingData[height], candidate)
+}
+
+// settleSyncedHeights resolves candidates for heights the node already holds.
+// The stored block is the reference: only the blobs that carry it are marked
+// DA included, everything else at that height is dropped. A complete block is
+// still returned as an event, which the syncer skips as already processed.
+func (r *daRetriever) settleSyncedHeights(ctx context.Context, daHeight uint64) []common.DAHeightEvent {
+	if r.syncedHeader == nil {
+		return nil
 	}
 
-	expected, ok := r.expectedProposer(candidate.Height())
-	if !ok || len(expected) == 0 {
+	var events []common.DAHeightEvent
+	settle := func(height uint64) {
+		stored, synced, err := r.syncedHeader(height)
+		if err != nil {
+			// keep the candidates and retry on the next pass
+			r.logger.Warn().Err(err).Uint64("height", height).Msg("failed to load synced header")
+			return
+		}
+		if !synced {
+			return
+		}
+		if stored != nil {
+			for _, candidate := range r.pendingData[height] {
+				if types.Validate(stored, candidate.data) == nil {
+					r.markDataDAIncluded(candidate)
+				}
+			}
+			for _, candidate := range r.pendingHeaders[height] {
+				if !sameSignedHeader(candidate.header, stored) {
+					continue
+				}
+				r.markHeaderDAIncluded(candidate)
+				if data, ok := r.dataFor(ctx, candidate.header); ok {
+					events = append(events, common.DAHeightEvent{
+						Header:   candidate.header,
+						Data:     data.data,
+						DaHeight: daHeight,
+						Source:   common.SourceDA,
+					})
+				}
+				break
+			}
+		}
+		delete(r.pendingHeaders, height)
+		delete(r.pendingData, height)
+	}
+
+	for height := range r.pendingHeaders {
+		settle(height)
+	}
+	for height := range r.pendingData {
+		settle(height)
+	}
+	return events
+}
+
+// matchPending emits an event for every future height that has a header from
+// the expected proposer together with the data that header commits to.
+func (r *daRetriever) matchPending(ctx context.Context, daHeight uint64) []common.DAHeightEvent {
+	events := make([]common.DAHeightEvent, 0, len(r.pendingHeaders))
+
+	for height, candidates := range r.pendingHeaders {
+		// Left over from a failed load or synced since settleSyncedHeights ran:
+		// it is settled against the stored block on the next pass.
+		if r.isSynced(height) {
+			continue
+		}
+		expected := r.expectedProposerFor(height)
+
+		for i, candidate := range candidates {
+			header := candidate.header
+			if !isFromProposer(header, expected) {
+				continue
+			}
+
+			data, ok := r.dataFor(ctx, header)
+			if !ok {
+				// keep header in pending headers until data lands
+				r.logger.Debug().Uint64("height", height).Msg("header found but no matching data")
+				continue
+			}
+
+			// The envelope signature already proves the proposer signed this header.
+			if !candidate.envelope && !r.hasValidSignature(header, data.data) {
+				r.logger.Debug().Uint64("height", height).Msg("invalid header signature")
+				continue
+			}
+
+			r.markHeaderDAIncluded(candidate)
+			if !isEmptyDataExpected(header) {
+				r.markDataDAIncluded(data)
+			}
+
+			events = append(events, common.DAHeightEvent{
+				Header:   header,
+				Data:     data.data,
+				DaHeight: daHeight,
+				Source:   common.SourceDA,
+			})
+
+			if len(candidates) == 1 {
+				delete(r.pendingHeaders, height)
+			} else {
+				r.pendingHeaders[height] = append(candidates[:i:i], candidates[i+1:]...)
+			}
+			break
+		}
+	}
+
+	return events
+}
+
+// dataFor returns the pending data the header commits to. The commitment
+// does not cover all metadata, so a copy signed by the header's proposer wins
+// over one signed by anyone else.
+func (r *daRetriever) dataFor(ctx context.Context, header *types.SignedHeader) (pendingData, bool) {
+	var match *pendingData
+	for i, candidate := range r.pendingData[header.Height()] {
+		if types.Validate(header, candidate.data) != nil {
+			continue
+		}
+		if bytes.Equal(candidate.signer, header.ProposerAddress) {
+			return candidate, true
+		}
+		if match == nil {
+			match = &r.pendingData[header.Height()][i]
+		}
+	}
+	if match != nil {
+		return *match, true
+	}
+	if isEmptyDataExpected(header) {
+		return pendingData{data: createEmptyDataForHeader(ctx, header)}, true
+	}
+	return pendingData{}, false
+}
+
+func (r *daRetriever) isSynced(height uint64) bool {
+	if r.syncedHeader == nil {
 		return false
 	}
-	return !bytes.Equal(existing.ProposerAddress, expected) && bytes.Equal(candidate.ProposerAddress, expected)
+	_, synced, err := r.syncedHeader(height)
+	return synced || err != nil
+}
+
+// expectedProposerFor returns the proposer expected at a future height, or nil when unknown.
+func (r *daRetriever) expectedProposerFor(height uint64) []byte {
+	if r.expectedProposer != nil {
+		if expected, ok := r.expectedProposer(height); ok && len(expected) > 0 {
+			return expected
+		}
+	}
+	return r.genesis.ProposerAddress
+}
+
+// sameSignedHeader compares the signature and signer as well as the hash:
+// the hash covers neither, so anyone can repost a real header under their own key.
+func sameSignedHeader(a, b *types.SignedHeader) bool {
+	return bytes.Equal(a.Hash(), b.Hash()) &&
+		bytes.Equal(a.Signature, b.Signature) &&
+		bytes.Equal(signerAddress(a), signerAddress(b))
+}
+
+func signerAddress(header *types.SignedHeader) []byte {
+	if header.Signer.PubKey == nil {
+		return nil
+	}
+	return types.KeyAddress(header.Signer.PubKey)
+}
+
+// isFromProposer checks the key the header is signed with, not only the
+// ProposerAddress field, which anyone can fill in.
+func isFromProposer(header *types.SignedHeader, expected []byte) bool {
+	if len(expected) == 0 {
+		return true
+	}
+	if header.Signer.PubKey == nil {
+		return false
+	}
+	return bytes.Equal(header.ProposerAddress, expected) && bytes.Equal(signerAddress(header), expected)
+}
+
+func (r *daRetriever) hasValidSignature(header *types.SignedHeader, data *types.Data) bool {
+	if r.signatureProvider != nil {
+		header.SetCustomVerifierForSyncNode(r.signatureProvider)
+	}
+	return header.ValidateBasicWithData(data) == nil
+}
+
+func (r *daRetriever) markHeaderDAIncluded(candidate pendingHeader) {
+	header := candidate.header
+	headerHash := header.MemoizeHash().String()
+	r.cache.SetHeaderDAIncluded(headerHash, candidate.daHeight, header.Height())
+
+	r.logger.Debug().
+		Str("header_hash", headerHash).
+		Uint64("da_height", candidate.daHeight).
+		Uint64("height", header.Height()).
+		Msg("header marked as DA included")
+
+	if candidate.envelope && !r.strictMode {
+		r.logger.Info().Uint64("height", header.Height()).Msg("valid DA envelope detected, switching to STRICT MODE")
+		r.strictMode = true
+	}
+}
+
+func (r *daRetriever) markDataDAIncluded(candidate pendingData) {
+	dataHash := candidate.data.DACommitment().String()
+	r.cache.SetDataDAIncluded(dataHash, candidate.daHeight, candidate.data.Height())
+
+	r.logger.Debug().
+		Str("data_hash", dataHash).
+		Uint64("da_height", candidate.daHeight).
+		Uint64("height", candidate.data.Height()).
+		Msg("data marked as DA included")
 }
 
 func (r *daRetriever) removePendingData(height uint64) {
@@ -281,8 +489,9 @@ func (r *daRetriever) removePendingData(height uint64) {
 	delete(r.pendingData, height)
 }
 
-// tryDecodeHeader attempts to decode a blob as a header
-func (r *daRetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedHeader {
+// tryDecodeHeader attempts to decode a blob as a header. The second result
+// reports whether a DA envelope signature verified against the header's signer key.
+func (r *daRetriever) tryDecodeHeader(bz []byte) (*types.SignedHeader, bool) {
 	header := new(types.SignedHeader)
 
 	isValidEnvelope := false
@@ -292,33 +501,33 @@ func (r *daRetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedH
 		// If in strict mode, we REQUIRE an envelope.
 		if r.strictMode {
 			r.logger.Warn().Err(err).Msg("strict mode is enabled, rejecting non-envelope blob")
-			return nil
+			return nil, false
 		}
 
 		// Fallback for backward compatibility (only if NOT in strict mode)
 		r.logger.Debug().Msg("trying legacy decoding")
 		var headerPb pb.SignedHeader
 		if errLegacy := proto.Unmarshal(bz, &headerPb); errLegacy != nil {
-			return nil
+			return nil, false
 		}
 		if errLegacy := header.FromProto(&headerPb); errLegacy != nil {
-			return nil
+			return nil, false
 		}
 	} else {
 		// We have a structurally valid envelope (or at least it parsed)
 		if len(envelopeSignature) > 0 {
 			if header.Signer.PubKey == nil {
 				r.logger.Debug().Msg("header signer has no pubkey, cannot verify envelope")
-				return nil
+				return nil, false
 			}
 			payload, err := header.MarshalBinary()
 			if err != nil {
 				r.logger.Debug().Err(err).Msg("failed to marshal header for verification")
-				return nil
+				return nil, false
 			}
 			if valid, err := header.Signer.PubKey.Verify(payload, envelopeSignature); err != nil || !valid {
 				r.logger.Info().Err(err).Msg("DA envelope signature verification failed")
-				return nil
+				return nil, false
 			}
 			r.logger.Debug().Uint64("height", header.Height()).Msg("DA envelope signature verified")
 			isValidEnvelope = true
@@ -327,95 +536,43 @@ func (r *daRetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedH
 	if r.strictMode && !isValidEnvelope {
 		// no need to print warnings, as tryDecodeHeader could try to decode data first, which will show this warning.
 		r.logger.Debug().Msg("strict mode: rejecting block that is not a fully valid envelope")
-		return nil
+		return nil, false
 	}
 
 	if err := header.Header.ValidateBasic(); err != nil {
 		r.logger.Debug().Err(err).Msg("invalid header structure")
-		return nil
+		return nil, false
 	}
 
-	if err := r.assertExpectedProposer(header); err != nil {
-		r.logger.Debug().Err(err).Msg("unexpected proposer")
-		return nil
-	}
-
-	if isValidEnvelope && !r.strictMode {
-		r.logger.Info().Uint64("height", header.Height()).Msg("valid DA envelope detected, switching to STRICT MODE")
-		r.strictMode = true
-	}
-
-	// Optimistically mark as DA included
-	// This has to be done for all fetched DA headers prior to validation because P2P does not confirm
-	// da inclusion. This is not an issue, as an invalid header will be rejected. There cannot be hash collisions.
-	headerHash := header.MemoizeHash().String()
-	r.cache.SetHeaderDAIncluded(headerHash, daHeight, header.Height())
-
-	r.logger.Debug().
-		Str("header_hash", headerHash).
-		Uint64("da_height", daHeight).
-		Uint64("height", header.Height()).
-		Msg("optimistically marked header as DA included")
-
-	return header
+	return header, isValidEnvelope
 }
 
-func (r *daRetriever) assertExpectedProposer(header *types.SignedHeader) error {
-	if r.expectedProposer == nil {
-		return nil
-	}
-
-	expected, ok := r.expectedProposer(header.Height())
-	if !ok || len(expected) == 0 {
-		return nil
-	}
-	if !bytes.Equal(header.ProposerAddress, expected) {
-		return fmt.Errorf("%w - got: %x, want: %x", types.ErrUnexpectedProposer, header.ProposerAddress, expected)
-	}
-	return nil
-}
-
-// tryDecodeData attempts to decode a blob as signed data
-func (r *daRetriever) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
+// tryDecodeData attempts to decode a blob as signed data. The second result is
+// the address of the key that signed it.
+func (r *daRetriever) tryDecodeData(bz []byte) (*types.Data, []byte) {
 	var signedData types.SignedData
 	if err := signedData.UnmarshalBinary(bz); err != nil {
-		return nil
+		return nil, nil
 	}
 
 	// Skip completely empty data
 	if len(signedData.Txs) == 0 && len(signedData.Signature) == 0 {
-		return nil
+		return nil, nil
 	}
 
-	// Validate signature using the configured provider
-	if err := r.assertValidSignedData(&signedData); err != nil {
+	if err := assertValidSignedData(&signedData, r.genesis); err != nil {
 		r.logger.Debug().Err(err).Msg("invalid signed data")
-		return nil
+		return nil, nil
 	}
 
 	// Reject data without metadata before using accessors (DACommitment,
 	// Height) that assume it is present.
 	if signedData.Metadata == nil {
 		r.logger.Debug().Msg("invalid signed data: missing metadata")
-		return nil
+		return nil, nil
 	}
 
-	// Mark as DA included
-	dataHash := signedData.Data.DACommitment().String()
-	r.cache.SetDataDAIncluded(dataHash, daHeight, signedData.Height())
-
-	r.logger.Debug().
-		Str("data_hash", dataHash).
-		Uint64("da_height", daHeight).
-		Uint64("height", signedData.Height()).
-		Msg("data marked as DA included")
-
-	return &signedData.Data
-}
-
-// assertValidSignedData validates signed data using the configured signature provider
-func (r *daRetriever) assertValidSignedData(signedData *types.SignedData) error {
-	return assertValidSignedData(signedData, r.genesis)
+	return &signedData.Data, types.KeyAddress(signedData.Signer.PubKey)
 }
 
 // isEmptyDataExpected checks if empty data is expected for a header

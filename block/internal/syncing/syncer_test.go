@@ -215,7 +215,7 @@ func TestSyncer_ValidateBlock_UsesStateNextProposer(t *testing.T) {
 	require.Contains(t, err.Error(), "unexpected proposer")
 }
 
-func TestSyncer_ExpectedProposerForHeight_OnlyNextHeight(t *testing.T) {
+func TestSyncer_ExpectedProposerForHeight_OnlyFutureHeights(t *testing.T) {
 	addr, _, _ := buildSyncTestSigner(t)
 	s := &Syncer{lastState: &atomic.Pointer[types.State]{}}
 	s.SetLastState(types.State{
@@ -227,7 +227,11 @@ func TestSyncer_ExpectedProposerForHeight_OnlyNextHeight(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, addr, got)
 
-	_, ok = s.expectedProposerForHeight(6)
+	got, ok = s.expectedProposerForHeight(6)
+	require.True(t, ok)
+	require.Equal(t, addr, got)
+
+	_, ok = s.expectedProposerForHeight(4)
 	require.False(t, ok)
 }
 
@@ -602,7 +606,7 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 	lastState := s.getLastState()
 	data := makeData(gen.ChainID, 1, 0)
 	_, hdr := makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, lastState.AppHash, data, nil)
-	daRetriever := &daRetriever{pendingData: map[uint64]*types.Data{1: data}}
+	daRetriever := &daRetriever{pendingData: map[uint64][]pendingData{1: {{data: data}}}}
 	s.daRetriever = daRetriever
 
 	// Expect ExecuteTxs call for height 1

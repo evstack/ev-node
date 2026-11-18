@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/celestiaorg/go-header"
+	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block/internal/cache"
@@ -185,6 +186,8 @@ func (s *Syncer) Start(ctx context.Context) (err error) {
 		// Initialize DA-specific handlers only when DA is configured.
 		daRetriever := NewDARetriever(s.daClient, s.cache, s.genesis, s.logger)
 		daRetriever.setExpectedProposerProvider(s.expectedProposerForHeight)
+		daRetriever.setSyncedHeaderProvider(s.syncedHeader)
+		daRetriever.setSignatureProvider(s.options.SyncNodeSignatureBytesProvider)
 		s.daRetriever = daRetriever
 		if s.config.Instrumentation.IsTracingEnabled() {
 			s.daRetriever = WithTracingDARetriever(s.daRetriever)
@@ -309,12 +312,30 @@ func (s *Syncer) SetLastState(state types.State) {
 	s.lastState.Store(&state)
 }
 
+// expectedProposerForHeight predicts the proposer of a height that is not
+// synced yet. The prediction is wrong for heights past a proposer rotation
+// that has not been applied; it corrects itself once the rotation block is.
 func (s *Syncer) expectedProposerForHeight(height uint64) ([]byte, bool) {
 	state := s.getLastState()
-	if height != state.LastBlockHeight+1 || len(state.NextProposerAddress) == 0 {
+	if height <= state.LastBlockHeight || len(state.NextProposerAddress) == 0 {
 		return nil, false
 	}
 	return state.NextProposerAddress, true
+}
+
+func (s *Syncer) syncedHeader(height uint64) (*types.SignedHeader, bool, error) {
+	if height > s.getLastState().LastBlockHeight {
+		return nil, false, nil
+	}
+	header, err := s.store.GetHeader(s.ctx, height)
+	if errors.Is(err, ds.ErrNotFound) {
+		// pruned, which only happens once the height is DA included
+		return nil, true, nil
+	}
+	if err != nil {
+		return nil, true, err
+	}
+	return header, true, nil
 }
 
 // initializeState loads the current sync state

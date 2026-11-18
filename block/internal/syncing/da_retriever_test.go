@@ -201,18 +201,20 @@ func TestDARetriever_TryDecodeHeaderAndData_Basic(t *testing.T) {
 	r := newTestDARetriever(t, nil, config.DefaultConfig(), gen)
 
 	hb, sh := makeSignedHeaderBytes(t, gen.ChainID, 5, addr, pub, signer, nil, nil, nil)
-	gotH := r.tryDecodeHeader(hb, 123)
+	gotH, _ := r.tryDecodeHeader(hb)
 	require.NotNil(t, gotH)
 	assert.Equal(t, sh.Hash().String(), gotH.Hash().String())
 
 	db, sd := makeSignedDataBytes(t, gen.ChainID, 5, addr, pub, signer, 1)
-	gotD := r.tryDecodeData(db, 123)
+	gotD, _ := r.tryDecodeData(db)
 	require.NotNil(t, gotD)
 	assert.Equal(t, sd.Height(), gotD.Height())
 
 	// invalid data fails
-	assert.Nil(t, r.tryDecodeHeader([]byte("junk"), 1))
-	assert.Nil(t, r.tryDecodeData([]byte("junk"), 1))
+	junkH, _ := r.tryDecodeHeader([]byte("junk"))
+	assert.Nil(t, junkH)
+	junkD, _ := r.tryDecodeData([]byte("junk"))
+	assert.Nil(t, junkD)
 }
 
 func TestDARetriever_tryDecodeData_InvalidSignature(t *testing.T) {
@@ -227,7 +229,8 @@ func TestDARetriever_tryDecodeData_InvalidSignature(t *testing.T) {
 	db, err := signedData.MarshalBinary()
 	require.NoError(t, err)
 
-	assert.Nil(t, r.tryDecodeData(db, 55))
+	got, _ := r.tryDecodeData(db)
+	assert.Nil(t, got)
 }
 
 func TestDARetriever_tryDecodeData_NilMetadata(t *testing.T) {
@@ -247,7 +250,8 @@ func TestDARetriever_tryDecodeData_NilMetadata(t *testing.T) {
 	db, err := sd.MarshalBinary()
 	require.NoError(t, err)
 
-	assert.Nil(t, r.tryDecodeData(db, 99))
+	got, _ := r.tryDecodeData(db)
+	assert.Nil(t, got)
 }
 
 func TestDARetriever_validateBlobResponse(t *testing.T) {
@@ -300,6 +304,211 @@ func TestDARetriever_RetrieveFromDA_TwoNamespaces_Success(t *testing.T) {
 	assert.Equal(t, uint64(9), events[0].Data.Height())
 }
 
+func TestDARetriever_ProcessBlobs_OutsiderDataDoesNotClaimHeight(t *testing.T) {
+	addr, pub, signer := buildSyncTestSigner(t)
+	_, outsiderPub, outsiderSigner := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+	r := newTestDARetriever(t, nil, config.DefaultConfig(), gen)
+
+	outsiderBin, _ := makeSignedDataBytes(t, gen.ChainID, 5, nil, outsiderPub, outsiderSigner, 3)
+	require.Empty(t, r.processBlobs(context.Background(), [][]byte{outsiderBin}, 10))
+
+	dataBin, data := makeSignedDataBytes(t, gen.ChainID, 5, addr, pub, signer, 2)
+	hdrBin, hdr := makeSignedHeaderBytes(t, gen.ChainID, 5, addr, pub, signer, nil, &data.Data, nil)
+	events := r.processBlobs(context.Background(), [][]byte{hdrBin, dataBin}, 11)
+
+	require.Len(t, events, 1)
+	require.Equal(t, data.DACommitment(), events[0].Data.DACommitment())
+	require.NoError(t, types.Validate(hdr, events[0].Data))
+}
+
+func TestDARetriever_ProcessBlobs_OutsiderDataDoesNotReplaceEmptyData(t *testing.T) {
+	addr, pub, signer := buildSyncTestSigner(t)
+	_, outsiderPub, outsiderSigner := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+	r := newTestDARetriever(t, nil, config.DefaultConfig(), gen)
+
+	outsiderBin, _ := makeSignedDataBytes(t, gen.ChainID, 5, nil, outsiderPub, outsiderSigner, 3)
+	hdrBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 5, addr, pub, signer, nil, nil, nil)
+	events := r.processBlobs(context.Background(), [][]byte{outsiderBin, hdrBin}, 10)
+
+	require.Len(t, events, 1)
+	require.Empty(t, events[0].Data.Txs)
+}
+
+func TestDARetriever_ProcessBlobs_OutsiderHeaderDoesNotClaimHeight(t *testing.T) {
+	addr, pub, signer := buildSyncTestSigner(t)
+	outsiderAddr, outsiderPub, outsiderSigner := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+	r := newTestDARetriever(t, nil, config.DefaultConfig(), gen)
+
+	dataBin, data := makeSignedDataBytes(t, gen.ChainID, 5, addr, pub, signer, 2)
+	hdrBin, hdr := makeSignedHeaderBytes(t, gen.ChainID, 5, addr, pub, signer, nil, &data.Data, nil)
+	// Signed by the outsider, and a second one that only copies the proposer address.
+	outsiderBin, outsiderHdr := makeSignedHeaderBytes(t, gen.ChainID, 5, outsiderAddr, outsiderPub, outsiderSigner, nil, &data.Data, nil)
+	spoofedBin, spoofedHdr := makeSignedHeaderBytes(t, gen.ChainID, 5, addr, outsiderPub, outsiderSigner, nil, &data.Data, nil)
+
+	require.Empty(t, r.processBlobs(context.Background(), [][]byte{outsiderBin, spoofedBin, dataBin}, 10))
+	for _, h := range []*types.SignedHeader{outsiderHdr, spoofedHdr} {
+		_, included := r.cache.GetHeaderDAIncludedByHash(h.Hash().String())
+		require.False(t, included)
+	}
+
+	events := r.processBlobs(context.Background(), [][]byte{hdrBin}, 11)
+	require.Len(t, events, 1)
+	require.Equal(t, hdr.Hash().String(), events[0].Header.Hash().String())
+}
+
+func TestDARetriever_ProcessBlobs_SyncedHeightMarksOnlyStoredBlock(t *testing.T) {
+	addr, pub, signer := buildSyncTestSigner(t)
+	outsiderAddr, outsiderPub, outsiderSigner := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+	r := newTestDARetriever(t, nil, config.DefaultConfig(), gen)
+
+	dataBin, data := makeSignedDataBytes(t, gen.ChainID, 5, addr, pub, signer, 2)
+	hdrBin, hdr := makeSignedHeaderBytes(t, gen.ChainID, 5, addr, pub, signer, nil, &data.Data, nil)
+	fakeDataBin, fakeData := makeSignedDataBytes(t, gen.ChainID, 5, outsiderAddr, outsiderPub, outsiderSigner, 3)
+	fakeHdrBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 5, outsiderAddr, outsiderPub, outsiderSigner, nil, &fakeData.Data, nil)
+
+	r.setSyncedHeaderProvider(func(height uint64) (*types.SignedHeader, bool, error) {
+		return hdr, height <= 5, nil
+	})
+
+	// A self-consistent block from an outsider for a height the node holds.
+	require.Empty(t, r.processBlobs(context.Background(), [][]byte{fakeHdrBin, fakeDataBin}, 10))
+	_, headerIncluded := r.cache.GetHeaderDAIncludedByHeight(5)
+	_, dataIncluded := r.cache.GetDataDAIncludedByHeight(5)
+	require.False(t, headerIncluded)
+	require.False(t, dataIncluded)
+	require.Empty(t, r.pendingHeaders)
+	require.Empty(t, r.pendingData)
+
+	// The stored block is still reported; the syncer skips it as already processed.
+	events := r.processBlobs(context.Background(), [][]byte{hdrBin, dataBin}, 11)
+	require.Len(t, events, 1)
+	require.Equal(t, hdr.Hash().String(), events[0].Header.Hash().String())
+	daHeight, headerIncluded := r.cache.GetHeaderDAIncludedByHash(hdr.Hash().String())
+	require.True(t, headerIncluded)
+	require.Equal(t, uint64(11), daHeight)
+	_, dataIncluded = r.cache.GetDataDAIncludedByHash(data.Data.DACommitment().String())
+	require.True(t, dataIncluded)
+}
+
+// resignHeader reposts a real header under another key: same header hash and
+// header signature, different signer. It returns the copy as a legacy blob and
+// wrapped in an envelope that key signed.
+func resignHeader(t *testing.T, real *types.SignedHeader, pub crypto.PubKey, signer signerpkg.Signer) [][]byte {
+	t.Helper()
+	addr, err := signer.GetAddress()
+	require.NoError(t, err)
+	copied := &types.SignedHeader{Header: real.Header, Signature: real.Signature, Signer: types.Signer{PubKey: pub, Address: addr}}
+	payload, err := copied.MarshalBinary()
+	require.NoError(t, err)
+	envelopeSig, err := signer.Sign(t.Context(), payload)
+	require.NoError(t, err)
+	envelope, err := copied.MarshalDAEnvelope(envelopeSig)
+	require.NoError(t, err)
+	return [][]byte{payload, envelope}
+}
+
+func TestDARetriever_ProcessBlobs_ResignedHeaderCopyDoesNotReplaceRealHeader(t *testing.T) {
+	addr, pub, signer := buildSyncTestSigner(t)
+	_, outsiderPub, outsiderSigner := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+	r := newTestDARetriever(t, nil, config.DefaultConfig(), gen)
+
+	dataBin, data := makeSignedDataBytes(t, gen.ChainID, 5, addr, pub, signer, 2)
+	hdrBin, hdr := makeSignedHeaderBytes(t, gen.ChainID, 5, addr, pub, signer, nil, &data.Data, nil)
+	copies := resignHeader(t, hdr, outsiderPub, outsiderSigner)
+
+	require.Empty(t, r.processBlobs(context.Background(), append(copies, dataBin), 10))
+	require.False(t, r.strictMode)
+
+	events := r.processBlobs(context.Background(), [][]byte{hdrBin}, 11)
+	require.Len(t, events, 1)
+	require.Equal(t, addr, types.KeyAddress(events[0].Header.Signer.PubKey))
+}
+
+func TestDARetriever_ProcessBlobs_SyncedHeightIgnoresResignedHeaderCopy(t *testing.T) {
+	addr, pub, signer := buildSyncTestSigner(t)
+	_, outsiderPub, outsiderSigner := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+	r := newTestDARetriever(t, nil, config.DefaultConfig(), gen)
+
+	_, hdr := makeSignedHeaderBytes(t, gen.ChainID, 5, addr, pub, signer, nil, nil, nil)
+	r.setSyncedHeaderProvider(func(height uint64) (*types.SignedHeader, bool, error) {
+		return hdr, height <= 5, nil
+	})
+
+	require.Empty(t, r.processBlobs(context.Background(), resignHeader(t, hdr, outsiderPub, outsiderSigner), 10))
+	_, included := r.cache.GetHeaderDAIncludedByHeight(5)
+	require.False(t, included)
+	require.False(t, r.strictMode)
+}
+
+func TestDARetriever_ProcessBlobs_SyncedHeightRejectsDataWithWrongMetadata(t *testing.T) {
+	addr, pub, signer := buildSyncTestSigner(t)
+	_, outsiderPub, outsiderSigner := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+	r := newTestDARetriever(t, nil, config.DefaultConfig(), gen)
+
+	_, data := makeSignedDataBytes(t, gen.ChainID, 5, addr, pub, signer, 2)
+	_, hdr := makeSignedHeaderBytes(t, gen.ChainID, 5, addr, pub, signer, nil, &data.Data, nil)
+	r.setSyncedHeaderProvider(func(height uint64) (*types.SignedHeader, bool, error) {
+		return hdr, height <= 5, nil
+	})
+
+	// Same transactions as the stored block, different timestamp.
+	wrongTimeBin, _ := makeSignedDataBytesWithTime(t, gen.ChainID, 5, nil, outsiderPub, outsiderSigner, 2, uint64(data.Time().UnixNano())+1)
+	require.Empty(t, r.processBlobs(context.Background(), [][]byte{wrongTimeBin}, 10))
+	_, included := r.cache.GetDataDAIncludedByHeight(5)
+	require.False(t, included)
+}
+
+func TestDARetriever_ProcessBlobs_PrefersDataSignedByProposer(t *testing.T) {
+	addr, pub, signer := buildSyncTestSigner(t)
+	_, outsiderPub, outsiderSigner := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+	r := newTestDARetriever(t, nil, config.DefaultConfig(), gen)
+
+	dataBin, data := makeSignedDataBytes(t, gen.ChainID, 5, addr, pub, signer, 2)
+	hdrBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 5, addr, pub, signer, nil, &data.Data, nil)
+
+	// The real transactions and metadata the header checks, with a forged LastDataHash.
+	forged := types.Data{Metadata: &types.Metadata{ChainID: gen.ChainID, Height: 5, Time: uint64(data.Time().UnixNano()), LastDataHash: types.Hash("forged")}, Txs: data.Txs}
+	payload, err := forged.MarshalBinary()
+	require.NoError(t, err)
+	sig, err := outsiderSigner.Sign(t.Context(), payload)
+	require.NoError(t, err)
+	forgedBin, err := (&types.SignedData{Data: forged, Signature: sig, Signer: types.Signer{PubKey: outsiderPub}}).MarshalBinary()
+	require.NoError(t, err)
+
+	events := r.processBlobs(context.Background(), [][]byte{forgedBin, dataBin, hdrBin}, 10)
+	require.Len(t, events, 1)
+	require.Equal(t, data.Data.Hash(), events[0].Data.Hash())
+}
+
+func TestDARetriever_ProcessBlobs_KeepsCandidatesWhenSyncedHeaderLoadFails(t *testing.T) {
+	addr, pub, signer := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+	r := newTestDARetriever(t, nil, config.DefaultConfig(), gen)
+
+	hdrBin, hdr := makeSignedHeaderBytes(t, gen.ChainID, 5, addr, pub, signer, nil, nil, nil)
+	loadErr := errors.New("store unavailable")
+	r.setSyncedHeaderProvider(func(uint64) (*types.SignedHeader, bool, error) {
+		return hdr, true, loadErr
+	})
+
+	require.Empty(t, r.processBlobs(context.Background(), [][]byte{hdrBin}, 10))
+	_, included := r.cache.GetHeaderDAIncludedByHeight(5)
+	require.False(t, included)
+
+	loadErr = nil
+	require.Len(t, r.processBlobs(context.Background(), nil, 11), 1)
+	_, included = r.cache.GetHeaderDAIncludedByHeight(5)
+	require.True(t, included)
+}
+
 func TestDARetriever_ProcessBlobs_CrossDAHeightMatching(t *testing.T) {
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -348,9 +557,10 @@ func TestDARetriever_ProcessBlobs_KeepsDataForLaterHeaderAfterCandidateEvent(t *
 	correctHeaderBin, correctHeader := makeSignedHeaderBytes(t, gen.ChainID, 5, expectedAddr, expectedPub, expectedSigner, nil, &data.Data, nil)
 
 	events := r.processBlobs(context.Background(), [][]byte{wrongHeaderBin, dataBin}, 100)
-	require.Len(t, events, 1)
-	require.Equal(t, wrongHeader.Hash().String(), events[0].Header.Hash().String())
-	require.Contains(t, r.pendingData, uint64(5), "data should stay available until the candidate block is accepted")
+	require.Empty(t, events, "a header from an unexpected proposer must not be emitted")
+	_, wrongIncluded := r.cache.GetHeaderDAIncludedByHash(wrongHeader.Hash().String())
+	require.False(t, wrongIncluded, "a header from an unexpected proposer must not be marked DA included")
+	require.Contains(t, r.pendingData, uint64(5), "data should stay available for the expected proposer's header")
 
 	events = r.processBlobs(context.Background(), [][]byte{correctHeaderBin}, 101)
 	require.Len(t, events, 1)
@@ -371,18 +581,16 @@ func TestDARetriever_ProcessBlobs_RejectsUnexpectedProposerBeforePendingHeader(t
 		return expectedAddr, true
 	})
 
-	_, data := makeSignedDataBytes(t, gen.ChainID, 5, expectedAddr, expectedPub, expectedSigner, 1)
+	dataBin, data := makeSignedDataBytes(t, gen.ChainID, 5, expectedAddr, expectedPub, expectedSigner, 1)
 	wrongHeaderBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 5, wrongAddr, wrongPub, wrongSigner, nil, &data.Data, nil)
 	correctHeaderBin, correctHeader := makeSignedHeaderBytes(t, gen.ChainID, 5, expectedAddr, expectedPub, expectedSigner, nil, &data.Data, nil)
 
 	events := r.processBlobs(context.Background(), [][]byte{wrongHeaderBin}, 100)
 	require.Empty(t, events)
-	require.NotContains(t, r.pendingHeaders, uint64(5), "unexpected proposer must not occupy the pending header slot")
 
-	events = r.processBlobs(context.Background(), [][]byte{correctHeaderBin}, 101)
-	require.Empty(t, events)
-	require.Contains(t, r.pendingHeaders, uint64(5), "expected proposer should be accepted as pending while data is missing")
-	require.Equal(t, correctHeader.Hash().String(), r.pendingHeaders[5].Hash().String())
+	events = r.processBlobs(context.Background(), [][]byte{correctHeaderBin, dataBin}, 101)
+	require.Len(t, events, 1, "an unexpected proposer's header must not block the expected one")
+	require.Equal(t, correctHeader.Hash().String(), events[0].Header.Hash().String())
 }
 
 func TestDARetriever_ProcessBlobs_ReplacesFutureHeaderOnceExpectedProposerIsKnown(t *testing.T) {
@@ -405,7 +613,7 @@ func TestDARetriever_ProcessBlobs_ReplacesFutureHeaderOnceExpectedProposerIsKnow
 
 	events := r.processBlobs(context.Background(), [][]byte{wrongHeaderBin}, 100)
 	require.Empty(t, events)
-	require.Equal(t, wrongHeader.Hash().String(), r.pendingHeaders[5].Hash().String())
+	require.Equal(t, wrongHeader.Hash().String(), r.pendingHeaders[5][0].header.Hash().String())
 
 	expectedKnown = true
 	events = r.processBlobs(context.Background(), [][]byte{correctHeaderBin, dataBin}, 101)
