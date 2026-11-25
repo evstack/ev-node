@@ -353,6 +353,18 @@ func (c *Client) listen() (host.Host, error) {
 	}
 
 	opts := []libp2p.Option{libp2p.ListenAddrs(maddr), libp2p.Identity(c.privKey)}
+	if strings.TrimSpace(c.conf.AnnounceAddresses) != "" {
+		announce, err := parseMultiaddrs(c.conf.AnnounceAddresses)
+		if err != nil {
+			return nil, fmt.Errorf("invalid p2p announce address: %w", err)
+		}
+		if len(announce) == 0 {
+			// an empty factory result would advertise no addresses at all
+			return nil, fmt.Errorf("invalid p2p announce address: no multiaddr in %q", c.conf.AnnounceAddresses)
+		}
+		// replace the auto-detected interface addresses (loopback, docker bridge, ...) with the configured ones
+		opts = append(opts, libp2p.AddrsFactory(func([]multiaddr.Multiaddr) []multiaddr.Multiaddr { return announce }))
+	}
 	if !c.conf.DisableConnectionGater {
 		opts = append(opts, libp2p.ConnectionGater(c.gater))
 	}
@@ -494,6 +506,23 @@ func (c *Client) parseAddrInfoList(addrInfoStr string) []peer.AddrInfo {
 		addrs = append(addrs, *addrInfo)
 	}
 	return addrs
+}
+
+// parseMultiaddrs parses a comma-separated string of multiaddrs, failing on the first invalid entry.
+func parseMultiaddrs(s string) ([]multiaddr.Multiaddr, error) {
+	var addrs []multiaddr.Multiaddr
+	for _, a := range strings.Split(s, ",") {
+		a = strings.TrimSpace(a)
+		if a == "" {
+			continue
+		}
+		maddr, err := multiaddr.NewMultiaddr(a)
+		if err != nil {
+			return nil, fmt.Errorf("%q: %w", a, err)
+		}
+		addrs = append(addrs, maddr)
+	}
+	return addrs, nil
 }
 
 // getNamespace returns unique string identifying ORU network.

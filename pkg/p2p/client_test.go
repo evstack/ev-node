@@ -182,6 +182,46 @@ func TestClientStartup(t *testing.T) {
 	}
 }
 
+func TestAnnounceAddresses(t *testing.T) {
+	nodeKey, err := key.GenerateNodeKey()
+	require.NoError(t, err)
+
+	newClient := func(announce string) *Client {
+		conf := config.P2PConfig{ListenAddress: "/ip4/127.0.0.1/tcp/0", AnnounceAddresses: announce}
+		client, err := NewClient(conf, nodeKey.PrivKey, dssync.MutexWrap(datastore.NewMapDatastore()), "test-chain", zerolog.Nop(), NopMetrics())
+		require.NoError(t, err)
+		return client
+	}
+
+	t.Run("announced addresses replace listen addresses", func(t *testing.T) {
+		client := newClient(" /ip4/203.0.113.10/tcp/7676, /dns4/node.example.com/tcp/7676 ")
+		h, err := client.listen()
+		require.NoError(t, err)
+		defer h.Close()
+		client.host = h
+
+		// libp2p sorts the factory output, so don't depend on order
+		assert.ElementsMatch(t, []multiaddr.Multiaddr{
+			multiaddr.StringCast("/ip4/203.0.113.10/tcp/7676"),
+			multiaddr.StringCast("/dns4/node.example.com/tcp/7676"),
+		}, h.Addrs())
+
+		info, err := client.GetNetworkInfo()
+		require.NoError(t, err)
+		assert.ElementsMatch(t, []string{
+			"/ip4/203.0.113.10/tcp/7676/p2p/" + h.ID().String(),
+			"/dns4/node.example.com/tcp/7676/p2p/" + h.ID().String(),
+		}, info.ListenAddress)
+	})
+
+	for _, announce := range []string{"/ip4/203.0.113.10/tcp/7676,foo", " , "} {
+		t.Run("invalid announce address fails: "+announce, func(t *testing.T) {
+			_, err := newClient(announce).listen()
+			assert.ErrorContains(t, err, "invalid p2p announce address")
+		})
+	}
+}
+
 func TestBootstrapping(t *testing.T) {
 	assert := assert.New(t)
 	logger := zerolog.Nop()
