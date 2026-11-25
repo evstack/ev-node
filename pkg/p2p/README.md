@@ -42,23 +42,23 @@ The P2P client is configured using the `P2PConfig` struct:
 
 ```go
 type P2PConfig struct {
-    ListenAddress string // Address to listen for incoming connections
-    Seeds         string // Comma separated list of seed nodes to connect to
-    BlockedPeers  string // Comma separated list of nodes to ignore
-    AllowedPeers  string // Comma separated list of nodes to whitelist
+    ListenAddress     string // Address to listen for incoming connections
+    Seeds             string // Comma separated list of seed nodes to connect to
+    BlockedPeers      string // Comma separated list of nodes to ignore
+    AllowedPeers      string // Comma separated list of nodes to whitelist
     AnnounceAddresses string // Comma separated list of multiaddrs advertised instead of the listen addresses
 }
 ```
 
 ### Configuration Parameters
 
-| Parameter     | Description                                                     | Default                 | Example                                                                                          |
-| ------------- | --------------------------------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------ |
-| ListenAddress | The address where the node listens for incoming P2P connections | `/ip4/0.0.0.0/tcp/7676` | `/ip4/0.0.0.0/tcp/7676`                                                                          |
-| Seeds         | Comma-separated list of seed nodes (bootstrap nodes)            | ""                      | `/ip4/1.2.3.4/tcp/7676/p2p/12D3KooWA8EXV3KjBxEU...,/ip4/5.6.7.8/tcp/7676/p2p/12D3KooWJN9ByvD...` |
-| BlockedPeers  | Comma-separated list of peer IDs to block                       | ""                      | `12D3KooWA8EXV3KjBxEU...,12D3KooWJN9ByvD...`                                                     |
-| AllowedPeers  | Comma-separated list of peer IDs to explicitly allow            | ""                      | `12D3KooWA8EXV3KjBxEU...,12D3KooWJN9ByvD...`                                                     |
-| AnnounceAddresses | Comma-separated multiaddrs advertised to peers instead of the listen addresses (NAT/containers) | "" | `/ip4/203.0.113.10/tcp/7676` |
+| Parameter         | Description                                                                         | Default                 | Example                                                                                          |
+| ----------------- | ----------------------------------------------------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------ |
+| ListenAddress     | The address where the node listens for incoming P2P connections                     | `/ip4/0.0.0.0/tcp/7676` | `/ip4/0.0.0.0/tcp/7676`                                                                          |
+| Seeds             | Comma-separated list of seed nodes (bootstrap nodes)                                | ""                      | `/ip4/1.2.3.4/tcp/7676/p2p/12D3KooWA8EXV3KjBxEU...,/ip4/5.6.7.8/tcp/7676/p2p/12D3KooWJN9ByvD...` |
+| BlockedPeers      | Comma-separated list of peer IDs to block                                           | ""                      | `12D3KooWA8EXV3KjBxEU...,12D3KooWJN9ByvD...`                                                     |
+| AllowedPeers      | Comma-separated list of peer IDs to explicitly allow                                | ""                      | `12D3KooWA8EXV3KjBxEU...,12D3KooWJN9ByvD...`                                                     |
+| AnnounceAddresses | Multiaddrs advertised to peers instead of the listen addresses (NAT, containers)    | ""                      | `/ip4/203.0.113.10/tcp/7676`                                                                     |
 
 ## libp2p Components
 

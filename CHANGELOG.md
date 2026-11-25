@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Add `p2p.announce_addresses` to set the multiaddrs advertised to peers, so nodes behind NAT or in containers without host networking stop advertising unreachable loopback/Docker bridge addresses.
+- Add `p2p.announce_addresses` to set the multiaddrs advertised to peers, so nodes behind NAT or in containers without host networking stop advertising unreachable loopback/Docker bridge addresses [#3510](https://github.com/evstack/ev-node/pull/3510).
 
 ## v1.3.0
 

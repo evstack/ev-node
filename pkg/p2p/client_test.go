@@ -200,23 +200,26 @@ func TestAnnounceAddresses(t *testing.T) {
 		defer h.Close()
 		client.host = h
 
-		assert.Equal(t, []multiaddr.Multiaddr{
+		// libp2p sorts the factory output, so don't depend on order
+		assert.ElementsMatch(t, []multiaddr.Multiaddr{
 			multiaddr.StringCast("/ip4/203.0.113.10/tcp/7676"),
 			multiaddr.StringCast("/dns4/node.example.com/tcp/7676"),
 		}, h.Addrs())
 
 		info, err := client.GetNetworkInfo()
 		require.NoError(t, err)
-		assert.Equal(t, []string{
+		assert.ElementsMatch(t, []string{
 			"/ip4/203.0.113.10/tcp/7676/p2p/" + h.ID().String(),
 			"/dns4/node.example.com/tcp/7676/p2p/" + h.ID().String(),
 		}, info.ListenAddress)
 	})
 
-	t.Run("invalid announce address fails", func(t *testing.T) {
-		_, err := newClient("/ip4/203.0.113.10/tcp/7676,foo").listen()
-		assert.ErrorContains(t, err, "invalid p2p announce address")
-	})
+	for _, announce := range []string{"/ip4/203.0.113.10/tcp/7676,foo", " , "} {
+		t.Run("invalid announce address fails: "+announce, func(t *testing.T) {
+			_, err := newClient(announce).listen()
+			assert.ErrorContains(t, err, "invalid p2p announce address")
+		})
+	}
 }
 
 func TestBootstrapping(t *testing.T) {

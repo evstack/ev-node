@@ -358,6 +358,10 @@ func (c *Client) listen() (host.Host, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid p2p announce address: %w", err)
 		}
+		if len(announce) == 0 {
+			// an empty factory result would advertise no addresses at all
+			return nil, fmt.Errorf("invalid p2p announce address: no multiaddr in %q", c.conf.AnnounceAddresses)
+		}
 		// replace the auto-detected interface addresses (loopback, docker bridge, ...) with the configured ones
 		opts = append(opts, libp2p.AddrsFactory(func([]multiaddr.Multiaddr) []multiaddr.Multiaddr { return announce }))
 	}
