@@ -1,17 +1,8 @@
 # Changelog
 
-<!--
-All notable changes to this module will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
--->
-
-## [Unreleased]
-
-### Added
-
-- Add `p2p.announce_addresses` to set the multiaddrs advertised to peers, so nodes behind NAT or in containers without host networking stop advertising unreachable loopback/Docker bridge addresses [#3510](https://github.com/evstack/ev-node/pull/3510).
+> [!NOTE]
+> This file is no longer updated. Starting with the release after v1.3.0, release notes are generated from PR titles and published on [GitHub Releases](https://github.com/evstack/ev-node/releases).
+> The history below is kept for reference.
 
 ## v1.3.0
 
@@ -362,5 +353,3 @@ No changes from v1.1.0-rc.2.
 - Removed `LastCommitHash`, `ConsensusHash`, and `LastResultsHash` from the canonical header representation in favor of
   slim headers (BREAKING; legacy hashes now live under
   `Header.Legacy`) ([#2766](https://github.com/evstack/ev-node/pull/2766))
-
-[Unreleased]: https://github.com/evstack/ev-node/compare/v1.0.0-beta.1...HEAD
