@@ -2,126 +2,62 @@
 
 This document covers the release process for ev-node components:
 
-- **GitHub Releases** - Manual workflow to create draft releases with AI-generated release notes
-- **Docker Image Releases** - Automated via GitHub workflows (for deployable applications)
+- **ev-node releases** - Pushing a root semver tag builds the Docker images and publishes the GitHub Release
 - **Go Module Releases** - Manual process for library packages and dependencies
 
 ---
 
-## GitHub Releases (Manual Workflow)
+## Cutting a Release
 
-### When to Use
+Pushing a root tag such as `v1.4.0` or `v1.4.0-rc.1` runs `.github/workflows/release.yml`, which:
 
-Create official GitHub releases with professionally formatted release notes for version tags.
+1. Validates the tag (`v<MAJOR>.<MINOR>.<PATCH>[-PRERELEASE][+BUILD]`) and finds the previous release tag
+2. Builds and pushes multi-arch (amd64, arm64) images for every `apps/*/Dockerfile` to `ghcr.io/evstack/ev-node-<app>:<tag>`; stable tags also update `:latest`
+3. Generates release notes from the PR titles since the previous tag with [git-cliff](https://git-cliff.org) (`cliff.toml`)
+4. Publishes the GitHub Release, with the image list and a full diff link
 
-### Quick Steps
+Tags with a `-` suffix (`-rc.1`, `-beta.1`) are published as prereleases: they never become the latest release and never move `:latest`.
 
-```bash
-# 1. Ensure CHANGELOG.md is updated for the version
-# 2. Navigate to GitHub Actions
-# 3. Run "Github Release" workflow
-# 4. Enter tag (e.g., v1.2.3)
-# 5. Review and publish the draft release
-```
-
-### How It Works
-
-The GitHub Release workflow (`.github/workflows/release-github.yml`) automates release note generation:
-
-1. **Validates Tag Format** - Ensures tag follows semantic versioning (e.g., `v1.2.3`, `v1.2.3-rc.4`)
-2. **Extracts Version Info** - Parses version from tag and finds previous release
-3. **Discovers Docker Images** - Lists all Docker images that will be included in the release
-4. **Generates Release Notes** - Uses Claude AI to read CHANGELOG.md and create professional release notes
-5. **Creates Draft Release** - Publishes a draft GitHub release for review
-
-### Release Notes Structure
-
-The workflow generates release notes with:
-
-- **Summary** - Overview of the release type and upgrade recommendations
-- **Tested Upgrade Paths** - Version compatibility information
-- **Changelog Sections**:
-  - Added (new features, with BREAKING changes highlighted)
-  - Changed (modifications, with BREAKING changes highlighted)
-  - Removed (deprecated features, with BREAKING changes highlighted)
-  - Fixed (bug fixes)
-- **Docker Images** - List of all available Docker images for this release
-
-### Requirements
-
-- Tag must follow semantic versioning: `v<MAJOR>.<MINOR>.<PATCH>[-PRERELEASE][+BUILD]`
-  - Valid: `v1.2.3`, `v1.2.3-rc.4`, `v1.2.3-beta.1`, `v1.2.3-alpha.1+build.123`
-- CHANGELOG.md must contain a section for the version being released
-- `CLAUDE_CODE_OAUTH_TOKEN` secret must be configured in repository settings
-
-### Workflow Dispatch
-
-To trigger the workflow:
-
-1. Go to **GitHub → Actions → Github Release**
-2. Click **Run workflow**
-3. Enter the release tag (e.g., `v1.2.3`)
-4. Click **Run workflow**
-
-The workflow will create a **draft release** that you can review and edit before publishing.
-
-### Best Practices
-
-- ✅ Update CHANGELOG.md before running the workflow
-- ✅ Use clear, descriptive changelog entries
-- ✅ Mark breaking changes explicitly in CHANGELOG.md
-- ✅ Review the draft release before publishing
-- ✅ Test upgrade paths and update release notes accordingly
-- ✅ Ensure all Docker images are built and available
-
----
-
-## Docker Image Releases (Automated)
-
-### When to Use
-
-Release deployable applications (EVM nodes, test apps, etc.) as Docker images.
-
-### Quick Steps
+### Steps
 
 ```bash
-# 1. Ensure CI passes on main
-# 2. Create and push tag
-git tag evm/single/v0.2.0
-git push origin evm/single/v0.2.0
+# 1. Make sure CI is green on the commit you are tagging (usually main)
 
-# 3. Monitor workflow
-# GitHub → Actions → Release workflow
+# 2. Optional: preview the release notes
+git cliff --unreleased --tag v1.4.0
+# or, without installing git-cliff
+docker run --rm -v "$PWD":/app -w /app orhunp/git-cliff --unreleased --tag v1.4.0
 
-# 4. Verify release
-docker pull ghcr.io/evstack/ev-node-evm:v0.2.0
+# 3. Tag and push
+git tag -a v1.4.0 -m v1.4.0
+git push origin v1.4.0
+
+# 4. Watch GitHub → Actions → Release
 ```
 
-### Tag Format
+The release is published directly. Edit it afterwards on GitHub if you need to add context such as tested upgrade paths or operator steps.
 
-Use the hierarchical tag format: `{app-path}/v{major}.{minor}.{patch}`
+### PR Titles Are the Changelog
 
-**Examples:**
+PRs are squash-merged, so each PR title becomes one release-note line. Titles must follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) (enforced by `semantic-pull-request.yml`):
 
-- `apps/evm/v0.2.0` → Releases `apps/evm/`
-- `apps/testapp/v1.0.0` → Releases `apps/testapp/`
+| Title prefix | Release notes section |
+| --- | --- |
+| `feat:` | Features |
+| `fix:` | Bug fixes |
+| `perf:` | Performance |
+| `revert:` | Reverts |
+| `chore:`, `docs:`, `test:`, `ci:`, `build:`, `refactor:`, `style:` | Not shown |
+| `feat!:`, `fix(scope)!:`, any type with `!` | ⚠️ Breaking changes |
 
-### Automated Process
+- Add `!` before the colon to mark a **breaking** change. Breaking changes are always listed, even for otherwise hidden types such as `refactor!:`.
+- An optional scope is shown in bold: `fix(p2p): ...` → **p2p:** ...
+- Write titles for node operators: say what changed for them, not how it was implemented.
+- Do not edit `CHANGELOG.md`; it is frozen. Release notes live on [GitHub Releases](https://github.com/evstack/ev-node/releases).
 
-When you push a tag, the release workflow automatically:
+### Docker Images
 
-1. ✅ Validates tag format and app directory structure
-2. ✅ Builds multi-platform Docker image (amd64, arm64)
-3. ✅ Publishes to GitHub Container Registry (GHCR):
-   - Version tag: `ghcr.io/evstack/ev-node-{app}:v0.2.0`
-   - Latest tag: `ghcr.io/evstack/ev-node-{app}:latest`
-
-### Requirements
-
-- App directory must exist at `./apps/{app-path}/`
-- Dockerfile must exist at `./apps/{app-path}/Dockerfile`
-- Tag must match pattern `**/v*.*.*`
-- CI must pass on main branch
+Every app image uses the root version: tag `v1.4.0` publishes `ev-node-evm:v1.4.0`, `ev-node-testapp:v1.4.0`, `ev-node-loadgen:v1.4.0`, and so on. Each app module uses `replace github.com/evstack/ev-node => ../..`, so every image is built from the tagged tree. App tags (`apps/evm/v*`, ...) are Go module tags only and do not build images.
 
 ---
 
@@ -181,7 +117,7 @@ These packages have the most dependencies and should be released last:
 **Before Starting:**
 
 - Create a protected version branch (e.g., `v0` for major versions, `v0.3` for minor breaking changes)
-- Ensure CHANGELOG.md is up to date with all changes properly categorized
+- Pushing the root tag (`v0.3.0` below) also runs the release workflow: Docker images and the GitHub Release are published from that commit
 - Remove all `replace` directives from go.mod files
 
 #### Phase 1: Release Core
@@ -250,38 +186,34 @@ go list -m github.com/evstack/ev-node/apps/evm@v0.3.0
 
 ## Common Release Scenarios
 
-### Scenario 1: Create GitHub Release
+### Scenario 1: Stable Release
 
 ```bash
-# 1. Update CHANGELOG.md with version changes
-# 2. Commit and push changes
-git add CHANGELOG.md
-git commit -m "Update changelog for v1.2.3"
-git push origin main
-
-# 3. Go to GitHub Actions → Github Release → Run workflow
-# 4. Enter tag: v1.2.3
-# 5. Review draft release and publish
+git cliff --unreleased --tag v1.4.0   # optional preview
+git tag -a v1.4.0 -m v1.4.0
+git push origin v1.4.0
 ```
 
-### Scenario 2: Release Single App (Docker Only)
+### Scenario 2: Release Candidate
 
 ```bash
-# Tag and push - automation handles the rest
-git tag evm/v0.2.0
-git push origin evm/v0.2.0
+git tag -a v1.4.0-rc.1 -m v1.4.0-rc.1
+git push origin v1.4.0-rc.1
+# Published as a prerelease; :latest is not updated
 ```
 
-### Scenario 3: Release Multiple Apps
+Release notes for an rc cover the changes since the previous tag (stable or rc). The final `v1.4.0` notes cover everything since the previous stable release, including all its rcs.
+
+### Scenario 3: Backport Release
 
 ```bash
-# Release apps independently
-git tag evm/single/v0.2.0
-git tag testapp/v1.0.0
-git push origin evm/single/v0.2.0 testapp/v1.0.0
-
-# Each triggers its own workflow
+git checkout v1.3.x
+# cherry-pick fixes, wait for CI
+git tag -a v1.3.1 -m v1.3.1
+git push origin v1.3.1
 ```
+
+The previous tag is found by ancestry, so notes for `v1.3.1` diff against `v1.3.0`, not the newest tag on `main`.
 
 ### Scenario 4: Full Go Module Release
 
@@ -301,31 +233,28 @@ git tag apps/evm/v0.3.0 && git push origin apps/evm/v0.3.0
 ### Scenario 5: Hotfix/Patch Release
 
 ```bash
-# For Docker images - delete and recreate
-git tag -d evm/single/v0.2.0
-git push origin :refs/tags/evm/single/v0.2.0
+# Fix on main (or a backport branch), then cut a new patch version
+git tag -a v1.4.1 -m v1.4.1
+git push origin v1.4.1
 
-# Fix code, create new tag
-git tag evm/single/v0.2.1
-git push origin evm/single/v0.2.1
-
-# For Go modules - create new patch version
-# Do NOT delete Go module tags - create v0.3.1 instead
+# Do NOT delete or move released tags: Go modules and images depend on them
 ```
+
+If a release workflow run fails for a transient reason, re-run it from the Actions tab: it overwrites the tag's images and updates the existing release. A re-run uses the tagged commit, so if the code needs a fix, cut a new patch version instead.
 
 ---
 
 ## Verification
 
-### Docker Image Release
+### Docker Images and GitHub Release
 
 ```bash
 # Check workflow status
 # GitHub → Actions → Release
 
 # Pull and test image
-docker pull ghcr.io/evstack/ev-node-evm:v0.2.0
-docker run ghcr.io/evstack/ev-node-evm:v0.2.0 --version
+docker pull ghcr.io/evstack/ev-node-evm:v1.4.0
+docker run ghcr.io/evstack/ev-node-evm:v1.4.0 --version
 
 # Check GHCR
 # GitHub → Packages → ev-node-evm
@@ -345,48 +274,25 @@ go get github.com/evstack/ev-node/core@v0.3.0
 
 ## Troubleshooting
 
-### GitHub Releases
+### Release Workflow
 
 #### "Invalid tag format" error
 
 - Ensure tag follows semantic versioning: `v1.2.3`
-- Check for typos or incorrect format
 - Valid examples: `v1.2.3`, `v1.2.3-rc.4`, `v1.2.3-beta.1`
+- Delete the bad tag (`git push origin :refs/tags/<tag>`) and push a correct one
 
-#### "Version not found in CHANGELOG.md"
+#### A PR is missing from the release notes
 
-- Verify CHANGELOG.md contains a section for the version
-- Check version format matches exactly (e.g., `v1.2.3` vs `1.2.3`)
-- Ensure CHANGELOG.md is committed and pushed
+- `chore`, `docs`, `test`, `ci`, `build`, `refactor` and `style` commits are hidden unless marked breaking (`!`)
+- Commits whose subject is not a conventional commit are dropped
+- Edit the published release on GitHub to add the line
 
-#### "Claude API error"
+#### Docker build failed
 
-- Verify `CLAUDE_CODE_OAUTH_TOKEN` secret is configured
-- Check repository permissions for GitHub Actions
-- Review workflow logs for specific error messages
-
-#### Empty or incomplete release notes
-
-- Ensure CHANGELOG.md has detailed entries for the version
-- Check that changelog sections (Added, Changed, Fixed, etc.) are properly formatted
-- Review the draft release and manually edit if needed
-
-### Docker Releases
-
-#### "App directory does not exist"
-
-- Ensure tag matches app path: `apps/evm/` → `apps/evm/v0.2.0`
-- Check spelling and case sensitivity
-
-#### "Dockerfile not found"
-
-- Verify Dockerfile exists at `apps/{app-path}/Dockerfile`
-- Check filename is exactly `Dockerfile`
-
-#### "Image not found" in tests
-
-- Wait for Docker build workflow to complete
-- Check workflow dependencies in Actions tab
+- Check the `Docker images` job logs in the Release run
+- The GitHub Release is only published after all images are pushed; re-run the workflow for transient failures, or cut a new patch version if the code needs a fix
+- Every `apps/<app>/Dockerfile` is built; an app without a Dockerfile is skipped
 
 ### Go Module Releases
 
@@ -410,7 +316,7 @@ go get github.com/evstack/ev-node/core@v0.3.0
 
 - ✅ All changes merged to `main`
 - ✅ CI workflow passes
-- ✅ CHANGELOG.md updated
+- ✅ PR titles describe the changes for operators (they become the release notes)
 - ✅ Documentation updated
 - ✅ Local testing complete
 - ✅ Remove `replace` directives from go.mod files
@@ -428,19 +334,8 @@ While modules can have independent versions, keep major versions synchronized ac
 ### Tag Messages
 
 ```bash
-# Good: Annotated tag with description
-git tag -a evm/single/v0.2.0 -m "Release EVM single v0.2.0
-
-Features:
-- Added feature X
-- Improved performance Y
-
-Bug fixes:
-- Fixed issue Z
-"
-
-# Avoid: Lightweight tag without description
-git tag evm/single/v0.2.0  # Less informative
+# Annotated tag; the release notes come from PR titles, not the tag message
+git tag -a v1.4.0 -m v1.4.0
 ```
 
 ---
@@ -454,7 +349,7 @@ git tag evm/single/v0.2.0  # Less informative
 3. **Go Proxy Cache**: The Go module proxy may take up to 30 minutes to fully propagate new versions. Be patient and verify availability before proceeding to dependent modules.
 
 4. **Rollback Plan**:
-   - **Docker images**: Can delete and recreate tags
+   - **Releases and Docker images**: Cut a new patch version (e.g., v1.4.1); re-running a tag overwrites its images
    - **Go modules**: NEVER delete tags. Create a new patch version instead (e.g., v0.3.1) to avoid Go proxy issues.
 
 5. **Protected Branches**: Create version branches (e.g., `v0`, `v0.3`) for maintaining release history and backporting fixes.
