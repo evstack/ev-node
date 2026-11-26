@@ -1,0 +1,114 @@
+---
+name: Release
+permissions: {}
+"on":
+  push:
+    tags:
+      - "v*.*.*"
+
+concurrency: release-${{ github.ref }}
+
+jobs:
+  prepare:
+    name: Prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+      prev: ${{ steps.meta.outputs.prev }}
+      apps: ${{ steps.meta.outputs.apps }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Compute release metadata
+        id: meta
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if ! echo "$TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'; then
+            echo "::error::Invalid tag format: $TAG"
+            echo "::error::Tag must be in semver format: v<MAJOR>.<MINOR>.<PATCH>[-PRERELEASE][+BUILD]"
+            exit 1
+          fi
+
+          prerelease=false
+          [[ "$TAG" == *-* ]] && prerelease=true
+
+          exclude=()
+          [ "$prerelease" = false ] && exclude=(--exclude='v*-*')
+          prev=$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' "${exclude[@]}" "$TAG^" 2>/dev/null) \
+            || prev=$(git rev-list --max-parents=0 HEAD | tail -n1)
+
+          apps=$(for f in apps/*/Dockerfile; do
+            jq -c -n --arg name "ev-node-$(basename "$(dirname "$f")")" --arg dockerfile "$f" '{name: $name, dockerfile: $dockerfile}'
+          done | jq -c -s .)
+
+          {
+            echo "tag=$TAG"
+            echo "prerelease=$prerelease"
+            echo "prev=$prev"
+            echo "apps=$apps"
+          } >> "$GITHUB_OUTPUT"
+          echo "::notice::tag=$TAG prerelease=$prerelease prev=$prev apps=$apps"
+
+  docker:
+    name: Docker images
+    needs: prepare
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/docker-build-push.yml
+    with:
+      image-tag: ${{ needs.prepare.outputs.tag }}
+      apps: ${{ needs.prepare.outputs.apps }}
+      latest: ${{ needs.prepare.outputs.prerelease == 'false' }}
+
+  release:
+    name: GitHub Release
+    needs: [prepare, docker]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Generate release notes
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --strip header --tag ${{ needs.prepare.outputs.tag }} ${{ needs.prepare.outputs.prev }}..${{ needs.prepare.outputs.tag }}
+        env:
+          OUTPUT: NOTES.md
+
+      - name: Append images and diff link
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+          PREV: ${{ needs.prepare.outputs.prev }}
+          APPS: ${{ needs.prepare.outputs.apps }}
+          REGISTRY: ghcr.io/${{ github.repository_owner }}
+          REPO: ${{ github.repository }}
+        run: |
+          {
+            echo
+            echo "## Docker images"
+            echo
+            jq -r --arg reg "$REGISTRY" --arg tag "$TAG" '.[] | "- `\($reg)/\(.name):\($tag)`"' <<<"$APPS"
+            echo
+            echo "**Full diff:** https://github.com/$REPO/compare/$PREV...$TAG"
+          } >> NOTES.md
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: ev-node ${{ needs.prepare.outputs.tag }}
+          body_path: NOTES.md
+          draft: false
+          prerelease: ${{ needs.prepare.outputs.prerelease }}
+          make_latest: ${{ needs.prepare.outputs.prerelease == 'true' && 'false' || 'true' }}
