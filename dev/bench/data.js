@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795709504039,
+  "lastUpdate": 1795709506527,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -194,6 +194,102 @@ window.BENCHMARK_DATA = {
             "value": 55,
             "unit": "allocs/op",
             "extra": "37707 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "27022259+auricom@users.noreply.github.com",
+            "name": "auricom",
+            "username": "auricom"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "e8626b1094d670805387d258534fb5113cd0c006",
+          "message": "ci: automate releases on semver tags (#3518)\n\n* Froze CHANGELOG.md: replaced the [Unreleased] block (#3510) with a note\n\n* Added optional boolean input `latest` (default false) to docker-build-pu\n\n* Added cliff.toml at the repo root as specified; verified with git-cliff\n\n* Removed the orphaned [Unreleased] link reference definition (and precedi\n\n* Added .github/workflows/release.yml: a release workflow triggered by v*.\n\n* Deleted .github/workflows/release-github.yml and .github/workflows/relea\n\n* Rewrote RELEASE.md around a tag-driven 'Cutting a Release' flow with PR-\n\n* RELEASE.md: keep the apps/* replace directives so images built from the\n\n* Verified release flow (actionlint, git-cliff v1.2.3..v1.3.0 and v1.0.0..\n\n* Removed the stray NOTES.md dry-run artifact from the repo root.\n\n* Fixed all 5 findings: added v1.4.0/v1.4.1 CHANGELOG sections and moved t",
+          "timestamp": "2026-11-26T15:40:19Z",
+          "tree_id": "530db3fac7925fec1363b2cdb47303c35f758580",
+          "url": "https://github.com/evstack/ev-node/commit/e8626b1094d670805387d258534fb5113cd0c006"
+        },
+        "date": 1795709505869,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkProduceBlock/100_txs",
+            "value": 37396,
+            "unit": "ns/op\t   10240 B/op\t      55 allocs/op",
+            "extra": "32092 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - ns/op",
+            "value": 37396,
+            "unit": "ns/op",
+            "extra": "32092 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - B/op",
+            "value": 10240,
+            "unit": "B/op",
+            "extra": "32092 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/100_txs - allocs/op",
+            "value": 55,
+            "unit": "allocs/op",
+            "extra": "32092 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch",
+            "value": 31339,
+            "unit": "ns/op\t    4754 B/op\t      51 allocs/op",
+            "extra": "38245 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - ns/op",
+            "value": 31339,
+            "unit": "ns/op",
+            "extra": "38245 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - B/op",
+            "value": 4754,
+            "unit": "B/op",
+            "extra": "38245 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/empty_batch - allocs/op",
+            "value": 51,
+            "unit": "allocs/op",
+            "extra": "38245 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx",
+            "value": 31807,
+            "unit": "ns/op\t    4948 B/op\t      55 allocs/op",
+            "extra": "38121 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - ns/op",
+            "value": 31807,
+            "unit": "ns/op",
+            "extra": "38121 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - B/op",
+            "value": 4948,
+            "unit": "B/op",
+            "extra": "38121 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkProduceBlock/single_tx - allocs/op",
+            "value": 55,
+            "unit": "allocs/op",
+            "extra": "38121 times\n4 procs"
           }
         ]
       }
