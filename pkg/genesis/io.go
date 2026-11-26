@@ -55,7 +55,7 @@ func LoadGenesis(genesisPath string) (Genesis, error) {
 	// Validate and clean the file path
 	cleanPath := filepath.Clean(genesisPath)
 	if _, err := os.Stat(cleanPath); os.IsNotExist(err) {
-		return Genesis{}, fmt.Errorf("genesis file not found at path: %s", cleanPath)
+		return Genesis{}, fmt.Errorf("genesis file not found at path %s: %w", cleanPath, err)
 	}
 
 	genesisJSON, err := os.ReadFile(cleanPath)
