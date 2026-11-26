@@ -29,9 +29,9 @@ jobs:
         env:
           TAG: ${{ github.ref_name }}
         run: |
-          if ! echo "$TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'; then
+          if ! echo "$TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'; then
             echo "::error::Invalid tag format: $TAG"
-            echo "::error::Tag must be in semver format: v<MAJOR>.<MINOR>.<PATCH>[-PRERELEASE][+BUILD]"
+            echo "::error::Tag must be in semver format: v<MAJOR>.<MINOR>.<PATCH>[-PRERELEASE] (no +BUILD)"
             exit 1
           fi
 

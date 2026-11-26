@@ -57,7 +57,7 @@ PRs are squash-merged, so each PR title becomes one release-note line. Titles mu
 
 ### Docker Images
 
-Every app image uses the root version: tag `v1.4.0` publishes `ev-node-evm:v1.4.0`, `ev-node-testapp:v1.4.0`, `ev-node-loadgen:v1.4.0`, and so on. Each app module uses `replace github.com/evstack/ev-node => ../..`, so every image is built from the tagged tree. App tags (`apps/evm/v*`, ...) are Go module tags only and do not build images.
+Every app image uses the root version: tag `v1.4.0` publishes `ev-node-evm:v1.4.0`, `ev-node-testapp:v1.4.0`, `ev-node-loadgen:v1.4.0`, and so on. `apps/evm` and `apps/testapp` use `replace github.com/evstack/ev-node => ../..`, so their images are built against the tagged ev-node tree; `apps/loadgen` does not depend on ev-node and is built from its own sources at the tagged commit. App tags (`apps/evm/v*`, ...) are Go module tags only and do not build images.
 
 ---
 
