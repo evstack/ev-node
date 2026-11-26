@@ -17,6 +17,7 @@ jobs:
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
       prerelease: ${{ steps.meta.outputs.prerelease }}
+      latest: ${{ steps.meta.outputs.latest }}
       prev: ${{ steps.meta.outputs.prev }}
       apps: ${{ steps.meta.outputs.apps }}
     steps:
@@ -38,6 +39,10 @@ jobs:
           prerelease=false
           [[ "$TAG" == *-* ]] && prerelease=true
 
+          highest=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1)
+          latest=false
+          [ "$TAG" = "$highest" ] && latest=true
+
           exclude=()
           [ "$prerelease" = false ] && exclude=(--exclude='v*-*')
           prev=$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' "${exclude[@]}" "$TAG^" 2>/dev/null) \
@@ -50,10 +55,11 @@ jobs:
           {
             echo "tag=$TAG"
             echo "prerelease=$prerelease"
+            echo "latest=$latest"
             echo "prev=$prev"
             echo "apps=$apps"
           } >> "$GITHUB_OUTPUT"
-          echo "::notice::tag=$TAG prerelease=$prerelease prev=$prev apps=$apps"
+          echo "::notice::tag=$TAG prerelease=$prerelease latest=$latest prev=$prev apps=$apps"
 
   docker:
     name: Docker images
@@ -65,7 +71,7 @@ jobs:
     with:
       image-tag: ${{ needs.prepare.outputs.tag }}
       apps: ${{ needs.prepare.outputs.apps }}
-      latest: ${{ needs.prepare.outputs.prerelease == 'false' }}
+      latest: ${{ needs.prepare.outputs.latest == 'true' }}
 
   release:
     name: GitHub Release
@@ -81,6 +87,7 @@ jobs:
       - name: Generate release notes
         uses: orhun/git-cliff-action@v4
         with:
+          version: v2.14.2
           config: cliff.toml
           args: --strip header --tag ${{ needs.prepare.outputs.tag }} ${{ needs.prepare.outputs.prev }}..${{ needs.prepare.outputs.tag }}
         env:
@@ -111,4 +118,4 @@ jobs:
           body_path: NOTES.md
           draft: false
           prerelease: ${{ needs.prepare.outputs.prerelease }}
-          make_latest: ${{ needs.prepare.outputs.prerelease == 'true' && 'false' || 'true' }}
+          make_latest: ${{ needs.prepare.outputs.latest }}

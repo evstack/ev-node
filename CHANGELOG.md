@@ -1,8 +1,21 @@
 # Changelog
 
 > [!NOTE]
-> This file is no longer updated. Starting with the release after v1.3.0, release notes are generated from PR titles and published on [GitHub Releases](https://github.com/evstack/ev-node/releases).
+> This file is no longer updated. Starting with the release after v1.4.1, release notes are generated from PR titles and published on [GitHub Releases](https://github.com/evstack/ev-node/releases).
 > The history below is kept for reference.
+
+## v1.4.1
+
+### Added
+
+- Add `p2p.announce_addresses` to set the multiaddrs advertised to peers, so nodes behind NAT or in containers without host networking stop advertising unreachable loopback/Docker bridge addresses [#3510](https://github.com/evstack/ev-node/pull/3510).
+
+## v1.4.0
+
+### Fixed
+
+- Reject DA signed data without metadata instead of dereferencing nil metadata during syncing [#3500](https://github.com/evstack/ev-node/pull/3500).
+- Restrict app image releases to app module tags [#3497](https://github.com/evstack/ev-node/pull/3497).
 
 ## v1.3.0
 

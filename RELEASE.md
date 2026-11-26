@@ -9,10 +9,10 @@ This document covers the release process for ev-node components:
 
 ## Cutting a Release
 
-Pushing a root tag such as `v1.4.0` or `v1.4.0-rc.1` runs `.github/workflows/release.yml`, which:
+Pushing a root tag such as `vX.Y.Z` or `vX.Y.Z-rc.1` runs `.github/workflows/release.yml`, which:
 
 1. Validates the tag (`v<MAJOR>.<MINOR>.<PATCH>[-PRERELEASE]`) and finds the previous release tag. Build metadata (`+BUILD`) is not supported: Docker tags cannot contain `+`
-2. Builds and pushes multi-arch (amd64, arm64) images for every `apps/*/Dockerfile` to `ghcr.io/evstack/ev-node-<app>:<tag>`; stable tags also update `:latest`
+2. Builds and pushes multi-arch (amd64, arm64) images for every `apps/*/Dockerfile` to `ghcr.io/evstack/ev-node-<app>:<tag>`; `:latest` moves only when the tag is the highest stable version
 3. Generates release notes from the PR titles since the previous tag with [git-cliff](https://git-cliff.org) (`cliff.toml`)
 4. Publishes the GitHub Release, with the image list and a full diff link
 
@@ -24,13 +24,13 @@ Tags with a `-` suffix (`-rc.1`, `-beta.1`) are published as prereleases: they n
 # 1. Make sure CI is green on the commit you are tagging (usually main)
 
 # 2. Optional: preview the release notes
-git cliff --unreleased --tag v1.4.0
+git cliff --unreleased --tag vX.Y.Z
 # or, without installing git-cliff
-docker run --rm -v "$PWD":/app -w /app orhunp/git-cliff --unreleased --tag v1.4.0
+docker run --rm -v "$PWD":/app -w /app orhunp/git-cliff:2.14.2 --unreleased --tag vX.Y.Z
 
 # 3. Tag and push
-git tag -a v1.4.0 -m v1.4.0
-git push origin v1.4.0
+git tag -a vX.Y.Z -m vX.Y.Z
+git push origin vX.Y.Z
 
 # 4. Watch GitHub → Actions → Release
 ```
@@ -57,7 +57,7 @@ PRs are squash-merged, so each PR title becomes one release-note line. Titles mu
 
 ### Docker Images
 
-Every app image uses the root version: tag `v1.4.0` publishes `ev-node-evm:v1.4.0`, `ev-node-testapp:v1.4.0`, `ev-node-loadgen:v1.4.0`, and so on. `apps/evm` and `apps/testapp` use `replace github.com/evstack/ev-node => ../..`, so their images are built against the tagged ev-node tree; `apps/loadgen` does not depend on ev-node and is built from its own sources at the tagged commit. App tags (`apps/evm/v*`, ...) are Go module tags only and do not build images.
+Every app image uses the root version: tag `vX.Y.Z` publishes `ev-node-evm:vX.Y.Z`, `ev-node-testapp:vX.Y.Z`, `ev-node-loadgen:vX.Y.Z`, and so on. `apps/evm` and `apps/testapp` use `replace github.com/evstack/ev-node => ../..`, so their images are built against the tagged ev-node tree; `apps/loadgen` does not depend on ev-node and is built from its own sources at the tagged commit. App tags (`apps/evm/v*`, ...) are Go module tags only and do not build images.
 
 ---
 
@@ -190,20 +190,20 @@ go list -m github.com/evstack/ev-node/apps/evm@v0.3.0
 ### Scenario 1: Stable Release
 
 ```bash
-git cliff --unreleased --tag v1.4.0   # optional preview
-git tag -a v1.4.0 -m v1.4.0
-git push origin v1.4.0
+git cliff --unreleased --tag vX.Y.Z   # optional preview
+git tag -a vX.Y.Z -m vX.Y.Z
+git push origin vX.Y.Z
 ```
 
 ### Scenario 2: Release Candidate
 
 ```bash
-git tag -a v1.4.0-rc.1 -m v1.4.0-rc.1
-git push origin v1.4.0-rc.1
+git tag -a vX.Y.Z-rc.1 -m vX.Y.Z-rc.1
+git push origin vX.Y.Z-rc.1
 # Published as a prerelease; :latest is not updated
 ```
 
-Release notes for an rc cover the changes since the previous tag (stable or rc). The final `v1.4.0` notes cover everything since the previous stable release, including all its rcs.
+Release notes for an rc cover the changes since the previous tag (stable or rc); the `--unreleased` preview always starts at the last stable tag, so it shows more than an rc's notes. The final `vX.Y.Z` notes cover everything since the previous stable release, including all its rcs.
 
 ### Scenario 3: Backport Release
 
@@ -214,7 +214,7 @@ git tag -a v1.3.1 -m v1.3.1
 git push origin v1.3.1
 ```
 
-The previous tag is found by ancestry, so notes for `v1.3.1` diff against `v1.3.0`, not the newest tag on `main`.
+The previous tag is found by ancestry, so notes for `v1.3.1` diff against `v1.3.0`, not the newest tag on `main`. A backport that is not the highest stable version neither moves `:latest` nor becomes the latest GitHub Release.
 
 ### Scenario 4: Full Go Module Release
 
@@ -235,8 +235,8 @@ git tag apps/evm/v0.3.0 && git push origin apps/evm/v0.3.0
 
 ```bash
 # Fix on main (or a backport branch), then cut a new patch version
-git tag -a v1.4.1 -m v1.4.1
-git push origin v1.4.1
+git tag -a vX.Y.Z -m vX.Y.Z
+git push origin vX.Y.Z
 
 # Do NOT delete or move released tags: Go modules and images depend on them
 ```
@@ -254,8 +254,8 @@ If a release workflow run fails for a transient reason, re-run it from the Actio
 # GitHub → Actions → Release
 
 # Pull and test image
-docker pull ghcr.io/evstack/ev-node-evm:v1.4.0
-docker run ghcr.io/evstack/ev-node-evm:v1.4.0 --version
+docker pull ghcr.io/evstack/ev-node-evm:vX.Y.Z
+docker run ghcr.io/evstack/ev-node-evm:vX.Y.Z --version
 
 # Check GHCR
 # GitHub → Packages → ev-node-evm
@@ -336,7 +336,7 @@ While modules can have independent versions, keep major versions synchronized ac
 
 ```bash
 # Annotated tag; the release notes come from PR titles, not the tag message
-git tag -a v1.4.0 -m v1.4.0
+git tag -a vX.Y.Z -m vX.Y.Z
 ```
 
 ---
@@ -350,7 +350,7 @@ git tag -a v1.4.0 -m v1.4.0
 3. **Go Proxy Cache**: The Go module proxy may take up to 30 minutes to fully propagate new versions. Be patient and verify availability before proceeding to dependent modules.
 
 4. **Rollback Plan**:
-   - **Releases and Docker images**: Cut a new patch version (e.g., v1.4.1); re-running a tag overwrites its images
+   - **Releases and Docker images**: Cut a new patch version; re-running a tag overwrites its images
    - **Go modules**: NEVER delete tags. Create a new patch version instead (e.g., v0.3.1) to avoid Go proxy issues.
 
 5. **Protected Branches**: Create version branches (e.g., `v0`, `v0.3`) for maintaining release history and backporting fixes.
