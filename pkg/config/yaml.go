@@ -63,9 +63,16 @@ func (c *Config) SaveAsYaml() error {
 				continue
 			}
 
+			// Follow pointers so that pointer-to-struct config sections
+			// (e.g. the optional instrumentation config) are traversed too.
+			fieldType := field.Type
+			if fieldType.Kind() == reflect.Pointer {
+				fieldType = fieldType.Elem()
+			}
+
 			// Handle embedded structs
-			if field.Type.Kind() == reflect.Struct && field.Anonymous {
-				processFields(field.Type, prefix)
+			if fieldType.Kind() == reflect.Struct && field.Anonymous {
+				processFields(fieldType, prefix)
 				continue
 			}
 
@@ -74,16 +81,16 @@ func (c *Config) SaveAsYaml() error {
 			if prefix != "" {
 				fieldPath = prefix + "." + fieldPath
 			}
-			fieldPath = "$." + fieldPath
 
 			// Add comment if present
 			if comment != "" {
-				addComment(fieldPath, comment)
+				addComment("$."+fieldPath, comment)
 			}
 
-			// Process nested structs (non-anonymous)
-			if field.Type.Kind() == reflect.Struct && !field.Anonymous {
-				processFields(field.Type, yamlTag)
+			// Process nested structs (non-anonymous), preserving the full
+			// dotted path so nested comments map to the correct YAML node.
+			if fieldType.Kind() == reflect.Struct && !field.Anonymous {
+				processFields(fieldType, fieldPath)
 			}
 		}
 	}
