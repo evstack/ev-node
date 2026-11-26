@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795614995185,
+  "lastUpdate": 1795709504039,
   "repoUrl": "https://github.com/evstack/ev-node",
   "entries": {
     "EVM Contract Roundtrip": [
@@ -46,6 +46,54 @@ window.BENCHMARK_DATA = {
           {
             "name": "BenchmarkEvmContractRoundtrip - allocs/op",
             "value": 37209,
+            "unit": "allocs/op",
+            "extra": "2 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "27022259+auricom@users.noreply.github.com",
+            "name": "auricom",
+            "username": "auricom"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "e8626b1094d670805387d258534fb5113cd0c006",
+          "message": "ci: automate releases on semver tags (#3518)\n\n* Froze CHANGELOG.md: replaced the [Unreleased] block (#3510) with a note\n\n* Added optional boolean input `latest` (default false) to docker-build-pu\n\n* Added cliff.toml at the repo root as specified; verified with git-cliff\n\n* Removed the orphaned [Unreleased] link reference definition (and precedi\n\n* Added .github/workflows/release.yml: a release workflow triggered by v*.\n\n* Deleted .github/workflows/release-github.yml and .github/workflows/relea\n\n* Rewrote RELEASE.md around a tag-driven 'Cutting a Release' flow with PR-\n\n* RELEASE.md: keep the apps/* replace directives so images built from the\n\n* Verified release flow (actionlint, git-cliff v1.2.3..v1.3.0 and v1.0.0..\n\n* Removed the stray NOTES.md dry-run artifact from the repo root.\n\n* Fixed all 5 findings: added v1.4.0/v1.4.1 CHANGELOG sections and moved t",
+          "timestamp": "2026-11-26T15:40:19Z",
+          "tree_id": "530db3fac7925fec1363b2cdb47303c35f758580",
+          "url": "https://github.com/evstack/ev-node/commit/e8626b1094d670805387d258534fb5113cd0c006"
+        },
+        "date": 1795709498879,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkEvmContractRoundtrip",
+            "value": 910311228,
+            "unit": "ns/op\t 4239972 B/op\t   36574 allocs/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - ns/op",
+            "value": 910311228,
+            "unit": "ns/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - B/op",
+            "value": 4239972,
+            "unit": "B/op",
+            "extra": "2 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkEvmContractRoundtrip - allocs/op",
+            "value": 36574,
             "unit": "allocs/op",
             "extra": "2 times\n4 procs"
           }
