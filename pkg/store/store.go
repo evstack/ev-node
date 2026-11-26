@@ -181,7 +181,7 @@ func (s *DefaultStore) DeleteStateAtHeight(ctx context.Context, height uint64) e
 	return nil
 }
 
-// SetMetadata saves arbitrary value in the store.
+// SetMetadata saves an arbitrary value in the store.
 //
 // Metadata is separated from other data by using prefix in KV.
 func (s *DefaultStore) SetMetadata(ctx context.Context, key string, value []byte) error {
@@ -216,7 +216,7 @@ func (s *DefaultStore) BatchMetadata(ctx context.Context, puts []MetadataKV, del
 	return nil
 }
 
-// GetMetadata returns values stored for given key with SetMetadata.
+// GetMetadata returns the value stored for the given key by SetMetadata.
 func (s *DefaultStore) GetMetadata(ctx context.Context, key string) ([]byte, error) {
 	data, err := s.db.Get(ctx, ds.NewKey(GetMetaKey(key)))
 	if err != nil {
