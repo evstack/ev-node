@@ -13,6 +13,11 @@ permissions: {}
         required: true
         type: string
         description: 'JSON array of apps to build (e.g., [{"name": "testapp", "dockerfile": "apps/testapp/Dockerfile"}])'
+      latest:
+        required: false
+        type: boolean
+        default: false
+        description: 'Also tag images as :latest'
 
 jobs:
   build-images:
@@ -47,6 +52,8 @@ jobs:
           file: ${{ matrix.app.dockerfile }}
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: ghcr.io/${{ github.repository_owner }}/${{ matrix.app.name }}:${{ inputs.image-tag }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.app.name }}:${{ inputs.image-tag }}
+            ${{ inputs.latest && format('ghcr.io/{0}/{1}:latest', github.repository_owner, matrix.app.name) || '' }}
           cache-from: type=gha,scope=${{ matrix.app.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.app.name }}
