@@ -11,7 +11,7 @@ This document covers the release process for ev-node components:
 
 Pushing a root tag such as `v1.4.0` or `v1.4.0-rc.1` runs `.github/workflows/release.yml`, which:
 
-1. Validates the tag (`v<MAJOR>.<MINOR>.<PATCH>[-PRERELEASE][+BUILD]`) and finds the previous release tag
+1. Validates the tag (`v<MAJOR>.<MINOR>.<PATCH>[-PRERELEASE]`) and finds the previous release tag. Build metadata (`+BUILD`) is not supported: Docker tags cannot contain `+`
 2. Builds and pushes multi-arch (amd64, arm64) images for every `apps/*/Dockerfile` to `ghcr.io/evstack/ev-node-<app>:<tag>`; stable tags also update `:latest`
 3. Generates release notes from the PR titles since the previous tag with [git-cliff](https://git-cliff.org) (`cliff.toml`)
 4. Publishes the GitHub Release, with the image list and a full diff link
@@ -118,7 +118,8 @@ These packages have the most dependencies and should be released last:
 
 - Create a protected version branch (e.g., `v0` for major versions, `v0.3` for minor breaking changes)
 - Pushing the root tag (`v0.3.0` below) also runs the release workflow: Docker images and the GitHub Release are published from that commit
-- Remove all `replace` directives from go.mod files
+- Remove `replace` directives from the library modules' go.mod files (`core`, root, `da`, `execution/evm`)
+- Keep `replace github.com/evstack/ev-node => ../..` in `apps/*/go.mod`: the images built from the root tag rely on it to use the tagged tree, and no other module imports the apps
 
 #### Phase 1: Release Core
 
@@ -306,7 +307,7 @@ go get github.com/evstack/ev-node/core@v0.3.0
 
 - Ensure all dependencies are released before dependent modules
 - Verify go.mod has correct versions
-- Remove `replace` directives
+- Remove `replace` directives from library modules (keep the `apps/*` ones)
 
 ---
 
@@ -319,7 +320,7 @@ go get github.com/evstack/ev-node/core@v0.3.0
 - ✅ PR titles describe the changes for operators (they become the release notes)
 - ✅ Documentation updated
 - ✅ Local testing complete
-- ✅ Remove `replace` directives from go.mod files
+- ✅ Remove `replace` directives from library go.mod files (keep the `apps/*` ones)
 
 ### Semantic Versioning
 
