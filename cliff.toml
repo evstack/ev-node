@@ -1,0 +1,38 @@
+[changelog]
+header = ""
+trim = true
+body = """
+{%- set breaking = commits | filter(attribute="breaking", value=true) -%}
+{% if breaking | length > 0 %}
+### ⚠️ Breaking changes
+{% for commit in breaking %}
+- {% if commit.scope %}**{{ commit.scope }}:** {% endif %}{{ commit.message | upper_first }}
+{%- endfor %}
+{% endif %}
+{% for group, commits in commits | filter(attribute="breaking", value=false) | group_by(attribute="group") %}
+### {{ group | striptags | trim | upper_first }}
+{% for commit in commits %}
+- {% if commit.scope %}**{{ commit.scope }}:** {% endif %}{{ commit.message | upper_first }}
+{%- endfor %}
+{% endfor %}
+"""
+postprocessors = [
+  { pattern = '\(#([0-9]+)\)', replace = "([#${1}](https://github.com/evstack/ev-node/pull/${1}))" },
+]
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+protect_breaking_commits = true
+filter_commits = false
+tag_pattern = '^v[0-9]+\.[0-9]+\.[0-9]+'
+ignore_tags = '-'
+sort_commits = "newest"
+commit_parsers = [
+  { message = '^feat', group = "<!-- 0 -->Features" },
+  { message = '^fix', group = "<!-- 1 -->Bug fixes" },
+  { message = '^perf', group = "<!-- 2 -->Performance" },
+  { message = '^revert', group = "<!-- 3 -->Reverts" },
+  { message = '^(chore|docs|test|ci|style|build|refactor)', skip = true },
+  { message = '.*', group = "<!-- 4 -->Other" },
+]
